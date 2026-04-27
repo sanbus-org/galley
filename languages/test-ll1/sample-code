@@ -1,0 +1,20 @@
+TodoItem:
+  - title: str
+  - timestamp: int = timestamp()<
+
+TodoList:
+  - items: TodoItem[]<
+
+Initialize:<
+  ---
+    >state: TodoList(items=[])
+
+Add:
+  - item: TodoItem<
+  ---
+    >state: TodoList(items=[])
+
+Remove:
+  - item: TodoItem<
+  ---
+    >state: TodoList(items=[])
