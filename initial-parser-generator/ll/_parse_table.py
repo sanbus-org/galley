@@ -1,0 +1,58 @@
+import json
+from collections import defaultdict
+from functools import cached_property
+from pathlib import Path
+from typing import override
+
+from data_structures import (
+    RightHandSide,
+    Rule,
+    Symbol,
+    TerminalSymbol,
+    VariableSymbol,
+)
+from ll._firsts import LLParserGeneratorFirstsMixin
+from ll._follows import LLParserGeneratorFollowsMixin
+
+
+class LLParserGeneratorParseTableMixin(
+    LLParserGeneratorFollowsMixin, LLParserGeneratorFirstsMixin
+):
+    @override
+    def log_to_file(self, directory: Path) -> None:
+        super().log_to_file(directory)
+        if directory:
+            with (directory / "parse-table.log").open("w") as output:
+                print(
+                    json.dumps(
+                        {
+                            variable.id.decode("utf-8"): {
+                                i.decode(): repr(j) for i, j in row.items()
+                            }
+                            for variable, row in self.parse_table.items()
+                        },
+                        indent=2,
+                    ),
+                    file=output,
+                )
+
+    @cached_property
+    def parse_table(self) -> dict[Symbol, dict[bytes, Rule]]:
+        parse_table: dict[Symbol, dict[bytes, Rule]] = defaultdict(dict)
+        for symbol in self.symbols:
+            if isinstance(symbol, VariableSymbol):
+                for terminal, rule in self._firsts(symbol).items():
+                    parse_table[symbol][terminal] = rule
+                if symbol in self.nullables:
+                    for terminal in self._follows(symbol):
+                        if (
+                            terminal in parse_table[symbol]
+                            and parse_table[symbol][terminal] != self.nullables[symbol]
+                        ):
+                            raise SyntaxError(
+                                f"""Ambiguity in parse table for nullable variable "{symbol}":
+Token "{terminal.decode("utf-8")}" shows up both in its firsts as well as its follows."""
+                            )
+                        parse_table[symbol][terminal] = self.nullables[symbol]
+
+        return parse_table
