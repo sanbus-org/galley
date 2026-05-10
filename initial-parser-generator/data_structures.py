@@ -86,6 +86,8 @@ class Symbol:
                         + string.punctuation
                         + string.whitespace
                     )
+                case b"operator":
+                    terminals = ["+", "*", "/", "&", "|", ">", ">=", "<", "<=", "="]
                 case b"new_line":
                     terminals = "\n"
                 case b"space":

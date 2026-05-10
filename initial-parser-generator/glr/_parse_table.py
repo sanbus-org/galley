@@ -73,7 +73,7 @@ class GLRParserGeneratorParseTableMixin(GLRParserGeneratorGotoMixin):
 
         for state in self.canonical_states:
             table = parse_table[state]
-            if (index := self.canonical_state_indices[state]) % 50 == 0:
+            if (index := self.canonical_state_indices[state]) % 1000 == 0:
                 report_progress(index)
             for item in state.items:
                 if item.variable == self.start_variable:

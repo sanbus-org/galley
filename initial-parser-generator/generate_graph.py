@@ -40,7 +40,7 @@ def build_table_html(node_name: str, rules_dict: dict) -> str:
     return html_str
 
 
-def generate_graph(graphs_dir: Path, rules: dict[bytes, set[RightHandSide]]) -> None:
+def generate_graph(graphs_dir: Path, rules: dict[bytes, list[RightHandSide]]) -> None:
     nodes = {}
     edges = []
 

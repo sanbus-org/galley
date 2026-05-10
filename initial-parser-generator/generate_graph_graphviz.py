@@ -243,7 +243,7 @@ def generate_view_data(
     return "\n".join(svg_elements), viewBox, topology
 
 
-def generate_graph(graphs_dir: Path, rules: dict[bytes, set[RightHandSide]]) -> None:
+def generate_graph(graphs_dir: Path, rules: dict[bytes, list[RightHandSide]]) -> None:
     nodes = {}
     edges = []
     rules_dict = {}

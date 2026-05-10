@@ -42,11 +42,17 @@ class GLRParserGeneratorGotoMixin(GLRParserGeneratorClosureMixin):
         hashes: list[int] = [hash(initial_state)]
         queue: list[State] = [initial_state]
 
+        def report_progress():
+            print(f"Collection size: {len(collection)}, Queue length: {len(queue)}")
+
+        progress_step = 1000
+
         last_size_report = -1
+        report_progress()
         while len(queue) > 0:
-            if (size := len(collection)) != last_size_report:
-                print(f"Collection size: {size}, Queue length: {len(queue)}")
-                last_size_report = size
+            if (size := len(collection)) - last_size_report > progress_step:
+                report_progress()
+                last_size_report = (size // progress_step) * progress_step
             state = queue.pop(0)
             for symbol in self.symbols:
                 to_add = self._goto(state, symbol)
@@ -54,6 +60,8 @@ class GLRParserGeneratorGotoMixin(GLRParserGeneratorClosureMixin):
                     collection.append(to_add)
                     hashes.append(hash(to_add))
                     queue.append(to_add)
+
+        report_progress()
 
         return collection
 

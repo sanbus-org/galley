@@ -3,13 +3,15 @@ from __future__ import annotations
 import argparse
 import tempfile
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 import shtab
 
 from glr import GLRParserGenerator
 from ll import LLParserGenerator
 from lr import LRParserGenerator
+
+type ParserGenerator = Literal["LL", "LR", "GLR"]
 
 ParserGenerators = TypedDict(
     "ParserGenerators",
@@ -27,13 +29,17 @@ parser_generators: ParserGenerators = {
 }
 
 
-def arg_is_language(input: str) -> tuple[Path, Path]:
+def arg_is_language(input: str) -> tuple[dict[str, Path], Path]:
     cwd = Path().absolute()
     language_path = cwd / input
-    input_path = language_path / "grammar.grm"
+    input_paths = {
+        grammar_type: input_path
+        for grammar_type in parser_generators.keys()
+        if (input_path := language_path / f"{grammar_type.lower()}.grm").exists()
+    }
     output_path = language_path / "_parse-table.zig"
-    if not input_path.exists():
-        raise argparse.ArgumentTypeError(f'File "{input_path}" does not exist!')
+    if not input_paths:
+        raise argparse.ArgumentTypeError(f'No grammar exists in "{language_path}"')
 
     try:
         with tempfile.TemporaryFile(dir=language_path):
@@ -41,7 +47,7 @@ def arg_is_language(input: str) -> tuple[Path, Path]:
     except Exception:
         raise argparse.ArgumentTypeError(f'File "{output_path}" is not writable!')
 
-    return input_path, output_path
+    return input_paths, output_path
 
 
 def main():
@@ -101,21 +107,28 @@ def main():
         help="Defaults to ./graphs",
     )
 
+    shtab.add_argument_to(parser)
+    args, _ = parser.parse_known_args()
+
+    grammar_paths, parse_table_path = cast(
+        "tuple[dict[str, Path], Path]", args.language
+    )
+
+    parser_type_choices = list(parser_generators.keys() & grammar_paths.keys())
     parser.add_argument(
         "--parser-type",
-        choices=["LL", "LR", "GLR"],
-        required=True,
+        choices=parser_type_choices,
+        default=parser_type_choices[0],
+        required=len(parser_type_choices) != 1,
         help="The parser type to use, current supported parsers: LL, LR",
     )
-    shtab.add_argument_to(parser)
-    args, extra_args = parser.parse_known_args()
 
-    grammar_path, parse_table_path = cast("tuple[Path, Path]", args.language)
+    args, extra_args = parser.parse_known_args()
 
     parser_generator = parser_generators[args.parser_type]()
     parser_generator.parse_args(extra_args)
 
-    parser_generator.from_bytes(grammar_path.open("rb").read())
+    parser_generator.from_bytes(grammar_paths[args.parser_type].open("rb").read())
 
     if args.graph:
         from generate_graph import generate_graph
