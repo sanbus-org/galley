@@ -56,7 +56,7 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
         var semantic_stack = try std.ArrayList(?*root.data_structures.ASTNode).initCapacity(gpa, 64);
         defer semantic_stack.deinit(gpa);
 
-        var buffer: [16 * 1024]u8 = undefined;
+        var buffer: [48 * 1024]u8 = undefined;
         var reader = program_file.reader(io, &buffer);
 
         var token = data_structures.Token{};
@@ -77,9 +77,9 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                 error.ReadFailed => break,
             };
 
-            if (bytes_read == 0 and buffer[0] != '\x00') {
-                bytes_read = 1;
-                buffer[0] = '\x00';
+            if (bytes_read < buffer.len) {
+                buffer[bytes_read] = '\x00';
+                bytes_read += 1;
             }
 
             for (buffer[0..bytes_read]) |character| token_process_loop: {
@@ -161,8 +161,8 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                             const symbol = symbol_stack.items[index];
                             std.debug.print(", ", .{});
                             std.debug.print("{s}({d})", .{
-                                if (symbol <= 0)
-                                    parse_table.variables[parse_table.rules[@intCast(-symbol)].header]
+                                if (symbol < 0)
+                                    parse_table.variables[parse_table.rules[@intCast(-symbol - 1)].header]
                                 else
                                     parse_table.symbols[@intCast(symbol)],
                                 symbol,
@@ -267,7 +267,8 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                             const rule_index = table.get(longest_prefix).?;
                             const rule = parse_table.rules[rule_index];
                             if (verbosity > 1) {
-                                std.debug.print("Rule expansion: {f}({d}) -> ", .{
+                                std.debug.print("Rule expansion {d}: {f}({d}) -> ", .{
+                                    rule_index,
                                     root.string_utilities.fmtString(parse_table.symbols[current_symbol]),
                                     current_symbol,
                                 });
@@ -280,7 +281,7 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                                 }
                                 std.debug.print("\n", .{});
                             }
-                            try symbol_stack.append(gpa, @intCast(-@as(i32, @intCast(rule_index))));
+                            try symbol_stack.append(gpa, @intCast(-@as(i32, @intCast(rule_index + 1))));
                             for (rule.right_hand_side, 0..) |_, i| {
                                 try symbol_stack.append(
                                     gpa,
@@ -300,8 +301,8 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                     }
 
                     while (symbol_stack.pop()) |popped_symbol| {
-                        if (popped_symbol <= 0) {
-                            const rule_index: u16 = @intCast(-popped_symbol);
+                        if (popped_symbol < 0) {
+                            const rule_index: u16 = @intCast(-popped_symbol - 1);
                             const rule = parse_table.rules[rule_index];
                             if (verbosity > 1) {
                                 std.debug.print("Reduction: {s}({d}) <~ ", .{

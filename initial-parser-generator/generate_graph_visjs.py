@@ -11,7 +11,7 @@ def sanitize_text(text: str) -> str:
     return sanitized if sanitized.strip() else "&nbsp;"
 
 
-def generate_graph(graphs_dir: Path, rules: dict[bytes, set[RightHandSide]]) -> None:
+def generate_graph(graphs_dir: Path, rules: dict[bytes, list[RightHandSide]]) -> None:
     nodes = {}
     edges = []
     rules_dict = {}

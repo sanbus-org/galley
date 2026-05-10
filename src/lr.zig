@@ -78,9 +78,9 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                 error.ReadFailed => break,
             };
 
-            if (bytes_read == 0 and buffer[0] != '\x00') {
-                bytes_read = 1;
-                buffer[0] = '\x00';
+            if (bytes_read < buffer.len) {
+                buffer[bytes_read] = '\x00';
+                bytes_read += 1;
             }
 
             for (buffer[0..bytes_read]) |character| token_process_loop: {
@@ -212,7 +212,6 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                                     if (last_newline == -1) {
                                         column += column_offsets.sum(0, longest_prefix.len);
                                     }
-                                    try state_stack.append(gpa, resolution.data_index);
                                     const node = try arena_allocator.create(root.data_structures.ASTNode);
                                     node.* = .{
                                         .text = try arena_allocator.dupe(u8, token.items()[0..longest_prefix.len]),
@@ -246,6 +245,7 @@ pub fn parse(init: std.process.Init, program_file: std.Io.File) !void {
                                         }
                                     }
 
+                                    try state_stack.append(gpa, resolution.data_index);
                                     try semantic_stack.append(gpa, node);
                                     try line_offsets.pop(longest_prefix.len);
                                     try column_offsets.pop(longest_prefix.len);

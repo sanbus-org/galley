@@ -128,7 +128,7 @@ class ParserGeneratorBaseMixin(abc.ABC):
     @cached_property
     def variables(self) -> list[VariableSymbol]:
         return sorted(
-            [symbol for symbol in self.symbols if isinstance(symbol, VariableSymbol)],
+            symbol for symbol in self.symbols if isinstance(symbol, VariableSymbol)
         )
 
     @cached_property

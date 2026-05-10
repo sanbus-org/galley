@@ -37,12 +37,12 @@ const Resolution = struct {{
 
 pub const action_table = blk: {{
     @setEvalBranchQuota(10_000_000);
-    break :blk &[_]data_structures.StaticStringMap(Resolution){{
+    break :blk &[_]data_structures.StaticStringMap([]const Resolution){{
 {
             "\n".join(
                 [
-                    f'''        data_structures.StaticStringMap(Resolution).initComptime(\
-&[_]data_structures.StaticStringMap(Resolution).Entry{{{
+                    f'''        data_structures.StaticStringMap([]const Resolution).initComptime(\
+&[_]data_structures.StaticStringMap([]const Resolution).Entry{{{
                         "\n            ".join(
                             [""]
                             + [
@@ -98,11 +98,12 @@ pub const goto_table = blk: {{
 {
             "\n".join(
                 [
-                    f'''        data_structures.StaticIntMap(u16, []const u16).initComptime(.{{{
+                    f'''        data_structures.StaticIntMap(u16, []const u16).initComptime(\
+&[_]data_structures.StaticIntMap(u16, []const u16).Entry{{{
                         "\n            ".join(
                             [""]
                             + [
-                                f".{{ {symbol.index}, &[_]u16{{ {
+                                f".{{ {symbol.variable_index}, &[_]u16{{ {
                                     ', '.join(
                                         str(
                                             self.canonical_state_indices[

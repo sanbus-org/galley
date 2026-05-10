@@ -10,7 +10,7 @@ from data_structures import RightHandSide, VariableSymbol
 
 def generate_graph(
     graphs_dir: Path,
-    rules: dict[bytes, set[RightHandSide]],
+    rules: dict[bytes, list[RightHandSide]],
     filename: str = "cfg_selectable.html",
     start_symbol: bytes | None = None,
 ) -> None:
