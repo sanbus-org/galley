@@ -72,8 +72,8 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
 pub fn ASTNode(comptime PayloadType: type) type {
     return struct {
-        pub const Pointer = u16;
-        pub const invalid_pointer: u16 = ASTAllocator(Self).invalid_pointer;
+        pub const Pointer = Context.Size;
+        pub const invalid_pointer: Context.Size = ASTAllocator(Self).invalid_pointer;
         pub const invalid_variable: u16 = std.math.maxInt(u16);
 
         text_start: Context.Size,

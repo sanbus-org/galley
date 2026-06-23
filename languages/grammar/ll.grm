@@ -38,6 +38,7 @@ Symbol
 
 VariableSymbol
  |UppercaseId
+ |"_" UppercaseId
 
 TerminalSymbol
  |"'" StringContent "\x03"

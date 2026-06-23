@@ -10,9 +10,8 @@ const c = @cImport({
 
 pub const procedures = @import("procedures");
 pub const parse_table = @import("parse-table");
-pub const read_chunk_size = std.math.maxInt(data_structures.Context.Size);
-// pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u16));
-pub const preallocated_nodes = 20_000;
+pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
+pub const preallocated_nodes = if (parse_table.is_ast_enabled) (std.math.maxInt(std.math.Min(data_structures.Context.Size, u28)) - 1) / 4 else 0;
 
 const data_structures = root.data_structures;
 
