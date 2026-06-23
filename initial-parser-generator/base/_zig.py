@@ -30,6 +30,7 @@ const data_structures = @import("root").data_structures;
 const string_utilities = @import("root").string_utilities;
 const parser = @import("parser");
 
+pub const is_ast_enabled = {self.with_ast and "true" or "false"};
 pub const input_size_cap = u{self.input_size};
 pub const parse_table_type = "{self.parser_type}";
 pub const longest_terminal_length = {

@@ -254,33 +254,33 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
     }
 }
 
-// pub fn reduction_Start(args: *ProcedureArguments) !void {
-//     if (if (args.context.verbosity > 0) args.node else null) |node_address| {
-//         std.debug.print("\nProgram text:\n{s}\n", .{try ASTNode.augmented_text(node_address, args.context)});
-//     }
-//
-//     const log_file = try std.Io.Dir.cwd().createFile(args.context.io, "sanbus-parse.log", .{
-//         .lock = .exclusive,
-//     });
-//     defer log_file.close(args.context.io);
-//
-//     var buffer: [4096]u8 = undefined;
-//     var buffered_writer: std.Io.File.Writer = .init(log_file, args.context.io, &buffer);
-//     const writer = &buffered_writer.interface;
-//
-//     if (args.node) |node_address| {
-//         const node = args.context.node_allocator.at(node_address);
-//         const child = args.context.node_allocator.at(node.first_child);
-//         try writer.print("{d} rules, {d} fields, {d} outcomes!\n\n{f}\n", .{
-//             child.payload.rules,
-//             child.payload.fields,
-//             child.payload.outcomes,
-//             string_utilities.fmtASTNode(node_address, args.context),
-//         });
-//     }
-//
-//     try writer.flush();
-// }
+pub fn reduction_Start(args: *ProcedureArguments) !void {
+    if (if (args.context.verbosity > 0) args.node else null) |node_address| {
+        std.debug.print("\nProgram text:\n{s}\n", .{try ASTNode.augmented_text(node_address, args.context)});
+    }
+
+    const log_file = try std.Io.Dir.cwd().createFile(args.context.io, "sanbus-parse.log", .{
+        .lock = .exclusive,
+    });
+    defer log_file.close(args.context.io);
+
+    var buffer: [4096]u8 = undefined;
+    var buffered_writer: std.Io.File.Writer = .init(log_file, args.context.io, &buffer);
+    const writer = &buffered_writer.interface;
+
+    if (args.node) |node_address| {
+        const node = args.context.node_allocator.at(node_address);
+        const child = args.context.node_allocator.at(node.first_child);
+        try writer.print("{d} rules, {d} fields, {d} outcomes!\n\n{f}\n", .{
+            child.payload.rules,
+            child.payload.fields,
+            child.payload.outcomes,
+            string_utilities.fmtASTNode(node_address, args.context),
+        });
+    }
+
+    try writer.flush();
+}
 
 pub fn drop_if_empty(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
