@@ -5,5 +5,5 @@ pub const indentation_syntax = true;
 pub const Payload = struct { data: []const u8 = "" };
 
 pub fn reduction_Start() void {
-    // std.debug.print("Parser started successfully.\n", .{});
+    std.debug.print("Parsed successfully.\n", .{});
 }

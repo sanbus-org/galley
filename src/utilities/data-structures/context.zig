@@ -1,9 +1,8 @@
 const builtin = @import("builtin");
+const root = @import("root");
 const std = @import("std");
 const data_structures = @import("root").data_structures;
 const string_utilities = @import("root").string_utilities;
-
-const parser = @import("parser");
 
 fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
     var i = slice.len;
@@ -20,7 +19,7 @@ fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
 }
 
 pub const Context = struct {
-    pub const Size = parser.parse_table.input_size_cap;
+    pub const Size = root.parse_table.input_size_cap;
 
     node_allocator: *data_structures.ASTAllocator,
     arena_allocator: std.mem.Allocator,
@@ -57,7 +56,7 @@ pub const Context = struct {
 
     pub fn release_token(self: *@This(), length: Size) void {
         if (comptime builtin.mode != .ReleaseFast) {
-            if (comptime parser.procedures.indentation_syntax) {
+            if (comptime root.procedures.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
             }
             self.column += self.column_offsets.sum(0, length);
@@ -68,13 +67,13 @@ pub const Context = struct {
                         self.column = self.column_offsets.sum(index, length);
                         last_newline = @intCast(index);
                     }
-                    if (comptime !parser.procedures.indentation_syntax) {
+                    if (comptime !root.procedures.indentation_syntax) {
                         self.line += 1;
                     }
                 }
             }
 
-            if (comptime parser.procedures.indentation_syntax) {
+            if (comptime root.procedures.indentation_syntax) {
                 self.line_offsets.pop(length);
             }
             self.column_offsets.pop(length);
@@ -111,7 +110,7 @@ pub const Context = struct {
     }
 
     pub inline fn advance_input_with_check(self: *@This()) void {
-        if (self.seek == parser.read_chunk_size - 1) {
+        if (self.seek == root.read_chunk_size - 1) {
             self.read_bytes += self.seek;
             self.seek = 0;
             self.read();
@@ -132,7 +131,7 @@ pub const Context = struct {
     }
 
     pub inline fn advance_lexer(self: *@This()) void {
-        if (comptime parser.procedures.indentation_syntax) {
+        if (comptime root.procedures.indentation_syntax) {
             while (self.chunk_buffer[self.seek] == '\n') {
                 self.advance_input();
                 var line_spaces: u16 = 0;
@@ -154,7 +153,7 @@ pub const Context = struct {
                     unreachable;
                 }
                 const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
-                if (comptime builtin.mode != .ReleaseFast and parser.procedures.indentation_syntax) {
+                if (comptime builtin.mode != .ReleaseFast and root.procedures.indentation_syntax) {
                     self.line_offsets.append(1);
                 }
                 if (new_indent == self.current_indent) {
@@ -166,7 +165,7 @@ pub const Context = struct {
                     if (new_indent > self.current_indent) {
                         for (0..new_indent - self.current_indent) |index| {
                             if (comptime builtin.mode != .ReleaseFast) {
-                                if (comptime parser.procedures.indentation_syntax) {
+                                if (comptime root.procedures.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
                                     }
@@ -178,7 +177,7 @@ pub const Context = struct {
                     } else if (new_indent < self.current_indent) {
                         for (0..self.current_indent - new_indent) |index| {
                             if (comptime builtin.mode != .ReleaseFast) {
-                                if (comptime parser.procedures.indentation_syntax) {
+                                if (comptime root.procedures.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
                                     }
@@ -194,7 +193,7 @@ pub const Context = struct {
         }
 
         if (comptime builtin.mode != .ReleaseFast) {
-            if (comptime parser.procedures.indentation_syntax) {
+            if (comptime root.procedures.indentation_syntax) {
                 self.line_offsets.append(0);
             }
             self.column_offsets.append(1);
