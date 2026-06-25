@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const parser = @import("parser");
+const root = @import("root");
 const string_utilities = @import("root").string_utilities;
 
-pub const Payload = parser.procedures.Payload;
+pub const Payload = root.procedures.Payload;
 pub const ASTNode = @import("astnode.zig").ASTNode(Payload);
 pub const ASTAllocator = @import("astnode.zig").ASTAllocator(Payload);
 pub const Context = @import("context.zig").Context;

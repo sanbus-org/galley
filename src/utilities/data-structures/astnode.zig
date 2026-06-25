@@ -2,11 +2,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Context = @import("root").data_structures.Context;
 const parser = @import("parser");
+const root = @import("root");
 
 pub fn ASTAllocator(comptime PayloadType: type) type {
     return struct {
         const ASTNodeType = ASTNode(PayloadType);
-        const invalid_pointer = parser.preallocated_nodes;
+        const invalid_pointer = root.preallocated_nodes;
         const default: ASTNodeType = .{
             .text_start = 0,
             .text_length = 0,
@@ -25,7 +26,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
         const Self = @This();
 
         pub fn init_capacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
-            const memory = try allocator.alloc(ASTNodeType, parser.preallocated_nodes + 1);
+            const memory = try allocator.alloc(ASTNodeType, root.preallocated_nodes + 1);
 
             @memset(memory, default);
 
@@ -630,8 +631,8 @@ const TestFixture = struct {
             .text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         };
 
-        const root: u16 = 0;
-        nodes[root] = .{
+        const root_node: u16 = 0;
+        nodes[root_node] = .{
             .text_start = 0,
             .text_length = 1,
             .payload = {},
@@ -645,7 +646,7 @@ const TestFixture = struct {
                 .text_length = 1,
                 .payload = {},
             };
-            try TestASTNode.append_children(root, &init_context, child_addr);
+            try TestASTNode.append_children(root_node, &init_context, child_addr);
         }
 
         // For each of root's children, append 3 children
@@ -678,7 +679,7 @@ const TestFixture = struct {
         return TestFixture{
             .arena = arena,
             .nodes = nodes,
-            .root = root,
+            .root = root_node,
             .free_nodes = free_nodes,
         };
     }
@@ -697,11 +698,11 @@ fn run_with_context(test_fn: *const fn (*TestFixture) anyerror!void) !void {
 fn test_remove(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
-    const root = fixture.root;
+    const root_node = fixture.root;
 
     // Root initially has 4 children (1, 2, 3, 4)
     var count: usize = 0;
-    var curr = fixture.nodes[root].first_child;
+    var curr = fixture.nodes[root_node].first_child;
     while (curr != TestASTNode.invalid_pointer) {
         count += 1;
         curr = fixture.nodes[curr].next;
@@ -713,14 +714,14 @@ fn test_remove(fixture: *TestFixture) !void {
 
     // Parent (root) now has 2 children: 1, 4
     count = 0;
-    curr = fixture.nodes[root].first_child;
+    curr = fixture.nodes[root_node].first_child;
     while (curr != TestASTNode.invalid_pointer) {
         count += 1;
         curr = fixture.nodes[curr].next;
     }
     try std.testing.expectEqual(@as(usize, 2), count);
-    try std.testing.expectEqual(as_u16(1), fixture.nodes[root].first_child);
-    try std.testing.expectEqual(as_u16(4), fixture.nodes[root].last_child);
+    try std.testing.expectEqual(as_u16(1), fixture.nodes[root_node].first_child);
+    try std.testing.expectEqual(as_u16(4), fixture.nodes[root_node].last_child);
 
     // Sibling chain updated correctly
     try std.testing.expectEqual(as_u16(4), fixture.nodes[1].next);
@@ -749,7 +750,7 @@ test "remove" {
 fn test_insert_before(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
-    const root = fixture.root;
+    const root_node = fixture.root;
 
     // Use two free nodes as fresh orphans, linked into a chain
     const new_a = fixture.free_nodes[0];
@@ -762,7 +763,7 @@ fn test_insert_before(fixture: *TestFixture) !void {
 
     // Root should now have 6 children: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
-    var curr = fixture.nodes[root].first_child;
+    var curr = fixture.nodes[root_node].first_child;
     var children_list: [6]u16 = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
@@ -779,8 +780,8 @@ fn test_insert_before(fixture: *TestFixture) !void {
     try std.testing.expectEqual(as_u16(4), children_list[5]);
 
     // Parent pointers set
-    try std.testing.expectEqual(root, fixture.nodes[new_a].parent);
-    try std.testing.expectEqual(root, fixture.nodes[new_b].parent);
+    try std.testing.expectEqual(root_node, fixture.nodes[new_a].parent);
+    try std.testing.expectEqual(root_node, fixture.nodes[new_b].parent);
 
     // Sibling chain is contiguous
     try std.testing.expectEqual(new_a, fixture.nodes[2].next);
@@ -797,7 +798,7 @@ test "insert_before" {
 fn test_insert_after(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
-    const root = fixture.root;
+    const root_node = fixture.root;
 
     const new_a = fixture.free_nodes[0];
     const new_b = fixture.free_nodes[1];
@@ -809,7 +810,7 @@ fn test_insert_after(fixture: *TestFixture) !void {
 
     // Root: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
-    var curr = fixture.nodes[root].first_child;
+    var curr = fixture.nodes[root_node].first_child;
     var children_list: [6]u16 = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
@@ -823,8 +824,8 @@ fn test_insert_after(fixture: *TestFixture) !void {
     try std.testing.expectEqual(new_b, children_list[3]);
     try std.testing.expectEqual(as_u16(3), children_list[4]);
 
-    try std.testing.expectEqual(root, fixture.nodes[new_a].parent);
-    try std.testing.expectEqual(root, fixture.nodes[new_b].parent);
+    try std.testing.expectEqual(root_node, fixture.nodes[new_a].parent);
+    try std.testing.expectEqual(root_node, fixture.nodes[new_b].parent);
 
     try std.testing.expectEqual(new_a, fixture.nodes[2].next);
     try std.testing.expectEqual(as_u16(2), fixture.nodes[new_a].prior);

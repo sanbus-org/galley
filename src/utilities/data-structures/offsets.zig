@@ -1,10 +1,10 @@
 const builtin = @import("builtin");
+const root = @import("root");
 const std = @import("std");
 const Context = @import("context.zig").Context;
-const parser = @import("parser");
 
 pub const Offsets = struct {
-    pub const max_length = @max(6, parser.parse_table.longest_terminal_length);
+    pub const max_length = @max(6, root.parse_table.longest_terminal_length);
     buffer: [Self.max_length * 2]i8 = undefined,
     head: Context.Size = 0,
     len: Context.Size = 0,
