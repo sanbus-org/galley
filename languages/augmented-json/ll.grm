@@ -10,6 +10,13 @@ Value
  |"true" OptionalBlank
  |"false" OptionalBlank
 
+Value
+ |AugmentedPrefix Value ")"
+
+AugmentedPrefix
+ |"*"
+ |"("
+
 Object
  |"{" OptionalBlank ObjectMembers
 
