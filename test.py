@@ -493,6 +493,15 @@ def json_benchmark(mode, gen_opts, args):
     run_benchmark_suite("json", "LL", inputs, mode, gen_opts, args)
 
 
+def augmented_json_benchmark(mode, gen_opts, args):
+    inputs = [
+        "json/sample-code.json",
+        "json/large-sample-code.json",
+        "augmented-json/large-sample-code-interweaved.json",
+    ]
+    run_benchmark_suite("json", "LL", inputs, mode, gen_opts, args)
+
+
 def test_ll_benchmark(mode, gen_opts, args):
     inputs = [
         "test-ll/sample-code",
@@ -530,6 +539,7 @@ def run_all_modes(benchmark_fn, args):
 
 BENCHMARKS = {
     "grammar": grammar_benchmark,
+    "augmented-json": augmented_json_benchmark,
     "json": json_benchmark,
     "test-ll": test_ll_benchmark,
     "test-ll1": test_ll1_benchmark,

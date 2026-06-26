@@ -1,7 +1,7 @@
 [project]
 name = "compiler"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.1"
+description = "LL, LR, and GLR parser generator emitting native Zig parsers"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
