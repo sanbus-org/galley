@@ -23,6 +23,17 @@ class LRParserGeneratorZigMixin(
     ParserGeneratorZigMixin,
 ):
     @cached_property
+    def linked_terminals(self) -> set[bytes]:
+        linked = set()
+        for header, rhs in self.rules_list:
+            variable = VariableSymbol(id=header)
+            if variable.is_ast_enabled:
+                for sym in rhs.symbols:
+                    if isinstance(sym, TerminalSymbol):
+                        linked.add(sym.id)
+        return linked
+
+    @cached_property
     def zig_parser(self) -> str:
         # Generate state functions
         state_functions = []
@@ -150,7 +161,9 @@ pub fn parse(context: *data_structures.Context) !void {{
                 code = self._lr_action_code(
                     symbol,
                     resolution,
-                    prefix_length + key_length if terminals != (b"",) else prefix_length,
+                    prefix_length + key_length
+                    if terminals != (b"",)
+                    else prefix_length,
                 )
             else:
                 # Nested switch dict
@@ -224,16 +237,16 @@ pub fn parse(context: *data_structures.Context) !void {{
         if isinstance(resolution, ShiftResolution):
             dest_state_index = self.canonical_state_indices[resolution.state]
             ast_push = ""
+            procedure_call = ""
             if self.with_ast:
-                ast_push = f"""const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);
+                if self.ast_for_terminals and (symbol.id in self.linked_terminals):
+                    ast_push = f"""const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);
 context.node_allocator.at(node_address).text_length = {length};
 try stack.append(context.arena_allocator, node_address);
 """
-            release = f"context.release_token({length});"
-            procedure_call = ""
-            if self.with_procedures and self.with_ast:
-                if isinstance(symbol, GenerativeTerminalSymbol):
-                    procedure_call = f"""var args = data_structures.ProcedureArguments{{
+                    if self.with_procedures:
+                        if isinstance(symbol, GenerativeTerminalSymbol):
+                            procedure_call = f"""var args = data_structures.ProcedureArguments{{
     .context = context,
     .rule = null,
     .node = node_address,
@@ -247,6 +260,10 @@ if (comptime reduction_procedure) |procedure_pointer| {{
     try procedure(&args);
 }}
 """
+                else:
+                    ast_push = f"""try stack.append(context.arena_allocator, context.pos());
+"""
+            release = f"context.release_token({length});"
             debug_print = f"""
 if (comptime builtin.mode == .Debug) {{
     if (context.verbosity > 1) {{
@@ -281,34 +298,44 @@ if (comptime builtin.mode == .Debug) {
         symbol_index = variable.index
         rhs_len = len(rhs.symbols)
 
+        def symbol_is_linked(sym):
+            if isinstance(sym, VariableSymbol):
+                return sym.is_ast_enabled
+            elif isinstance(sym, TerminalSymbol):
+                return self.ast_for_terminals and (sym.id in self.linked_terminals)
+            return False
+
         if self.with_ast:
             # Pop in reverse order, discarding unlinked nodes (except child_1 which is used for start_pos)
             pop_code = ""
             for i in reversed(range(rhs_len)):
                 sym = rhs.symbols[i]
-                is_linked = isinstance(sym, VariableSymbol) or self.ast_for_terminals
-                is_needed = is_linked or (i == 0)
+                is_linked = symbol_is_linked(sym)
+                is_needed = (is_linked and variable.is_ast_enabled) or (i == 0)
                 if is_needed:
                     pop_code += f"const child_{i + 1} = stack.pop().?;\n"
                 else:
                     pop_code += "_ = stack.pop();\n"
 
             if rhs_len > 0:
-                start_pos_code = (
-                    "const start_pos = context.node_allocator.at(child_1).text_start;"
-                )
+                first_sym = rhs.symbols[0]
+                if symbol_is_linked(first_sym):
+                    start_pos_code = "const start_pos = context.node_allocator.at(child_1).text_start;"
+                else:
+                    start_pos_code = "const start_pos = child_1;"
             else:
                 start_pos_code = "const start_pos = context.pos();"
 
-            insert_code = ""
-            for i in range(rhs_len):
-                sym = rhs.symbols[i]
-                if isinstance(sym, VariableSymbol) or self.ast_for_terminals:
-                    insert_code += f"context.node_allocator.at(parent_address).immediate_insert_child(parent_address, child_{i + 1}, context);\n"
+            if variable.is_ast_enabled:
+                insert_code = ""
+                for i in range(rhs_len):
+                    sym = rhs.symbols[i]
+                    if symbol_is_linked(sym):
+                        insert_code += f"context.node_allocator.at(parent_address).immediate_insert_child(parent_address, child_{i + 1}, context);\n"
 
-            procedure_code = ""
-            if self.with_procedures:
-                procedure_code = f"""
+                procedure_code = ""
+                if self.with_procedures:
+                    procedure_code = f"""
         var args = data_structures.ProcedureArguments{{
             .context = context,
             .rule = rules[{rule_index}],
@@ -333,7 +360,7 @@ if (comptime builtin.mode == .Debug) {
             try procedure(&args);
         }}
 """
-            debug_code = f"""
+                debug_code = f"""
         if (comptime builtin.mode == .Debug) {{
             if (context.verbosity > 1) {{
                 std.debug.print("Reduction: {{s}} <~ ...\\n", .{{"{variable.printable}"}});
@@ -341,14 +368,68 @@ if (comptime builtin.mode == .Debug) {
         }}
 """
 
-            stack_push_address = "args.node orelse data_structures.ASTNode.invalid_pointer" if self.with_procedures else "parent_address"
-            return f"""{{
+                stack_push_address = (
+                    "args.node orelse data_structures.ASTNode.invalid_pointer"
+                    if self.with_procedures
+                    else "parent_address"
+                )
+                return f"""{{
         {pop_code}
         {start_pos_code}
         const parent_address = context.node_allocator.create(start_pos, {variable_index});
         {insert_code}
         {procedure_code}
         try stack.append(context.arena_allocator, {stack_push_address});
+        {debug_code}
+        {"return" if rhs_len > 0 else "result ="} ReduceResult{{ .variable = {variable_index}, .pops_remaining = {max(0, rhs_len - 1)}, .is_accept = false }};
+    }}"""
+            else:
+                # If variable has is_ast_enabled = False, we don't allocate a parent node.
+                # We just run procedures if any, and push start_pos directly to the stack.
+                procedure_code = ""
+                if self.with_procedures:
+                    procedure_code = f"""
+        var args = data_structures.ProcedureArguments{{
+            .context = context,
+            .rule = rules[{rule_index}],
+            .node = data_structures.ASTNode.invalid_pointer,
+        }};
+        if (comptime rule_procedures[{rule_index}]) |procedure_pointer| {{
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }}
+        comptime var procedure_pointer_head = variable_procedures[{variable_index}];
+        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {{
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+            try procedure(&args);
+            procedure_pointer_head = procedure_pointer_head_.next;
+        }}
+        if (comptime symbol_procedures[{symbol_index}]) |procedure_pointer| {{
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }}
+        if (comptime reduction_procedure) |procedure_pointer| {{
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }}
+"""
+                debug_code = f"""
+        if (comptime builtin.mode == .Debug) {{
+            if (context.verbosity > 1) {{
+                std.debug.print("Reduction (no AST): {{s}} <~ ...\\n", .{{"{variable.printable}"}});
+            }}
+        }}
+"""
+                stack_push_value = (
+                    "args.node orelse start_pos"
+                    if self.with_procedures
+                    else "start_pos"
+                )
+                return f"""{{
+        {pop_code}
+        {start_pos_code}
+        {procedure_code}
+        try stack.append(context.arena_allocator, {stack_push_value});
         {debug_code}
         {"return" if rhs_len > 0 else "result ="} ReduceResult{{ .variable = {variable_index}, .pops_remaining = {max(0, rhs_len - 1)}, .is_accept = false }};
     }}"""
