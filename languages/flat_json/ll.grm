@@ -24,17 +24,17 @@ ArrayMembersTail
  |
 
 OptionalBlank
- |space _OptionalBlankTail
- |new_line _OptionalBlankTail
- |block_start _OptionalBlankTail
- |block_end _OptionalBlankTail
+ |space _OptionalBlank
+ |new_line _OptionalBlank
+ |block_start _OptionalBlank
+ |block_end _OptionalBlank
  |
 
-_OptionalBlankTail
- |space _OptionalBlankTail
- |new_line _OptionalBlankTail
- |block_start _OptionalBlankTail
- |block_end _OptionalBlankTail
+_OptionalBlank
+ |space _OptionalBlank
+ |new_line _OptionalBlank
+ |block_start _OptionalBlank
+ |block_end _OptionalBlank
  |
 
 _StringContent

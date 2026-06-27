@@ -87,7 +87,8 @@ var args = data_structures.ProcedureArguments{{
         },
     .node = {
             "null"
-            if isinstance(variable := symbol, VariableSymbol) and not variable.is_ast_enabled
+            if isinstance(variable := symbol, VariableSymbol)
+            and not variable.is_ast_enabled
             else node_name
         },
 }};
@@ -178,32 +179,54 @@ if (comptime builtin.mode == .Debug) {{
                     }, context); // child {rhs_symbol_index}"
 
             else:
+                suffix = ""
+                if (
+                    self.with_ast
+                    and isinstance(rhs_symbol, VariableSymbol)
+                    and not rhs_symbol.is_ast_enabled
+                ):
+                    suffix = "_"
+                    self._needing_non_ast_mode.add(rhs_symbol)
                 if rhs_symbol is variable:
-                    return f"try parse_{_convert_to_safe_id(repr(rhs_symbol))}_{rhs_index}_{
-                        rhs_symbol_index
-                    }(context); // child {rhs_symbol_index}"
+                    return f"try parse_{_convert_to_safe_id(repr(rhs_symbol))}_{
+                        rhs_index
+                    }_{rhs_symbol_index}{suffix}(context); // child {rhs_symbol_index}"
                 else:
-                    return f"try parse_{_convert_to_safe_id(repr(rhs_symbol))}(context); // child {rhs_symbol_index}"
+                    return f"try parse_{_convert_to_safe_id(repr(rhs_symbol))}{suffix}(context); // child {rhs_symbol_index}"
         else:
             returns_value = (
                 self.with_ast
                 and not non_ast
                 and (
-                    (isinstance(rhs_symbol, VariableSymbol) and rhs_symbol.is_ast_enabled)
-                    or (isinstance(rhs_symbol, TerminalSymbol) and self.ast_for_terminals)
+                    (
+                        isinstance(rhs_symbol, VariableSymbol)
+                        and rhs_symbol.is_ast_enabled
+                    )
+                    or (
+                        isinstance(rhs_symbol, TerminalSymbol)
+                        and self.ast_for_terminals
+                    )
                 )
             )
             discard_prefix = "_ = " if returns_value else ""
+            suffix = ""
+            if self.with_ast:
+                is_non_ast_call = non_ast or (
+                    isinstance(rhs_symbol, VariableSymbol)
+                    and not rhs_symbol.is_ast_enabled
+                )
+                if is_non_ast_call:
+                    suffix = "_"
+                    if rhs_symbol is variable:
+                        self._needing_non_ast_mode.add(variable)
+                    else:
+                        self._needing_non_ast_mode.add(rhs_symbol)
             return (
-                f"{discard_prefix}try parse_{_convert_to_safe_id(repr(rhs_symbol))}_{rhs_index}_{
-                    rhs_symbol_index
-                }{
-                    self._needing_non_ast_mode.add(variable) or '_' if non_ast else ''
-                }(context); // child {rhs_symbol_index}"
+                f"{discard_prefix}try parse_{_convert_to_safe_id(repr(rhs_symbol))}_{
+                    rhs_index
+                }_{rhs_symbol_index}{suffix}(context); // child {rhs_symbol_index}"
                 if rhs_symbol is variable
-                else f"{discard_prefix}try parse_{_convert_to_safe_id(repr(rhs_symbol))}{
-                    self._needing_non_ast_mode.add(rhs_symbol) or '_' if non_ast else ''
-                }(context); // child {rhs_symbol_index}"
+                else f"{discard_prefix}try parse_{_convert_to_safe_id(repr(rhs_symbol))}{suffix}(context); // child {rhs_symbol_index}"
             )
 
     def _variable_case(
@@ -678,7 +701,10 @@ fn parse_{repr(symbol)}_{self.rules[variable.id].index(rhs)}_{self_repeating_ind
             "data_structures.ASTNode.Pointer"
             if self.with_ast
             and not non_ast
-            and ((isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled) or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals))
+            and (
+                (isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled)
+                or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals)
+            )
             else "void"
         } {{{
             f'''
@@ -690,14 +716,20 @@ fn parse_{repr(symbol)}_{self.rules[variable.id].index(rhs)}_{self_repeating_ind
 '''
             if self.with_ast
             and not non_ast
-            and ((isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled) or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals))
+            and (
+                (isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled)
+                or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals)
+            )
             else ""
         }
     {self._rule_switch(symbol, items, non_ast=non_ast).replace("\n", "\n    ")}{
             "\n    return node_address;"
             if self.with_ast
             and not non_ast
-            and ((isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled) or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals))
+            and (
+                (isinstance(symbol, VariableSymbol) and symbol.is_ast_enabled)
+                or (isinstance(symbol, TerminalSymbol) and self.ast_for_terminals)
+            )
             else ""
         }
 }}"""
@@ -713,7 +745,7 @@ fn parse_{repr(symbol)}_{self.rules[variable.id].index(rhs)}_{self_repeating_ind
 {self._non_ast_parsers()}
 
 pub fn parse(context: *data_structures.Context) !void {{
-    _ = parse_AugmentedStart(context) catch {{
+    _ = parse__AugmentedStart(context) catch {{
         if (comptime builtin.mode == .Debug) {{
             return error.ParseError;
         }}

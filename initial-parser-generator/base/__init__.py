@@ -166,7 +166,7 @@ class ParserGeneratorBaseMixin(abc.ABC):
                     self.symbols.append(header_symbol)
                 grammar_start_variable = grammar_start_variable or header_symbol
 
-        self.start_variable = VariableSymbol(id=b"AugmentedStart")
+        self.start_variable = VariableSymbol(id=b"_AugmentedStart")
         self.symbols.append(self.start_variable)
         self.symbols.append(EndSymbol())
 
