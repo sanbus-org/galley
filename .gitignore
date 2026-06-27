@@ -180,6 +180,6 @@ poetry.toml
 pyrightconfig.json
 
 *-backup
-_parse-table.zig
+_*parser.zig
 /graphs
 .aider*

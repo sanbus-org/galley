@@ -19,7 +19,7 @@ fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
 }
 
 pub const Context = struct {
-    pub const Size = root.parse_table.input_size_cap;
+    pub const Size = root.parser.input_size_cap;
 
     node_allocator: *data_structures.ASTAllocator,
     arena_allocator: std.mem.Allocator,

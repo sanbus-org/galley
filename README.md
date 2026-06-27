@@ -14,7 +14,7 @@ A parser generator and high-performance parser runtime written in [Zig](https://
 
 Galley has two halves:
 
-1. **The generator** (`initial-parser-generator/`) — a Python tool that reads a `.grm` grammar file and emits a `_parse-table.zig` file. It supports LL, LR, and GLR grammars.
+1. **The generator** (`initial-parser-generator/`) — a Python tool that reads a `.grm` grammar file and emits a `_ll-parser.zig` or `_lr-parser.zig` file. It supports LL, LR, and GLR grammars.
 2. **The runtime** (`src/`) — a Zig library that links the generated parse table, runs the parser, and optionally builds an AST.
 
 Because the parse table is compiled directly into Zig code, there is no interpretation at runtime. The generated parser *is* the table: grammar rules become functions, the call stack becomes the parse stack. This is what enables the throughput numbers below.
@@ -126,12 +126,12 @@ cd initial-parser-generator
 uv run main.py --language ../languages/json --parser-type LL
 ```
 
-This writes `languages/json/_parse-table.zig`.
+This writes `languages/json/_ll-parser.zig`.
 
 **Build and run a parser:**
 
 ```sh
-zig build -Doptimize=ReleaseFast json -- languages/json/sample-code.json --iterations 10000 --verbosity 0
+zig build -Doptimize=ReleaseFast ll-json -- languages/json/sample-code.json --iterations 10000 --verbosity 0
 ```
 
 **Run tests:**
