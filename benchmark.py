@@ -12,6 +12,19 @@ GENERATOR_COMMAND = os.environ.get(
 )
 
 
+def truncate_name(name, inner_width):
+    if len(name) <= inner_width:
+        return name
+    if name.startswith("[") and "] " in name:
+        prefix_idx = name.index("] ") + 2
+        prefix = name[:prefix_idx]
+        rest = name[prefix_idx:]
+        avail_width = inner_width - len(prefix)
+        if avail_width >= 5:
+            return prefix + "..." + rest[-(avail_width - 3):]
+    return "..." + name[-(inner_width - 3):]
+
+
 def parse_zig_output(stdout_str):
     """
     Parses key-value metric lines from the zig build output.
@@ -70,9 +83,7 @@ def format_card(name, metrics, width=34, no_color=False, error_msg=None):
         lines = []
         lines.append(f"{border_color}{TL}{HL * (width - 2)}{TR}{RESET}")
 
-        name_display = name
-        if len(name) > inner_width:
-            name_display = "..." + name[-(inner_width - 3) :]
+        name_display = truncate_name(name, inner_width)
         name_styled = f"{BOLD}{CYAN}{name_display}{RESET}"
         lines.append(
             f"{border_color}{VL}{RESET} {name_styled}{' ' * (inner_width - len(name_display))} {border_color}{VL}{RESET}"
@@ -118,9 +129,7 @@ def format_card(name, metrics, width=34, no_color=False, error_msg=None):
     lines.append(f"{border_color}{TL}{HL * (width - 2)}{TR}{RESET}")
 
     # Name line
-    name_display = name
-    if len(name) > inner_width:
-        name_display = "..." + name[-(inner_width - 3) :]
+    name_display = truncate_name(name, inner_width)
     name_styled = f"{BOLD}{CYAN}{name_display}{RESET}"
 
     lines.append(
@@ -252,9 +261,7 @@ def format_placeholder_card(name, width=34, no_color=False):
     lines = []
     lines.append(f"{border_color}{TL}{HL * (width - 2)}{TR}{RESET}")
 
-    name_display = name
-    if len(name) > inner_width:
-        name_display = "..." + name[-(inner_width - 3) :]
+    name_display = truncate_name(name, inner_width)
     name_styled = f"{BOLD}{CYAN}{name_display}{RESET}"
     lines.append(
         f"{border_color}{VL}{RESET} {name_styled}{' ' * (inner_width - len(name_display))} {border_color}{VL}{RESET}"
@@ -278,11 +285,61 @@ def format_placeholder_card(name, width=34, no_color=False):
     return lines
 
 
+def format_grid_to_string(cards, cols, spacing=2):
+    """
+    Renders multiple cards in a grid side-by-side and returns the formatted string.
+    """
+    if not cards:
+        return ""
+    lines = []
+    for i in range(0, len(cards), cols):
+        row_cards = cards[i : i + cols]
+        num_lines = len(row_cards[0])
+        for line_idx in range(num_lines):
+            row_line = (" " * spacing).join(card[line_idx] for card in row_cards)
+            lines.append(row_line)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def write_result_to_file(filepath, content):
+    """
+    Writes content to the specified filepath, creating parent directories if needed.
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
     """
     Runs parser generator and compiles/runs benchmarks for all input files.
     """
     parser_types = [parser_type] if isinstance(parser_type, str) else parser_type
+
+    # Extract AST mode
+    # Extract AST mode
+    ast_mode = "default-ast"
+    if "--no-ast" in gen_opts:
+        ast_mode = "no-ast"
+    elif "--no-procedures" in gen_opts:
+        ast_mode = "no-procedures"
+
+    # Extract input size string for path
+    input_size_dir = "default-size"
+    if "--input-size" in gen_opts:
+        try:
+            size_idx = gen_opts.index("--input-size")
+            input_size_dir = f"size_{gen_opts[size_idx + 1]}"
+        except (ValueError, IndexError):
+            pass
+
+    # Extract terminal AST mode
+    term_ast = "default-term-ast"
+    if "--no-ast-for-terminals" in gen_opts:
+        term_ast = "no-ast-for-terminals"
+    elif "--ast-for-terminals" in gen_opts:
+        term_ast = "ast-for-terminals"
 
     # 1. Run parser generator command for all parser types
     for p_type in parser_types:
@@ -365,6 +422,7 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
                     )
                     print(f"\033[33mCommand Output:\033[0m\n{e.stdout}")
                     sys.exit(1)
+
         return
 
     # ReleaseFast mode - print beautiful headers and cards grid
@@ -380,6 +438,8 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
     for input_file in inputs:
         for p_type in parser_types:
             grid_items.append((input_file, p_type))
+
+    input_results = {}
 
     for i in range(0, len(grid_items), cols):
         row_items = grid_items[i : i + cols]
@@ -420,6 +480,9 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
 
             if is_too_large:
                 msg = f"Size >= 2^{input_size}"
+                # Collect error message for file
+                input_results.setdefault(input_file, []).append((p_type, f"SKIPPED (TOO LARGE): {msg}"))
+
                 card_lines = format_card(
                     card_title,
                     {},
@@ -456,10 +519,12 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
                     check=True,
                 )
                 metrics = parse_zig_output(result.stdout)
+                # Collect metrics for file
+                input_results.setdefault(input_file, []).append((p_type, metrics))
+
                 card_lines = format_card(
                     card_title, metrics, width=args.width, no_color=args.no_color
                 )
-
                 if is_interactive:
                     draw_card_in_row(card_lines, col_idx, width=args.width, spacing=2)
                 else:
@@ -481,6 +546,44 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
             sys.stdout.flush()
         else:
             print_grid(row_cards, cols=cols)
+
+    # Write ReleaseFast results to files (one file per input)
+    for input_file, results in input_results.items():
+        # Get relative path of input file from languages/
+        rel_input = os.path.relpath(input_file, "languages")
+
+        # Construct file path without ReleaseFast layer
+        filepath = os.path.join(
+            "benchmark_results",
+            "galley",
+            name,
+            ast_mode,
+            input_size_dir,
+            term_ast,
+            rel_input + ".txt",
+        )
+
+        file_content = [
+            f"Language: {name}",
+            f"Input: {input_file}",
+            f"AST Mode: {ast_mode}",
+            f"Input Size Limit: {input_size_dir}",
+            f"Terminal AST: {term_ast}",
+            "-" * 40
+        ]
+
+        for p_type, res in results:
+            file_content.append(f"[{p_type}]")
+            if isinstance(res, str):
+                file_content.append(res)
+            else:
+                file_content.append(f"Parsed bytes: {res.get('Parsed bytes', 'N/A')}")
+                file_content.append(f"Duration: {res.get('Duration', 'N/A')}")
+                file_content.append(f"Throughput: {res.get('Throughput', 'N/A')}")
+                file_content.append(f"Nodes allocated: {res.get('Nodes allocated', 'N/A')}")
+            file_content.append("")
+
+        write_result_to_file(filepath, "\n".join(file_content) + "\n")
 
 
 def get_parser_types_for_language(lang_name, args):
@@ -526,7 +629,7 @@ def augmented_json_benchmark(mode, gen_opts, args):
         "languages/augmented-json/large-sample-code-interweaved.json",
     ]
     parser_types = get_parser_types_for_language("augmented-json", args)
-    run_benchmark_suite("json", parser_types, inputs, mode, gen_opts, args)
+    run_benchmark_suite("augmented-json", parser_types, inputs, mode, gen_opts, args)
 
 
 def test_ll_benchmark(mode, gen_opts, args):
@@ -618,9 +721,9 @@ def main():
         help="Disable colored output and progress carriage returns",
     )
     parser.add_argument(
-        "--benchmark",
-        default="grammar",
-        help="Benchmark to run (default: grammar). Accepts any language name; use --input to specify input files for languages not in the built-in list.",
+        "--language",
+        default=None,
+        help="Language to benchmark. If not provided, runs all built-in benchmarks sequentially. Accepts any language name; use --input to specify input files for languages not in the built-in list.",
     )
     parser.add_argument(
         "--input",
@@ -677,28 +780,40 @@ def main():
 
     args = parser.parse_args()
 
-    if args.benchmark in BENCHMARKS and not args.inputs:
-        benchmark_fn = BENCHMARKS[args.benchmark]
-    else:
-        lang = args.benchmark
-        if not args.inputs:
-            parser.error(
-                f"--input is required for benchmark '{lang}' (not a built-in benchmark)"
-            )
-        inputs = list(args.inputs)
+    if args.language is None:
+        if args.inputs:
+            parser.error("--language is required when specifying --input.")
 
-        def benchmark_fn(mode, gen_opts, a, _lang=lang, _inputs=inputs):
-            parser_types = get_parser_types_for_language(_lang, a)
-            if not parser_types:
-                print(f"\033[31mNo parser types found for '{_lang}'\033[0m")
+        for lang in BENCHMARKS:
+            benchmark_fn = BENCHMARKS[lang]
+            try:
+                run_all_modes(benchmark_fn, args)
+            except KeyboardInterrupt:
+                print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
                 sys.exit(1)
-            run_benchmark_suite(_lang, parser_types, _inputs, mode, gen_opts, a)
+    else:
+        if args.language in BENCHMARKS and not args.inputs:
+            benchmark_fn = BENCHMARKS[args.language]
+        else:
+            lang = args.language
+            if not args.inputs:
+                parser.error(
+                    f"--input is required for benchmark '{lang}' (not a built-in benchmark)"
+                )
+            inputs = list(args.inputs)
 
-    try:
-        run_all_modes(benchmark_fn, args)
-    except KeyboardInterrupt:
-        print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
-        sys.exit(1)
+            def benchmark_fn(mode, gen_opts, a, _lang=lang, _inputs=inputs):
+                parser_types = get_parser_types_for_language(_lang, a)
+                if not parser_types:
+                    print(f"\033[31mNo parser types found for '{_lang}'\033[0m")
+                    sys.exit(1)
+                run_benchmark_suite(_lang, parser_types, _inputs, mode, gen_opts, a)
+
+        try:
+            run_all_modes(benchmark_fn, args)
+        except KeyboardInterrupt:
+            print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
