@@ -2,12 +2,12 @@ const clap = @import("clap");
 const std = @import("std");
 
 pub const procedures = @import("procedures");
-pub const parse_table = @import("parse-table");
+pub const parser = @import("parser");
 pub const string_utilities = @import("utilities/string.zig");
 pub const stack_overflow_utilities = @import("utilities/stack-overflow.zig");
 pub const data_structures = @import("utilities/data-structures/data-structures.zig");
 pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
-pub const preallocated_nodes = if (parse_table.is_ast_enabled) (std.math.maxInt(std.math.Min(data_structures.Context.Size, u28)) - 1) / 4 else 0;
+pub const preallocated_nodes = if (parser.is_ast_enabled) (std.math.maxInt(std.math.Min(data_structures.Context.Size, u28)) - 1) else 0;
 
 fn printHelp() void {
     std.debug.print("\nusage: parser_builder [program_path]\n", .{});
@@ -96,7 +96,7 @@ fn run(context: *data_structures.Context, warmup_iterations: usize, iterations: 
     for (0..warmup_iterations) |_| {
         try context.reset();
 
-        try parse_table.parse(context);
+        try parser.parse(context);
     }
 
     var total_parsed_bytes: usize = 0;
@@ -105,7 +105,7 @@ fn run(context: *data_structures.Context, warmup_iterations: usize, iterations: 
     for (0..iterations) |_| {
         try context.reset();
 
-        try parse_table.parse(context);
+        try parser.parse(context);
         total_parsed_bytes += context.read_bytes + context.seek;
     }
 

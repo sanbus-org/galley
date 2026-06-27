@@ -284,7 +284,7 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args, target=
     Runs parser generator and compiles/runs benchmarks for all input files.
     """
     if target is None:
-        target = name
+        target = f"{parser_type.lower()}-{name}"
     # 1. Run parser generator command
     gen_command_str = f"{GENERATOR_COMMAND}{name}"
     cmd_args = (
@@ -474,7 +474,7 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args, target=
             print_grid(row_cards, cols=cols)
 
 
-def grammar_benchmark(mode, gen_opts, args):
+def ll_grammar_benchmark(mode, gen_opts, args):
     inputs = [
         "grammar/ll.grm",
         "grammar/lr.grm",
@@ -485,12 +485,31 @@ def grammar_benchmark(mode, gen_opts, args):
     run_benchmark_suite("grammar", "LL", inputs, mode, gen_opts, args)
 
 
-def json_benchmark(mode, gen_opts, args):
+def lr_grammar_benchmark(mode, gen_opts, args):
+    inputs = [
+        "grammar/ll.grm",
+        "grammar/lr.grm",
+        "json/ll.grm",
+        "test-ll/ll.grm",
+        "test-ll1/ll.grm",
+    ]
+    run_benchmark_suite("grammar", "LR", inputs, mode, gen_opts, args)
+
+
+def ll_json_benchmark(mode, gen_opts, args):
     inputs = [
         "json/sample-code.json",
         "json/large-sample-code.json",
     ]
     run_benchmark_suite("json", "LL", inputs, mode, gen_opts, args)
+
+
+def lr_json_benchmark(mode, gen_opts, args):
+    inputs = [
+        "json/sample-code.json",
+        "json/large-sample-code.json",
+    ]
+    run_benchmark_suite("json", "LR", inputs, mode, gen_opts, args)
 
 
 def augmented_json_benchmark(mode, gen_opts, args):
@@ -538,9 +557,13 @@ def run_all_modes(benchmark_fn, args):
 
 
 BENCHMARKS = {
-    "grammar": grammar_benchmark,
+    "grammar": ll_grammar_benchmark,
+    "ll-grammar": ll_grammar_benchmark,
+    "lr-grammar": lr_grammar_benchmark,
+    "json": ll_json_benchmark,
+    "ll-json": ll_json_benchmark,
+    "lr-json": lr_json_benchmark,
     "augmented-json": augmented_json_benchmark,
-    "json": json_benchmark,
     "test-ll": test_ll_benchmark,
     "test-ll1": test_ll1_benchmark,
 }

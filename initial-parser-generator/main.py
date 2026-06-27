@@ -29,7 +29,7 @@ parser_generators: ParserGenerators = {
 }
 
 
-def arg_is_language(input: str) -> tuple[dict[str, Path], Path]:
+def arg_is_language(input: str) -> tuple[Path, dict[str, Path]]:
     cwd = Path().absolute()
     language_path = cwd / input
     input_paths = {
@@ -37,17 +37,10 @@ def arg_is_language(input: str) -> tuple[dict[str, Path], Path]:
         for grammar_type in parser_generators.keys()
         if (input_path := language_path / f"{grammar_type.lower()}.grm").exists()
     }
-    output_path = language_path / "_parse-table.zig"
     if not input_paths:
         raise argparse.ArgumentTypeError(f'No grammar exists in "{language_path}"')
 
-    try:
-        with tempfile.TemporaryFile(dir=language_path):
-            pass
-    except Exception:
-        raise argparse.ArgumentTypeError(f'File "{output_path}" is not writable!')
-
-    return input_paths, output_path
+    return language_path, input_paths
 
 
 def main():
@@ -110,9 +103,7 @@ def main():
     shtab.add_argument_to(parser)
     args, _ = parser.parse_known_args()
 
-    grammar_paths, parse_table_path = cast(
-        "tuple[dict[str, Path], Path]", args.language
-    )
+    language_path, grammar_paths = cast("tuple[Path, dict[str, Path]]", args.language)
 
     parser_type_choices = list(parser_generators.keys() & grammar_paths.keys())
     parser.add_argument(
@@ -127,6 +118,13 @@ def main():
 
     parser_generator = parser_generators[args.parser_type]()
     parser_generator.parse_args(extra_args)
+
+    parser_path = language_path / f"_{args.parser_type.lower()}-parser.zig"
+    try:
+        with tempfile.TemporaryFile(dir=language_path):
+            pass
+    except Exception:
+        raise argparse.ArgumentTypeError(f'File "{parser_path}" is not writable!')
 
     parser_generator.from_bytes(grammar_paths[args.parser_type].open("rb").read())
 
@@ -154,7 +152,7 @@ def main():
         args.logs_directory.mkdir(exist_ok=True, parents=True)
         parser_generator.log_to_file(args.logs_directory)
 
-    with parse_table_path.open("w") as parse_table_file:
+    with parser_path.open("w") as parse_table_file:
         print(
             parser_generator.zig_parser,
             file=parse_table_file,
