@@ -18,78 +18,85 @@ pub fn build(b: *std.Build) !void {
     while (try walker.next(b.graph.io)) |entry| {
         if (entry.kind != .directory and entry.kind != .sym_link) continue;
 
-        const parse_table_path = try std.fs.path.join(
-            b.allocator,
-            &[_][]const u8{ languages_path, entry.path, "_parse-table.zig" },
-        );
-        defer b.allocator.free(parse_table_path);
-
-        const procedures_path = try std.fs.path.join(
-            b.allocator,
-            &[_][]const u8{ languages_path, entry.path, "procedures.zig" },
-        );
-        defer b.allocator.free(procedures_path);
-
-        // Check if file exists in this subdirectory
-        const exists = b.build_root.handle.access(b.graph.io, parse_table_path, .{});
-        if (exists) |_| {
-            const procedures_mod = b.addModule("procedures", .{
-                .root_source_file = b.path(procedures_path),
-                .target = target,
-            });
-
-            const parse_table_mod = b.addModule("parse-table", .{
-                .root_source_file = b.path(parse_table_path),
-                .target = target,
-            });
-
-            const exe = b.addExecutable(.{
-                .name = entry.path,
-                // .use_llvm = false,
-                // .use_lld = false,
-                .root_module = b.createModule(.{
-                    // .omit_frame_pointer = false, // required for time profiling using Instruments app
-                    .root_source_file = b.path("src/main.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                    .imports = &.{
-                        .{ .name = "clap", .module = clap.module("clap") },
-                        .{ .name = "procedures", .module = procedures_mod },
-                        .{ .name = "parse-table", .module = parse_table_mod },
-                    },
-                }),
-            });
-
-            const install_artifact = b.addInstallArtifact(exe, .{});
-
-            const result = try std.mem.concat(
+        inline for ([_][]const u8{ "ll", "lr" }) |parser_type| {
+            const parser_path = try std.fs.path.join(
                 b.allocator,
-                u8,
-                &[_][]const u8{ "Run the ", entry.path, " compiler" },
+                &[_][]const u8{ languages_path, entry.path, "_" ++ parser_type ++ "-" ++ "parser.zig" },
             );
-            defer b.allocator.free(result);
+            defer b.allocator.free(parser_path);
 
-            const run_step = b.step(entry.path, result);
+            const procedures_path = try std.fs.path.join(
+                b.allocator,
+                &[_][]const u8{ languages_path, entry.path, "procedures.zig" },
+            );
+            defer b.allocator.free(procedures_path);
 
-            const run_cmd = b.addRunArtifact(exe);
-            run_step.dependOn(&install_artifact.step);
-            run_step.dependOn(&run_cmd.step);
+            // Check if file exists in this subdirectory
+            const exists = b.build_root.handle.access(b.graph.io, parser_path, .{});
+            if (exists) |_| {
+                const procedures_mod = b.addModule("procedures", .{
+                    .root_source_file = b.path(procedures_path),
+                    .target = target,
+                });
 
-            run_cmd.step.dependOn(b.getInstallStep());
+                const parser_mod = b.addModule("parser", .{
+                    .root_source_file = b.path(parser_path),
+                    .target = target,
+                });
 
-            if (b.args) |args| {
-                run_cmd.addArgs(args);
+                const exe = b.addExecutable(.{
+                    .name = entry.path,
+                    // .use_llvm = false,
+                    // .use_lld = false,
+                    .root_module = b.createModule(.{
+                        // .omit_frame_pointer = false, // required for time profiling using Instruments app
+                        .root_source_file = b.path("src/main.zig"),
+                        .target = target,
+                        .optimize = optimize,
+                        .imports = &.{
+                            .{ .name = "clap", .module = clap.module("clap") },
+                            .{ .name = "procedures", .module = procedures_mod },
+                            .{ .name = "parser", .module = parser_mod },
+                        },
+                    }),
+                });
+
+                const install_artifact = b.addInstallArtifact(exe, .{});
+
+                const result = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "Run the ", entry.path, " compiler" },
+                );
+                defer b.allocator.free(result);
+
+                const parser_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ parser_type, "-", entry.path },
+                );
+                const run_step = b.step(parser_name, result);
+
+                const run_cmd = b.addRunArtifact(exe);
+                run_step.dependOn(&install_artifact.step);
+                run_step.dependOn(&run_cmd.step);
+
+                run_cmd.step.dependOn(b.getInstallStep());
+
+                if (b.args) |args| {
+                    run_cmd.addArgs(args);
+                }
+
+                const exe_tests = b.addTest(.{
+                    .root_module = exe.root_module,
+                });
+
+                const run_exe_tests = b.addRunArtifact(exe_tests);
+                test_step.dependOn(&run_exe_tests.step);
+            } else |err| {
+                // File doesn't exist in this subdir - ignore
+                if (err != error.FileNotFound) return err;
             }
-
-            const exe_tests = b.addTest(.{
-                .root_module = exe.root_module,
-            });
-
-            const run_exe_tests = b.addRunArtifact(exe_tests);
-            test_step.dependOn(&run_exe_tests.step);
-        } else |err| {
-            // File doesn't exist in this subdir - ignore
-            if (err != error.FileNotFound) return err;
         }
     }
 }
