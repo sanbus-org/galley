@@ -183,3 +183,4 @@ pyrightconfig.json
 _*parser.zig
 /graphs
 .aider*
+/benchmark_results/
