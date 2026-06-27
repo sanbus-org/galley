@@ -184,3 +184,8 @@ _*parser.zig
 /graphs
 .aider*
 /benchmark_results/
+
+# Node & VitePress
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
