@@ -1,5 +1,13 @@
 # Grammar Writing Guidelines
 
+## Table of Contents
+- [1. File Structure & Rule Syntax (`.grm` files)](#1-file-structure--rule-syntax-grm-files)
+- [2. Variable Naming & AST Generation](#2-variable-naming--ast-generation)
+- [3. Terminal Symbols](#3-terminal-symbols)
+- [4. Procedure Hooks (`@procedure_name`)](#4-procedure-hooks-procedure_name)
+
+---
+
 This guide details the syntax, conventions, and compile-time annotations supported by this repository's parser generators (LL and LR).
 
 ---
@@ -73,3 +81,7 @@ ArrayMembers
 
 * **Integration:** During code generation, the parser generator binds `@replace_with_children` to a declaration of the same name in the `procedures.zig` file within the language directory.
 * **Execution:** When the parser performs a reduction on that production, it executes the corresponding function, passing standard `ProcedureArguments`.
+
+---
+
+**← Previous:** [Writing a Language](writing_a_language.md) | **Next:** [Core Architecture](architecture.md) **→**

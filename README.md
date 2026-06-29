@@ -53,17 +53,13 @@ The `u16` indices keep the working set small enough to stay in L1/L2 cache. The 
 
 ## Benchmarks
 
-All benchmarks run with `zig build -Doptimize=ReleaseFast` on an **Apple M1 Pro**, parsing a JSON input file.
+All benchmarks run with `zig build -Doptimize=ReleaseFast` on an **Apple M1 Pro**, parsing a JSON input file using the `flat_json` grammar.
 
-| Mode | Throughput |
-| --- | --- |
-| No AST | **~402 MB/s** |
-| AST, no procedures, no terminals in AST | **~268 MB/s** |
-| AST, no procedures, terminals in AST | **~214 MB/s** |
-| AST, procedures, no terminals in AST | **~159 MB/s** |
-| AST, procedures, terminals in AST | **~131 MB/s** |
-
-The old table-driven prototype topped out at **1.88 MB/s** for LR and **984 KB/s** for LL. The current implementation is roughly **200–400× faster**.
+| Mode | LL Throughput | LR Throughput |
+| --- | --- | --- |
+| **No AST** | **~723 MB/s** | **~285 MB/s** |
+| **AST, no terminals in AST** | **~444 MB/s** | **~108 MB/s** |
+| **AST, terminals in AST** | **~310 MB/s** | **~93 MB/s** |
 
 ## Grammar Format
 
@@ -117,13 +113,12 @@ languages/                  Example grammars
 
 ## Building
 
-Requires [Zig 0.16+](https://ziglang.org/download/) and [Python 3.12+](https://www.python.org/) with [uv](https://github.com/astral-sh/uv).
+Requires [Zig 0.16+](https://ziglang.org/download/) and [uv](https://docs.astral.sh/uv/).
 
 **Generate a parse table:**
 
 ```sh
-cd initial-parser-generator
-uv run main.py --language ../languages/json --parser-type LL
+uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL
 ```
 
 This writes `languages/json/_ll-parser.zig`.
@@ -131,7 +126,7 @@ This writes `languages/json/_ll-parser.zig`.
 **Build and run a parser:**
 
 ```sh
-zig build -Doptimize=ReleaseFast ll-json -- languages/json/sample-code.json --iterations 10000 --verbosity 0
+zig build -Doptimize=ReleaseFast ll-flat_json -- languages/json/sample-code.json --iterations 10000 --verbosity 0
 ```
 
 **Run tests:**

@@ -1,5 +1,14 @@
 # AST Node Allocation Mechanics & Limitations (LL vs. LR)
 
+## Table of Contents
+- [1. Structural Node Allocations (`is_ast_enabled`)](#1-structural-node-allocations-is_ast_enabled)
+- [2. Terminal AST Allocations (`ast-for-terminals`)](#2-terminal-ast-allocations-ast-for-terminals)
+  - [LL Parser: Dynamic Propagation](#ll-parser-dynamic-propagation)
+  - [LR Parser: Static Analysis Constraint](#lr-parser-static-analysis-constraint)
+- [3. Root Node Difference (`AugmentedStart`)](#3-root-node-difference-augmentedstart)
+
+---
+
 When building optimized parser generators, managing memory allocation in the Abstract Syntax Tree (AST) is critical. This document details the architectural differences, optimizations, and compiler-level limitations of AST node allocations in LL (top-down) and LR (bottom-up) parsers in this project.
 
 ---
@@ -54,3 +63,7 @@ The parser generator automatically wraps the starting grammar variable in an aug
   This direct return bypasses normal reduction logic and does not allocate a root node.
   
 * **Alignment:** By renaming the augmented rule to start with an underscore (`_AugmentedStart`), both LL and LR are configured to skip allocating a node for the root wrapper, achieving identical structural node counts.
+
+---
+
+**← Previous:** [Core Architecture](architecture.md) | **Next:** [Benchmarks](benchmarks.md) **→**

@@ -21,8 +21,8 @@ def truncate_name(name, inner_width):
         rest = name[prefix_idx:]
         avail_width = inner_width - len(prefix)
         if avail_width >= 5:
-            return prefix + "..." + rest[-(avail_width - 3):]
-    return "..." + name[-(inner_width - 3):]
+            return prefix + "..." + rest[-(avail_width - 3) :]
+    return "..." + name[-(inner_width - 3) :]
 
 
 def parse_zig_output(stdout_str):
@@ -426,6 +426,28 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
         return
 
     # ReleaseFast mode - print beautiful headers and cards grid
+    header_details = []
+    if ast_mode == "no-ast":
+        header_details.append("No AST")
+    elif ast_mode == "no-procedures":
+        header_details.append("AST (No Procedures)")
+    else:
+        header_details.append("AST (With Procedures)")
+
+    if term_ast == "ast-for-terminals":
+        header_details.append("Terminals in AST")
+    elif term_ast == "no-ast-for-terminals":
+        header_details.append("No Terminals in AST")
+
+    if input_size is not None:
+        header_details.append(f"Size Limit: 2^{input_size}")
+
+    details_str = " | ".join(header_details)
+    title_text = f" {name.upper()} BENCHMARKS ({details_str}) "
+    box_width = len(title_text)
+    print(f"\n{CYAN}╭{'─' * box_width}╮")
+    print(f"│{title_text}│")
+    print(f"╰{'─' * box_width}╯{RESET}")
 
     # Determine if we should render interactively
     is_interactive = sys.stdout.isatty() and not args.no_color
@@ -481,7 +503,9 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
             if is_too_large:
                 msg = f"Size >= 2^{input_size}"
                 # Collect error message for file
-                input_results.setdefault(input_file, []).append((p_type, f"SKIPPED (TOO LARGE): {msg}"))
+                input_results.setdefault(input_file, []).append(
+                    (p_type, f"SKIPPED (TOO LARGE): {msg}")
+                )
 
                 card_lines = format_card(
                     card_title,
@@ -569,7 +593,7 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
             f"AST Mode: {ast_mode}",
             f"Input Size Limit: {input_size_dir}",
             f"Terminal AST: {term_ast}",
-            "-" * 40
+            "-" * 40,
         ]
 
         for p_type, res in results:
@@ -580,7 +604,9 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
                 file_content.append(f"Parsed bytes: {res.get('Parsed bytes', 'N/A')}")
                 file_content.append(f"Duration: {res.get('Duration', 'N/A')}")
                 file_content.append(f"Throughput: {res.get('Throughput', 'N/A')}")
-                file_content.append(f"Nodes allocated: {res.get('Nodes allocated', 'N/A')}")
+                file_content.append(
+                    f"Nodes allocated: {res.get('Nodes allocated', 'N/A')}"
+                )
             file_content.append("")
 
         write_result_to_file(filepath, "\n".join(file_content) + "\n")
@@ -678,21 +704,14 @@ def run_all_modes(benchmark_fn, args):
     elif args.no_ast_for_terminals:
         term_asts = ["--no-ast-for-terminals"]
 
-    modes = ["Debug", "ReleaseFast"]
-    if args.debug:
-        modes = ["Debug"]
-    elif args.release_fast:
-        modes = ["ReleaseFast"]
-
     for ast_mode in ast_modes:
         for size in sizes:
             for term_ast in term_asts:
                 if ast_mode == "--no-ast" and term_ast == "--ast-for-terminals":
                     continue
-                for mode in modes:
-                    benchmark_fn(
-                        mode, [ast_mode, "--input-size", str(size), term_ast], args
-                    )
+                benchmark_fn(
+                    "ReleaseFast", [ast_mode, "--input-size", str(size), term_ast], args
+                )
 
 
 BENCHMARKS = {
@@ -771,11 +790,6 @@ def main():
         "--debug",
         action="store_true",
         help="Fix build optimize mode to Debug",
-    )
-    parser.add_argument(
-        "--release-fast",
-        action="store_true",
-        help="Fix build optimize mode to ReleaseFast",
     )
 
     args = parser.parse_args()
