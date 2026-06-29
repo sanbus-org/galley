@@ -9,11 +9,11 @@ hero:
   tagline: High-Performance parser generators for Zig
   actions:
     - theme: brand
+      text: Getting Started
+      link: /getting_started
+    - theme: alt
       text: Grammar Guidelines
       link: /grammar_guidelines
-    - theme: alt
-      text: AST Allocations
-      link: /ast_node_allocations
 
 features:
   - icon: 🚀
