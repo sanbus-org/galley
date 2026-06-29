@@ -1,248 +1,248 @@
 Start
- |Rules
+| Rules
 
 Rules
- |Rule RulesTail
+| Rule RulesTail
 
 RulesTail
- |OptionalNewLineMany Rule RulesTail
- |
+| OptionalNewLineMany Rule RulesTail
+|
 
 Rule
- |UppercaseId ":" ActionBody
+| UppercaseId ":" ActionBody
 
 ActionBody
- |block_start Fields block_end ActionBodyTail@drop_if_empty
- |"[" WrappedLogicBody
+| block_start Fields block_end ActionBodyTail@drop_if_empty
+| "[" WrappedLogicBody
 
 ActionBodyTail@test
- @back|"-" WrappedLogicBody
- |
+|@back "-" WrappedLogicBody
+|
 
 Fields
- |FieldRow FieldsTail@drop_if_empty
+| FieldRow FieldsTail@drop_if_empty
 
 FieldsTail
- |new_line FieldRow FieldsTail
- |
+| new_line FieldRow FieldsTail
+|
 
 FieldRow
- |"-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue@drop_if_empty@replace_with_children
+| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue@drop_if_empty@replace_with_children
 
 OptionalFieldDefaultValue
- |OptionalBlank "=" OptionalBlank Expression
- |
+| OptionalBlank "=" OptionalBlank Expression
+|
 
 Type
- |Id OptionalTypeArray
+| Id OptionalTypeArray
 
 OptionalTypeArray
- |";"
- |
+| ";"
+|
 
 ActionOutcomeEntry
- |StateOutcome
- |ActionDispatchOutcome
- |SideEffects
+| StateOutcome
+| ActionDispatchOutcome
+| SideEffects
 
 StateOutcome
- |"\\" space State
+| "\\" space State
 
 State
- |LowercaseId ":" UppercaseId InstantiationTail
- |UppercaseId InstantiationTail
- |"!" InstantiationTail
+| LowercaseId ":" UppercaseId InstantiationTail
+| UppercaseId InstantiationTail
+| "!" InstantiationTail
 
 ActionDispatchOutcome
- |"{" block_start ActionsToDispatch block_end
+| "{" block_start ActionsToDispatch block_end
 
 ActionsToDispatch
- |new_line "-" space Expression ActionsToDispatch
- |"-" space Expression
+| new_line "-" space Expression ActionsToDispatch
+| "-" space Expression
 
 SideEffects
- |"}" block_start SideEffectsToDispatch block_end
+| "}" block_start SideEffectsToDispatch block_end
 
 SideEffectsToDispatch
- |new_line "-" space Expression SideEffectsToDispatch
- |"-" space Expression
+| new_line "-" space Expression SideEffectsToDispatch
+| "-" space Expression
 
 WrappedLogicBody
- |block_start LogicBody block_end
+| block_start LogicBody block_end
 
 LogicBody
- |Expression LogicBodyTail@drop_if_empty
+| Expression LogicBodyTail@drop_if_empty
 
 LogicBodyTail
- |new_line LogicBody
- |
+| new_line LogicBody
+|
 
 Expression
- |OperandAndNumber OptionalBlank ExpressionTail@drop_if_empty
- |ActionOutcomeEntry
+| OperandAndNumber OptionalBlank ExpressionTail@drop_if_empty
+| ActionOutcomeEntry
 
 ExpressionTail
- |Operator OptionalBlank Expression
- |
+| Operator OptionalBlank Expression
+|
 
 OperandAndNumber
- |WrappedLogicBody
- |Number
- |Operand OperandTail@drop_if_empty
+| WrappedLogicBody
+| Number
+| Operand OperandTail@drop_if_empty
 
 Operand
- |LowercaseId OperandLowercaseIdTail@replace_with_children
- |UppercaseId OperandUppercaseIdTail
- |UnderscoreId
- |String
- |List
+| LowercaseId OperandLowercaseIdTail@replace_with_children
+| UppercaseId OperandUppercaseIdTail
+| UnderscoreId
+| String
+| List
 
 OperandTail
- |"[" ListGetTail
- |
+| "[" ListGetTail
+|
 
 ListGetTail
- |Expression ListGetExpressionTail
- |"]"
- |":" Expression "]"
+| Expression ListGetExpressionTail
+| "]"
+| ":" Expression "]"
 
 ListGetExpressionTail
- |"]"
- |"?"
- |"^" Expression "]"
+| "]"
+| "?"
+| "^" Expression "]"
 
 OperandLowercaseIdTail
- |"." Id
- |"(" Parameters ")"
- |"%"
- |":" UppercaseId CompoundIdTail
- |
+| "." Id
+| "(" Parameters ")"
+| "%"
+| ":" UppercaseId CompoundIdTail
+|
 
 CompoundIdTail
- |"." Id
- |InstantiationTail
- |
+| "." Id
+| InstantiationTail
+|
 
 OperandUppercaseIdTail
- |InstantiationTail
- |
+| InstantiationTail
+|
 
 InstantiationParameters
- |InstantiationParameter InstantiationParametersTail
+| InstantiationParameter InstantiationParametersTail
 
 InstantiationParametersTail
- |new_line InstantiationParameter InstantiationParametersTail
- |
+| new_line InstantiationParameter InstantiationParametersTail
+|
 
 InstantiationParameter
- |Id OptionalBlank "`" OptionalBlank Expression
+| Id OptionalBlank "`" OptionalBlank Expression
 
 InstantiationTail
- |"(" block_start InstantiationParameters block_end ")"
- |"$"
+| "(" block_start InstantiationParameters block_end ")"
+| "$"
 
 Parameters
- |OptionalBlank Expression ParametersTail
- |
+| OptionalBlank Expression ParametersTail
+|
 
 ParametersTail
- |"," OptionalBlank Expression ParametersTail
- |
+| "," OptionalBlank Expression ParametersTail
+|
 
 List
- |"[" ListItems "]"
+| "[" ListItems "]"
 
 ListItems
- |Expression ListItemsTail
- |"*" Expression
- |
+| Expression ListItemsTail
+| "*" Expression
+|
 
 ListItemsTail
- |"," space NonEmptyListItems
- |"@" Id "," space Expression
- |
+| "," space NonEmptyListItems
+| "@" Id "," space Expression
+|
 
 NonEmptyListItems
- |Expression NonEmptyListItemsTail
- |"*" Expression
+| Expression NonEmptyListItemsTail
+| "*" Expression
 
 NonEmptyListItemsTail
- |"," space NonEmptyListItems
- |
+| "," space NonEmptyListItems
+|
 
 String
- |'" StringContent '"
+| '" StringContent '"
 
 StringContent
- |character^'" StringContent
- |
+| character^'" StringContent
+|
 
 LogicCondition
- |Condition WrappedLogicBody ElsePart
+| Condition WrappedLogicBody ElsePart
 
 ElsePart
- |"e" WrappedLogicBody
- |
+| "e" WrappedLogicBody
+|
 
 Condition
- |Id Operator Id
+| Id Operator Id
 
 Operator
- |operator
- |"{" Expression "}"
+| operator
+| "{" Expression "}"
 
 Blank
- |space
- |"	"
+| space
+| "	"
 
 OptionalBlank
- |Blank OptionalBlank
- |
+| Blank OptionalBlank
+|
 
 ForceBlank
- |Blank OptionalBlank
+| Blank OptionalBlank
 
 OptionalNewLineMany
- |new_line OptionalNewLineMany
- |
+| new_line OptionalNewLineMany
+|
 
 Id
- |LowercaseId
- |UppercaseId
- |UnderscoreId
+| LowercaseId
+| UppercaseId
+| UnderscoreId
 
 IdTail
- |letter IdTail
- |digit IdTail
- |"_" IdTail
- |
+| letter IdTail
+| digit IdTail
+| "_" IdTail
+|
 
 UnderscoreId
- |"_" IdTail
+| "_" IdTail
 
 LowercaseId
- |lowercase_letter IdTail
+| lowercase_letter IdTail
 
 UppercaseId
- |uppercase_letter IdTail
+| uppercase_letter IdTail
 
 Number
- |IntegerNumber FloatTail
+| IntegerNumber FloatTail
 
 IntegerNumber
- |PositiveIntegerNumber
- |NegativeIntegerNumber
+| PositiveIntegerNumber
+| NegativeIntegerNumber
 
 PositiveIntegerNumber
- |digit PositiveIntegerNumberTail
+| digit PositiveIntegerNumberTail
 
 PositiveIntegerNumberTail
- |digit PositiveIntegerNumberTail
- |
+| digit PositiveIntegerNumberTail
+|
 
 NegativeIntegerNumber
- |"-" PositiveIntegerNumber
+| "-" PositiveIntegerNumber
 
 FloatTail
- |"." PositiveIntegerNumber
- |
+| "." PositiveIntegerNumber
+|

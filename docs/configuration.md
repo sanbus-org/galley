@@ -52,6 +52,9 @@ zig build -Doptimize=ReleaseFast ll-json -- [OPTIONS] <FILE>
 | `--disable-stack-overflow-recovery` | None | Flag | Disables dynamic stack overflow recovery, falling back to static stack boundaries. | Enabled |
 | `<FILE>` | None | `<PATH>` | **Required.** Path to the source code file to parse. | None |
 
+> [!IMPORTANT]
+> When compiling the parser with `-Doptimize=ReleaseFast` (the default optimization mode for benchmarking), all debugging instrumentation, execution logging, verbosity traces, and even source location tracking (line/column numbers) are completely disabled and compiled out to maximize parsing throughput. For debugging, syntax error reporting, or verbose parsing traces, compile the parser without `-Doptimize=ReleaseFast` (which defaults to Debug mode).
+
 ---
 
 ## Quick Reference
@@ -71,7 +74,3 @@ zig build -Doptimize=ReleaseFast ll-json -- -r 100 -w 10 languages/json/large-sa
 ```sh
 zig build ll-json -- -v 1 languages/json/sample-code.json
 ```
-
----
-
-**← Previous:** [Included Languages](languages.md) | **Next:** [Writing a Language](writing_a_language.md) **→**

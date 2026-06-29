@@ -1,6 +1,7 @@
 # Benchmarks & Performance Methodology
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Running Benchmarks](#running-benchmarks)
 - [Understanding Output Metrics](#understanding-output-metrics)
@@ -36,9 +37,9 @@ When invoked with `--verbosity 0` (the default), the parser executable prints a 
 Parsed 100 times in 6.5ms (avg: 65us) -> ~722.7 MB/s
 ```
 
-* **Iterations (`Parsed N times`):** The exact number of timed parse repetitions.
-* **Total & Average Duration:** Time elapsed across all timed iterations and average latency per parse pass.
-* **Throughput (`MB/s`):** Calculated as `(FileSizeBytes * Iterations) / TotalTimeSeconds / 1_000_000`.
+- **Iterations (`Parsed N times`):** The exact number of timed parse repetitions.
+- **Total & Average Duration:** Time elapsed across all timed iterations and average latency per parse pass.
+- **Throughput (`MB/s`):** Calculated as `(FileSizeBytes * Iterations) / TotalTimeSeconds / 1_000_000`.
 
 When invoked with `--verbosity 1`, additional statistics regarding AST allocations and memory pool usage are reported alongside throughput:
 
@@ -66,7 +67,3 @@ All reference benchmarks below were recorded on an **Apple M1 Pro** executing ag
 1. **Always Use Warmup Passes (`-w 10`):** Modern CPUs throttle clock speeds when idle. Warmup iterations prime instruction caches (L1i/L2) and force CPU governor frequency scaling before timing begins.
 2. **Use Large Input Files:** Parsing tiny files (< 1 KB) measures OS timer precision resolution rather than parsing throughput. Use inputs of at least 100 KB to obtain stable metrics.
 3. **Isolate Background Noise:** Close CPU-heavy applications (browsers, background builds) during benchmark loops to minimize thread preemption variance.
-
----
-
-**← Previous:** [AST Node Allocations](ast_node_allocations.md)

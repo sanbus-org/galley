@@ -29,7 +29,7 @@ class Symbol:
     def __post_init__(self):
         if procedures_match := procedures_re.match(self.id):
             self.id, remaining = procedures_match.groups()
-            self.procedures = list(reversed(remaining[1:].split(b"@")))
+            self.procedures = list(remaining[1:].split(b"@"))
         else:
             self.procedures = []
         for procedure in self.procedures:
@@ -97,6 +97,17 @@ class Symbol:
                             + string.whitespace
                         )
                         if i != '"'
+                    ]
+                case b'character^"\n"':
+                    terminals = [
+                        i
+                        for i in (
+                            string.ascii_letters
+                            + string.digits
+                            + string.punctuation
+                            + string.whitespace
+                        )
+                        if i != "\n"
                     ]
                 case b"operator":
                     terminals = [
