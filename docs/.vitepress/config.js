@@ -7,15 +7,30 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Grammar Guidelines', link: '/grammar_guidelines' },
-      { text: 'AST Node Allocations', link: '/ast_node_allocations' }
+      { text: 'Documentation', link: '/getting_started' }
     ],
     sidebar: [
       {
-        text: 'Documentation',
+        text: 'Introduction',
         items: [
-          { text: 'Grammar Guidelines', link: '/grammar_guidelines' },
-          { text: 'AST Node Allocations', link: '/ast_node_allocations' }
+          { text: 'Getting Started', link: '/getting_started' },
+          { text: 'Included Languages', link: '/languages' },
+          { text: 'Configuration & Flags', link: '/configuration' }
+        ]
+      },
+      {
+        text: 'User Guide',
+        items: [
+          { text: 'Writing a Language', link: '/writing_a_language' },
+          { text: 'Grammar Guidelines', link: '/grammar_guidelines' }
+        ]
+      },
+      {
+        text: 'Advanced Architecture & Performance',
+        items: [
+          { text: 'Core Architecture', link: '/architecture' },
+          { text: 'AST Node Allocations', link: '/ast_node_allocations' },
+          { text: 'Benchmarks', link: '/benchmarks' }
         ]
       }
     ],
