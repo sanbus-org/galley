@@ -44,8 +44,13 @@ pub fn build(b: *std.Build) !void {
                     .target = target,
                 });
 
+                const parser_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ parser_type, "-", entry.path },
+                );
                 const exe = b.addExecutable(.{
-                    .name = entry.path,
+                    .name = parser_name,
                     // .use_llvm = false,
                     // .use_lld = false,
                     .root_module = b.createModule(.{
@@ -70,11 +75,6 @@ pub fn build(b: *std.Build) !void {
                 );
                 defer b.allocator.free(result);
 
-                const parser_name = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ parser_type, "-", entry.path },
-                );
                 const run_step = b.step(parser_name, result);
 
                 const run_cmd = b.addRunArtifact(exe);

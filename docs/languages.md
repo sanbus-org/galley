@@ -32,7 +32,7 @@ An extended JSON variant designed to test extreme recursion depths and stress-te
 - **Hooks:** Demonstrates advanced reduction hooking and stack management.
 
 ### Flat JSON (`languages/flat_json`)
-A streamlined JSON grammar variant simplified for flat key-value structures. It serves as a great lightweight starting point if you want to understand standard tokenization and string matching rules without recursive complexity.
+A variant of the standard JSON grammar designed to parse full, recursive JSON but optimized for maximum parser execution speed. Its grammar structure is refactored to use the minimum possible number of variables (non-terminals) by inlining patterns directly. Because each grammar variable generates a dedicated parsing function, minimizing variables results in fewer functions and a flatter call stack, enabling LLVM to optimize the compiled binary far more aggressively (yielding throughputs of over ~720 MB/s).
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
 
 ### Grammar Parser (`languages/grammar`)
@@ -70,7 +70,3 @@ zig build -Doptimize=ReleaseFast ll-json -- languages/json/sample-code.json
 uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/grammar --parser-type LR
 zig build -Doptimize=ReleaseFast lr-grammar -- languages/grammar/sample-code.grm
 ```
-
----
-
-**← Previous:** [Getting Started](getting_started.md) | **Next:** [Configuration & Flags](configuration.md) **→**
