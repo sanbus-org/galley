@@ -1,6 +1,7 @@
 # Core Architecture
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
@@ -13,7 +14,7 @@
 
 ## Overview
 
-Galley achieves parsing speeds hundreds of times faster than traditional table-driven parser generators by fundamentally rethinking how parsers interact with memory and the CPU. Rather than interpreting state transitions at runtime, Galley directly encodes grammar semantics into compile-time Zig execution paths.
+Galley achieves parsing speeds tens to hundreds of times faster than traditional table-driven parser generators by fundamentally rethinking how parsers interact with memory and the CPU. Rather than interpreting state transitions at runtime, Galley directly encodes grammar semantics into compile-time Zig execution paths.
 
 ---
 
@@ -52,6 +53,7 @@ Furthermore, AST nodes reference their parents, children, and siblings using com
 ## Role of the Python Generator
 
 Currently, the grammar analysis engine resides in Python (`initial-parser-generator/`). The Python generator is responsible for:
+
 1. Parsing the `.grm` definition files.
 2. Computing FIRST, FOLLOW, and nullable sets.
 3. Constructing deterministic LL(k) lookup tables or LR/LALR shift-reduce automatas.
@@ -66,7 +68,3 @@ Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary c
 Galley already ships with a formal specification of its own grammar syntax (`languages/grammar`). The generated parser can successfully parse and validate `.grm` files at hundreds of megabytes per second.
 
 The ultimate roadmap goal is to port the parser table generation algorithms from Python to Zig. Once completed, Galley will become a fully self-hosted, standalone compiler capable of compiling and generating new parsers entirely within a single native binary.
-
----
-
-**← Previous:** [Grammar Guidelines](grammar_guidelines.md) | **Next:** [AST Node Allocations](ast_node_allocations.md) **→**

@@ -1,84 +1,84 @@
 Start
- |Rules
+| Rules
 
 Rules
- |Rules new_line Rule
- |Rule
+| Rules new_line Rule
+| Rule
 
 Rule
- |VariableSymbol ProcedureTail block_start RightHandSides block_end
+| VariableSymbol ProcedureTail new_line RightHandSides
 
 RightHandSides
- |RightHandSides new_line RightHandSide
- |RightHandSide
+| RightHandSides RightHandSideLine
+| RightHandSideLine
 
-RightHandSide
- |ProcedureTail "|" NonEmptyRightHandSide
- |ProcedureTail "|"
- |"#" AnyContent
- # Some comment
+RightHandSideLine
+| "|" ProcedureTail space NonEmptyRightHandSide new_line
+| "|" ProcedureTail new_line
+| "#" AnyContent new_line
+# Some comment
 
 NonEmptyRightHandSide
- |NonEmptyRightHandSide space Symbol ProcedureTail
- |Symbol ProcedureTail
+| NonEmptyRightHandSide space Symbol ProcedureTail
+| Symbol ProcedureTail
 
 Symbol
- |VariableSymbol
- |TerminalSymbol
- |GenerativeTerminalSymbol
+| VariableSymbol
+| TerminalSymbol
+| GenerativeTerminalSymbol
 
 VariableSymbol
- |UppercaseId
- |"_" UppercaseId
+| UppercaseId
+| "_" UppercaseId
 
 TerminalSymbol
- |"'" StringContent "\x03"
- |'" SimpleStringContent '"
+| "'" StringContent "\x03"
+| '" SimpleStringContent '"
 
 GenerativeTerminalSymbol
- |LowercaseId
- |LowercaseId GenerativeTerminalExceptions
+| LowercaseId
+| LowercaseId GenerativeTerminalExceptions
 
 GenerativeTerminalExceptions
- |GenerativeTerminalExceptions "^" TerminalSymbol
- |"^" TerminalSymbol
+| GenerativeTerminalExceptions "^" TerminalSymbol
+| "^" TerminalSymbol
 
 ProcedureTail
- |ProcedureTail "@" LowercaseId
- |
+| ProcedureTail "@" LowercaseId
+|
 
 StringContent
- |StringContent character
- |character
+| StringContent character
+| character
 
 SimpleStringContent
- |SimpleStringContent character^'"
- |character^'"
+| SimpleStringContent character^'"
+| character^'"
 
 ControlCharacter
- |"\x01"
- #|"\x02"
- |"\x03"
- |"\x04"
+| "\x01"
+#| "\x02"
+| "\x03"
+| "\x04"
 
 AnyContent
- |AnyContent character
- |AnyContent ControlCharacter
- |character
- |ControlCharacter
+| AnyContent character^"\n"
+| AnyContent ControlCharacter
+| character^"\n"
+| ControlCharacter
 
 Id
- |LowercaseId
- |UppercaseId
+| LowercaseId
+| UppercaseId
 
 LowercaseId
- |lowercase_letter
- |LowercaseId letter
- |LowercaseId digit
- |LowercaseId "_"
+| lowercase_letter
+| LowercaseId letter
+| LowercaseId digit
+| LowercaseId "_"
 
 UppercaseId
- |uppercase_letter
- |UppercaseId letter
- |UppercaseId digit
- |UppercaseId "_"
+| uppercase_letter
+| UppercaseId letter
+| UppercaseId digit
+| UppercaseId "_"

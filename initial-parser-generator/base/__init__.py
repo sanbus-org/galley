@@ -123,9 +123,9 @@ class ParserGeneratorBaseMixin(abc.ABC):
 
             line = line.replace(b"\r", b"\n")
 
-            if header_symbol is not None and line.startswith(b" "):
+            if header_symbol is not None and line.startswith(b"|"):
                 try:
-                    rule_procedures, _, line = line[1:].partition(b"|")
+                    rule_procedures, _, line = line[1:].partition(b" ")
                     literals = []
                     items = (
                         re.sub(
@@ -147,7 +147,7 @@ class ParserGeneratorBaseMixin(abc.ABC):
 
                     right_hand_side = RightHandSide(
                         symbols=tuple(Symbol.from_str(i) for i in items),
-                        procedures=list(reversed(rule_procedures[1:].split(b"@"))),
+                        procedures=list(rule_procedures[1:].split(b"@")),
                     )
                 except ValueError as exception:
                     raise ValueError(

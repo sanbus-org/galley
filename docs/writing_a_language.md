@@ -40,26 +40,26 @@ Run all commands from the root directory of the repository:
 
 1. Create a new directory under `languages/`:
 
-```sh
-mkdir -p languages/mylang
-```
+    ```sh
+    mkdir -p languages/mylang
+    ```
 
 1. Define your grammar in `languages/mylang/ll.grm` (or `lr.grm`). See [Grammar Guidelines](grammar_guidelines.md) for syntax and rules.
 
-2. Write your `languages/mylang/procedures.zig` file. At a minimum, this file must define `indentation_syntax` and `Payload`:
+1. Write your `languages/mylang/procedures.zig` file. At a minimum, this file must define `indentation_syntax` and `Payload`:
 
-```zig
-pub const indentation_syntax = false;
-pub const Payload = struct {};
-```
+    ```zig
+    pub const indentation_syntax = false;
+    pub const Payload = struct {};
+    ```
 
 1. Add a `sample-code.txt` with an example input so the parser has something to parse on every build.
 
-2. Generate the parser tables:
+1. Generate the parser tables:
 
-```sh
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/mylang --parser-type LL
-```
+    ```sh
+    uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/mylang --parser-type LL
+    ```
 
 ---
 
@@ -78,21 +78,21 @@ The grammar file format is documented in detail in [Grammar Guidelines](grammar_
 
 ```
 Definition
- |"let" _WhiteSpace Expr _WhiteSpace
+| "let" _WhiteSpace Expr _WhiteSpace
 
 Expr
- |Number
- |"+" Number
- |"-" Number
+| Number
+| "+" Number
+| "-" Number
 
 Number
- |"4"
- |"2"
+| "4"
+| "2"
 
 _WhiteSpace
- |space _WhiteSpace
- |new_line _WhiteSpace
- |
+| space _WhiteSpace
+| new_line _WhiteSpace
+|
 ```
 
 `languages/mylang/sample-code.txt`:
@@ -105,49 +105,9 @@ let +4
 
 ## Hooks in procedures.zig
 
-The parser generator binds hooks to grammar rules using the `@` annotation (e.g. `@my_hook`). When a reduction occurs on that rule, the corresponding function exported by `procedures.zig` is called with `*ProcedureArguments`.
+During parsing, you can execute custom Zig logic (known as reduction procedures or hooks) when grammar rules are matched and reduced. These hooks are exported from your language's `procedures.zig` file.
 
-### Common Hook Conventions
-
-Many example grammars (such as `languages/json`) implement standard tree-cleanup helpers in their `procedures.zig`:
-
-| Hook | Trigger | Common Implementation Behavior |
-| ------ | --------- | -------------------------------- |
-| `drop_children` | Reduction | Clears all children of the produced node using `ASTNode.clean_children`. |
-| `drop_self` | Reduction | Sets `args.node = null` to discard the node itself. |
-| `replace_with_children` | Reduction | Removes children and replaces the parent node with its first child. |
-
-### Writing Custom Hooks
-
-1. Define the function in `procedures.zig`:
-
-```zig
-const std = @import("std");
-const data_structures = @import("root").data_structures;
-const ProcedureArguments = data_structures.ProcedureArguments;
-
-pub const indentation_syntax = false;
-pub const Payload = struct {
-    reductions: u32 = 0,
-};
-
-pub fn my_hook(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        var node = args.context.node_allocator.at(node_address);
-        node.payload.reductions += 1;
-        std.debug.print("Hook triggered on node address: {d}\n", .{node_address});
-    }
-}
-```
-
-1. Register it in your grammar:
-
-```
-Expr
- |"+" Number@my_hook
-```
-
-The generator will bind `my_hook` to the declaration in `procedures.zig` when the language directory is built.
+To learn how to register explicit/implicit hooks, how to write custom procedures in Zig, and how they map to AST generation options, see the dedicated [Reduction Procedures User Guide](procedures.md).
 
 ---
 
@@ -196,7 +156,3 @@ zig build ll-json -- languages/json/sample-code.json --verbosity 1
 - If your language needs to handle both LL and LR, write both `ll.grm` and `lr.grm` with equivalent grammars in each.
 - Remember that the first rule in the file is the entry point — no explicit `@start` annotation is needed.
 - Check that all your terminal symbols match what the grammar generator expects (`digit`, `letter`, `space`, `new_line`, `operator`, etc.).
-
----
-
-**← Previous:** [Configuration & Flags](configuration.md) | **Next:** [Grammar Guidelines](grammar_guidelines.md) **→**

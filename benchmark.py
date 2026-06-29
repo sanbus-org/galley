@@ -94,17 +94,30 @@ def format_card(name, metrics, width=34, no_color=False, error_msg=None):
             f"{border_color}{VL}{RESET}{' ' * (inner_width + 2)}{border_color}{VL}{RESET}"
         )
 
-        skipped_visible = "SKIPPED (TOO LARGE)"
-        skipped_styled = (
-            f"{YELLOW}{BOLD}{skipped_visible}{RESET}"
-            if not no_color
-            else skipped_visible
-        )
-        lines.append(make_centered_line(len(skipped_visible), skipped_styled))
+        if error_msg == "success":
+            skipped_visible = "Ran successfully"
+            skipped_styled = (
+                f"{GREEN}{BOLD}{skipped_visible}{RESET}"
+                if not no_color
+                else skipped_visible
+            )
+            lines.append(make_centered_line(len(skipped_visible), skipped_styled))
 
-        msg_visible = error_msg
-        msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
-        lines.append(make_centered_line(len(msg_visible), msg_styled))
+            msg_visible = "(No errors)"
+            msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
+            lines.append(make_centered_line(len(msg_visible), msg_styled))
+        else:
+            skipped_visible = "SKIPPED (TOO LARGE)"
+            skipped_styled = (
+                f"{YELLOW}{BOLD}{skipped_visible}{RESET}"
+                if not no_color
+                else skipped_visible
+            )
+            lines.append(make_centered_line(len(skipped_visible), skipped_styled))
+
+            msg_visible = error_msg
+            msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
+            lines.append(make_centered_line(len(msg_visible), msg_styled))
 
         lines.append(
             f"{border_color}{VL}{RESET}{' ' * (inner_width + 2)}{border_color}{VL}{RESET}"
@@ -377,54 +390,6 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
     MAGENTA = "" if args.no_color else "\033[35m"
     GRAY = "" if args.no_color else "\033[90m"
 
-    if mode == "Debug":
-        print(
-            f"\n{GRAY}------------------------------------------------------------{RESET}"
-        )
-        print(
-            f"{MAGENTA}{name}{RESET} --parser-type {CYAN}{'/'.join(parser_types)}{RESET} {BOLD}{' '.join(gen_opts)}{RESET}"
-        )
-        print(
-            f"{GRAY}------------------------------------------------------------{RESET}"
-        )
-        # Verification run in Debug mode
-        for p_type in parser_types:
-            target = f"{p_type.lower()}-{name}"
-            for input_file in inputs:
-                file_path = input_file
-                if input_size is not None and os.path.exists(file_path):
-                    if os.path.getsize(file_path) >= (2**input_size):
-                        continue
-
-                cmd = [
-                    "zig",
-                    "build",
-                    "-Doptimize=Debug",
-                    target,
-                    "--",
-                    input_file,
-                    "--verbosity",
-                    "0",
-                    "--iterations",
-                    "1",
-                ]
-                try:
-                    subprocess.run(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        check=True,
-                    )
-                except subprocess.CalledProcessError as e:
-                    print(
-                        f"\n\033[31mError building/running {target} in Debug mode for {input_file}:\033[0m"
-                    )
-                    print(f"\033[33mCommand Output:\033[0m\n{e.stdout}")
-                    sys.exit(1)
-
-        return
-
     # ReleaseFast mode - print beautiful headers and cards grid
     header_details = []
     if ast_mode == "no-ast":
@@ -487,9 +452,9 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
 
             # Calculate iterations proportional to the input file size
             # Total parsed bytes target is ~100MB (100 * 1024 * 1024 bytes)
-            target_bytes = 200 * 1024 * 1024
+            target_bytes = args.target_bytes
             if file_size > 0:
-                iterations = max(1, int(target_bytes / file_size))
+                iterations = max(1, int(target_bytes / file_size)) if target_bytes > 0 else 1
             else:
                 iterations = 200000  # fallback
 
@@ -521,6 +486,49 @@ def run_benchmark_suite(name, parser_type, inputs, mode, gen_opts, args):
                 continue
 
             target = f"{p_type.lower()}-{name}"
+
+            # Compile and run in Debug mode first to verify compile and runtime correctness
+            debug_cmd = [
+                "zig",
+                "build",
+                "-Doptimize=Debug",
+                target,
+                "--",
+                input_file,
+                "--verbosity",
+                "0",
+            ]
+            try:
+                subprocess.run(
+                    debug_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                if is_interactive:
+                    sys.stdout.write("\033[8B\033[1G")
+                    sys.stdout.flush()
+                print(
+                    f"\n\033[31mError building/running {target} in Debug mode for {input_file}:\033[0m"
+                )
+                print(f"\033[33mCommand Output:\033[0m\n{e.stdout}")
+                sys.exit(1)
+
+            # If target_bytes is 0, skip the ReleaseFast benchmarking run
+            if args.target_bytes == 0:
+                card_lines = format_card(
+                    card_title, {}, width=args.width, no_color=args.no_color, error_msg="success"
+                )
+                if is_interactive:
+                    draw_card_in_row(card_lines, col_idx, width=args.width, spacing=2)
+                else:
+                    row_cards.append(card_lines)
+                input_results.setdefault(input_file, []).append((p_type, "Ran successfully (No errors)"))
+                continue
+
+            # Then compile and run in ReleaseFast mode for actual benchmarking
             cmd = [
                 "zig",
                 "build",
@@ -787,9 +795,10 @@ def main():
         help="Fix terminal AST mode to --no-ast-for-terminals",
     )
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Fix build optimize mode to Debug",
+        "--target-bytes",
+        type=int,
+        default=200 * 1024 * 1024,
+        help="Total bytes to parse during benchmark (default: 200MB). Set to 0 to only run Debug validation.",
     )
 
     args = parser.parse_args()
