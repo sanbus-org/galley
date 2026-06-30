@@ -6,6 +6,7 @@
   - [JSON (`languages/json`)](#json-languagesjson)
   - [Augmented JSON (`languages/augmented-json`)](#augmented-json-languagesaugmented-json)
   - [Flat JSON (`languages/flat_json`)](#flat-json-languagesflat_json)
+  - [Lisp (`languages/lisp`)](#lisp-languageslisp)
   - [Grammar Parser (`languages/grammar`)](#grammar-parser-languagesgrammar)
 - [Choosing Between LL and LR](#choosing-between-ll-and-lr)
 - [Building and Running Included Languages](#building-and-running-included-languages)
@@ -34,6 +35,11 @@ An extended JSON variant designed to test extreme recursion depths and stress-te
 ### Flat JSON (`languages/flat_json`)
 A variant of the standard JSON grammar designed to parse full, recursive JSON but optimized for maximum parser execution speed. Its grammar structure is refactored to use the minimum possible number of variables (non-terminals) by inlining patterns directly. Because each grammar variable generates a dedicated parsing function, minimizing variables results in fewer functions and a flatter call stack, enabling LLVM to optimize the compiled binary far more aggressively (yielding throughputs of over ~720 MB/s).
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+
+### Lisp (`languages/lisp`)
+A compact S-expression grammar that demonstrates a small programming-language surface with nested lists, symbols, integer literals, strings, and multiple top-level forms.
+- **Parser Engines:** `ll.grm` is provided.
+- **Test Inputs:** Contains `sample-code.lisp`.
 
 ### Grammar Parser (`languages/grammar`)
 The self-hosting definition of Galley's own `.grm` syntax! This language defines the exact structure of rule definitions, alternatives (`|`), variable symbols, quoted literals, and `@` annotations used across the compiler.
