@@ -39,7 +39,8 @@ export default defineConfig({
         items: [
           { text: 'Core Architecture', link: '/architecture' },
           { text: 'AST Node Allocations', link: '/ast_node_allocations' },
-          { text: 'Benchmarks', link: '/benchmarks' }
+          { text: 'Benchmarks', link: '/benchmarks' },
+          { text: 'Benchmark Results', link: '/benchmark_results' }
         ]
       }
     ],

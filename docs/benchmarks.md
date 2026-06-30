@@ -52,13 +52,7 @@ Node Pool Memory Footprint: 227.68 KB
 
 ## Reference Benchmark Results
 
-All reference benchmarks below were recorded on an **Apple M1 Pro** executing against the bundled JSON input file using the `flat_json` grammar (`languages/json/sample-code.json`).
-
-| Mode | LL Throughput | LR Throughput |
-| :--- | :--- | :--- |
-| **No AST** | **~723 MB/s** | **~285 MB/s** |
-| **AST, no terminals in AST** | **~444 MB/s** | **~108 MB/s** |
-| **AST, terminals in AST** | **~310 MB/s** | **~93 MB/s** |
+For full benchmark results including comparisons with third-party parsers (simdjson, RapidJSON, Bison, LALRPOP, Nom, Tree-sitter), see the **[Benchmark Results](/benchmark_results)** page.
 
 ---
 
