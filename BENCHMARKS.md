@@ -248,6 +248,38 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 ---
 
+## Galley — Lua Grammar
+
+_A compact Lua subset grammar. It exercises keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, and keyed table constructors._
+
+_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+
+| AST | Term. | Limit | LL         | LR | LL/LR |
+| --- | ----- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 16    | 275.6 MB/s | —  | —     |
+| ✗   | ✗     | 32    | 270.1 MB/s | —  | —     |
+| ✓   | ✓     | 16    | 172.2 MB/s | —  | —     |
+| ✓   | ✗     | 16    | 204.2 MB/s | —  | —     |
+| ✓   | ✓     | 32    | 169.3 MB/s | —  | —     |
+| ✓   | ✗     | 32    | 194.8 MB/s | —  | —     |
+
+```
+  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     275.6 MB/s
+  LL  ✗ast ✗term lim=32  ███████████████████████████████████████░     270.1 MB/s
+  LL  ✓ast ✗term lim=16  █████████████████████████████░░░░░░░░░░░     204.2 MB/s
+  LL  ✓ast ✗term lim=32  ████████████████████████████░░░░░░░░░░░░     194.8 MB/s
+  LL  ✓ast ✓term lim=16  ████████████████████████░░░░░░░░░░░░░░░░     172.2 MB/s
+  LL  ✓ast ✓term lim=32  ████████████████████████░░░░░░░░░░░░░░░░     169.3 MB/s
+  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+```
+
+---
+
 ## Galley — Test Ll Grammar
 
 _A structured data/schema language with `Name: { fields }` declarations and embedded logic blocks. Uses the `@back` backtracking annotation, making it an LL (with limited backtracking) grammar. Included as a regression and capability test for the LL parser._
