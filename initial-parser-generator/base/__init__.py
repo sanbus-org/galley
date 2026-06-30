@@ -16,6 +16,69 @@ from data_structures import (
 )
 
 
+def tokenize_line(line: bytes) -> list[bytes]:
+    tokens = []
+    current = bytearray()
+    i = 0
+    while i < len(line):
+        c = line[i:i+1]
+        if c == b" ":
+            if current:
+                tokens.append(bytes(current))
+                current = bytearray()
+            i += 1
+        elif c == b'"':
+            current.extend(c)
+            i += 1
+            closing_idx = -1
+            for j in range(i, len(line)):
+                if line[j:j+1] == b'"':
+                    closing_idx = j
+                    break
+            if closing_idx != -1:
+                current.extend(line[i:closing_idx + 1])
+                i = closing_idx + 1
+            else:
+                for j in range(i, len(line)):
+                    if line[j:j+1] == b" ":
+                        closing_idx = j
+                        break
+                if closing_idx != -1:
+                    current.extend(line[i:closing_idx])
+                    i = closing_idx
+                else:
+                    current.extend(line[i:])
+                    i = len(line)
+        elif c == b"'":
+            current.extend(c)
+            i += 1
+            closing_idx = -1
+            for j in range(i, len(line)):
+                if line[j:j+1] == b"\x03":
+                    closing_idx = j
+                    break
+            if closing_idx != -1:
+                current.extend(line[i:closing_idx + 1])
+                i = closing_idx + 1
+            else:
+                for j in range(i, len(line)):
+                    if line[j:j+1] == b" ":
+                        closing_idx = j
+                        break
+                if closing_idx != -1:
+                    current.extend(line[i:closing_idx])
+                    i = closing_idx
+                else:
+                    current.extend(line[i:])
+                    i = len(line)
+        else:
+            current.extend(c)
+            i += 1
+    if current:
+        tokens.append(bytes(current))
+    return tokens
+
+
 def arg_is_input_size(value):
     ivalue = int(value)
     MAX_VAL = 48
@@ -126,20 +189,7 @@ class ParserGeneratorBaseMixin(abc.ABC):
             if header_symbol is not None and line.startswith(b"|"):
                 try:
                     rule_procedures, _, line = line[1:].partition(b" ")
-                    literals = []
-                    items = (
-                        re.sub(
-                            b"'([^]*)",
-                            lambda a: literals.append(a.group(1)) or b"\x00",
-                            line,
-                        ).split(b" ")
-                        if line
-                        else []
-                    )
-                    items = [
-                        re.sub(b"\x00", lambda _: b'"' + literals.pop(0) + b'"', item)
-                        for item in items
-                    ]
+                    items = tokenize_line(line) if line else []
                     items = [
                         item.decode("unicode-escape").encode("raw-unicode-escape")
                         for item in items

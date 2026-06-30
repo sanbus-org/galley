@@ -53,7 +53,9 @@ The parser generator statically configures the Abstract Syntax Tree (AST) node c
 
 Terminals in rules represent either exact character literals or pre-defined generative character classes:
 
-- **String Literals:** Exact string matches must be wrapped in double quotes (e.g. `"{"`, `"null"`, `"+"`).
+- **Normal Terminals:** Exact character/string matches can be written in one of two quoting styles:
+  - **Double-quoted:** Wrapped in double quotes (e.g., `"{"`, `"null"`, `"+"`).
+  - **Single-quoted:** Wrapped in single quotes at the start and terminating with the `\x03` (0x03) byte (e.g., `'"\x03` representing the `"` character).
 - **Generative Character Terminals:** Unquoted keyword names map to specific sets of ASCII characters:
   - `digit`: Matches `'0'-'9'`
   - `letter`: Matches `'a'-'z'` and `'A'-'Z'`
@@ -65,8 +67,9 @@ Terminals in rules represent either exact character literals or pre-defined gene
   - `operator`: Matches operator symbols (`+`, `*`, `/`, `&`, `|`, `>`, `>=`, `<`, `<=`, `=`)
   - `new_line`: Matches `\n`
   - `space`: Matches space `' '`
-  - `block_start`: Matches control character `\x01`
-  - `block_end`: Matches control character `\x02`
+  - `block_start`: Matches control character `\x01` (representing the start of a block when indentation syntax is enabled for the parser, see [Reduction Procedures](procedures.md#indentation-syntax) for details)
+  - `block_end`: Matches control character `\x02` (representing the end of a block when indentation syntax is enabled for the parser, see [Reduction Procedures](procedures.md#indentation-syntax) for details)
+- **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^'"\x03`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class.
 
 ---
 
