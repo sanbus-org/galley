@@ -15,26 +15,30 @@ A parser generator and high-performance parser runtime written in [Zig](https://
 ## Documentation
 
 Full user guides and architectural documentation are available online at:
-👉 **[sassanh.codeberg.page/galley](https://sassanh.codeberg.page/galley/)**
+👉 **[sassanh.github.io/galley](https://sassanh.github.io/galley/)**
 
-* **[Getting Started](https://sassanh.codeberg.page/galley/getting_started)** — Installation, requirements, and running your first parser.
-* **[Included Languages](https://sassanh.codeberg.page/galley/languages)** — Reference implementations including JSON, Augmented JSON, and the self-hosting Grammar parser.
-* **[Configuration & Flags](https://sassanh.codeberg.page/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
-* **[Writing a Language](https://sassanh.codeberg.page/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
-* **[Reduction Procedures](https://sassanh.codeberg.page/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
-* **[Core Architecture](https://sassanh.codeberg.page/galley/architecture)** — Under the hood of Galley's stack-overflow recovery, lexer-less design, and self-hosting roadmap.
-* **[AST Allocations](https://sassanh.codeberg.page/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
-* **[Benchmarks](https://sassanh.codeberg.page/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.
+* **[Getting Started](https://sassanh.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
+* **[Included Languages](https://sassanh.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, and the self-hosting Grammar parser.
+* **[Configuration & Flags](https://sassanh.github.io/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
+* **[Writing a Language](https://sassanh.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
+* **[Reduction Procedures](https://sassanh.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
+* **[Core Architecture](https://sassanh.github.io/galley/architecture)** — Under the hood of Galley's stack-overflow recovery, lexer-less design, and self-hosting roadmap.
+* **[AST Allocations](https://sassanh.github.io/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
+* **[Benchmarks](https://sassanh.github.io/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.
+
+For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.md](BENCHMARKS.md).
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
+
 * [Zig 0.16+](https://ziglang.org/download/) — Native compiler toolchain
 * [uv](https://docs.astral.sh/uv/) — Python package and script runner
 
 ### Compile & Run a Bundled Parser
+
 ```sh
 # 1. Generate the Zig parse table for JSON
 uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL

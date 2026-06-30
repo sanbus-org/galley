@@ -1,0 +1,47 @@
+grammar;
+
+pub JSON: () = {
+    Value
+};
+
+Value: () = {
+    Object,
+    Array,
+    String,
+    Number,
+    "true",
+    "false",
+    "null",
+};
+
+Object: () = {
+    "{" "}",
+    "{" Members "}",
+};
+
+Members: () = {
+    Member,
+    Members "," Member,
+};
+
+Member: () = {
+    String ":" Value,
+};
+
+Array: () = {
+    "[" "]",
+    "[" Values "]",
+};
+
+Values: () = {
+    Value,
+    Values "," Value,
+};
+
+String: () = {
+    r#""([^"\\]|\\.)*""# => (),
+};
+
+Number: () = {
+    r#"[-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?"# => (),
+};

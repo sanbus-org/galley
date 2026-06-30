@@ -1,0 +1,15 @@
+[package]
+name = "lalrpop_bench"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "lalrpop_bench"
+crate-type = ["staticlib"]
+
+[dependencies]
+lalrpop-util = { version = "0.20.2", features = ["lexer"] }
+nom = "7.1.3"
+
+[build-dependencies]
+lalrpop = "0.20.2"

@@ -1,0 +1,7 @@
+.{
+    .name = .parser_benchmark,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{""},
+    .fingerprint = 0xcb82705a045f946e,
+}
