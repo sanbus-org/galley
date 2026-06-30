@@ -429,6 +429,11 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "this one. Exercises nested rules, procedure annotations, comment syntax, and "
         "indentation-sensitive constructs."
     ),
+    "lisp": (
+        "A compact S-expression grammar for Lisp-like programs. It exercises nested lists, "
+        "symbols, integer literals, strings, and multiple top-level forms while remaining "
+        "small enough to serve as a readable programming-language example."
+    ),
     "test-ll": (
         "A structured data/schema language with `Name: { fields }` declarations and "
         "embedded logic blocks. Uses the `@back` backtracking annotation, making it an "
@@ -543,7 +548,7 @@ def section_methodology() -> str:
   RapidJSON (C++/SIMD, DOM & SAX).
 
 ### Environment
-Results will vary by machine. All numbers are from a single run on the developer's machine.
+Results will vary by machine. All numbers are from a single run on an Apple M1 Pro.
 """
 
 
@@ -578,6 +583,8 @@ def main() -> None:
 
 This document compares **Galley** (the generated LL/LR parser in this repository) against
 widely-used third-party parsers and parser-generators on identical inputs.
+
+Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
 ---
 """)

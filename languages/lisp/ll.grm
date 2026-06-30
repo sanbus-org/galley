@@ -1,0 +1,79 @@
+Start
+| OptionalBlank Forms
+
+Forms
+| Form FormsTail
+
+FormsTail
+| RequiredBlank FormsAfterBlank
+|
+
+FormsAfterBlank
+| Form FormsTail
+|
+
+Form
+| List
+| Atom
+
+List
+| "(" OptionalBlank ListItems ")"
+
+ListItems
+| Form ListItemsTail
+|
+
+ListItemsTail
+| RequiredBlank ListItemsAfterBlank
+|
+
+ListItemsAfterBlank
+| Form ListItemsTail
+|
+
+Atom
+| Symbol
+| Number
+| String
+
+Symbol
+| letter _SymbolTail
+
+_SymbolTail
+| letter _SymbolTail
+| digit _SymbolTail
+| "-" _SymbolTail
+| "_" _SymbolTail
+|
+
+Number
+| "-" PositiveNumber
+| PositiveNumber
+
+PositiveNumber
+| digit _DigitTail
+
+_DigitTail
+| digit _DigitTail
+|
+
+String
+| '" _StringContent '"
+
+_StringContent
+| character^'" _StringContent
+|
+
+OptionalBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+|
+
+RequiredBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+
+_OptionalBlankTail
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+|
