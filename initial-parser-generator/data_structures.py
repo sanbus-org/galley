@@ -12,6 +12,61 @@ procedures_pattern = rb"^(.*?)(@[^\"]+)"
 procedures_re = re.compile(procedures_pattern)
 
 
+BASE_GENERATIVE_TERMINALS = {
+    b"digit",
+    b"letter",
+    b"lowercase_letter",
+    b"uppercase_letter",
+    b"whitespace",
+    b"punctuation",
+    b"character",
+    b"operator",
+    b"new_line",
+    b"space",
+    b"block_start",
+    b"block_end",
+}
+
+
+def parse_generative_terminal(id: bytes) -> tuple[bytes, list[bytes]] | None:
+    for base in BASE_GENERATIVE_TERMINALS:
+        if id == base:
+            return base, []
+        if id.startswith(base + b"^"):
+            suffix = id[len(base) :]
+            exceptions = []
+            i = 0
+            while i < len(suffix):
+                if suffix[i : i + 1] != b"^":
+                    return None
+                i += 1
+                if i >= len(suffix):
+                    return None
+                quote = suffix[i : i + 1]
+                if quote == b'"':
+                    closing_char = b'"'
+                elif quote == b"'":
+                    closing_char = b"\x03"
+                else:
+                    return None
+
+                i += 1
+                closing_idx = -1
+                for j in range(i, len(suffix)):
+                    if suffix[j : j + 1] == closing_char:
+                        if j + 1 == len(suffix) or suffix[j + 1 : j + 2] == b"^":
+                            closing_idx = j
+                            break
+                if closing_idx != -1:
+                    exceptions.append(suffix[i:closing_idx])
+                    i = closing_idx + 1
+                else:
+                    exceptions.append(suffix[i:])
+                    break
+            return base, exceptions
+    return None
+
+
 def is_pascal_case(s):
     return is_pascal_re.match(s) is not None
 
@@ -64,10 +119,15 @@ class Symbol:
         if (found_symbol := Symbol.string_to_symbol.get(id, None)) is not None:
             return found_symbol
 
-        if id.startswith(b'"') and id.endswith(b'"'):
+        if (id.startswith(b'"') and id.endswith(b'"')) or (
+            id.startswith(b"'") and id.endswith(b"\x03")
+        ):
             return TerminalSymbol(id=id)
-        if id.islower():
-            match id:
+
+        parsed_generative_terminal = parse_generative_terminal(id)
+        if parsed_generative_terminal is not None:
+            base_name, exceptions = parsed_generative_terminal
+            match base_name:
                 case b"digit":
                     terminals = string.digits
                 case b"letter":
@@ -87,28 +147,6 @@ class Symbol:
                         + string.punctuation
                         + string.whitespace
                     )
-                case b'character^"""':
-                    terminals = [
-                        i
-                        for i in (
-                            string.ascii_letters
-                            + string.digits
-                            + string.punctuation
-                            + string.whitespace
-                        )
-                        if i != '"'
-                    ]
-                case b'character^"\n"':
-                    terminals = [
-                        i
-                        for i in (
-                            string.ascii_letters
-                            + string.digits
-                            + string.punctuation
-                            + string.whitespace
-                        )
-                        if i != "\n"
-                    ]
                 case b"operator":
                     terminals = [
                         "+",
@@ -131,7 +169,16 @@ class Symbol:
                 case b"block_end":
                     terminals = "\x02"
                 case _:
-                    raise ValueError(f'Unknown generative terminal: "{id}"')
+                    raise ValueError(
+                        f'Unknown generative terminal: "{id.decode("utf-8")}"'
+                    )
+
+            if exceptions:
+                excluded = set()
+                for exc in exceptions:
+                    for b in exc:
+                        excluded.add(chr(b))
+                terminals = [t for t in terminals if t not in excluded]
 
             return GenerativeTerminalSymbol(
                 id=id,
@@ -207,9 +254,10 @@ class GenerativeTerminalSymbol(TerminalSymbol):
 
     def __post_init__(self):
         super().__post_init__()
-        if not self.id.islower():
+        parsed = parse_generative_terminal(self.id)
+        if parsed is None:
             raise ValueError(
-                f'Terminal ID "{self.id.decode("utf-8")}" must be lowercase.'
+                f'Terminal ID "{self.id.decode("utf-8")}" is not a valid generative terminal.'
             )
 
     def fix_id(self) -> None:

@@ -15,6 +15,7 @@
   - [Function Signature](#function-signature)
   - [Standard Helper Procedures](#standard-helper-procedures)
   - [Custom State & Payload](#custom-state--payload)
+  - [Indentation Syntax](#indentation-syntax)
 
 ---
 
@@ -183,3 +184,19 @@ pub fn enter_block(args: *ProcedureArguments) !void {
     args.context.payload.nesting_depth += 1;
 }
 ```
+
+### Indentation Syntax
+
+In addition to custom hook functions and state payloads, `procedures.zig` must configure whether the parser should use indentation-based block delimiters.
+
+```zig
+pub const indentation_syntax = true; // or false
+```
+
+When `indentation_syntax` is set to `true`:
+- The parser dynamically tracks indentation changes (spaces/tabs) at the beginning of lines.
+- **`block_start` (`\x01`):** A virtual token automatically emitted by the lexer when the indentation level increases.
+- **`block_end` (`\x02`):** Virtual tokens automatically emitted by the lexer when the indentation level decreases (one token per indentation step).
+
+This configuration allows building parsers for indentation-sensitive (off-side rule) languages (like Python) without manually managing indentation tokens in the lexer.
+

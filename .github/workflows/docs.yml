@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - "docs/**"
+      - ".github/workflows/docs.yml"
 
 permissions:
   contents: write
@@ -16,10 +16,10 @@ jobs:
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-small' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -42,4 +42,8 @@ jobs:
           git checkout -b pages
           git add .
           git commit -m "Deploy docs (build #${{ github.run_number }})"
-          git push -f "https://${{ secrets.GITHUB_TOKEN || secrets.CODEBERG_TOKEN }}@${{ contains(github.server_url, 'github') && 'github.com' || 'codeberg.org' }}/${{ github.repository }}.git" pages
+          if [[ "${{ github.server_url }}" == *github* ]]; then
+            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+          else
+            git push -f "https://${{ github.repository_owner }}:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${{ github.repository }}.git" pages
+          fi
