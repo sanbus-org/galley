@@ -72,10 +72,10 @@ To compile and benchmark any included language, generate its parse table using `
 
 ```sh
 # Generate and test the LL parser for standard JSON
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL
+scripts/generate-parser --language languages/json --parser-type LL
 zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
 
 # Generate and test the LR parser for the Grammar specification itself
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/grammar --parser-type LR
+scripts/generate-parser --language languages/grammar --parser-type LR
 zig build -Doptimize=ReleaseFast lr-grammar -- languages/grammar/sample-code.grm
 ```
