@@ -26,7 +26,7 @@ The fastest path is to start with an example grammar that already ships with the
 
 ```sh
 # 1. Generate the LL parse table
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL
+scripts/generate-parser --language languages/json --parser-type LL
 
 # 2. Build and run it with release optimization for maximum throughput
 zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
@@ -38,7 +38,7 @@ That's it — `languages/json/samples/code-01.json` parses at hundreds of megaby
 
 ```sh
 # 1. Generate the LR parse table
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LR
+scripts/generate-parser --language languages/json --parser-type LR
 
 # 2. Build and run it
 zig build -Doptimize=ReleaseFast lr-json -- languages/json/samples/code-01.json

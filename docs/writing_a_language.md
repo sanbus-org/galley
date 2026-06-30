@@ -58,7 +58,7 @@ Run all commands from the root directory of the repository:
 1. Generate the parser tables:
 
     ```sh
-    uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/mylang --parser-type LL
+    scripts/generate-parser --language languages/mylang --parser-type LL
     ```
 
 ---
@@ -116,13 +116,13 @@ To learn how to register explicit/implicit hooks, how to write custom procedures
 ### Generate LL Parser
 
 ```sh
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/mylang --parser-type LL
+scripts/generate-parser --language languages/mylang --parser-type LL
 ```
 
 ### Generate LR Parser
 
 ```sh
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/mylang --parser-type LR
+scripts/generate-parser --language languages/mylang --parser-type LR
 ```
 
 ### Build and Run

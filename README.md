@@ -41,7 +41,7 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 
 ```sh
 # 1. Generate the Zig parse table for JSON
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL
+scripts/generate-parser --language languages/json --parser-type LL
 
 # 2. Build and run the parser in ReleaseFast mode
 zig build -Doptimize=ReleaseFast ll-flat_json -- languages/json/samples/code-01.json

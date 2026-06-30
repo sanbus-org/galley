@@ -8,7 +8,7 @@ import sys
 # Global environment generator command
 GENERATOR_COMMAND = os.environ.get(
     "GENERATOR_COMMAND",
-    "uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/",
+    "scripts/generate-parser --language languages/",
 )
 
 
