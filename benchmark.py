@@ -924,6 +924,14 @@ def lisp_benchmark(gen_opts, args):
     run_benchmark_suite("lisp", parser_types, inputs, gen_opts, args)
 
 
+def lua_benchmark(gen_opts, args):
+    inputs = [
+        "languages/lua/sample-code.lua",
+    ]
+    parser_types = get_parser_types_for_language("lua", args)
+    run_benchmark_suite("lua", parser_types, inputs, gen_opts, args)
+
+
 def run_all_modes(benchmark_fn, args):
     """
     Iterates through all feature modes, input sizes, and optimize modes.
@@ -958,6 +966,7 @@ BENCHMARKS = {
     "json": json_benchmark,
     "flat-json": flat_json_benchmark,
     "lisp": lisp_benchmark,
+    "lua": lua_benchmark,
     "test-ll": test_ll_benchmark,
     "test-ll1": test_ll1_benchmark,
 }

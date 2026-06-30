@@ -7,6 +7,7 @@
   - [Augmented JSON (`languages/augmented-json`)](#augmented-json-languagesaugmented-json)
   - [Flat JSON (`languages/flat_json`)](#flat-json-languagesflat_json)
   - [Lisp (`languages/lisp`)](#lisp-languageslisp)
+  - [Lua (`languages/lua`)](#lua-languageslua)
   - [Grammar Parser (`languages/grammar`)](#grammar-parser-languagesgrammar)
 - [Choosing Between LL and LR](#choosing-between-ll-and-lr)
 - [Building and Running Included Languages](#building-and-running-included-languages)
@@ -40,6 +41,11 @@ A variant of the standard JSON grammar designed to parse full, recursive JSON bu
 A compact S-expression grammar that demonstrates a small programming-language surface with nested lists, symbols, integer literals, strings, and multiple top-level forms.
 - **Parser Engines:** `ll.grm` is provided.
 - **Test Inputs:** Contains `sample-code.lisp`.
+
+### Lua (`languages/lua`)
+A compact Lua subset grammar that demonstrates keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, and keyed table constructors.
+- **Parser Engines:** `ll.grm` is provided.
+- **Test Inputs:** Contains `sample-code.lua`.
 
 ### Grammar Parser (`languages/grammar`)
 The self-hosting definition of Galley's own `.grm` syntax! This language defines the exact structure of rule definitions, alternatives (`|`), variable symbols, quoted literals, and `@` annotations used across the compiler.

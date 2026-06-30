@@ -1,0 +1,119 @@
+Start
+| OptionalBlank Statements
+
+Statements
+| Statement StatementsTail
+
+StatementsTail
+| RequiredBlank StatementsAfterBlank
+|
+
+StatementsAfterBlank
+| Statement StatementsTail
+|
+
+Statement
+| LocalStatement
+| FunctionStatement
+| ReturnStatement
+
+LocalStatement
+| "local" RequiredBlank Identifier OptionalBlank "=" OptionalBlank Expression
+
+FunctionStatement
+| "function" RequiredBlank Identifier OptionalBlank "(" Parameters ")" Block "end"
+
+ReturnStatement
+| "return" RequiredBlank Expression
+
+Block
+| RequiredBlank Statements
+
+Parameters
+| Identifier ParametersTail
+|
+
+ParametersTail
+| OptionalBlank "," OptionalBlank Identifier ParametersTail
+|
+
+Expression
+| Identifier IdentifierExpressionTail
+| Table
+| Number
+| String
+
+IdentifierExpressionTail
+| "(" Arguments ")"
+|
+
+Arguments
+| Expression ArgumentsTail
+|
+
+ArgumentsTail
+| "," OptionalBlank ArgumentsAfterComma
+|
+
+ArgumentsAfterComma
+| Expression ArgumentsTail
+|
+
+Table
+| "{" OptionalBlank Fields "}"
+
+Fields
+| Field FieldsTail
+|
+
+FieldsTail
+| "," OptionalBlank FieldsAfterComma
+|
+
+FieldsAfterComma
+| Field FieldsTail
+|
+
+Field
+| Identifier OptionalBlank "=" OptionalBlank Expression OptionalBlank
+
+Identifier
+| letter _IdentifierTail
+
+_IdentifierTail
+| letter _IdentifierTail
+| digit _IdentifierTail
+| "_" _IdentifierTail
+|
+
+Number
+| "-" PositiveNumber
+| PositiveNumber
+
+PositiveNumber
+| digit _DigitTail
+
+_DigitTail
+| digit _DigitTail
+|
+
+String
+| '" _StringContent '"
+
+_StringContent
+| character^'" _StringContent
+|
+
+OptionalBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+|
+
+RequiredBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+
+_OptionalBlankTail
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+|

@@ -434,6 +434,11 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "symbols, integer literals, strings, and multiple top-level forms while remaining "
         "small enough to serve as a readable programming-language example."
     ),
+    "lua": (
+        "A compact Lua subset grammar. It exercises keyword-led statements, function "
+        "declarations, returns, function-call expressions, integer literals, strings, "
+        "and keyed table constructors."
+    ),
     "test-ll": (
         "A structured data/schema language with `Name: { fields }` declarations and "
         "embedded logic blocks. Uses the `@back` backtracking annotation, making it an "
