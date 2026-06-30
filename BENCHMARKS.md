@@ -5,6 +5,8 @@
 This document compares **Galley** (the generated LL/LR parser in this repository) against
 widely-used third-party parsers and parser-generators on identical inputs.
 
+Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
+
 ---
 
 ## JSON Parsing — Throughput Comparison
@@ -214,6 +216,38 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 ---
 
+## Galley — Lisp Grammar
+
+_A compact S-expression grammar for Lisp-like programs. It exercises nested lists, symbols, integer literals, strings, and multiple top-level forms while remaining small enough to serve as a readable programming-language example._
+
+_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+
+| AST | Term. | Limit | LL         | LR | LL/LR |
+| --- | ----- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 16    | 300.8 MB/s | —  | —     |
+| ✗   | ✗     | 32    | 289.6 MB/s | —  | —     |
+| ✓   | ✓     | 16    | 160.3 MB/s | —  | —     |
+| ✓   | ✗     | 16    | 188.1 MB/s | —  | —     |
+| ✓   | ✓     | 32    | 159.5 MB/s | —  | —     |
+| ✓   | ✗     | 32    | 185.4 MB/s | —  | —     |
+
+```
+  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     300.8 MB/s
+  LL  ✗ast ✗term lim=32  ██████████████████████████████████████░░     289.6 MB/s
+  LL  ✓ast ✗term lim=16  █████████████████████████░░░░░░░░░░░░░░░     188.1 MB/s
+  LL  ✓ast ✗term lim=32  ████████████████████████░░░░░░░░░░░░░░░░     185.4 MB/s
+  LL  ✓ast ✓term lim=16  █████████████████████░░░░░░░░░░░░░░░░░░░     160.3 MB/s
+  LL  ✓ast ✓term lim=32  █████████████████████░░░░░░░░░░░░░░░░░░░     159.5 MB/s
+  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+```
+
+---
+
 ## Galley — Test Ll Grammar
 
 _A structured data/schema language with `Name: { fields }` declarations and embedded logic blocks. Uses the `@back` backtracking annotation, making it an LL (with limited backtracking) grammar. Included as a regression and capability test for the LL parser._
@@ -286,4 +320,4 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
   RapidJSON (C++/SIMD, DOM & SAX).
 
 ### Environment
-Results will vary by machine. All numbers are from a single run on the developer's machine.
+Results will vary by machine. All numbers are from a single run on an Apple M1 Pro.
