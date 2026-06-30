@@ -10,7 +10,7 @@
 
 ## Overview
 
-Galley's pipeline consists of two distinct stages: generating the Zig parser tables via Python (`initial-parser-generator/main.py`), and running the compiled Zig binary. Both stages expose fine-grained command-line flags to tune AST generation, logging, graphing, and benchmarking behavior.
+Galley's pipeline consists of two distinct stages: generating the Zig parser tables via `scripts/generate-parser`, and running the compiled Zig binary. Both stages expose fine-grained command-line flags to tune AST generation, logging, graphing, and benchmarking behavior.
 
 ---
 
@@ -19,7 +19,7 @@ Galley's pipeline consists of two distinct stages: generating the Zig parser tab
 When running the grammar generator via `uv run`, pass options after the script path:
 
 ```sh
-uv run --project initial-parser-generator initial-parser-generator/main.py [OPTIONS]
+scripts/generate-parser [OPTIONS]
 ```
 
 | Flag | Argument | Description | Default |
@@ -61,7 +61,7 @@ zig build -Doptimize=ReleaseFast ll-json -- [OPTIONS] <FILE>
 
 ### Standard Production Generation & Run
 ```sh
-uv run --project initial-parser-generator initial-parser-generator/main.py --language languages/json --parser-type LL
+scripts/generate-parser --language languages/json --parser-type LL
 zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
 ```
 
