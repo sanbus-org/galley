@@ -4,8 +4,8 @@
 - [Overview](#overview)
 - [Bundled Grammars](#bundled-grammars)
   - [JSON (`languages/json`)](#json-languagesjson)
+  - [JSON Structured AST (`languages/json-structured-ast`)](#json-structured-ast-languagesjson-structured-ast)
   - [Augmented JSON (`languages/augmented-json`)](#augmented-json-languagesaugmented-json)
-  - [Flat JSON (`languages/flat_json`)](#flat-json-languagesflat_json)
   - [Lisp (`languages/lisp`)](#lisp-languageslisp)
   - [Lua (`languages/lua`)](#lua-languageslua)
   - [Grammar Parser (`languages/grammar`)](#grammar-parser-languagesgrammar)
@@ -23,25 +23,25 @@ Galley ships with several ready-to-use grammar definitions located in the `langu
 ## Bundled Grammars
 
 ### JSON (`languages/json`)
-The standard RFC 8259 JSON implementation. It supports full recursive object and array structures, floating-point numbers, unicode escape sequences, and string content literals.
+The standard RFC 8259 JSON implementation used for JSON benchmarking. It supports full recursive object and array structures, floating-point numbers, unicode escape sequences, and string content literals. Its grammar is written with fewer non-terminals so the generated parser has fewer calls and less intermediate AST structure.
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-- **Hooks:** Implements `@drop_children`, `@drop_self`, and `@replace_with_children` in `procedures.zig` to keep memory allocations minimal during AST generation.
+
+### JSON Structured AST (`languages/json-structured-ast`)
+A full RFC 8259 JSON grammar with additional non-terminals for a richer AST shape. It parses the same language as `languages/json`, but preserves more intermediate structure and therefore has lower benchmark throughput.
+- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+- **Hooks:** Implements `@drop_children`, `@drop_self`, and `@replace_with_children` in `procedures.zig` to shape AST generation.
 
 ### Augmented JSON (`languages/augmented-json`)
 An extended JSON variant designed to test extreme recursion depths and stress-test the parser's stack overflow recovery mechanisms. It introduces special grouping syntax (`*(...)` and `(...)`) that allows deeply nested structures without exceeding memory limits.
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
 - **Hooks:** Demonstrates advanced reduction hooking and stack management.
 
-### Flat JSON (`languages/flat_json`)
-A variant of the standard JSON grammar designed to parse full, recursive JSON but optimized for maximum parser execution speed. Its grammar structure is refactored to use the minimum possible number of variables (non-terminals) by inlining patterns directly. Because each grammar variable generates a dedicated parsing function, minimizing variables results in fewer functions and a flatter call stack, enabling LLVM to optimize the compiled binary far more aggressively (yielding throughputs of over ~720 MB/s).
-- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-
 ### Lisp (`languages/lisp`)
 A Lisp grammar covering lists, symbols, numbers, strings, reader macros, comments, vectors, arrays, and multiple top-level forms.
 - **Parser Engines:** `ll.grm` is provided.
 
 ### Lua (`languages/lua`)
-A compact Lua subset grammar that demonstrates keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, and keyed table constructors.
+A Lua grammar that demonstrates keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, comments, and keyed table constructors.
 - **Parser Engines:** `ll.grm` is provided.
 
 ### Grammar Parser (`languages/grammar`)
@@ -77,5 +77,5 @@ zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
 
 # Generate and test the LR parser for the Grammar specification itself
 scripts/generate-parser --language languages/grammar --parser-type LR
-zig build -Doptimize=ReleaseFast lr-grammar -- languages/grammar/sample-code.grm
+zig build -Doptimize=ReleaseFast lr-grammar -- languages/grammar/lr.grm
 ```

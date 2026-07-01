@@ -48,6 +48,20 @@ def parse_zig_output(stdout_str):
     return metrics
 
 
+def metric_mbps(metrics):
+    throughput = metrics.get("Throughput", "0")
+    try:
+        return float(throughput.split()[0].replace(",", ""))
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def best_metrics(results):
+    if not results:
+        return {}
+    return max(results, key=metric_mbps)
+
+
 def format_card(name, metrics, width, no_color=False, error_msg=None):
     """
     Formats a single benchmark result block into a list of strings representing card lines.
@@ -250,9 +264,12 @@ def print_grid(cards, cols=None, spacing=2):
         cols = get_terminal_cols(card_width, spacing)
     for i in range(0, len(cards), cols):
         row_cards = cards[i : i + cols]
-        num_lines = len(row_cards[0])
+        num_lines = max(len(card) for card in row_cards)
         for line_idx in range(num_lines):
-            row_line = (" " * spacing).join(card[line_idx] for card in row_cards)
+            row_line = (" " * spacing).join(
+                card[line_idx] if line_idx < len(card) else " " * len(card[0])
+                for card in row_cards
+            )
             print(row_line)
         print()
 
@@ -729,7 +746,10 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                             placeholder_run, col_idx, width=args.width, spacing=2
                         )
 
-                    # Run second time for 1.0 second
+                    # Run repeated measured processes. The first process after a cold
+                    # period can be slower even after in-process warmup, so discard it
+                    # by default and report the best remaining run. Benchmark noise is
+                    # mostly downward, so best-of-run tracks parser capacity better.
                     run_cmd_2 = [
                         binary_path,
                         input_file,
@@ -738,14 +758,20 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                         "--iterations",
                         str(second_iterations),
                     ]
-                    result_2 = subprocess.run(
-                        run_cmd_2,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        check=True,
-                    )
-                    metrics_2 = parse_zig_output(result_2.stdout)
+                    measured_runs = []
+                    for run_idx in range(args.benchmark_runs):
+                        result_2 = subprocess.run(
+                            run_cmd_2,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            check=True,
+                        )
+                        if args.discard_first_run and run_idx == 0:
+                            continue
+                        measured_runs.append(parse_zig_output(result_2.stdout))
+
+                    metrics_2 = best_metrics(measured_runs)
                     metrics_2["File size"] = format_file_size(file_size)
                     if (
                         "Parsed bytes" not in metrics_2
@@ -894,6 +920,11 @@ def json_benchmark(gen_opts, args):
     run_benchmark_suite("json", gen_opts, args)
 
 
+def json_structured_ast_benchmark(gen_opts, args):
+    inputs = sample_inputs("json")
+    run_benchmark_suite("json-structured-ast", gen_opts, args, inputs)
+
+
 def augmented_json_benchmark(gen_opts, args):
     inputs = sample_inputs("json") + sample_inputs("augmented-json")
     run_benchmark_suite("augmented-json", gen_opts, args, inputs)
@@ -905,11 +936,6 @@ def test_ll_benchmark(gen_opts, args):
 
 def test_ll1_benchmark(gen_opts, args):
     run_benchmark_suite("test-ll1", gen_opts, args)
-
-
-def flat_json_benchmark(gen_opts, args):
-    inputs = sample_inputs("json")
-    run_benchmark_suite("flat_json", gen_opts, args, inputs)
 
 
 def lisp_benchmark(gen_opts, args):
@@ -952,7 +978,7 @@ BENCHMARKS = {
     "grammar": grammar_benchmark,
     "augmented-json": augmented_json_benchmark,
     "json": json_benchmark,
-    "flat-json": flat_json_benchmark,
+    "json-structured-ast": json_structured_ast_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
     "test-ll": test_ll_benchmark,
@@ -1027,8 +1053,24 @@ def main():
         action="store_true",
         help="Only run validation checks (iterations=1) instead of benchmarking.",
     )
+    parser.add_argument(
+        "--benchmark-runs",
+        type=int,
+        default=6,
+        help="Measured process runs per benchmark after calibration (default: 6).",
+    )
+    parser.add_argument(
+        "--keep-first-run",
+        action="store_false",
+        dest="discard_first_run",
+        help="Include the first measured process run instead of discarding it.",
+    )
 
     args = parser.parse_args()
+    if args.benchmark_runs < 1:
+        parser.error("--benchmark-runs must be at least 1.")
+    if args.discard_first_run and args.benchmark_runs < 2:
+        parser.error("--benchmark-runs must be at least 2 when discarding the first run.")
 
     if args.language is None:
         if args.inputs:

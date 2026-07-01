@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const optimized_c_flags = &.{ "-O3", "-DNDEBUG", "-std=c99" };
 
     const root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -22,24 +23,24 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addIncludePath(b.path("tree-sitter/lib/src"));
     exe.root_module.addCSourceFile(.{
         .file = b.path("tree-sitter/lib/src/lib.c"),
-        .flags = &.{ "-std=c99", "-D_GNU_SOURCE" },
+        .flags = &.{ "-O3", "-DNDEBUG", "-std=c99", "-D_GNU_SOURCE" },
     });
 
     // Tree-sitter JSON Parser
     exe.root_module.addIncludePath(b.path("tree-sitter-json/src"));
     exe.root_module.addCSourceFile(.{
         .file = b.path("tree-sitter-json/src/parser.c"),
-        .flags = &.{"-std=c99"},
+        .flags = optimized_c_flags,
     });
 
     // Bison/Flex generated C Parser files
     exe.root_module.addCSourceFile(.{
         .file = b.path("src/parser.c"),
-        .flags = &.{"-std=c99"},
+        .flags = optimized_c_flags,
     });
     exe.root_module.addCSourceFile(.{
         .file = b.path("src/lexer.c"),
-        .flags = &.{"-std=c99"},
+        .flags = optimized_c_flags,
     });
 
     // LALRPOP (Rust) static library
@@ -80,5 +81,4 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the benchmark");
     run_step.dependOn(&run_cmd.step);
 }
-
 

@@ -1,34 +1,22 @@
-Start
-| Value
-
 Value
-| Object OptionalBlank@drop_children
-| Array OptionalBlank
-| Number@drop_children OptionalBlank
-| String OptionalBlank
+| "{" OptionalBlank ObjectMembers OptionalBlank
+| "[" OptionalBlank ArrayMembers OptionalBlank
+| IntegerNumber FloatTail OptionalBlank
+| '" _StringContent '" OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
 | "false" OptionalBlank
 
-Object
-| "{" OptionalBlank ObjectMembers
-
 ObjectMembers
-| ObjectMember ObjectMembersTail "}"
+| '" _StringContent '" OptionalBlank ":" OptionalBlank Value ObjectMembersTail "}"
 | "}"
 
 ObjectMembersTail
-| ObjectMembersTail "," OptionalBlank ObjectMember
+| ObjectMembersTail "," OptionalBlank '" _StringContent '" OptionalBlank ":" OptionalBlank Value
 |
 
-ObjectMember
-| String OptionalBlank ":" OptionalBlank Value
-
-Array
-| "[" OptionalBlank ArrayMembers@replace_with_children
-
 ArrayMembers
-| Value ArrayMembersTail@replace_with_children "]"
+| Value ArrayMembersTail "]"
 | "]"
 
 ArrayMembersTail
@@ -36,36 +24,31 @@ ArrayMembersTail
 |
 
 OptionalBlank
-| OptionalBlank space
-| OptionalBlank new_line
-| OptionalBlank block_start
-| OptionalBlank block_end
+| _OptionalBlank space
+| _OptionalBlank new_line
+| _OptionalBlank block_start
+| _OptionalBlank block_end
 |
 
-String
-| '" _StringContent@drop_children '"
+_OptionalBlank
+| _OptionalBlank space
+| _OptionalBlank new_line
+| _OptionalBlank block_start
+| _OptionalBlank block_end
+|
 
 _StringContent
 | _StringContent character^'"
 |
 
-Number
-| IntegerNumber@drop_children FloatTail@drop_children
-
 IntegerNumber
-| PositiveIntegerNumber@drop_children
-| NegativeIntegerNumber@drop_children
-
-PositiveIntegerNumber
 | digit _PositiveIntegerNumberTail
+| "-" digit _PositiveIntegerNumberTail
 
 _PositiveIntegerNumberTail
 | _PositiveIntegerNumberTail digit
 |
 
-NegativeIntegerNumber
-| "-" PositiveIntegerNumber
-
-FloatTail@drop_self
-| "." PositiveIntegerNumber
+FloatTail
+| "." digit _PositiveIntegerNumberTail
 |

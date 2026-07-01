@@ -44,21 +44,12 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 scripts/generate-parser --language languages/json --parser-type LL
 
 # 2. Build and run the parser in ReleaseFast mode
-zig build -Doptimize=ReleaseFast ll-flat_json -- languages/json/samples/code-01.json
+zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
 ```
 
 ---
 
 ## Benchmarked Grammar Coverage
-
-Galley benchmarks are meant to show both throughput and grammar breadth.
-
-| Grammar | What it exercises | Parsers |
-| :--- | :--- | :--- |
-| **JSON** | Recursive data, strings, numbers, arrays, objects, third-party comparison baseline | LL + LR |
-| **Lisp** | Nested S-expressions, symbols, strings, integers, multiple top-level forms | LL |
-| **Lua** | Keyword-led statements, functions, calls, returns, keyed table constructors | LL |
-| **Galley Grammar** | The `.grm` language used to define Galley grammars | LL + LR |
 
 For current Apple M1 Pro throughput numbers across all bundled grammars and the JSON
 third-party comparison, see [BENCHMARKS.md](BENCHMARKS.md).
