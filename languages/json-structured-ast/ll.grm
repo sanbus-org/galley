@@ -1,0 +1,78 @@
+Start
+| Value
+
+Value
+| Object OptionalBlank@drop_children
+| Array OptionalBlank
+| Number@drop_children OptionalBlank
+| String OptionalBlank
+| "null" OptionalBlank
+| "true" OptionalBlank
+| "false" OptionalBlank
+
+Object
+| "{" OptionalBlank ObjectMembers
+
+ObjectMembers
+| ObjectMember ObjectMembersTail "}"
+| "}"
+
+ObjectMembersTail
+| "," OptionalBlank ObjectMember ObjectMembersTail
+|
+
+ObjectMember
+| String OptionalBlank ":" OptionalBlank Value
+
+Array
+| "[" OptionalBlank ArrayMembers@replace_with_children
+
+ArrayMembers
+| Value ArrayMembersTail@replace_with_children "]"
+| "]"
+
+ArrayMembersTail
+| "," OptionalBlank Value ArrayMembersTail
+|
+
+OptionalBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+| block_start _OptionalBlankTail
+| block_end _OptionalBlankTail
+|
+
+_OptionalBlankTail
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+| block_start _OptionalBlankTail
+| block_end _OptionalBlankTail
+|
+
+String
+| '" _StringContent@drop_children '"
+
+_StringContent
+| character^'" _StringContent
+|
+
+Number
+| IntegerNumber@drop_children FloatTail@drop_children
+
+IntegerNumber
+| PositiveIntegerNumber@drop_children
+| NegativeIntegerNumber@drop_children
+
+PositiveIntegerNumber
+| digit _PositiveIntegerNumberTail
+
+_PositiveIntegerNumberTail
+| digit _PositiveIntegerNumberTail
+|
+
+NegativeIntegerNumber
+| "-" PositiveIntegerNumber
+
+FloatTail@drop_self
+| "." PositiveIntegerNumber
+|

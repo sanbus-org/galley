@@ -235,20 +235,24 @@ def best_galley_result(
     language: str,
     parser: str,
     ast_mode_pref: Optional[str] = None,
+    size_limit_pref: Optional[str] = None,
 ) -> Optional[ParserResult]:
-    """Return the best (highest throughput) result for a given galley parser."""
-    candidates: List[ParserResult] = []
+    """Return the result for the largest measured input for a given galley parser."""
+    candidates: List[Tuple[int, ParserResult]] = []
     for bf in files:
         if bf.source != "galley" or bf.language != language:
             continue
         if ast_mode_pref and bf.ast_mode != ast_mode_pref:
             continue
+        if size_limit_pref and bf.size_limit != size_limit_pref:
+            continue
+        input_size = os.path.getsize(bf.input_file) if os.path.exists(bf.input_file) else 0
         for r in bf.results:
             if r.name == parser and not r.skipped and r.throughput > 0:
-                candidates.append(r)
+                candidates.append((input_size, r))
     if not candidates:
         return None
-    return max(candidates, key=lambda r: r.throughput)
+    return max(candidates, key=lambda item: (item[0], item[1].throughput))[1]
 
 
 def galley_results_for_input(
@@ -298,7 +302,7 @@ def section_bundled_grammar_coverage() -> str:
     headers = ["Grammar", "What it exercises", "Parsers"]
     rows = [
         [
-            "JSON / Flat JSON",
+            "JSON",
             "Recursive data, strings, numbers, arrays, objects, third-party comparison baseline",
             "LL + LR",
         ],
@@ -336,11 +340,11 @@ def section_json_comparison(files: List[BenchmarkFile]) -> str:
 
     tp = third_party_results(files)
 
-    # Galley flat_json — three meaningful modes
-    g_ll_noast  = best_galley_result(files, "flat_json", "LL", ast_mode_pref="no-ast")
-    g_lr_noast  = best_galley_result(files, "flat_json", "LR", ast_mode_pref="no-ast")
-    g_ll_ast    = best_galley_result(files, "flat_json", "LL", ast_mode_pref="no-procedures")
-    g_lr_ast    = best_galley_result(files, "flat_json", "LR", ast_mode_pref="no-procedures")
+    # Galley JSON — three meaningful modes
+    g_ll_noast  = best_galley_result(files, "json", "LL", ast_mode_pref="no-ast", size_limit_pref="size_16")
+    g_lr_noast  = best_galley_result(files, "json", "LR", ast_mode_pref="no-ast", size_limit_pref="size_16")
+    g_ll_ast    = best_galley_result(files, "json", "LL", ast_mode_pref="no-procedures", size_limit_pref="size_16")
+    g_lr_ast    = best_galley_result(files, "json", "LR", ast_mode_pref="no-procedures", size_limit_pref="size_16")
 
     # Classify third-party entries
     SIMD_LIBS = {"simdjson (C++)", "RapidJSON (C++ / SIMD)"}
@@ -402,8 +406,8 @@ specification with no JSON-specific optimisations.
     # ── Parser generators comparison (main table) ──────────────────────────
     lines.append("### Parser Generators & Tools — Head-to-Head\n")
     lines.append(
-        "Galley is measured on `languages/json/samples/code-02.json` (flat_json grammar, "
-        "best configuration per mode). Third-party tools on "
+        "Galley is measured with the fastest `2^16` input-size configuration. "
+        "Third-party tools run on "
         "`third_party/parser-benchmark/large_dataset.json` (~50 MB). "
         "Inputs differ; this is a directional comparison.\n"
     )
@@ -445,15 +449,13 @@ specification with no JSON-specific optimisations.
 
 GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
     "json": (
-        "Standard JSON (RFC 8259). A faithful, idiomatic grammar with separate non-terminals "
-        "for objects, arrays, members, strings, and numbers. Serves as the reference "
-        "implementation and the input grammar for the third-party comparison."
+        "Standard JSON (RFC 8259). This is the benchmark JSON grammar: it parses full "
+        "recursive JSON while keeping the grammar factored with few non-terminals for "
+        "maximum generated parser throughput."
     ),
-    "flat_json": (
-        "Performance-optimised JSON grammar. Key–value pairs and array elements are inlined "
-        "directly into their parent rules, eliminating intermediate non-terminals and reducing "
-        "AST node allocations. This is Galley's fastest JSON grammar and the one used in the "
-        "head-to-head comparison above."
+    "json-structured-ast": (
+        "A full JSON grammar with extra intermediate non-terminals for a more structured "
+        "AST shape. It is useful when tree shape matters more than headline throughput."
     ),
     "augmented-json": (
         "JSON extended with a custom prefix notation: `*value` and `(expr)` wrappers. "
@@ -471,8 +473,8 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "comments, vectors, arrays, and multiple top-level forms."
     ),
     "lua": (
-        "A compact Lua subset grammar. It exercises keyword-led statements, function "
-        "declarations, returns, function-call expressions, integer literals, strings, "
+        "A Lua grammar that exercises keyword-led statements, function declarations, "
+        "returns, function-call expressions, integer literals, strings, comments, "
         "and keyed table constructors."
     ),
     "test-ll": (
@@ -494,7 +496,7 @@ GRAMMAR_SECTION_ORDER = [
     "lua",
     "lisp",
     "json",
-    "flat_json",
+    "json-structured-ast",
     "grammar",
     "augmented-json",
     "test-ll",
@@ -506,7 +508,7 @@ GRAMMAR_SECTION_LABELS = {
     "lua": "Lua",
     "lisp": "Lisp",
     "json": "JSON",
-    "flat_json": "Flat JSON",
+    "json-structured-ast": "JSON Structured AST",
     "grammar": "Galley",
     "augmented-json": "Augmented JSON",
     "test-ll": "Test LL",
@@ -528,13 +530,13 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     if desc:
         lines.append(f"_{desc}_\n")
 
-    # Group by (ast_mode, size_limit, terminal_ast, input_basename)
+    # Group by (ast_mode, size_limit, terminal_ast, input_file)
     configs: Dict[Tuple, Dict[str, List[ParserResult]]] = defaultdict(lambda: defaultdict(list))
 
     for bf in files:
         if bf.source != "galley" or bf.language != grammar:
             continue
-        key = (bf.ast_mode, bf.size_limit, bf.terminal_ast, os.path.basename(bf.input_file))
+        key = (bf.ast_mode, bf.size_limit, bf.terminal_ast, bf.input_file)
         for r in bf.results:
             if not r.skipped and r.throughput > 0:
                 configs[key][r.name].append(r)
@@ -544,15 +546,10 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         return "\n".join(lines)
 
     seen_configs: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
-    for (ast_mode, size_limit, terminal_ast, input_basename), parsers in sorted(configs.items()):
+    for (ast_mode, size_limit, terminal_ast, input_file), parsers in sorted(configs.items()):
         ll_best = max((r.throughput for r in parsers.get("LL", [])), default=0)
         lr_best = max((r.throughput for r in parsers.get("LR", [])), default=0)
-        seen_configs[(ast_mode, size_limit, terminal_ast, input_basename)] = (ll_best, lr_best)
-
-    # Average across inputs, group by (ast_mode, size_limit, terminal_ast)
-    config_groups: Dict[Tuple[str, str, str], List[Tuple[float, float]]] = defaultdict(list)
-    for (ast_mode, size_limit, terminal_ast, _), (ll, lr) in seen_configs.items():
-        config_groups[(ast_mode, size_limit, terminal_ast)].append((ll, lr))
+        seen_configs[(ast_mode, size_limit, terminal_ast, input_file)] = (ll_best, lr_best)
 
     def ast_sym(mode: str) -> str:
         return "✓" if mode == "no-procedures" else "✗"
@@ -566,33 +563,42 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
 
     lines.append("_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_\n")
 
+    inputs = sorted({input_file for (_, _, _, input_file) in seen_configs})
     headers = ["AST", "Term.", "Limit", "LL", "LR", "LL/LR"]
-    rows = []
-    bar_entries: List[Tuple[str, float]] = []
 
-    for (ast_mode, size_limit, terminal_ast), vals in sorted(config_groups.items()):
-        avg_ll = sum(v[0] for v in vals) / len(vals)
-        avg_lr = sum(v[1] for v in vals) / len(vals)
-        ratio = f"{avg_ll / avg_lr:.2f}×" if avg_lr > 0 else "—"
-        rows.append([
-            ast_sym(ast_mode),
-            term_sym(terminal_ast),
-            size_short(size_limit),
-            fmt_throughput(avg_ll),
-            fmt_throughput(avg_lr),
-            ratio,
-        ])
-        lim = size_short(size_limit)
-        label = f"{ast_sym(ast_mode)}ast {term_sym(terminal_ast)}term lim={lim}"
-        bar_entries.append((f"LL  {label}", avg_ll))
-        bar_entries.append((f"LR  {label}", avg_lr))
+    for input_file in inputs:
+        rel_input = input_file
+        lines.append(f"### `{rel_input}`\n")
 
-    lines.append(md_table(headers, rows))
-    lines.append("")
+        rows = []
+        bar_entries: List[Tuple[str, float]] = []
+        input_configs = [
+            (ast_mode, size_limit, terminal_ast, ll, lr)
+            for (ast_mode, size_limit, terminal_ast, cfg_input), (ll, lr) in seen_configs.items()
+            if cfg_input == input_file
+        ]
 
-    lines.append("```")
-    lines.append(bar_chart(bar_entries))
-    lines.append("```\n")
+        for ast_mode, size_limit, terminal_ast, ll, lr in sorted(input_configs):
+            ratio = f"{ll / lr:.2f}×" if lr > 0 else "—"
+            rows.append([
+                ast_sym(ast_mode),
+                term_sym(terminal_ast),
+                size_short(size_limit),
+                fmt_throughput(ll),
+                fmt_throughput(lr),
+                ratio,
+            ])
+            lim = size_short(size_limit)
+            label = f"{ast_sym(ast_mode)}ast {term_sym(terminal_ast)}term lim={lim}"
+            bar_entries.append((f"LL  {label}", ll))
+            bar_entries.append((f"LR  {label}", lr))
+
+        lines.append(md_table(headers, rows))
+        lines.append("")
+
+        lines.append("```")
+        lines.append(bar_chart(bar_entries))
+        lines.append("```\n")
 
     return "\n".join(lines)
 
@@ -657,7 +663,7 @@ def main() -> None:
 > Generated by `scripts/generate_benchmarks_doc.py`. Re-run to refresh after new benchmark runs.
 
 This document compares **Galley** (the generated LL/LR parser in this repository) against
-widely-used third-party parsers and parser-generators on identical inputs.
+widely-used third-party parsers and parser-generators on the current benchmark inputs.
 
 Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
@@ -686,7 +692,7 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
     # Summary stats
     tp = third_party_results(files)
-    galley_ll = best_galley_result(files, "flat_json", "LL", ast_mode_pref="no-ast")
+    galley_ll = best_galley_result(files, "json", "LL", ast_mode_pref="no-ast", size_limit_pref="size_16")
     if galley_ll:
         best_tp = max(tp.values(), key=lambda r: r.throughput) if tp else None
         print(f"\nGalley LL best JSON:  {galley_ll.throughput:,.1f} MB/s")
