@@ -298,7 +298,7 @@ const Generator = struct {
             \\        return error.ParseError;
             \\    };
             \\
-            \\    if (context.verbosity > 0) {
+            \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
             \\}
@@ -872,7 +872,7 @@ const Generator = struct {
                 try writer.writeByte('\n');
                 try writer.print(
                     \\{s}if (comptime builtin.mode == .Debug) {{
-                    \\{s}    if (context.verbosity > 2) {{
+                    \\{s}    if (context.verbosityLevel() > 2) {{
                     \\{s}        std.debug.print("Procedure outcome for 
                 , .{ indent, indent, indent });
                 try emitFormatToken(writer, self.symbols.items[parent_variable].id);
@@ -956,7 +956,7 @@ const Generator = struct {
             try writer.print(
                 \\
                 \\{s}if (comptime builtin.mode == .Debug) {{
-                \\{s}    if (context.verbosity > 2) {{
+                \\{s}    if (context.verbosityLevel() > 2) {{
                 \\{s}        std.debug.print("Procedure outcome for 
             , .{ indent, indent, indent });
             try emitFormatToken(writer, self.symbols.items[parent_variable].id);
@@ -974,7 +974,7 @@ const Generator = struct {
     fn emitDebugRuleExpansion(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, indent: []const u8) !void {
         try writer.print(
             \\{s}if (comptime builtin.mode == .Debug) {{
-            \\{s}    if (context.verbosity > 1) {{
+            \\{s}    if (context.verbosityLevel() > 1) {{
             \\{s}        std.debug.print("Rule expansion: 
         , .{ indent, indent, indent });
         try emitFormatToken(writer, self.symbols.items[parent_variable].id);
@@ -991,7 +991,7 @@ const Generator = struct {
     fn emitDebugReduction(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, indent: []const u8) !void {
         try writer.print(
             \\{s}if (comptime builtin.mode == .Debug) {{
-            \\{s}    if (context.verbosity > 1) {{
+            \\{s}    if (context.verbosityLevel() > 1) {{
             \\{s}        std.debug.print("Reduction: 
         , .{ indent, indent, indent });
         try emitFormatToken(writer, self.symbols.items[parent_variable].id);

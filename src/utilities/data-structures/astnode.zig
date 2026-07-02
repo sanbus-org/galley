@@ -354,7 +354,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
             self.prior = invalid_pointer;
             context.node_allocator.at(last_removed_address).next = invalid_pointer;
 
-            const removed_items = try context.arena_allocator.alloc(Pointer, count);
+            const removed_items = try context.runtime().arena_allocator.alloc(Pointer, count);
 
             if (self.parent != invalid_pointer) {
                 const parent_node = context.node_allocator.at(self.parent);
@@ -467,10 +467,10 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 return context.get_text_slice(self.text_start, self.text_length);
             }
 
-            var combined_text = try std.ArrayList(u8).initCapacity(context.arena_allocator, 256 * 256);
+            var combined_text = try std.ArrayList(u8).initCapacity(context.runtime().arena_allocator, 256 * 256);
             var current_child = self.first_child;
             while (current_child != invalid_pointer) {
-                try combined_text.appendSlice(context.arena_allocator, try Self.augmented_text(current_child, context));
+                try combined_text.appendSlice(context.runtime().arena_allocator, try Self.augmented_text(current_child, context));
                 current_child = context.node_allocator.at(current_child).next;
             }
             return combined_text.items;
@@ -527,11 +527,7 @@ test "zero length augmented node" {
             .payload = {},
         },
     };
-    const mock_context = MockContext{
-        .arena_allocator = std.testing.allocator,
-        .node_allocator = .{ .nodes = &nodes },
-        .text = "-"
-    };
+    const mock_context = MockContext{ .arena_allocator = std.testing.allocator, .node_allocator = .{ .nodes = &nodes }, .text = "-" };
 
     try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_back_length(0, mock_context.node_allocator));
     try std.testing.expectEqual(@as(usize, 1), TestASTNode.augmented_length(0, mock_context.node_allocator));
@@ -543,11 +539,7 @@ test "augmented length" {
     var nodes: [20]TestASTNode = undefined;
     @memset(&nodes, std.mem.zeroes(TestASTNode));
 
-    const mock_context = MockContext{
-        .arena_allocator = std.testing.allocator,
-        .node_allocator = .{ .nodes = &nodes },
-        .text = "-"
-    };
+    const mock_context = MockContext{ .arena_allocator = std.testing.allocator, .node_allocator = .{ .nodes = &nodes }, .text = "-" };
 
     for (&nodes, 0..) |*node, index| {
         if (index > 0) {

@@ -118,14 +118,14 @@ const SemanticStack = std.ArrayList(data_structures.ASTNode.Pointer);
 
 pub fn parse(context: *data_structures.Context) !void {{
     var stack: SemanticStack = .empty;
-    defer stack.deinit(context.arena_allocator);
+    defer stack.deinit(context.runtime().arena_allocator);
 
     const result = try state_0(context, &stack);
     if (!result.is_accept) {{
         return error.ParseError;
     }}
 
-    if (context.verbosity > 0) {{
+    if (context.verbosityLevel() > 0) {{
         std.log.info("The input file was parsed successfully!", .{{}});
     }}
 }}"""
@@ -242,7 +242,7 @@ pub fn parse(context: *data_structures.Context) !void {{
                 if self.ast_for_terminals and (symbol.id in self.linked_terminals):
                     ast_push = f"""const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);
 context.node_allocator.at(node_address).text_length = {length};
-try stack.append(context.arena_allocator, node_address);
+try stack.append(context.runtime().arena_allocator, node_address);
 """
                     if self.with_procedures:
                         if isinstance(symbol, GenerativeTerminalSymbol):
@@ -261,12 +261,12 @@ if (comptime reduction_procedure) |procedure_pointer| {{
 }}
 """
                 else:
-                    ast_push = f"""try stack.append(context.arena_allocator, context.pos());
+                    ast_push = """try stack.append(context.runtime().arena_allocator, context.pos());
 """
             release = f"context.release_token({length});"
             debug_print = f"""
 if (comptime builtin.mode == .Debug) {{
-    if (context.verbosity > 1) {{
+    if (context.verbosityLevel() > 1) {{
         std.debug.print("Shift: matched '{{s}}', transitioning to state_{dest_state_index}\\n", .{{"{self.token_repr(symbol.id)}"}});
     }}
 }}
@@ -281,7 +281,7 @@ if (comptime builtin.mode == .Debug) {{
         elif isinstance(resolution, AcceptResolution):
             debug_print = """
 if (comptime builtin.mode == .Debug) {
-    if (context.verbosity > 1) {
+    if (context.verbosityLevel() > 1) {
         std.debug.print("Accept!\\n", .{});
     }
 }
@@ -362,7 +362,7 @@ if (comptime builtin.mode == .Debug) {
 """
                 debug_code = f"""
         if (comptime builtin.mode == .Debug) {{
-            if (context.verbosity > 1) {{
+            if (context.verbosityLevel() > 1) {{
                 std.debug.print("Reduction: {{s}} <~ ...\\n", .{{"{variable.printable}"}});
             }}
         }}
@@ -379,7 +379,7 @@ if (comptime builtin.mode == .Debug) {
         const parent_address = context.node_allocator.create(start_pos, {variable_index});
         {insert_code}
         {procedure_code}
-        try stack.append(context.arena_allocator, {stack_push_address});
+        try stack.append(context.runtime().arena_allocator, {stack_push_address});
         {debug_code}
         {"return" if rhs_len > 0 else "result ="} ReduceResult{{ .variable = {variable_index}, .pops_remaining = {max(0, rhs_len - 1)}, .is_accept = false }};
     }}"""
@@ -415,7 +415,7 @@ if (comptime builtin.mode == .Debug) {
 """
                 debug_code = f"""
         if (comptime builtin.mode == .Debug) {{
-            if (context.verbosity > 1) {{
+            if (context.verbosityLevel() > 1) {{
                 std.debug.print("Reduction (no AST): {{s}} <~ ...\\n", .{{"{variable.printable}"}});
             }}
         }}
@@ -429,7 +429,7 @@ if (comptime builtin.mode == .Debug) {
         {pop_code}
         {start_pos_code}
         {procedure_code}
-        try stack.append(context.arena_allocator, {stack_push_value});
+        try stack.append(context.runtime().arena_allocator, {stack_push_value});
         {debug_code}
         {"return" if rhs_len > 0 else "result ="} ReduceResult{{ .variable = {variable_index}, .pops_remaining = {max(0, rhs_len - 1)}, .is_accept = false }};
     }}"""
