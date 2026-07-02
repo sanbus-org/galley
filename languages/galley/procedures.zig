@@ -72,7 +72,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         try emitLlParserForInputPath(args.context, grammar);
     }
 
-    if (args.context.verbosity > 0)
+    if (args.context.verbosityLevel() > 0)
         std.debug.print("Parsed Galley grammar successfully.\n", .{});
 }
 
@@ -137,7 +137,7 @@ pub const reduction_RightHandSides = absorbLastChildNamed("RightHandSidesTail").
 pub const reduction_RightHandSide = absorbLastChildNamed("RightHandSideTail").function;
 
 fn grammarFromAst(context: *data_structures.Context, start_address: ASTNode.Pointer) !*Grammar {
-    const allocator = context.arena_allocator;
+    const allocator = context.runtime().arena_allocator;
     const rules_address = firstChildNamed(context, start_address, "Rules") orelse return error.MissingRules;
 
     var mutable_rules = std.ArrayList(MutableRule).empty;
@@ -178,7 +178,7 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
 }
 
 fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.Pointer) !MutableRule {
-    const allocator = context.arena_allocator;
+    const allocator = context.runtime().arena_allocator;
     const header_address = firstChildNamed(context, rule_address, "VariableSymbol") orelse return error.MissingRuleHeader;
     const right_hand_sides_address = firstChildNamed(context, rule_address, "RightHandSides") orelse return error.MissingRightHandSides;
 
@@ -202,7 +202,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.P
 }
 
 fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode.Pointer) !?MutableRightHandSide {
-    const allocator = context.arena_allocator;
+    const allocator = context.runtime().arena_allocator;
     const rhs_address = firstChildNamed(context, line_address, "RightHandSide") orelse return null;
 
     var rhs = MutableRightHandSide{};
@@ -226,7 +226,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode
 }
 
 fn symbolFromAst(context: *data_structures.Context, symbol_address: ASTNode.Pointer, procedure_tail_address: ASTNode.Pointer) !SymbolRef {
-    const allocator = context.arena_allocator;
+    const allocator = context.runtime().arena_allocator;
     const concrete_address = firstChild(context, symbol_address) orelse return error.MissingSymbol;
     const raw_id = nodeText(context, concrete_address);
     const kind: SymbolKind = if (nodeIs(context, concrete_address, "VariableSymbol"))
@@ -247,7 +247,7 @@ fn symbolFromAst(context: *data_structures.Context, symbol_address: ASTNode.Poin
 }
 
 fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList([]const u8), procedure_tail_address: ASTNode.Pointer) !void {
-    const allocator = context.arena_allocator;
+    const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(procedure_tail_address).first_child;
     while (child_address != ASTNode.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
@@ -320,29 +320,29 @@ pub fn emitLlParserFromContext(context: *data_structures.Context, allocator: std
 }
 
 fn emitLlParserForInputPath(context: *data_structures.Context, grammar: *const Grammar) !void {
-    const input_path = context.input_path orelse return;
+    const input_path = context.runtime().input_path orelse return;
     if (!std.mem.endsWith(u8, input_path, "/ll.grm") and !std.mem.eql(u8, input_path, "ll.grm")) {
         return;
     }
 
     const dir_path = std.fs.path.dirname(input_path) orelse ".";
-    const output_path = try std.fs.path.join(context.arena_allocator, &.{ dir_path, "_ll-parser.zig" });
+    const output_path = try std.fs.path.join(context.runtime().arena_allocator, &.{ dir_path, "_ll-parser.zig" });
 
-    var output = try std.Io.Dir.cwd().createFile(context.io, output_path, .{ .truncate = true });
-    defer output.close(context.io);
+    var output = try std.Io.Dir.cwd().createFile(context.runtime().io, output_path, .{ .truncate = true });
+    defer output.close(context.runtime().io);
 
     var buffer: [8192]u8 = undefined;
-    var file_writer = output.writer(context.io, &buffer);
-    try emitLlParserWithOptions(grammar, context.arena_allocator, &file_writer.interface, generatorOptionsFromContext(context));
+    var file_writer = output.writer(context.runtime().io, &buffer);
+    try emitLlParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, generatorOptionsFromContext(context));
     try file_writer.interface.flush();
 }
 
 fn generatorOptionsFromContext(context: *data_structures.Context) ll_generator.Options {
     return .{
-        .with_ast = context.language_options.with_ast,
-        .with_procedures = context.language_options.with_procedures,
-        .ast_for_terminals = context.language_options.ast_for_terminals,
-        .input_size = context.language_options.input_size,
+        .with_ast = context.runtime().language_options.with_ast,
+        .with_procedures = context.runtime().language_options.with_procedures,
+        .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
+        .input_size = context.runtime().language_options.input_size,
     };
 }
 
