@@ -16,6 +16,11 @@ const GenerationResult = struct {
     created_procedures: bool = false,
     created_config: bool = false,
     created_build_zig: bool = false,
+    created_main_zig: bool = false,
+    created_tests_dir: bool = false,
+    created_parser_test: bool = false,
+    created_samples_dir: bool = false,
+    created_sample: bool = false,
     standalone: bool = false,
     in_repo_language_name: ?[]const u8 = null,
 };
@@ -148,6 +153,11 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
     if (result.standalone) {
         const build_source = try standaloneBuildSource(init);
         result.created_build_zig = try createFileIfMissing(init, language_dir, "build.zig", build_source);
+        result.created_main_zig = try createFileIfMissing(init, language_dir, "main.zig", standaloneMainSource);
+        result.created_tests_dir = try createDirectoryIfMissing(init, language_dir, "tests");
+        result.created_parser_test = try createFileIfMissing(init, language_dir, "tests/parser_test.zig", standaloneParserTestSource);
+        result.created_samples_dir = try createDirectoryIfMissing(init, language_dir, "samples");
+        result.created_sample = try createFileIfMissing(init, language_dir, "samples/code-01", defaultSampleSource);
     }
 
     return result;
@@ -193,6 +203,14 @@ fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: [
     return true;
 }
 
+fn createDirectoryIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8) !bool {
+    const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
+    defer init.gpa.free(path);
+
+    const status = try std.Io.Dir.cwd().createDirPathStatus(init.io, path, .default_dir);
+    return status == .created;
+}
+
 fn fileExists(init: std.process.Init, dir_path: []const u8, basename: []const u8) bool {
     const path = std.fs.path.join(init.gpa, &.{ dir_path, basename }) catch return false;
     defer init.gpa.free(path);
@@ -229,7 +247,12 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
     const created_count: usize =
         @as(usize, @intFromBool(result.created_procedures)) +
         @as(usize, @intFromBool(result.created_config)) +
-        @as(usize, @intFromBool(result.created_build_zig));
+        @as(usize, @intFromBool(result.created_build_zig)) +
+        @as(usize, @intFromBool(result.created_main_zig)) +
+        @as(usize, @intFromBool(result.created_tests_dir)) +
+        @as(usize, @intFromBool(result.created_parser_test)) +
+        @as(usize, @intFromBool(result.created_samples_dir)) +
+        @as(usize, @intFromBool(result.created_sample));
 
     try stdout.print("{s}{s}Galley{s} generated {d} parser{s} in {s}{s}{s}\n", .{
         green,
@@ -255,10 +278,11 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
         }
     } else {
         if (result.generated_ll) {
-            try stdout.print("cd {s} && zig build -Doptimize=ReleaseFast ll && ./zig-out/bin/ll-parser <input_path>\n", .{language_dir});
+            try stdout.print("cd {s} && zig build run-ll\n", .{language_dir});
         } else {
-            try stdout.print("cd {s} && zig build -Doptimize=ReleaseFast lr && ./zig-out/bin/lr-parser <input_path>\n", .{language_dir});
+            try stdout.print("cd {s} && zig build run-lr\n", .{language_dir});
         }
+        try stdout.print("Test it with:\n  cd {s} && zig build test\n", .{language_dir});
     }
     try stdout.flush();
 }
@@ -281,22 +305,203 @@ const defaultConfigSource =
     \\
 ;
 
+const defaultSampleSource = "Write a sample code here";
+
+const standaloneMainSource =
+    \\const std = @import("std");
+    \\const parser = @import("generated_parser");
+    \\
+    \\const Options = struct {
+    \\    iterations: u32 = 1,
+    \\    warmup_iterations: ?u32 = null,
+    \\    verbosity: usize = 0,
+    \\};
+    \\
+    \\pub fn main(init: std.process.Init) !void {
+    \\    var stdout_buffer: [1024]u8 = undefined;
+    \\    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    \\    const stdout = &stdout_writer.interface;
+    \\
+    \\    const options = try parseArgs(init);
+    \\    const warmup_iterations = options.warmup_iterations orelse options.iterations / 10;
+    \\
+    \\    var samples_dir = try std.Io.Dir.cwd().openDir(init.io, "samples", .{ .iterate = true });
+    \\    defer samples_dir.close(init.io);
+    \\
+    \\    var walker = try samples_dir.walk(init.gpa);
+    \\    defer walker.deinit();
+    \\
+    \\    var session = try parser.Session.init(init.io, init.gpa, .{ .verbosity = options.verbosity });
+    \\    defer session.deinit();
+    \\
+    \\    var parsed_count: usize = 0;
+    \\    while (try walker.next(init.io)) |entry| {
+    \\        if (entry.kind != .file) continue;
+    \\        if (!std.mem.startsWith(u8, std.fs.path.basename(entry.path), "code-")) continue;
+    \\
+    \\        const sample_path = try std.fs.path.join(init.gpa, &.{ "samples", entry.path });
+    \\        defer init.gpa.free(sample_path);
+    \\
+    \\        const file = try std.Io.Dir.cwd().openFile(init.io, sample_path, .{
+    \\            .mode = .read_only,
+    \\            .lock = .exclusive,
+    \\        });
+    \\        const result = try runSample(&session, file, sample_path, warmup_iterations, options.iterations);
+    \\        parsed_count += 1;
+    \\        try stdout.print("parsed {s} ({d} bytes", .{ sample_path, result.parsed_bytes });
+    \\        if (result.elapsed_ns) |elapsed_ns| {
+    \\            const duration_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
+    \\            const mbps = @as(f64, @floatFromInt(result.parsed_bytes)) / duration_secs;
+    \\            var buffer: [64]u8 = undefined;
+    \\            try stdout.print(", {s} ns, {s}/s", .{
+    \\                try parser.string_utilities.formatWithThousands(elapsed_ns, &buffer),
+    \\                try parser.string_utilities.formatFileSize(mbps, &buffer),
+    \\            });
+    \\        }
+    \\        try stdout.writeAll(")\n");
+    \\        try stdout.flush();
+    \\    }
+    \\
+    \\    if (parsed_count == 0) {
+    \\        try stdout.writeAll("no samples/code-* files found\n");
+    \\    }
+    \\    try stdout.flush();
+    \\}
+    \\
+    \\const RunResult = struct {
+    \\    parsed_bytes: usize,
+    \\    elapsed_ns: ?usize = null,
+    \\};
+    \\
+    \\fn runSample(session: *parser.Session, file: std.Io.File, sample_path: []const u8, warmup_iterations: u32, iterations: u32) !RunResult {
+    \\    for (0..warmup_iterations) |_| {
+    \\        _ = try session.parseFile(file, sample_path);
+    \\    }
+    \\
+    \\    var total_parsed_bytes: usize = 0;
+    \\    const start = std.Io.Clock.awake.now(session.io);
+    \\    for (0..iterations) |_| {
+    \\        const result = try session.parseFile(file, sample_path);
+    \\        total_parsed_bytes += result.parsed_bytes;
+    \\    }
+    \\
+    \\    if (iterations > 1) {
+    \\        const end = std.Io.Clock.awake.now(session.io);
+    \\        return .{
+    \\            .parsed_bytes = total_parsed_bytes,
+    \\            .elapsed_ns = @intCast(start.durationTo(end).toNanoseconds()),
+    \\        };
+    \\    }
+    \\
+    \\    return .{ .parsed_bytes = total_parsed_bytes };
+    \\}
+    \\
+    \\fn parseArgs(init: std.process.Init) !Options {
+    \\    var options = Options{};
+    \\    var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
+    \\    defer args.deinit();
+    \\
+    \\    _ = args.skip();
+    \\    while (args.next()) |arg| {
+    \\        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+    \\            try printUsage(init);
+    \\            std.process.exit(0);
+    \\        } else if (std.mem.eql(u8, arg, "-r") or std.mem.eql(u8, arg, "--iterations")) {
+    \\            const value = args.next() orelse return error.MissingIterations;
+    \\            options.iterations = try std.fmt.parseInt(u32, value, 10);
+    \\        } else if (std.mem.startsWith(u8, arg, "--iterations=")) {
+    \\            options.iterations = try std.fmt.parseInt(u32, arg["--iterations=".len..], 10);
+    \\        } else if (std.mem.eql(u8, arg, "-w") or std.mem.eql(u8, arg, "--warmup-iterations")) {
+    \\            const value = args.next() orelse return error.MissingWarmupIterations;
+    \\            options.warmup_iterations = try std.fmt.parseInt(u32, value, 10);
+    \\        } else if (std.mem.startsWith(u8, arg, "--warmup-iterations=")) {
+    \\            options.warmup_iterations = try std.fmt.parseInt(u32, arg["--warmup-iterations=".len..], 10);
+    \\        } else if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--verbosity")) {
+    \\            const value = args.next() orelse return error.MissingVerbosity;
+    \\            options.verbosity = try std.fmt.parseInt(usize, value, 10);
+    \\        } else if (std.mem.startsWith(u8, arg, "--verbosity=")) {
+    \\            options.verbosity = try std.fmt.parseInt(usize, arg["--verbosity=".len..], 10);
+    \\        } else {
+    \\            return error.UnknownArgument;
+    \\        }
+    \\    }
+    \\
+    \\    if (options.iterations == 0) return error.InvalidIterations;
+    \\    return options;
+    \\}
+    \\
+    \\fn printUsage(init: std.process.Init) !void {
+    \\    var stdout_buffer: [1024]u8 = undefined;
+    \\    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    \\    const stdout = &stdout_writer.interface;
+    \\    try stdout.writeAll(
+    \\        \\usage: zig build run-ll -- [OPTIONS]
+    \\        \\
+    \\        \\Options:
+    \\        \\  -h, --help                         Display this help and exit.
+    \\        \\  -r, --iterations <ITERATIONS>      Repeat each sample parse.
+    \\        \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
+    \\        \\  -v, --verbosity <LEVEL>            Debug verbosity level.
+    \\        \\
+    \\    );
+    \\    try stdout.flush();
+    \\}
+    \\
+;
+
+const standaloneParserTestSource =
+    \\const std = @import("std");
+    \\const parser = @import("generated_parser");
+    \\
+    \\const placeholder = "Write a sample code here";
+    \\
+    \\pub fn main(init: std.process.Init) !void {
+    \\    var stdout_buffer: [1024]u8 = undefined;
+    \\    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    \\    const stdout = &stdout_writer.interface;
+    \\
+    \\    const sample = try std.Io.Dir.cwd().readFileAlloc(init.io, "samples/code-01", init.gpa, .limited(1024 * 1024));
+    \\    defer init.gpa.free(sample);
+    \\
+    \\    if (std.mem.eql(u8, sample, placeholder)) {
+    \\        try stdout.writeAll(
+    \\            "\x1b[33m\x1b[1mGalley test skipped\x1b[0m\n" ++
+    \\                "  \x1b[36msamples/code-01\x1b[0m still contains the generated placeholder.\n" ++
+    \\                "  Replace it with valid source for this language, then run \x1b[1mzig build test\x1b[0m again.\n",
+    \\        );
+    \\        try stdout.flush();
+    \\        return;
+    \\    }
+    \\
+    \\    var parsed = try parser.parseBytes(init.io, init.gpa, sample, .{ .input_path = "samples/code-01" });
+    \\    defer parsed.deinit();
+    \\    if (parsed.result.parsed_bytes != sample.len) return error.ShortParse;
+    \\
+    \\    var session = try parser.Session.init(init.io, init.gpa, .{});
+    \\    defer session.deinit();
+    \\
+    \\    const first = try session.parseBytes(sample, "samples/code-01");
+    \\    if (first.parsed_bytes != sample.len) return error.ShortParse;
+    \\
+    \\    const second = try session.parseBytes(sample, "samples/code-01");
+    \\    if (second.parsed_bytes != sample.len) return error.ShortParse;
+    \\
+    \\    try stdout.writeAll("samples/code-01 parsed\n");
+    \\    try stdout.flush();
+    \\}
+    \\
+;
+
 fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
     return try std.fmt.allocPrint(init.arena.allocator(),
         \\const std = @import("std");
         \\
         \\const galley_root = "{s}";
-        \\const clap_source = "{s}";
         \\
         \\pub fn build(b: *std.Build) !void {{
         \\    const target = b.standardTargetOptions(.{{}});
         \\    const optimize = b.standardOptimizeOption(.{{}});
         \\
-        \\    const clap_mod = b.createModule(.{{
-        \\        .root_source_file = .{{ .cwd_relative = clap_source }},
-        \\        .target = target,
-        \\        .optimize = optimize,
-        \\    }});
         \\    const generator_common_mod = b.createModule(.{{
         \\        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/generator/common.zig" }},
         \\        .target = target,
@@ -324,24 +529,27 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         \\        .target = target,
         \\    }});
         \\
-        \\    try addParser(b, target, optimize, clap_mod, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig");
-        \\    try addParser(b, target, optimize, clap_mod, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig");
+        \\    const ll_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig");
+        \\    const lr_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig");
+        \\    const preferred_mod = ll_mod orelse lr_mod;
+        \\    if (preferred_mod) |parser_mod| {{
+        \\        addTests(b, target, optimize, parser_mod);
+        \\    }}
         \\}}
         \\
         \\fn addParser(
         \\    b: *std.Build,
         \\    target: std.Build.ResolvedTarget,
         \\    optimize: std.builtin.OptimizeMode,
-        \\    clap_mod: *std.Build.Module,
         \\    procedures_mod: *std.Build.Module,
         \\    config_mod: *std.Build.Module,
         \\    ll_generator_mod: *std.Build.Module,
         \\    lr_generator_mod: *std.Build.Module,
         \\    parser_type: []const u8,
         \\    parser_path: []const u8,
-        \\) !void {{
+        \\) !?*std.Build.Module {{
         \\    b.build_root.handle.access(b.graph.io, parser_path, .{{}}) catch |err| switch (err) {{
-        \\        error.FileNotFound => return,
+        \\        error.FileNotFound => return null,
         \\        else => |e| return e,
         \\    }};
         \\
@@ -369,13 +577,12 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         \\    parser_mod.addImport("galley", galley_mod);
         \\
         \\    const exe_mod = b.createModule(.{{
-        \\        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/main.zig" }},
+        \\        .root_source_file = b.path("main.zig"),
         \\        .target = target,
         \\        .optimize = optimize,
         \\        .link_libc = true,
         \\        .imports = &.{{
-        \\            .{{ .name = "clap", .module = clap_mod }},
-        \\            .{{ .name = "galley", .module = galley_mod }},
+        \\            .{{ .name = "generated_parser", .module = galley_mod }},
         \\        }},
         \\    }});
         \\
@@ -395,9 +602,32 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         \\    if (b.args) |args| {{
         \\        run_cmd.addArgs(args);
         \\    }}
+        \\
+        \\    return galley_mod;
         \\}}
         \\
-    , .{ build_options.galley_root, build_options.clap_source });
+        \\fn addTests(
+        \\    b: *std.Build,
+        \\    target: std.Build.ResolvedTarget,
+        \\    optimize: std.builtin.OptimizeMode,
+        \\    parser_mod: *std.Build.Module,
+        \\) void {{
+        \\    const test_mod = b.createModule(.{{
+        \\        .root_source_file = b.path("tests/parser_test.zig"),
+        \\        .target = target,
+        \\        .optimize = optimize,
+        \\        .link_libc = true,
+        \\        .imports = &.{{
+        \\            .{{ .name = "generated_parser", .module = parser_mod }},
+        \\        }},
+        \\    }});
+        \\    const tests = b.addExecutable(.{{ .name = "parser-tests", .root_module = test_mod }});
+        \\    const run_tests = b.addRunArtifact(tests);
+        \\    const test_step = b.step("test", "Run parser tests");
+        \\    test_step.dependOn(&run_tests.step);
+        \\}}
+        \\
+    , .{build_options.galley_root});
 }
 
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
