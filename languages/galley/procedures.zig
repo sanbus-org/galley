@@ -1,6 +1,7 @@
 const std = @import("std");
 const galley = @import("galley");
 const ll_generator = @import("ll_generator");
+const lr_generator = @import("lr_generator");
 const data_structures = galley.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const ASTNode = data_structures.ASTNode;
@@ -69,7 +70,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         const node = args.context.node_allocator.at(node_address);
         node.payload.grammar = grammar;
         last_grammar = grammar;
-        try emitLlParserForInputPath(args.context, grammar);
+        try emitParserForInputPath(args.context, grammar);
     }
 
     if (args.context.verbosityLevel() > 0)
@@ -126,15 +127,48 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
     };
 }
 
+fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
+    if (args.node) |node_address| {
+        updateTextLength(args.context, node_address);
+        const node = args.context.node_allocator.at(node_address);
+        if (node.first_child == ASTNode.invalid_pointer) return;
+
+        const nested_list_address = node.first_child;
+        if (args.context.node_allocator.at(nested_list_address).variable != node.variable) return;
+
+        _ = try ASTNode.remove_self(nested_list_address, args.context);
+        if (args.context.node_allocator.at(nested_list_address).first_child != ASTNode.invalid_pointer) {
+            const nested_children = try ASTNode.clean_children(nested_list_address, args.context);
+            if (nested_children.len > 0) {
+                try ASTNode.insert_children(node_address, args.context, 0, nested_children[0]);
+            }
+        }
+    }
+}
+
+fn normalizeList(comptime tail_name: ?[]const u8) type {
+    return struct {
+        fn function(args: *ProcedureArguments) !void {
+            try flattenLeftRecursiveList(args);
+            if (tail_name) |name| {
+                try absorbLastChildNamed(name).function(args);
+            }
+        }
+    };
+}
+
 pub const reduction_RulesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
 pub const reduction_ProcedureTail_0 = flattenRightRecursiveTail;
 pub const reduction_GenerativeTerminalExceptions_0 = flattenRightRecursiveTail;
 
-pub const reduction_Rules = absorbLastChildNamed("RulesTail").function;
-pub const reduction_RightHandSides = absorbLastChildNamed("RightHandSidesTail").function;
-pub const reduction_RightHandSide = absorbLastChildNamed("RightHandSideTail").function;
+pub const reduction_Rules = normalizeList("RulesTail").function;
+pub const reduction_RightHandSides = normalizeList("RightHandSidesTail").function;
+pub const reduction_RightHandSide = normalizeList("RightHandSideTail").function;
+pub const reduction_NonEmptyRightHandSide = normalizeList(null).function;
+pub const reduction_ProcedureTail = normalizeList(null).function;
+pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
 
 fn grammarFromAst(context: *data_structures.Context, start_address: ASTNode.Pointer) !*Grammar {
     const allocator = context.runtime().arena_allocator;
@@ -203,14 +237,15 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.P
 
 fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode.Pointer) !?MutableRightHandSide {
     const allocator = context.runtime().arena_allocator;
-    const rhs_address = firstChildNamed(context, line_address, "RightHandSide") orelse return null;
+    const line_procedures_address = firstChildNamed(context, line_address, "ProcedureTail") orelse return null;
+    const rhs_address = firstChildNamed(context, line_address, "RightHandSide") orelse
+        firstChildNamed(context, line_address, "NonEmptyRightHandSide");
 
     var rhs = MutableRightHandSide{};
-    if (firstChildNamed(context, line_address, "ProcedureTail")) |procedures_address| {
-        try appendProcedureTail(context, &rhs.procedures, procedures_address);
-    }
+    try appendProcedureTail(context, &rhs.procedures, line_procedures_address);
+    const symbols_parent_address = rhs_address orelse return rhs;
 
-    var child_address = context.node_allocator.at(rhs_address).first_child;
+    var child_address = context.node_allocator.at(symbols_parent_address).first_child;
     while (child_address != ASTNode.invalid_pointer) {
         if (!nodeIs(context, child_address, "Symbol")) {
             child_address = context.node_allocator.at(child_address).next;
@@ -319,25 +354,57 @@ pub fn emitLlParserFromContext(context: *data_structures.Context, allocator: std
     try emitLlParserWithOptions(grammar, allocator, writer, generatorOptionsFromContext(context));
 }
 
-fn emitLlParserForInputPath(context: *data_structures.Context, grammar: *const Grammar) !void {
+pub fn emitLrParser(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
+    try lr_generator.emitParser(allocator, grammar, writer);
+}
+
+pub fn emitLrParserWithOptions(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer, options: lr_generator.Options) !void {
+    try lr_generator.emitParserWithOptions(allocator, grammar, writer, options);
+}
+
+pub fn emitLrParserFromContext(context: *data_structures.Context, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
+    const grammar = grammarFromContext(context) orelse return error.GrammarModelMissing;
+    try emitLrParserWithOptions(grammar, allocator, writer, lrGeneratorOptionsFromContext(context));
+}
+
+fn emitParserForInputPath(context: *data_structures.Context, grammar: *const Grammar) !void {
     const input_path = context.runtime().input_path orelse return;
-    if (!std.mem.endsWith(u8, input_path, "/ll.grm") and !std.mem.eql(u8, input_path, "ll.grm")) {
+    const parser_type: enum { ll, lr } = if (std.mem.endsWith(u8, input_path, "/ll.grm") or std.mem.eql(u8, input_path, "ll.grm"))
+        .ll
+    else if (std.mem.endsWith(u8, input_path, "/lr.grm") or std.mem.eql(u8, input_path, "lr.grm"))
+        .lr
+    else
         return;
-    }
 
     const dir_path = std.fs.path.dirname(input_path) orelse ".";
-    const output_path = try std.fs.path.join(context.runtime().arena_allocator, &.{ dir_path, "_ll-parser.zig" });
+    const output_file = switch (parser_type) {
+        .ll => "_ll-parser.zig",
+        .lr => "_lr-parser.zig",
+    };
+    const output_path = try std.fs.path.join(context.runtime().arena_allocator, &.{ dir_path, output_file });
 
     var output = try std.Io.Dir.cwd().createFile(context.runtime().io, output_path, .{ .truncate = true });
     defer output.close(context.runtime().io);
 
     var buffer: [8192]u8 = undefined;
     var file_writer = output.writer(context.runtime().io, &buffer);
-    try emitLlParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, generatorOptionsFromContext(context));
+    switch (parser_type) {
+        .ll => try emitLlParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, generatorOptionsFromContext(context)),
+        .lr => try emitLrParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, lrGeneratorOptionsFromContext(context)),
+    }
     try file_writer.interface.flush();
 }
 
 fn generatorOptionsFromContext(context: *data_structures.Context) ll_generator.Options {
+    return .{
+        .with_ast = context.runtime().language_options.with_ast,
+        .with_procedures = context.runtime().language_options.with_procedures,
+        .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
+        .input_size = context.runtime().language_options.input_size,
+    };
+}
+
+fn lrGeneratorOptionsFromContext(context: *data_structures.Context) lr_generator.Options {
     return .{
         .with_ast = context.runtime().language_options.with_ast,
         .with_procedures = context.runtime().language_options.with_procedures,
