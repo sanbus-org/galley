@@ -13,7 +13,6 @@
 ## What You Need
 
 - [Zig 0.16+](https://ziglang.org/download/) — this is the only runtime requirement
-- [uv](https://docs.astral.sh/uv/) — to run the grammar generator
 - A terminal or shell
 
 ---
@@ -25,7 +24,7 @@ The fastest path is to start with an example grammar that already ships with the
 ### Parse existing JSON
 
 ```sh
-# 1. Generate the LL parse table
+# 1. Generate the LL parser
 scripts/generate-parser --language languages/json --parser-type LL
 
 # 2. Build and run it with release optimization for maximum throughput
@@ -37,7 +36,7 @@ That's it — `languages/json/samples/code-01.json` parses at hundreds of megaby
 ### Try the LR parser too
 
 ```sh
-# 1. Generate the LR parse table
+# 1. Generate the LR parser
 scripts/generate-parser --language languages/json --parser-type LR
 
 # 2. Build and run it

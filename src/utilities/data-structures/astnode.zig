@@ -513,6 +513,10 @@ const MockContext = struct {
     node_allocator: MockNodeAllocator,
     text: []const u8,
 
+    pub fn runtime(self: *MockContext) *MockContext {
+        return self;
+    }
+
     pub fn get_text_slice(self: *MockContext, start: usize, length: usize) ![]const u8 {
         return self.text[start..][0..length];
     }

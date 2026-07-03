@@ -50,21 +50,19 @@ Furthermore, AST nodes reference their parents, children, and siblings using com
 
 ---
 
-## Role of the Python Generator
+## Role of the Self-Hosted Generator
 
-Currently, the grammar analysis engine resides in Python (`initial-parser-generator/`). The Python generator is responsible for:
+The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parser for its own grammar format in `languages/galley/_ll-parser.zig`; that parser is responsible for:
 
 1. Parsing the `.grm` definition files.
 2. Computing FIRST, FOLLOW, and nullable sets.
 3. Constructing deterministic LL(k) lookup tables or LR/LALR shift-reduce automatas.
 4. Emitting highly optimized, zero-boilerplate Zig code (`_ll-parser.zig` and `_lr-parser.zig`).
 
-Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary carries zero generator overhead or Python dependencies.
+Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary carries zero generator overhead. The original Python bootstrap generator was removed after commit `0190e40`.
 
 ---
 
-## Self-Hosting Roadmap
+## Self-Hosting
 
-Galley already ships with a formal specification of its own grammar syntax (`languages/galley`). The generated parser can successfully parse and validate `.grm` files at hundreds of megabytes per second.
-
-The ultimate roadmap goal is to port the parser table generation algorithms from Python to Zig. Once completed, Galley will become a fully self-hosted, standalone compiler capable of compiling and generating new parsers entirely within a single native binary.
+Galley ships with a formal specification of its own grammar syntax (`languages/galley`). The tracked LL seed parser can parse `.grm` files and generate both LL and LR parsers from them. The Galley LR parser stays generated/ignored and is used as a verification path rather than as a second bootstrap artifact.

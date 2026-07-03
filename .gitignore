@@ -181,6 +181,7 @@ pyrightconfig.json
 
 *-backup
 _*parser.zig
+!languages/galley/_ll-parser.zig
 /graphs
 .aider*
 /benchmark_results/

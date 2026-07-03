@@ -647,6 +647,7 @@ const Generator = struct {
     fn buildSwitchGroups(self: *Generator, entries: []const SwitchEntry, step_length: usize) !std.ArrayList(SwitchGroup) {
         var heads = std.ArrayList([]const u8).empty;
         for (entries) |entry| {
+            if (entry.terminal.len == 0) continue;
             const head = entry.terminal[0..step_length];
             for (heads.items) |existing| {
                 if (std.mem.eql(u8, existing, head)) break;
@@ -660,6 +661,7 @@ const Generator = struct {
         for (heads.items) |head| {
             var payload = std.ArrayList(SwitchEntry).empty;
             for (entries) |entry| {
+                if (entry.terminal.len == 0) continue;
                 if (!std.mem.eql(u8, entry.terminal[0..step_length], head)) continue;
                 try appendSwitchEntry(&payload, self.allocator, entry.terminal[step_length..], entry.rule);
             }
@@ -689,6 +691,22 @@ const Generator = struct {
     }
 
     fn emitRuleSwitch(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, entries: []const SwitchEntry, prefix_length: usize, indent: []const u8, non_ast: bool, is_self_repeating: bool) !void {
+        var empty_rule: ?usize = null;
+        var non_empty_count: usize = 0;
+        for (entries) |entry| {
+            if (entry.terminal.len == 0) {
+                empty_rule = entry.rule;
+            } else {
+                non_empty_count += 1;
+            }
+        }
+        if (non_empty_count == 0) {
+            if (empty_rule) |rule_index| {
+                try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, non_ast);
+                return;
+            }
+        }
+
         const step_length = switchStepLength(entries);
         try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
         const groups = try self.buildSwitchGroups(entries, step_length);
@@ -718,7 +736,7 @@ const Generator = struct {
             }
             try writer.print("{s}    }},\n", .{indent});
         }
-        try self.emitSwitchElse(writer, symbol_index, groups.items, indent, is_self_repeating);
+        try self.emitSwitchElse(writer, symbol_index, groups.items, empty_rule, prefix_length, indent, non_ast, is_self_repeating);
         try writer.print("{s}}}", .{indent});
     }
 
@@ -731,7 +749,13 @@ const Generator = struct {
         }
     }
 
-    fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, groups: []const SwitchGroup, indent: []const u8, is_self_repeating: bool) !void {
+    fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, groups: []const SwitchGroup, empty_rule: ?usize, prefix_length: usize, indent: []const u8, non_ast: bool, is_self_repeating: bool) !void {
+        if (empty_rule) |rule_index| {
+            try writer.print("{s}    else => {{ // ''\n", .{indent});
+            try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, non_ast);
+            try writer.print("{s}    }},\n", .{indent});
+            return;
+        }
         if (is_self_repeating) {
             try writer.print("{s}    else => break,\n", .{indent});
             return;

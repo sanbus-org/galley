@@ -324,7 +324,7 @@ const Generator = struct {
         try writer.writeAll(
             \\pub fn parse(context: *data_structures.Context) !void {
             \\    var stack: SemanticStack = .empty;
-            \\    defer stack.deinit(context.arena_allocator);
+            \\    defer stack.deinit(context.runtime().arena_allocator);
             \\
             \\    const result = try state_0(context, &stack);
             \\    if (!result.is_accept) {
@@ -550,11 +550,11 @@ const Generator = struct {
                         try writer.print(
                             \\{s}const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);
                             \\{s}context.node_allocator.at(node_address).text_length = {d};
-                            \\{s}try stack.append(context.arena_allocator, node_address);
+                            \\{s}try stack.append(context.runtime().arena_allocator, node_address);
                             \\
                         , .{ indent, indent, length, indent });
                     } else {
-                        try writer.print("{s}try stack.append(context.arena_allocator, context.pos());\n", .{indent});
+                        try writer.print("{s}try stack.append(context.runtime().arena_allocator, context.pos());\n", .{indent});
                     }
                     _ = symbol;
                 }
@@ -622,13 +622,13 @@ const Generator = struct {
                     try self.emitProcedureBlock(writer, rule_index, rule.header, "parent_address", indent);
                 }
                 const stack_value = if (self.options.with_procedures) "args.node orelse data_structures.ASTNode.invalid_pointer" else "parent_address";
-                try writer.print("{s}try stack.append(context.arena_allocator, {s});\n", .{ indent, stack_value });
+                try writer.print("{s}try stack.append(context.runtime().arena_allocator, {s});\n", .{ indent, stack_value });
             } else {
                 if (self.options.with_procedures) {
                     try self.emitProcedureBlock(writer, rule_index, rule.header, "data_structures.ASTNode.invalid_pointer", indent);
                 }
                 const stack_value = if (self.options.with_procedures) "args.node orelse start_pos" else "start_pos";
-                try writer.print("{s}try stack.append(context.arena_allocator, {s});\n", .{ indent, stack_value });
+                try writer.print("{s}try stack.append(context.runtime().arena_allocator, {s});\n", .{ indent, stack_value });
             }
         }
 
