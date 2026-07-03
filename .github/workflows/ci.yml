@@ -29,6 +29,7 @@ jobs:
         run: |
           zig build
           ./zig-out/bin/galley --parser-type lr languages/galley --with-ast
+          ./zig-out/bin/galley languages/json --no-ast
           zig build test --summary all
 
       - name: Run benchmarks

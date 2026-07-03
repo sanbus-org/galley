@@ -107,13 +107,13 @@ pub const Session = struct {
         owned_input[input.len] = 0;
         self.owned_input = owned_input;
 
-        var context_value = self.makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
-        return try self.parseContext(&context_value);
+        var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
+        return try self._parseContext(&context_value);
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
-        var context_value = self.makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
-        return try self.parseContext(&context_value);
+        var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
+        return try self._parseContext(&context_value);
     }
 
     pub fn astAllocator(self: *Session) if (parser.is_ast_enabled) *data_structures.ASTAllocator else void {
@@ -123,7 +123,7 @@ pub const Session = struct {
         return {};
     }
 
-    fn makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
+    pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
         self.runtime_context.input_path = input_path;
         self.runtime_context.arena_allocator = self.arena.allocator();
 
@@ -138,26 +138,12 @@ pub const Session = struct {
         return context_value;
     }
 
-    fn parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
+    pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
         _ = self.arena.reset(.retain_capacity);
         data_structures.context.activate_runtime_context(&self.runtime_context);
         defer data_structures.context.deactivate_runtime_context(&self.runtime_context);
 
         try context_value.reset();
-        var result = if (comptime @hasDecl(parser, "parseWithResult")) result: {
-            break :result try parser.parseWithResult(context_value);
-        } else result: {
-            try parser.parse(context_value);
-            break :result ParseResult{
-                .parsed_bytes = context_value.pos(),
-                .ast_root = null,
-            };
-        };
-
-        if (context_value.source == .bytes) {
-            const source_len = context_value.source.bytes.input.len - 1;
-            result.parsed_bytes = @min(result.parsed_bytes, source_len);
-        }
-        return result;
+        return try parser.parseWithResult(context_value);
     }
 };
