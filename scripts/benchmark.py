@@ -394,14 +394,14 @@ def frozen_generator_path():
         return FROZEN_GENERATOR
 
     subprocess.run(
-        ["zig", "build", "compile-ll-galley"],
+        ["zig", "build", "galley"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         check=True,
     )
 
-    binary_name = "ll-galley.exe" if sys.platform == "win32" else "ll-galley"
+    binary_name = "galley.exe" if sys.platform == "win32" else "galley"
     source = os.path.join("zig-out", "bin", binary_name)
     tools_dir = os.path.join(".zig-cache", "benchmark-tools")
     os.makedirs(tools_dir, exist_ok=True)
@@ -451,9 +451,14 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
 
     # 1. Run parser generator command for all parser types
     generator = frozen_generator_path()
+    language_dir = os.path.join("languages", name)
     for p_type in parser_types:
-        grammar_path = os.path.join("languages", name, f"{p_type.lower()}.grm")
-        cmd_args = [generator, grammar_path] + list(gen_opts)
+        cmd_args = [
+            generator,
+            language_dir,
+            "--parser-type",
+            p_type.lower(),
+        ] + list(gen_opts)
         try:
             subprocess.run(
                 cmd_args,
@@ -607,7 +612,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 "zig",
                 "build",
                 "-Doptimize=ReleaseFast",
-                f"compile-{target}",
+                target,
             ]
             try:
                 subprocess.run(
@@ -622,7 +627,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     "zig",
                     "build",
                     "-Doptimize=Debug",
-                    f"compile-{target}",
+                    target,
                 ]
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
@@ -702,7 +707,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                         "zig",
                         "build",
                         "-Doptimize=Debug",
-                        f"compile-{target}",
+                        target,
                     ]
                     subprocess.run(
                         debug_build_cmd,
@@ -841,7 +846,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                         "zig",
                         "build",
                         "-Doptimize=Debug",
-                        f"compile-{target}",
+                        target,
                     ]
                     subprocess.run(
                         debug_build_cmd,
