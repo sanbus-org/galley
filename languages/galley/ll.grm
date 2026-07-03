@@ -5,7 +5,15 @@ Rules
 | Rule RulesTail
 
 RulesTail
-| new_line Rule RulesTail
+| NewLines Rule RulesTail
+|
+
+NewLines
+| new_line NewLinesTail
+
+NewLinesTail
+| new_line NewLinesTail
+| "#" AnyContent new_line NewLinesTail
 |
 
 Rule

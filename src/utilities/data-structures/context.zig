@@ -4,7 +4,7 @@ const std = @import("std");
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
-fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
+fn find_scalar_last(comptime T: type, slice: []const T, value: T) ?Context.Size {
     var i = slice.len;
     while (i > 0) {
         i -= 1;
@@ -27,16 +27,16 @@ pub const RuntimeContext = struct {
 
 var active_runtime_context: ?*RuntimeContext = null;
 
-pub fn activateRuntimeContext(runtime_context: *RuntimeContext) void {
-    active_runtime_context = runtime_context;
+pub fn activate_runtime_context(runtime_context_: *RuntimeContext) void {
+    active_runtime_context = runtime_context_;
 }
 
-pub fn deactivateRuntimeContext(runtime_context: *RuntimeContext) void {
-    std.debug.assert(active_runtime_context == runtime_context);
+pub fn deactivate_runtime_context(runtime_context_: *RuntimeContext) void {
+    std.debug.assert(active_runtime_context == runtime_context_);
     active_runtime_context = null;
 }
 
-fn runtimeContext() *RuntimeContext {
+fn runtime_context() *RuntimeContext {
     return active_runtime_context orelse unreachable;
 }
 
@@ -46,6 +46,18 @@ pub const Context = struct {
     token: data_structures.Token = .{},
     reader: std.Io.File.Reader = undefined,
     chunk_buffer: []u8 = undefined,
+
+    // These fields are defined only when indentation syntax is enabled
+    indent_width: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
+    current_indent: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
+    seek: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
+    read_bytes: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
+
+    // These fields are defined only when ast is enabled
+    node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
+
+    // These fields are defined based on `builtin.mode`
+    verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
 
     line: if (builtin.mode != .ReleaseFast) u32 else void = if (builtin.mode != .ReleaseFast) 1 else {},
     column: if (builtin.mode != .ReleaseFast) u32 else void = if (builtin.mode != .ReleaseFast) 1 else {},
@@ -59,24 +71,16 @@ pub const Context = struct {
     else
         void = if (builtin.mode != .ReleaseFast) .{} else {},
 
-    indent_width: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
-    current_indent: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
-
-    seek: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
-    read_bytes: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
-    verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
-    node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
-
     const Self = @This();
 
     pub inline fn runtime(self: *Self) *RuntimeContext {
         _ = self;
-        return runtimeContext();
+        return runtime_context();
     }
 
     pub inline fn runtimeConst(self: *const Self) *const RuntimeContext {
         _ = self;
-        return runtimeContext();
+        return runtime_context();
     }
 
     pub inline fn verbosityLevel(self: *const Self) usize {
@@ -94,7 +98,7 @@ pub const Context = struct {
             self.column += self.column_offsets.sum(0, length);
             var last_newline: i16 = -1;
             for ("\n\x01\x02") |newline_char| {
-                if (findScalarLast(u8, self.token.items()[0..length], newline_char)) |index| {
+                if (find_scalar_last(u8, self.token.items()[0..length], newline_char)) |index| {
                     if (index > last_newline) {
                         self.column = self.column_offsets.sum(index, length);
                         last_newline = @intCast(index);

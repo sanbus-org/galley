@@ -73,12 +73,11 @@ pub fn main(init: std.process.Init) !void {
     else
         std.Io.File.stdin();
 
-    const arena_allocator = init.arena.allocator();
-
     const reader_buffer = try init.gpa.alloc(u8, read_chunk_size * 2);
     defer init.gpa.free(reader_buffer);
 
-    var allocator = try data_structures.ASTAllocator.init_capacity(arena_allocator);
+    var allocator = try data_structures.ASTAllocator.init_capacity(init.gpa);
+    defer init.gpa.free(allocator.memory);
 
     const runtime_context = try init.gpa.create(data_structures.RuntimeContext);
     defer init.gpa.destroy(runtime_context);
@@ -86,11 +85,11 @@ pub fn main(init: std.process.Init) !void {
         .io = io,
         .input_path = input_path,
         .language_options = config.optionsFromArgs(res.args),
-        .arena_allocator = arena_allocator,
+        .arena_allocator = init.arena.allocator(),
     };
 
-    data_structures.activateRuntimeContext(runtime_context);
-    defer data_structures.deactivateRuntimeContext(runtime_context);
+    data_structures.context.activate_runtime_context(runtime_context);
+    defer data_structures.context.deactivate_runtime_context(runtime_context);
 
     var context = data_structures.Context{
         .node_allocator = if (parser.is_ast_enabled) &allocator else {},

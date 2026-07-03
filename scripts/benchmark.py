@@ -489,9 +489,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     if ast_mode == "no-ast":
         header_details.append("No AST")
     elif ast_mode == "no-procedures":
-        header_details.append("AST (No Procedures)")
-    else:
-        header_details.append("AST (With Procedures)")
+        header_details.append("AST")
 
     if term_ast == "ast-for-terminals":
         header_details.append("Terminals in AST")

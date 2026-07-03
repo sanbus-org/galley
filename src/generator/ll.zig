@@ -213,7 +213,12 @@ const Generator = struct {
             \\const string_utilities = @import("galley").string_utilities;
             \\
         );
-        try writer.print("\npub const is_ast_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{ self.options.with_ast, self.options.input_size, self.longestTerminalLength() });
+        try writer.print("\npub const is_ast_enabled = {};\npub const are_procedures_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{
+            self.options.with_ast,
+            self.options.with_procedures,
+            self.options.input_size,
+            self.longestTerminalLength(),
+        });
 
         try writer.writeAll("pub const symbols = &[_][]const u8{\n");
         for (self.symbols.items, 0..) |symbol, index| {
