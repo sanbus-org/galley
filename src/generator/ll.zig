@@ -208,9 +208,10 @@ const Generator = struct {
         try writer.writeAll(
             \\const builtin = @import("builtin");
             \\const std = @import("std");
-            \\const procedures = @import("galley").procedures;
-            \\const data_structures = @import("galley").data_structures;
-            \\const string_utilities = @import("galley").string_utilities;
+            \\const root = @import("galley");
+            \\const procedures = root.procedures;
+            \\const data_structures = root.data_structures;
+            \\const string_utilities = root.string_utilities;
             \\
         );
         try writer.print("\npub const is_ast_enabled = {};\npub const are_procedures_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{
@@ -258,18 +259,46 @@ const Generator = struct {
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
         try self.emitNonAstParsers(writer);
-        try writer.writeAll(
-            \\pub fn parse(context: *data_structures.Context) !void {
-            \\    _ = parse__AugmentedStart(context) catch {
-            \\        return error.ParseError;
-            \\    };
-            \\
-            \\    if (context.verbosityLevel() > 0) {
-            \\        std.log.info("The input file was parsed successfully!", .{});
-            \\    }
-            \\}
-            \\
-        );
+        if (self.options.with_ast) {
+            try writer.writeAll(
+                \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
+                \\    _ = parse__AugmentedStart(context) catch {
+                \\        return error.ParseError;
+                \\    };
+                \\
+                \\    if (context.verbosityLevel() > 0) {
+                \\        std.log.info("The input file was parsed successfully!", .{});
+                \\    }
+                \\
+                \\    const ast_root: ?data_structures.ASTNode.Pointer = if (context.node_allocator.counter > 0) 0 else null;
+                \\    return .{ .parsed_bytes = context.pos(), .ast_root = ast_root };
+                \\}
+                \\
+                \\pub fn parse(context: *data_structures.Context) !void {
+                \\    _ = try parseWithResult(context);
+                \\}
+                \\
+            );
+        } else {
+            try writer.writeAll(
+                \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
+                \\    _ = parse__AugmentedStart(context) catch {
+                \\        return error.ParseError;
+                \\    };
+                \\
+                \\    if (context.verbosityLevel() > 0) {
+                \\        std.log.info("The input file was parsed successfully!", .{});
+                \\    }
+                \\
+                \\    return .{ .parsed_bytes = context.pos(), .ast_root = null };
+                \\}
+                \\
+                \\pub fn parse(context: *data_structures.Context) !void {
+                \\    _ = try parseWithResult(context);
+                \\}
+                \\
+            );
+        }
     }
 
     fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {
