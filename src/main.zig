@@ -1,15 +1,11 @@
 const clap = @import("clap");
 const builtin = @import("builtin");
+const galley = @import("galley");
 const std = @import("std");
 
-pub const procedures = @import("procedures");
-pub const config = @import("config");
-pub const parser = @import("parser");
-pub const string_utilities = @import("utilities/string.zig");
-pub const stack_overflow_utilities = @import("utilities/stack-overflow.zig");
-pub const data_structures = @import("utilities/data-structures/data-structures.zig");
-pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
-pub const preallocated_nodes = if (parser.is_ast_enabled) (std.math.maxInt(std.math.Min(data_structures.Context.Size, u27)) - 1) else 0;
+const config = galley.config;
+const parser = galley.parser;
+const string_utilities = galley.string_utilities;
 
 fn printHelp() void {
     std.debug.print("\nusage: parser_builder [program_path]\n", .{});
@@ -73,60 +69,31 @@ pub fn main(init: std.process.Init) !void {
     else
         std.Io.File.stdin();
 
-    const reader_buffer = try init.gpa.alloc(u8, read_chunk_size * 2);
-    defer init.gpa.free(reader_buffer);
-
-    var allocator = try data_structures.ASTAllocator.init_capacity(init.gpa);
-    defer init.gpa.free(allocator.memory);
-
-    const runtime_context = try init.gpa.create(data_structures.RuntimeContext);
-    defer init.gpa.destroy(runtime_context);
-    runtime_context.* = .{
-        .io = io,
-        .input_path = input_path,
+    var session = try galley.Session.init(io, init.gpa, .{
         .language_options = config.optionsFromArgs(res.args),
-        .arena_allocator = init.arena.allocator(),
-    };
+        .input_path = input_path,
+        .verbosity = verbosity,
+    });
+    defer session.deinit();
 
-    data_structures.context.activate_runtime_context(runtime_context);
-    defer data_structures.context.deactivate_runtime_context(runtime_context);
-
-    var context = data_structures.Context{
-        .node_allocator = if (parser.is_ast_enabled) &allocator else {},
-        .reader = program_file.reader(io, reader_buffer),
-        .chunk_buffer = try init.gpa.alloc(u8, read_chunk_size),
-    };
-    defer init.gpa.free(context.chunk_buffer);
-    if (comptime builtin.mode == .Debug) {
-        context.verbosity = verbosity;
-    }
-
-    if (@field(res.args, "disable-stack-overflow-recovery") > 0)
-        try run(&context, warmup_iterations, iterations)
-    else
-        try stack_overflow_utilities.protected_run(run, &context, warmup_iterations, iterations);
+    try run(&session, program_file, input_path, warmup_iterations, iterations);
 }
 
-fn run(context: *data_structures.Context, warmup_iterations: usize, iterations: usize) !void {
+fn run(session: *galley.Session, program_file: std.Io.File, input_path: ?[]const u8, warmup_iterations: usize, iterations: usize) !void {
     for (0..warmup_iterations) |_| {
-        try context.reset();
-
-        try parser.parse(context);
+        _ = try session.parseFile(program_file, input_path);
     }
 
     var total_parsed_bytes: usize = 0;
-    const runtime = context.runtime();
-    const start = std.Io.Clock.awake.now(runtime.io);
+    const start = std.Io.Clock.awake.now(session.io);
 
     for (0..iterations) |_| {
-        try context.reset();
-
-        try parser.parse(context);
-        total_parsed_bytes += context.pos();
+        const result = try session.parseFile(program_file, input_path);
+        total_parsed_bytes += result.parsed_bytes;
     }
 
     if (iterations > 1) {
-        const end = std.Io.Clock.awake.now(runtime.io);
+        const end = std.Io.Clock.awake.now(session.io);
         const duration = start.durationTo(end);
         const elapsed_ns: usize = @intCast(duration.toNanoseconds());
         const duration_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
@@ -136,22 +103,10 @@ fn run(context: *data_structures.Context, warmup_iterations: usize, iterations: 
         std.debug.print("Parsed bytes:  {s}\n", .{try string_utilities.formatFileSize(total_parsed_bytes, &buffer)});
         std.debug.print("Duration:      {s} ns\n", .{try string_utilities.formatWithThousands(elapsed_ns, &buffer)});
         std.debug.print("Throughput:    {s}/s\n", .{try string_utilities.formatFileSize(mbps, &buffer)});
-        const nodes_allocated = if (comptime parser.is_ast_enabled) context.node_allocator.counter else 0;
+        const nodes_allocated = if (comptime parser.is_ast_enabled) session.astAllocator().counter else 0;
         std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(
             nodes_allocated,
             &buffer,
         )});
     }
-}
-
-test "simple test" {
-    const gpa = std.testing.allocator;
-    var list: std.ArrayList(i32) = .empty;
-    defer list.deinit(gpa);
-    try list.append(gpa, 42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
-
-test {
-    _ = @import("utilities/data-structures/astnode.zig");
 }

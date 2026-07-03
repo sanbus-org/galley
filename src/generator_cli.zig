@@ -350,13 +350,12 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         \\        .target = target,
         \\    }});
         \\
-        \\    const galley_mod = b.createModule(.{{
-        \\        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/main.zig" }},
+        \\    const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
+        \\    const galley_mod = b.addModule(exe_name, .{{
+        \\        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/parser_library.zig" }},
         \\        .target = target,
         \\        .optimize = optimize,
-        \\        .link_libc = true,
         \\        .imports = &.{{
-        \\            .{{ .name = "clap", .module = clap_mod }},
         \\            .{{ .name = "procedures", .module = procedures_mod }},
         \\            .{{ .name = "config", .module = config_mod }},
         \\            .{{ .name = "parser", .module = parser_mod }},
@@ -369,10 +368,20 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         \\    config_mod.addImport("galley", galley_mod);
         \\    parser_mod.addImport("galley", galley_mod);
         \\
-        \\    const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
+        \\    const exe_mod = b.createModule(.{{
+        \\        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/main.zig" }},
+        \\        .target = target,
+        \\        .optimize = optimize,
+        \\        .link_libc = true,
+        \\        .imports = &.{{
+        \\            .{{ .name = "clap", .module = clap_mod }},
+        \\            .{{ .name = "galley", .module = galley_mod }},
+        \\        }},
+        \\    }});
+        \\
         \\    const exe = b.addExecutable(.{{
         \\        .name = exe_name,
-        \\        .root_module = galley_mod,
+        \\        .root_module = exe_mod,
         \\    }});
         \\    const install_artifact = b.addInstallArtifact(exe, .{{}});
         \\    const build_step = b.step(parser_type, "Build the generated parser");

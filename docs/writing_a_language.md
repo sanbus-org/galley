@@ -171,6 +171,39 @@ Use `.lr` for LR generation. The options struct matches the CLI flags.
 
 ---
 
+## Use a Generated Parser from Zig Code
+
+Generated parsers are also importable Zig modules. The repository build exposes included languages by parser target name, such as `ll-json` and `lr-json`; standalone generated `build.zig` files expose `ll-parser` and `lr-parser`.
+
+For one-shot parsing, call `parseBytes`:
+
+```zig
+const json_parser = @import("ll-json");
+
+var parsed = try json_parser.parseBytes(io, allocator, "{\"ok\": true}", .{});
+defer parsed.deinit();
+
+std.debug.assert(parsed.result.parsed_bytes == 12);
+```
+
+`ParsedInput` owns the parser session, buffers, arena, and AST memory. Keep it alive while inspecting AST data, and call `deinit` when finished.
+
+For repeated parses, reuse a `Session`:
+
+```zig
+const json_parser = @import("ll-json");
+
+var session = try json_parser.Session.init(io, allocator, .{});
+defer session.deinit();
+
+_ = try session.parseBytes("{}", null);
+_ = try session.parseBytes("[]", null);
+```
+
+Use `session.parseFile(file, input_path)` when parsing from a `std.Io.File`.
+
+---
+
 ## Parsing Verbose Output
 
 Pass `--verbosity 1` (or `2`) to the generated executable to print the resulting AST alongside benchmark metrics:
