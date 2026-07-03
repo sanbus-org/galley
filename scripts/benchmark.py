@@ -905,15 +905,15 @@ def sample_inputs(lang_name):
     ]
 
 
-def grammar_benchmark(gen_opts, args):
+def galley_benchmark(gen_opts, args):
     inputs = [
-        "languages/grammar/ll.grm",
-        "languages/grammar/lr.grm",
+        "languages/galley/ll.grm",
+        "languages/galley/lr.grm",
         "languages/json/ll.grm",
         "languages/test-ll/ll.grm",
         "languages/test-ll1/ll.grm",
     ]
-    run_benchmark_suite("grammar", gen_opts, args, inputs)
+    run_benchmark_suite("galley", gen_opts, args, inputs)
 
 
 def json_benchmark(gen_opts, args):
@@ -975,7 +975,7 @@ def run_all_modes(benchmark_fn, args):
 
 
 BENCHMARKS = {
-    "grammar": grammar_benchmark,
+    "galley": galley_benchmark,
     "augmented-json": augmented_json_benchmark,
     "json": json_benchmark,
     "json-structured-ast": json_structured_ast_benchmark,
