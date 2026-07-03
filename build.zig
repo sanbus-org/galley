@@ -142,30 +142,39 @@ pub fn build(b: *std.Build) !void {
                     u8,
                     &[_][]const u8{ parser_type, "-", entry.path },
                 );
-                const galley_mod = b.createModule(.{
+                const galley_parser_mod = b.addModule(parser_name, .{
+                    .root_source_file = b.path("src/parser_library.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{
+                        .{ .name = "procedures", .module = procedures_mod },
+                        .{ .name = "config", .module = config_mod },
+                        .{ .name = "parser", .module = parser_mod },
+                    },
+                });
+                galley_parser_mod.addImport("galley", galley_parser_mod);
+
+                const galley_cli_mod = b.createModule(.{
                     .root_source_file = b.path("src/main.zig"),
                     .target = target,
                     .optimize = optimize,
                     .link_libc = true,
                     .imports = &.{
                         .{ .name = "clap", .module = clap.module("clap") },
-                        .{ .name = "procedures", .module = procedures_mod },
-                        .{ .name = "config", .module = config_mod },
-                        .{ .name = "parser", .module = parser_mod },
+                        .{ .name = "galley", .module = galley_parser_mod },
                     },
                 });
-                galley_mod.addImport("galley", galley_mod);
-                procedures_mod.addImport("galley", galley_mod);
+                procedures_mod.addImport("galley", galley_parser_mod);
                 procedures_mod.addImport("ll_generator", ll_generator_mod);
                 procedures_mod.addImport("lr_generator", lr_generator_mod);
-                config_mod.addImport("galley", galley_mod);
-                parser_mod.addImport("galley", galley_mod);
+                config_mod.addImport("galley", galley_parser_mod);
+                parser_mod.addImport("galley", galley_parser_mod);
 
                 const exe = b.addExecutable(.{
                     .name = parser_name,
                     // .use_llvm = false,
                     // .use_lld = false,
-                    .root_module = galley_mod,
+                    .root_module = galley_cli_mod,
                 });
                 if (std.mem.eql(u8, entry.path, "galley")) {
                     if (std.mem.eql(u8, parser_type, "ll")) {
@@ -210,6 +219,29 @@ pub fn build(b: *std.Build) !void {
 
                 const run_exe_tests = b.addRunArtifact(exe_tests);
                 test_step.dependOn(&run_exe_tests.step);
+
+                const parser_library_tests = b.addTest(.{
+                    .root_module = galley_parser_mod,
+                });
+
+                const run_parser_library_tests = b.addRunArtifact(parser_library_tests);
+                test_step.dependOn(&run_parser_library_tests.step);
+
+                if (std.mem.eql(u8, entry.path, "json")) {
+                    const parser_api_test_mod = b.createModule(.{
+                        .root_source_file = b.path("src/generated_parser_library_test.zig"),
+                        .target = target,
+                        .optimize = optimize,
+                        .imports = &.{
+                            .{ .name = "json_parser", .module = galley_parser_mod },
+                        },
+                    });
+                    const parser_api_tests = b.addTest(.{
+                        .root_module = parser_api_test_mod,
+                    });
+                    const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
+                    test_step.dependOn(&run_parser_api_tests.step);
+                }
             } else |err| {
                 // File doesn't exist in this subdir - ignore
                 if (err != error.FileNotFound) return err;

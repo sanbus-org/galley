@@ -43,8 +43,18 @@ fn runtime_context() *RuntimeContext {
 pub const Context = struct {
     pub const Size = root.parser.input_size_cap;
 
+    pub const BytesSource = struct {
+        input: []const u8,
+        offset: usize = 0,
+    };
+
+    pub const Source = union(enum) {
+        file: std.Io.File.Reader,
+        bytes: BytesSource,
+    };
+
     token: data_structures.Token = .{},
-    reader: std.Io.File.Reader = undefined,
+    source: Source = .{ .bytes = .{ .input = &[_]u8{0} } },
     chunk_buffer: []u8 = undefined,
 
     // These fields are defined only when indentation syntax is enabled
@@ -118,8 +128,20 @@ pub const Context = struct {
     }
 
     pub fn read(self: *@This()) void {
-        const bytes_read = self.reader.interface.readSliceShort(self.chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => return,
+        const bytes_read = switch (self.source) {
+            .file => |*reader| reader.interface.readSliceShort(self.chunk_buffer) catch |err| switch (err) {
+                error.ReadFailed => return,
+            },
+            .bytes => |*bytes| bytes_read: {
+                if (bytes.offset >= bytes.input.len) {
+                    break :bytes_read 0;
+                }
+                const remaining = bytes.input.len - bytes.offset;
+                const amount = @min(remaining, self.chunk_buffer.len);
+                @memcpy(self.chunk_buffer[0..amount], bytes.input[bytes.offset..][0..amount]);
+                bytes.offset += amount;
+                break :bytes_read amount;
+            },
         };
 
         if (bytes_read < self.chunk_buffer.len) {
@@ -128,7 +150,10 @@ pub const Context = struct {
     }
 
     pub fn reset(self: *@This()) !void {
-        try self.reader.seekTo(0);
+        switch (self.source) {
+            .file => |*reader| try reader.seekTo(0),
+            .bytes => |*bytes| bytes.offset = 0,
+        }
         if (comptime root.procedures.indentation_syntax) {
             self.read_bytes = 0;
             self.seek = 0;
@@ -141,11 +166,19 @@ pub const Context = struct {
             self.line_offsets.reset();
             self.column_offsets.reset();
         }
-        self.token.reset(self.chunk_buffer);
         if (comptime root.parser.is_ast_enabled) {
             self.node_allocator.reset();
         }
-        self.read();
+        if (comptime root.procedures.indentation_syntax) {
+            self.token.reset(self.chunk_buffer);
+            self.read();
+        } else switch (self.source) {
+            .file => {
+                self.token.reset(self.chunk_buffer);
+                self.read();
+            },
+            .bytes => |bytes| self.token.reset(@constCast(bytes.input)),
+        }
     }
 
     pub inline fn advance_input_with_check(self: *@This()) void {
