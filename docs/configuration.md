@@ -10,34 +10,37 @@
 
 ## Overview
 
-Galley's pipeline consists of two distinct stages: generating the Zig parser via `scripts/generate-parser`, and running the compiled Zig binary. Both stages expose command-line flags to tune AST generation and benchmarking behavior.
+Galley's pipeline consists of two distinct stages: generating parser files for a language directory via `galley`, and running the compiled Zig binary. Both stages expose command-line flags to tune AST generation and benchmarking behavior.
 
 ---
 
 ## Generator CLI Options
 
-When running the self-hosted grammar generator, pass options after the script path:
+Build Galley first, then run the installed generator binary:
 
 ```sh
-scripts/generate-parser [OPTIONS]
+zig build
+./zig-out/bin/galley [OPTIONS] <LANGUAGE_DIR>
 ```
 
 | Flag | Argument | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--language` | `<PATH>` | **Required.** Path to the target language directory (e.g. `languages/json`). | None |
-| `--parser-type` | `LL` \| `LR` | Selects whether to generate a top-down LL or bottom-up LR parser. | First found (`LL`) |
+| `<LANGUAGE_DIR>` | `<PATH>` | Directory containing `ll.grm` and/or `lr.grm`. | None |
+| `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
 | `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. Disabling AST construction maximizes raw syntax validation speed. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
+
 ---
 
 ## Runtime Executable Flags
 
-When invoking a built binary directly or via `zig build`, pass arguments after `--`:
+Build a parser target first, then invoke the installed binary directly:
 
 ```sh
-zig build -Doptimize=ReleaseFast ll-json -- [OPTIONS] <FILE>
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json [OPTIONS] <FILE>
 ```
 
 | Flag | Short | Argument | Description | Default |
@@ -57,16 +60,20 @@ zig build -Doptimize=ReleaseFast ll-json -- [OPTIONS] <FILE>
 
 ### Standard Production Generation & Run
 ```sh
-scripts/generate-parser --language languages/json --parser-type LL
-zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
+zig build
+./zig-out/bin/galley --parser-type ll languages/json
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json languages/json/samples/code-01.json
 ```
 
 ### High-Precision Benchmarking Loop (100 Iterations with 10 Warmups)
 ```sh
-zig build -Doptimize=ReleaseFast ll-json -- -r 100 -w 10 languages/json/samples/code-02.json
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json -r 100 -w 10 languages/json/samples/code-02.json
 ```
 
 ### AST Debugging & Inspection
 ```sh
-zig build ll-json -- -v 1 languages/json/samples/code-01.json
+zig build ll-json
+./zig-out/bin/ll-json -v 1 languages/json/samples/code-01.json
 ```

@@ -24,6 +24,57 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     lr_generator_mod.addImport("generator_common", generator_common_mod);
+    const generator_grammar_mod = b.addModule("generator_grammar", .{
+        .root_source_file = b.path("src/generator/grammar.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const galley_generator_mod = b.addModule("galley_generator", .{
+        .root_source_file = b.path("src/generator/api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "generator_common", .module = generator_common_mod },
+            .{ .name = "generator_grammar", .module = generator_grammar_mod },
+            .{ .name = "ll_generator", .module = ll_generator_mod },
+            .{ .name = "lr_generator", .module = lr_generator_mod },
+        },
+    });
+    const public_galley_mod = b.addModule("galley", .{
+        .root_source_file = b.path("src/galley.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "generator_common", .module = generator_common_mod },
+            .{ .name = "galley_generator", .module = galley_generator_mod },
+            .{ .name = "ll_generator", .module = ll_generator_mod },
+            .{ .name = "lr_generator", .module = lr_generator_mod },
+        },
+    });
+
+    const cli_options = b.addOptions();
+    cli_options.addOption([]const u8, "galley_root", b.pathFromRoot("."));
+    cli_options.addOption([]const u8, "clap_source", b.pathFromRoot("zig-pkg/clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5/clap.zig"));
+
+    const generator_cli_mod = b.createModule(.{
+        .root_source_file = b.path("src/generator_cli.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "build_options", .module = cli_options.createModule() },
+            .{ .name = "galley_generator", .module = galley_generator_mod },
+        },
+    });
+    const generator_cli_exe = b.addExecutable(.{
+        .name = "galley",
+        .root_module = generator_cli_mod,
+    });
+    const install_generator_cli = b.addInstallArtifact(generator_cli_exe, .{});
+    b.getInstallStep().dependOn(&install_generator_cli.step);
+
+    const generator_cli_step = b.step("galley", "Build the Galley generator");
+    generator_cli_step.dependOn(&install_generator_cli.step);
+
     var dir = try b.build_root.handle.openDir(b.graph.io, languages_path, .{ .iterate = true });
     defer dir.close(b.graph.io);
 
@@ -31,6 +82,18 @@ pub fn build(b: *std.Build) !void {
     defer walker.deinit();
 
     const test_step = b.step("test", "Run tests");
+    const generator_tests = b.addTest(.{
+        .root_module = galley_generator_mod,
+    });
+    const run_generator_tests = b.addRunArtifact(generator_tests);
+    test_step.dependOn(&run_generator_tests.step);
+
+    const public_galley_tests = b.addTest(.{
+        .root_module = public_galley_mod,
+    });
+    const run_public_galley_tests = b.addRunArtifact(public_galley_tests);
+    test_step.dependOn(&run_public_galley_tests.step);
+
     var ll_galley_exe: ?*std.Build.Step.Compile = null;
     var lr_galley_exe: ?*std.Build.Step.Compile = null;
 
@@ -121,28 +184,21 @@ pub fn build(b: *std.Build) !void {
                 );
                 defer b.allocator.free(result);
 
-                const compile_desc = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "Compile the ", entry.path, " compiler" },
-                );
-                defer b.allocator.free(compile_desc);
-                const compile_step_name = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "compile-", parser_name },
-                );
-                defer b.allocator.free(compile_step_name);
-                const compile_step = b.step(compile_step_name, compile_desc);
-                compile_step.dependOn(&install_artifact.step);
+                const build_step = b.step(parser_name, result);
+                build_step.dependOn(&install_artifact.step);
 
-                const run_step = b.step(parser_name, result);
+                const run_step_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "run-", parser_name },
+                );
+                defer b.allocator.free(run_step_name);
+                const run_step = b.step(run_step_name, result);
 
                 const run_cmd = b.addRunArtifact(exe);
-                run_step.dependOn(&install_artifact.step);
                 run_step.dependOn(&run_cmd.step);
 
-                run_cmd.step.dependOn(b.getInstallStep());
+                run_cmd.step.dependOn(&install_artifact.step);
 
                 if (b.args) |args| {
                     run_cmd.addArgs(args);

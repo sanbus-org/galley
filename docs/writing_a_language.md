@@ -36,7 +36,14 @@ languages/
 
 ### Getting Started
 
-Run all commands from the root directory of the repository:
+Run all commands from the root directory of the repository. A Galley language is a directory containing `ll.grm`, `lr.grm`, or both. When you run `galley`, it generates parser files and creates missing support files without overwriting your existing `procedures.zig`, `config.zig`, or build files.
+
+```sh
+zig build
+./zig-out/bin/galley path/to/language-dir
+```
+
+To build a runnable parser executable through this repository's `build.zig`, use the bundled language-directory convention:
 
 1. Create a new directory under `languages/`:
 
@@ -46,7 +53,7 @@ Run all commands from the root directory of the repository:
 
 1. Define your grammar in `languages/mylang/ll.grm` (or `lr.grm`). See [Grammar Guidelines](grammar_guidelines.md) for syntax and rules.
 
-1. Write your `languages/mylang/procedures.zig` file. At a minimum, this file must define `indentation_syntax` and `Payload`:
+1. Optionally write your `languages/mylang/procedures.zig` file. If it is missing, `galley` creates a minimal one:
 
     ```zig
     pub const indentation_syntax = false;
@@ -58,7 +65,8 @@ Run all commands from the root directory of the repository:
 1. Generate the parser:
 
     ```sh
-    scripts/generate-parser --language languages/mylang --parser-type LL
+    zig build
+    ./zig-out/bin/galley --parser-type ll languages/mylang
     ```
 
 ---
@@ -68,7 +76,7 @@ Run all commands from the root directory of the repository:
 The grammar file format is documented in detail in [Grammar Guidelines](grammar_guidelines.md). Key points:
 
 - **Entry point:** The first rule defined in the file becomes the parser's start symbol.
-- **Parser type:** Write `ll.grm` for top-down (LL) parsing, `lr.grm` for bottom-up (LR) parsing.
+- **Parser type:** Choose `--parser-type ll` for top-down parsing or `--parser-type lr` for bottom-up parsing.
 - **AST allocation:** Variables starting with a capital letter allocate AST nodes; variables starting with `_` (CamelCase, e.g. `_WhiteSpace`) are skipped entirely.
 - **Terminals:** Exact string literals must be in double quotes (e.g. `"let"`). Unquoted lowercase identifiers match named character classes or generative terminals like `digit`, `letter`, `space`, `new_line` (these can optionally receive exception suffix chains like `character^"\n"` or `digit^"1"^"3"` to exclude specific characters, see [Grammar Guidelines](grammar_guidelines.md) for details).
 
@@ -116,26 +124,50 @@ To learn how to register explicit/implicit hooks, how to write custom procedures
 ### Generate LL Parser
 
 ```sh
-scripts/generate-parser --language languages/mylang --parser-type LL
+zig build
+./zig-out/bin/galley --parser-type ll languages/mylang
 ```
 
 ### Generate LR Parser
 
 ```sh
-scripts/generate-parser --language languages/mylang --parser-type LR
+zig build
+./zig-out/bin/galley --parser-type lr languages/mylang
 ```
 
 ### Build and Run
 
 ```sh
-zig build ll-mylang -- languages/mylang/sample-code.txt
+zig build ll-mylang
+./zig-out/bin/ll-mylang languages/mylang/sample-code.txt
 ```
 
 ```sh
-zig build lr-mylang -- languages/mylang/sample-code.txt
+zig build lr-mylang
+./zig-out/bin/lr-mylang languages/mylang/sample-code.txt
 ```
 
 The executable will be built automatically — `build.zig` scans the `languages/` directory for any subdirectory containing a `_ll-parser.zig` or `_lr-parser.zig` file.
+
+---
+
+## Generate from Zig Code
+
+Projects that depend on Galley can call the generator directly:
+
+```zig
+const galley = @import("galley");
+
+try galley.generator.emitParserFromSource(
+    allocator,
+    grammar_source,
+    writer,
+    .ll,
+    .{},
+);
+```
+
+Use `.lr` for LR generation. The options struct matches the CLI flags.
 
 ---
 
@@ -144,7 +176,8 @@ The executable will be built automatically — `build.zig` scans the `languages/
 Pass `--verbosity 1` (or `2`) to the generated executable to print the resulting AST alongside benchmark metrics:
 
 ```sh
-zig build ll-json -- languages/json/samples/code-01.json --verbosity 1
+zig build ll-json
+./zig-out/bin/ll-json languages/json/samples/code-01.json --verbosity 1
 ```
 
 ---

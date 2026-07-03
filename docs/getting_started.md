@@ -25,10 +25,12 @@ The fastest path is to start with an example grammar that already ships with the
 
 ```sh
 # 1. Generate the LL parser
-scripts/generate-parser --language languages/json --parser-type LL
+zig build
+./zig-out/bin/galley --parser-type ll languages/json
 
-# 2. Build and run it with release optimization for maximum throughput
-zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
+# 2. Build exactly that parser, then run it with release optimization
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json languages/json/samples/code-01.json
 ```
 
 That's it — `languages/json/samples/code-01.json` parses at hundreds of megabytes per second.
@@ -37,10 +39,12 @@ That's it — `languages/json/samples/code-01.json` parses at hundreds of megaby
 
 ```sh
 # 1. Generate the LR parser
-scripts/generate-parser --language languages/json --parser-type LR
+zig build
+./zig-out/bin/galley --parser-type lr languages/json
 
 # 2. Build and run it
-zig build -Doptimize=ReleaseFast lr-json -- languages/json/samples/code-01.json
+zig build -Doptimize=ReleaseFast lr-json
+./zig-out/bin/lr-json languages/json/samples/code-01.json
 ```
 
 ---
