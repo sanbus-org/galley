@@ -151,9 +151,10 @@ def format_card(name, metrics, width, no_color=False, error_msg=None):
             msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
             lines.append(make_centered_line(len(msg_visible), msg_styled))
 
-        lines.append(
-            f"{border_color}{VL}{RESET}{' ' * (inner_width + 2)}{border_color}{VL}{RESET}"
-        )
+        for _ in range(2):
+            lines.append(
+                f"{border_color}{VL}{RESET}{' ' * (inner_width + 2)}{border_color}{VL}{RESET}"
+            )
         lines.append(f"{border_color}{BL}{HL * (width - 2)}{BR}{RESET}")
         return lines
 
@@ -1070,7 +1071,9 @@ def main():
     if args.benchmark_runs < 1:
         parser.error("--benchmark-runs must be at least 1.")
     if args.discard_first_run and args.benchmark_runs < 2:
-        parser.error("--benchmark-runs must be at least 2 when discarding the first run.")
+        parser.error(
+            "--benchmark-runs must be at least 2 when discarding the first run."
+        )
 
     if args.language is None:
         if args.inputs:
