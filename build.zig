@@ -233,7 +233,7 @@ pub fn build(b: *std.Build) !void {
                         .target = target,
                         .optimize = optimize,
                         .imports = &.{
-                            .{ .name = "json_parser", .module = galley_parser_mod },
+                            .{ .name = "parser-under-test", .module = galley_parser_mod },
                         },
                     });
                     const parser_api_tests = b.addTest(.{

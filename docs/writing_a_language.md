@@ -149,6 +149,18 @@ zig build lr-mylang
 
 The executable will be built automatically — `build.zig` scans the `languages/` directory for any subdirectory containing a `_ll-parser.zig` or `_lr-parser.zig` file.
 
+### Standalone Directories
+
+When you run `galley` on a language directory outside this repository's `languages/` directory, Galley also creates a local `build.zig`, `main.zig`, `tests/parser_test.zig`, and `samples/code-01` if they are missing. Replace the placeholder sample with valid source for your language, then run:
+
+```sh
+zig build test
+zig build run-ll
+zig build run-ll -- --iterations 100 --warmup-iterations 10
+```
+
+Use `run-lr` instead when the directory only has an LR grammar.
+
 ---
 
 ## Generate from Zig Code
