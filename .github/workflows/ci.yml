@@ -18,11 +18,6 @@ jobs:
         with:
           lfs: true
 
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >>$GITHUB_PATH
-
       - name: Install Zig
         run: |
           URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
@@ -31,7 +26,9 @@ jobs:
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
       - name: Run unit tests
-        run: zig build test --summary all
+        run: |
+          scripts/generate-parser --language languages/galley --parser-type LR --with-ast
+          zig build test --summary all
 
       - name: Run benchmarks
-        run: uv run --python 3.13 python3 scripts/benchmark.py --validate-only
+        run: python3 scripts/benchmark.py --validate-only

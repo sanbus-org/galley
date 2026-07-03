@@ -55,7 +55,7 @@ Run all commands from the root directory of the repository:
 
 1. Add a `sample-code.txt` with an example input so the parser has something to parse on every build.
 
-1. Generate the parser tables:
+1. Generate the parser:
 
     ```sh
     scripts/generate-parser --language languages/mylang --parser-type LL

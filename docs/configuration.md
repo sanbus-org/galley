@@ -10,13 +10,13 @@
 
 ## Overview
 
-Galley's pipeline consists of two distinct stages: generating the Zig parser tables via `scripts/generate-parser`, and running the compiled Zig binary. Both stages expose fine-grained command-line flags to tune AST generation, logging, graphing, and benchmarking behavior.
+Galley's pipeline consists of two distinct stages: generating the Zig parser via `scripts/generate-parser`, and running the compiled Zig binary. Both stages expose command-line flags to tune AST generation and benchmarking behavior.
 
 ---
 
 ## Generator CLI Options
 
-When running the grammar generator via `uv run`, pass options after the script path:
+When running the self-hosted grammar generator, pass options after the script path:
 
 ```sh
 scripts/generate-parser [OPTIONS]
@@ -30,10 +30,6 @@ scripts/generate-parser [OPTIONS]
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
-| `--generate-logs` / `--logs-directory` | `<PATH>` | Generates step-by-step internal debugging logs of the parser table generation process. | `./logs` |
-| `--graph` | Flag | Generates a static HTML visualization graph of the grammar state machine. | Disabled |
-| `--graphviz` | Flag | Generates a Graphviz `.dot` / HTML graph representation of grammar transitions. | Disabled |
-
 ---
 
 ## Runtime Executable Flags

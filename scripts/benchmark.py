@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import shlex
+import shutil
 import subprocess
 import sys
-
-# Global environment generator command
-GENERATOR_COMMAND = os.environ.get(
-    "GENERATOR_COMMAND",
-    "scripts/generate-parser --language languages/",
-)
 
 
 def truncate_name(name, inner_width):
@@ -366,6 +360,59 @@ def write_result_to_file(filepath, content):
         f.write(content)
 
 
+def generated_parser_paths():
+    return [os.path.join("languages", "galley", "_ll-parser.zig")]
+
+
+def preserve_generated_parsers():
+    snapshots = {}
+    for path in generated_parser_paths():
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                snapshots[path] = f.read()
+        else:
+            snapshots[path] = None
+
+    def restore():
+        for path, content in snapshots.items():
+            if content is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                with open(path, "wb") as f:
+                    f.write(content)
+
+    return restore
+
+
+FROZEN_GENERATOR = None
+
+
+def frozen_generator_path():
+    global FROZEN_GENERATOR
+    if FROZEN_GENERATOR is not None:
+        return FROZEN_GENERATOR
+
+    subprocess.run(
+        ["zig", "build", "compile-ll-galley"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=True,
+    )
+
+    binary_name = "ll-galley.exe" if sys.platform == "win32" else "ll-galley"
+    source = os.path.join("zig-out", "bin", binary_name)
+    tools_dir = os.path.join(".zig-cache", "benchmark-tools")
+    os.makedirs(tools_dir, exist_ok=True)
+    target = os.path.join(tools_dir, binary_name)
+    shutil.copy2(source, target)
+    os.chmod(target, os.stat(target).st_mode | 0o111)
+
+    FROZEN_GENERATOR = os.path.abspath(target)
+    return FROZEN_GENERATOR
+
+
 def run_benchmark_suite(name, gen_opts, args, inputs=None):
     """
     Runs parser generator and compiles/runs benchmarks for all input files.
@@ -403,11 +450,10 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
         term_ast = "ast-for-terminals"
 
     # 1. Run parser generator command for all parser types
+    generator = frozen_generator_path()
     for p_type in parser_types:
-        gen_command_str = f"{GENERATOR_COMMAND}{name}"
-        cmd_args = (
-            shlex.split(gen_command_str) + ["--parser-type", p_type] + list(gen_opts)
-        )
+        grammar_path = os.path.join("languages", name, f"{p_type.lower()}.grm")
+        cmd_args = [generator, grammar_path] + list(gen_opts)
         try:
             subprocess.run(
                 cmd_args,
@@ -1015,8 +1061,8 @@ def main():
     )
     parser.add_argument(
         "--parser-type",
-        choices=["LL", "LR", "GLR"],
-        help="Restrict benchmark to a specific parser type (LL, LR, GLR)",
+        choices=["LL", "LR"],
+        help="Restrict benchmark to a specific parser type (LL or LR)",
     )
     parser.add_argument(
         "--no-ast",
@@ -1075,36 +1121,44 @@ def main():
             "--benchmark-runs must be at least 2 when discarding the first run."
         )
 
-    if args.language is None:
-        if args.inputs:
-            parser.error("--language is required when specifying --input.")
+    restore_generated_parsers = (
+        preserve_generated_parsers()
+        if args.language is None or args.language == "galley"
+        else lambda: None
+    )
+    try:
+        if args.language is None:
+            if args.inputs:
+                parser.error("--language is required when specifying --input.")
 
-        for lang in BENCHMARKS:
-            benchmark_fn = BENCHMARKS[lang]
+            for lang in BENCHMARKS:
+                benchmark_fn = BENCHMARKS[lang]
+                try:
+                    run_all_modes(benchmark_fn, args)
+                except KeyboardInterrupt:
+                    print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
+                    sys.exit(1)
+        else:
+            if args.language in BENCHMARKS and not args.inputs:
+                benchmark_fn = BENCHMARKS[args.language]
+            else:
+                lang = args.language
+                if not args.inputs:
+                    parser.error(
+                        f"--input is required for benchmark '{lang}' (not a built-in benchmark)"
+                    )
+                inputs = list(args.inputs)
+
+                def benchmark_fn(gen_opts, a, _lang=lang, _inputs=inputs):
+                    run_benchmark_suite(_lang, gen_opts, a, _inputs)
+
             try:
                 run_all_modes(benchmark_fn, args)
             except KeyboardInterrupt:
                 print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
                 sys.exit(1)
-    else:
-        if args.language in BENCHMARKS and not args.inputs:
-            benchmark_fn = BENCHMARKS[args.language]
-        else:
-            lang = args.language
-            if not args.inputs:
-                parser.error(
-                    f"--input is required for benchmark '{lang}' (not a built-in benchmark)"
-                )
-            inputs = list(args.inputs)
-
-            def benchmark_fn(gen_opts, a, _lang=lang, _inputs=inputs):
-                run_benchmark_suite(_lang, gen_opts, a, _inputs)
-
-        try:
-            run_all_modes(benchmark_fn, args)
-        except KeyboardInterrupt:
-            print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
-            sys.exit(1)
+    finally:
+        restore_generated_parsers()
 
 
 if __name__ == "__main__":

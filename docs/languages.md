@@ -68,7 +68,7 @@ When working with or creating languages in Galley, you can choose between two pa
 
 ## Building and Running Included Languages
 
-To compile and benchmark any included language, generate its parse table using `uv` and invoke `zig build` from the repository root:
+To compile and benchmark any included language, generate its parser and invoke `zig build` from the repository root:
 
 ```sh
 # Generate and test the LL parser for standard JSON
