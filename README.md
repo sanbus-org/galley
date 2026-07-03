@@ -18,7 +18,7 @@ Full user guides and architectural documentation are available online at:
 👉 **[sassanh.github.io/galley](https://sassanh.github.io/galley/)**
 
 * **[Getting Started](https://sassanh.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
-* **[Included Languages](https://sassanh.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Grammar parser.
+* **[Included Languages](https://sassanh.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
 * **[Configuration & Flags](https://sassanh.github.io/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
 * **[Writing a Language](https://sassanh.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
 * **[Reduction Procedures](https://sassanh.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
@@ -35,12 +35,11 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 ### Prerequisites
 
 * [Zig 0.16+](https://ziglang.org/download/) — Native compiler toolchain
-* [uv](https://docs.astral.sh/uv/) — Python package and script runner
 
 ### Compile & Run a Bundled Parser
 
 ```sh
-# 1. Generate the Zig parse table for JSON
+# 1. Generate the Zig parser for JSON
 scripts/generate-parser --language languages/json --parser-type LL
 
 # 2. Build and run the parser in ReleaseFast mode
