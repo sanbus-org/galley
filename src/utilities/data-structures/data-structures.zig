@@ -3,12 +3,11 @@ const builtin = @import("builtin");
 const root = @import("galley");
 const string_utilities = root.string_utilities;
 
-pub const Payload = root.procedures.Payload;
+pub const Payload = if (root.parser.are_procedures_enabled) root.procedures.Payload else struct {};
 pub const ASTNode = @import("astnode.zig").ASTNode(Payload);
 pub const ASTAllocator = @import("astnode.zig").ASTAllocator(Payload);
-pub const activateRuntimeContext = @import("context.zig").activateRuntimeContext;
+pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;
-pub const deactivateRuntimeContext = @import("context.zig").deactivateRuntimeContext;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;
 pub const Offsets = @import("offsets.zig").Offsets;
 pub const ProcedureArguments = @import("procedure-utilities.zig").ProcedureArguments;

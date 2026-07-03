@@ -300,8 +300,12 @@ const Generator = struct {
             \\const string_utilities = @import("galley").string_utilities;
             \\
         );
-        try writer.print("\npub const is_ast_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{ self.options.with_ast, self.options.input_size, self.longestTerminalLength() });
-
+        try writer.print("\npub const is_ast_enabled = {};\npub const are_procedures_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{
+            self.options.with_ast,
+            self.options.with_procedures,
+            self.options.input_size,
+            self.longestTerminalLength(),
+        });
         try self.emitGrammarTables(writer);
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
 

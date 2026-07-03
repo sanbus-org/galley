@@ -1,8 +1,8 @@
 const std = @import("std");
-const galley = @import("galley");
+const root = @import("galley");
 const ll_generator = @import("ll_generator");
 const lr_generator = @import("lr_generator");
-const data_structures = galley.data_structures;
+const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const ASTNode = data_structures.ASTNode;
 
@@ -68,7 +68,8 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         updateTextLength(args.context, node_address);
         const grammar = try grammarFromAst(args.context, node_address);
         const node = args.context.node_allocator.at(node_address);
-        node.payload.grammar = grammar;
+        if (comptime root.parser.are_procedures_enabled)
+            node.payload.grammar = grammar;
         last_grammar = grammar;
         try emitParserForInputPath(args.context, grammar);
     }
@@ -158,6 +159,7 @@ fn normalizeList(comptime tail_name: ?[]const u8) type {
 }
 
 pub const reduction_RulesTail_0 = flattenRightRecursiveTail;
+pub const reduction_RulesTailTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
 pub const reduction_ProcedureTail_0 = flattenRightRecursiveTail;
@@ -321,8 +323,8 @@ fn nextSiblingNamed(context: *data_structures.Context, node_address: ASTNode.Poi
 
 fn nodeIs(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) bool {
     const node = context.node_allocator.at(node_address);
-    if (node.variable >= galley.parser.variables.len) return false;
-    return std.mem.eql(u8, galley.parser.variables[node.variable], name);
+    if (node.variable >= root.parser.variables.len) return false;
+    return std.mem.eql(u8, root.parser.variables[node.variable], name);
 }
 
 fn nodeText(context: *data_structures.Context, node_address: ASTNode.Pointer) []const u8 {

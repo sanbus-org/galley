@@ -2,8 +2,13 @@ Start
 | Rules
 
 Rules
-| Rules new_line Rule
+| Rules NewLines Rule
 | Rule
+
+NewLines
+| NewLines new_line
+| NewLines "#" AnyContent new_line
+| new_line
 
 Rule
 | VariableSymbol ProcedureTail new_line RightHandSides

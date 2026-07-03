@@ -43,7 +43,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
         pub inline fn create(self: *Self, start: Context.Size, variable: u16) ASTNodeType.Pointer {
             const address = self.counter;
-            self.counter += 1;
+            self.counter +%= 1;
 
             if (comptime builtin.mode == .Debug) {
                 if (self.counter >= self.memory.len) {
@@ -55,7 +55,6 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             const node = &self.memory[address];
             node.text_start = start;
             node.variable = variable;
-            node.payload = .{};
 
             return address;
         }

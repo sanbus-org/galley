@@ -3,7 +3,7 @@ Start
 
 Items
 | Item Items
-| 
+|
 
 Item
 | String
@@ -24,7 +24,7 @@ DashAfter
 
 BraceItems
 | BraceItem BraceItems
-| 
+|
 
 BraceItem
 | String
@@ -37,7 +37,7 @@ BraceItem
 
 ParenItems
 | ParenItem ParenItems
-| 
+|
 
 ParenItem
 | String
@@ -54,7 +54,7 @@ BracketAfter
 
 BracketItems
 | BracketItem BracketItems
-| 
+|
 
 BracketItem
 | String
@@ -72,13 +72,13 @@ _DoubleStringContent
 | "\\" character _DoubleStringContent
 | character^'"^"\\" _DoubleStringContent
 | new_line _DoubleStringContent
-| 
+|
 
 _SingleStringContent
 | "\\" character _SingleStringContent
 | character^"'"^"\\" _SingleStringContent
 | new_line _SingleStringContent
-| 
+|
 
 LongString
 | "[[" _LongStringContent

@@ -3,15 +3,15 @@ Start
 
 Forms
 | Form FormsTail
-| 
+|
 
 FormsTail
 | RequiredBlank FormsAfterBlank
-| 
+|
 
 FormsAfterBlank
 | Form FormsTail
-| 
+|
 
 Form
 | Abbreviation
@@ -31,7 +31,7 @@ Abbreviation
 
 UnquoteSuffix
 | "@"
-| 
+|
 
 # -- Lists: proper and dotted pairs ------------------------
 
@@ -40,16 +40,16 @@ List
 
 ListBody
 | Form ListBodyTail
-| 
+|
 
 ListBodyTail
 | RequiredBlank ListBodyAfterBlank
-| 
+|
 
 ListBodyAfterBlank
 | "." RequiredBlank Form
 | Form ListBodyTail
-| 
+|
 
 # -- Hash-prefixed forms -----------------------------------
 
@@ -83,11 +83,11 @@ HashForm
 
 BooleanTrueTail
 | "rue"
-| 
+|
 
 BooleanFalseTail
 | "alse"
-| 
+|
 
 # Character literals: #\a  #\space  #\newline  #\0  etc.
 # Named characters (space, newline, tab ...) are matched by
@@ -131,38 +131,38 @@ CharacterContent
 
 _CharNameTail
 | letter _CharNameTail
-| 
+|
 
 VectorBody
 | Form VectorBodyTail
-| 
+|
 
 VectorBodyTail
 | RequiredBlank VectorBodyAfterBlank
-| 
+|
 
 VectorBodyAfterBlank
 | Form VectorBodyTail
-| 
+|
 
 BytevectorBody
 | BytevectorByte BytevectorBodyTail
-| 
+|
 
 BytevectorBodyTail
 | RequiredBlank BytevectorBodyAfterBlank
-| 
+|
 
 BytevectorBodyAfterBlank
 | BytevectorByte BytevectorBodyTail
-| 
+|
 
 BytevectorByte
 | digit _DigitTail
 
 BitVectorBody
 | BinaryDigit BitVectorBody
-| 
+|
 
 HashNumberDispatch
 | RadixMarker RadixDigit RadixDigitTail
@@ -182,7 +182,7 @@ RadixDigit
 
 RadixDigitTail
 | RadixDigit RadixDigitTail
-| 
+|
 
 BinaryDigit
 | "0"
@@ -190,7 +190,7 @@ BinaryDigit
 
 BinaryDigitTail
 | BinaryDigit BinaryDigitTail
-| 
+|
 
 OctalDigit
 | "0"
@@ -204,7 +204,7 @@ OctalDigit
 
 OctalDigitTail
 | OctalDigit OctalDigitTail
-| 
+|
 
 HexDigit
 | digit
@@ -223,7 +223,7 @@ HexDigit
 
 HexDigitTail
 | HexDigit HexDigitTail
-| 
+|
 
 # Block comments #| ... |# (Common Lisp style: non-nesting)
 BlockCommentBody
@@ -267,7 +267,7 @@ EscapedSymbol
 _EscapedSymbolContent
 | "\\" character _EscapedSymbolContent
 | character^"|"^"\\" _EscapedSymbolContent
-| 
+|
 
 # -- Numbers -----------------------------------------------
 
@@ -280,7 +280,7 @@ DecimalNumber
 
 _DigitTail
 | digit _DigitTail
-| 
+|
 
 DecimalSuffix
 | "/" digit _DigitTail
@@ -291,7 +291,7 @@ DecimalSuffix
 
 ExponentTail
 | ExpMarker ExpSign digit _DigitTail
-| 
+|
 
 ExpMarker
 | "e"
@@ -308,7 +308,7 @@ ExpMarker
 ExpSign
 | "+"
 | "-"
-| 
+|
 
 # -- Symbols -----------------------------------------------
 
@@ -359,7 +359,7 @@ _SymbolTail
 | "@" _SymbolTail
 | "." _SymbolTail
 | "'" _SymbolTail
-| 
+|
 
 # -- Whitespace and line comments --------------------------
 
@@ -367,7 +367,7 @@ OptionalBlank
 | space _OptionalBlankTail
 | new_line _OptionalBlankTail
 | ";" _LineCommentTail
-| 
+|
 
 RequiredBlank
 | space _OptionalBlankTail
@@ -378,7 +378,7 @@ _OptionalBlankTail
 | space _OptionalBlankTail
 | new_line _OptionalBlankTail
 | ";" _LineCommentTail
-| 
+|
 
 _LineCommentTail
 | new_line _OptionalBlankTail
