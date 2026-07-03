@@ -72,10 +72,13 @@ To compile and benchmark any included language, generate its parser and invoke `
 
 ```sh
 # Generate and test the LL parser for standard JSON
-scripts/generate-parser --language languages/json --parser-type LL
-zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
+zig build
+./zig-out/bin/galley --parser-type ll languages/json
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json languages/json/samples/code-01.json
 
 # Generate and test the LR parser for the Grammar specification itself
-scripts/generate-parser --language languages/galley --parser-type LR
-zig build -Doptimize=ReleaseFast lr-galley -- languages/galley/lr.grm
+./zig-out/bin/galley --parser-type lr languages/galley
+zig build -Doptimize=ReleaseFast lr-galley
+./zig-out/bin/lr-galley languages/galley/lr.grm
 ```

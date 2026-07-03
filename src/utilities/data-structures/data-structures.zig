@@ -3,7 +3,8 @@ const builtin = @import("builtin");
 const root = @import("galley");
 const string_utilities = root.string_utilities;
 
-pub const Payload = if (root.parser.are_procedures_enabled) root.procedures.Payload else struct {};
+const are_procedures_enabled = if (@hasDecl(root.parser, "are_procedures_enabled")) root.parser.are_procedures_enabled else true;
+pub const Payload = if (are_procedures_enabled) root.procedures.Payload else struct {};
 pub const ASTNode = @import("astnode.zig").ASTNode(Payload);
 pub const ASTAllocator = @import("astnode.zig").ASTAllocator(Payload);
 pub const context = @import("context.zig");

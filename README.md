@@ -39,11 +39,13 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 ### Compile & Run a Bundled Parser
 
 ```sh
-# 1. Generate the Zig parser for JSON
-scripts/generate-parser --language languages/json --parser-type LL
+# 1. Generate the Zig parser for JSON.
+zig build
+./zig-out/bin/galley --parser-type ll languages/json
 
-# 2. Build and run the parser in ReleaseFast mode
-zig build -Doptimize=ReleaseFast ll-json -- languages/json/samples/code-01.json
+# 2. Build exactly that parser, then run it.
+zig build -Doptimize=ReleaseFast ll-json
+./zig-out/bin/ll-json languages/json/samples/code-01.json
 ```
 
 ---

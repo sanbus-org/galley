@@ -27,7 +27,8 @@ jobs:
 
       - name: Run unit tests
         run: |
-          scripts/generate-parser --language languages/galley --parser-type LR --with-ast
+          zig build
+          ./zig-out/bin/galley --parser-type lr languages/galley --with-ast
           zig build test --summary all
 
       - name: Run benchmarks
