@@ -2,9 +2,9 @@ Start
 | Value
 
 Value
-| Object OptionalBlank@drop_children
+| Object OptionalBlank@dropChildren
 | Array OptionalBlank
-| Number@drop_children OptionalBlank
+| Number@dropChildren OptionalBlank
 | String OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
@@ -25,10 +25,10 @@ ObjectMember
 | String OptionalBlank ":" OptionalBlank Value
 
 Array
-| "[" OptionalBlank ArrayMembers@replace_with_children
+| "[" OptionalBlank ArrayMembers@replaceWithChildren
 
 ArrayMembers
-| Value ArrayMembersTail@replace_with_children "]"
+| Value ArrayMembersTail@replaceWithChildren "]"
 | "]"
 
 ArrayMembersTail
@@ -43,18 +43,18 @@ OptionalBlank
 |
 
 String
-| '" _StringContent@drop_children '"
+| '" _StringContent@dropChildren '"
 
 _StringContent
 | _StringContent character^'"
 |
 
 Number
-| IntegerNumber@drop_children FloatTail@drop_children
+| IntegerNumber@dropChildren FloatTail@dropChildren
 
 IntegerNumber
-| PositiveIntegerNumber@drop_children
-| NegativeIntegerNumber@drop_children
+| PositiveIntegerNumber@dropChildren
+| NegativeIntegerNumber@dropChildren
 
 PositiveIntegerNumber
 | digit _PositiveIntegerNumberTail
@@ -66,6 +66,6 @@ _PositiveIntegerNumberTail
 NegativeIntegerNumber
 | "-" PositiveIntegerNumber
 
-FloatTail@drop_self
+FloatTail@dropSelf
 | "." PositiveIntegerNumber
 |

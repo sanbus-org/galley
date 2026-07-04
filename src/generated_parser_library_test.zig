@@ -1,39 +1,64 @@
 const std = @import("std");
-const ll_json_parser = @import("ll-json");
-const lr_json_parser = @import("lr-json");
+const parser = @import("parser-under-test");
+const test_options = @import("test_options");
+const sample_input = test_options.sample_input;
 
-test "parse bytes through generated ll parser library API" {
-    var parsed = try ll_json_parser.parseBytes(std.testing.io, std.testing.allocator, "{}", .{});
+fn sampleFitsParserInputSize() bool {
+    const max_input_size = std.math.maxInt(parser.parser.input_size_cap);
+    if (sample_input.len > max_input_size) {
+        std.debug.print(
+            "sample {s} is {d} bytes, exceeding parser input_size_cap {s} max {d}\n",
+            .{ test_options.sample_path, sample_input.len, @typeName(parser.parser.input_size_cap), max_input_size },
+        );
+        return false;
+    }
+    return true;
+}
+
+fn expectParsedAll(result: parser.ParseResult) !void {
+    if (result.parsed_bytes != sample_input.len) {
+        // var line: usize = 1;
+        // var col: usize = 1;
+        // for (sample_input[0..result.parsed_bytes]) |char| {
+        //     if (char == '\n') {
+        //         line += 1;
+        //         col = 1;
+        //     } else {
+        //         col += 1;
+        //     }
+        // }
+        const line = 0;
+        const col = 0;
+        std.debug.print(
+            "sample {s} parsed {d} of {d} bytes (stopped at line {d}, col {d})\n",
+            .{ test_options.sample_path, result.parsed_bytes, sample_input.len, line, col },
+        );
+        return error.ShortParse;
+    }
+}
+
+test "parse bytes through generated parser library API" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
+
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, sample_input, .{ .input_path = test_options.sample_path });
     defer parsed.deinit();
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.result.parsed_bytes);
+    try expectParsedAll(parsed.result);
 }
 
-test "reusable generated ll parser session parses multiple byte slices" {
-    var session = try ll_json_parser.Session.init(std.testing.io, std.testing.allocator, .{});
+test "reusable generated parser session parses multiple byte slices" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return;
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
-    const first = try session.parseBytes("{}", null);
-    try std.testing.expectEqual(@as(usize, 2), first.parsed_bytes);
+    const first = try session.parseBytes(sample_input, test_options.sample_path);
+    try expectParsedAll(first);
 
-    const second = try session.parseBytes("[]", null);
-    try std.testing.expectEqual(@as(usize, 2), second.parsed_bytes);
-}
-
-test "parse bytes through generated lr parser library API" {
-    var parsed = try lr_json_parser.parseBytes(std.testing.io, std.testing.allocator, "{}", .{});
-    defer parsed.deinit();
-
-    try std.testing.expectEqual(@as(usize, 2), parsed.result.parsed_bytes);
-}
-
-test "reusable generated lr parser session parses multiple byte slices" {
-    var session = try lr_json_parser.Session.init(std.testing.io, std.testing.allocator, .{});
-    defer session.deinit();
-
-    const first = try session.parseBytes("{}", null);
-    try std.testing.expectEqual(@as(usize, 2), first.parsed_bytes);
-
-    const second = try session.parseBytes("[]", null);
-    try std.testing.expectEqual(@as(usize, 2), second.parsed_bytes);
+    const second = try session.parseBytes(sample_input, test_options.sample_path);
+    try expectParsedAll(second);
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const ProcedureArguments = @import("galley").data_structures.ProcedureArguments;
 const ASTNode = @import("galley").data_structures.ASTNode;
 const string_utilities = @import("galley").string_utilities;
-const parse_table = @import("galley").parse_table;
+const parser = @import("galley").parser;
 
 const control_characters_uppper_bound = 4;
 
@@ -82,14 +82,14 @@ pub const reduction_Id = summerize;
 pub const reduction_Operator = summerize;
 pub const reduction_String = summerize;
 
-pub fn drop_self(args: *ProcedureArguments) void {
+pub fn dropSelf(args: *ProcedureArguments) void {
     args.node = null;
 }
 
-pub const reduction_OptionalTypeArray_1 = drop_self;
-pub const reduction_OptionalBlank = drop_self;
+pub const reduction_OptionalTypeArray_1 = dropSelf;
+pub const reduction_OptionalBlank = dropSelf;
 
-fn to_character(character: u8, ignore_empty: bool) type {
+fn toCharacter(character: u8, ignore_empty: bool) type {
     _ = character;
     return struct {
         fn function(args: *ProcedureArguments) !void {
@@ -111,22 +111,22 @@ fn to_character(character: u8, ignore_empty: bool) type {
     };
 }
 
-pub const reduction_OptionalBlankAndNewLine = to_character(' ', false).function;
-pub const reduction_OptionalNewLineMany = to_character('\n', false).function;
-pub const reduction_ForceNewLineMany = to_character('\n', false).function;
-pub const reduction_new_line = to_character('\n', false).function;
+pub const reduction_OptionalBlankAndNewLine = toCharacter(' ', false).function;
+pub const reduction_OptionalNewLineMany = toCharacter('\n', false).function;
+pub const reduction_ForceNewLineMany = toCharacter('\n', false).function;
+pub const reduction_new_line = toCharacter('\n', false).function;
 
-pub fn drop_children(args: *ProcedureArguments) !void {
+pub fn dropChildren(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         _ = try ASTNode.clean_children(node_address, args.context);
     }
 }
 
-pub const reduction_PositiveIntegerNumber = drop_children;
-pub const reduction_NegativeIntegerNumber = drop_children;
-pub const reduction_IntegerNumber = drop_children;
-pub const reduction_Number = drop_children;
-pub const reduction_text = drop_children;
+pub const reduction_PositiveIntegerNumber = dropChildren;
+pub const reduction_NegativeIntegerNumber = dropChildren;
+pub const reduction_IntegerNumber = dropChildren;
+pub const reduction_Number = dropChildren;
+pub const reduction_text = dropChildren;
 
 fn block_edge(parse_id: comptime_int) type {
     return struct {
@@ -150,7 +150,7 @@ fn block_edge(parse_id: comptime_int) type {
 pub const reduction_block_start = block_edge(block_start_id).function;
 pub const reduction_block_end = block_edge(block_end_id).function;
 
-pub fn replace_with_children(args: *ProcedureArguments) !void {
+pub fn replaceWithChildren(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         const removed_children = try ASTNode.clean_children(node_address, args.context);
         if (removed_children.len > 0)
@@ -160,10 +160,10 @@ pub fn replace_with_children(args: *ProcedureArguments) !void {
     }
 }
 
-pub const reduction_Operand = replace_with_children;
-pub const reduction_Expression_1 = replace_with_children;
-pub const reduction_OperandAndNumber = replace_with_children;
-pub const reduction_ActionBody = replace_with_children;
+pub const reduction_Operand = replaceWithChildren;
+pub const reduction_Expression_1 = replaceWithChildren;
+pub const reduction_OperandAndNumber = replaceWithChildren;
+pub const reduction_ActionBody = replaceWithChildren;
 
 pub fn reduction_ActionOutcomeEntry(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
@@ -180,7 +180,7 @@ pub fn reduction_FieldRow(args: *ProcedureArguments) void {
     }
 }
 
-pub fn right_recursive_reduction(args: *ProcedureArguments) !void {
+pub fn rightRecursiveReduction(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         const node = args.context.node_allocator.at(node_address);
         if (node.first_child != ASTNode.invalid_pointer) {
@@ -202,22 +202,22 @@ pub fn right_recursive_reduction(args: *ProcedureArguments) !void {
     }
 }
 
-pub const reduction_RulesTail_0 = right_recursive_reduction;
-pub const reduction_Fields_0 = right_recursive_reduction;
-pub const reduction_ActionOutcome_0 = right_recursive_reduction;
-pub const reduction_ActionsToDispatch_0 = right_recursive_reduction;
-pub const reduction_SideEffectsToDispatch_0 = right_recursive_reduction;
-pub const reduction_InstantiationParameters_0 = right_recursive_reduction;
-pub const reduction_Parameters_0 = right_recursive_reduction;
+pub const reduction_RulesTail_0 = rightRecursiveReduction;
+pub const reduction_Fields_0 = rightRecursiveReduction;
+pub const reduction_ActionOutcome_0 = rightRecursiveReduction;
+pub const reduction_ActionsToDispatch_0 = rightRecursiveReduction;
+pub const reduction_SideEffectsToDispatch_0 = rightRecursiveReduction;
+pub const reduction_InstantiationParameters_0 = rightRecursiveReduction;
+pub const reduction_Parameters_0 = rightRecursiveReduction;
 
-pub fn drop_first_child(args: *ProcedureArguments) !void {
+pub fn dropFirstChild(args: *ProcedureArguments) !void {
     // Let's keep "- "
     _ = args;
     // _ = try args.node.?.remove_children(args.allocator, 0, 2);
 }
 
-pub const reduction_ActionsToDispatch_1 = drop_first_child;
-pub const reduction_SideEffectsToDispatch_1 = drop_first_child;
+pub const reduction_ActionsToDispatch_1 = dropFirstChild;
+pub const reduction_SideEffectsToDispatch_1 = dropFirstChild;
 
 pub fn reduction_Rule(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
@@ -228,7 +228,7 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
                     if (args.rule.?.header == -1)
                         "-1"
                     else
-                        parse_table.variables[args.rule.?.header],
+                        parser.variables[args.rule.?.header],
                 ),
                 args.rule.?.header,
             });
@@ -237,7 +237,7 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
                     string_utilities.fmtString(if (idx == -1)
                         "-1"
                     else
-                        parse_table.symbols[idx]),
+                        parser.symbols[idx]),
                     idx,
                 });
             }
@@ -281,7 +281,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
     try writer.flush();
 }
 
-pub fn drop_if_empty(args: *ProcedureArguments) !void {
+pub fn dropIfEmpty(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         const node = args.context.node_allocator.at(node_address);
         if (node.first_child == ASTNode.invalid_pointer) {
