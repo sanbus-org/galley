@@ -62,3 +62,21 @@ test "reusable generated parser session parses multiple byte slices" {
     const second = try session.parseBytes(sample_input, test_options.sample_path);
     try expectParsedAll(second);
 }
+
+test "generated parser session parses files" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return;
+
+    var file = try std.Io.Dir.cwd().openFile(std.testing.io, test_options.sample_path, .{
+        .mode = .read_only,
+        .lock = .exclusive,
+    });
+    defer file.close(std.testing.io);
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    const result = try session.parseFile(file, test_options.sample_path);
+    try expectParsedAll(result);
+}
