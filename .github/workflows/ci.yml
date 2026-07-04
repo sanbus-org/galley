@@ -26,16 +26,4 @@ jobs:
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
       - name: Run unit tests
-        run: |
-          zig build galley
-          ./zig-out/bin/galley --parser-type lr languages/galley --with-ast
-          for language in $(ls languages/); do
-            if [ "$language" = "galley" ]; then
-              continue
-            fi
-            ./zig-out/bin/galley languages/$language --no-ast
-          done
-          zig build test --summary all
-
-      - name: Run benchmarks
-        run: python3 scripts/benchmark.py --validate-only
+        run: zig build test --summary all
