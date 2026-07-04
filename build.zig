@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_parser_matrix = @import("build/generated_parser_matrix.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -97,6 +98,18 @@ pub fn build(b: *std.Build) !void {
         .name = "galley",
         .root_module = generator_cli_mod,
     });
+    const generate_parser_file_mod = b.createModule(.{
+        .root_source_file = b.path("src/generate_parser_file.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "galley_generator", .module = galley_generator_mod },
+        },
+    });
+    const generate_parser_file_exe = b.addExecutable(.{
+        .name = "generate-parser-file",
+        .root_module = generate_parser_file_mod,
+    });
     const install_generator_cli = b.addInstallArtifact(generator_cli_exe, .{});
     b.getInstallStep().dependOn(&install_generator_cli.step);
 
@@ -121,6 +134,16 @@ pub fn build(b: *std.Build) !void {
     });
     const run_public_galley_tests = b.addRunArtifact(public_galley_tests);
     test_step.dependOn(&run_public_galley_tests.step);
+
+    const generated_parser_matrix_step = b.step("test-generated-parser-matrix", "Generate and test parser option matrix");
+    try generated_parser_matrix.add(b, generated_parser_matrix_step, .{
+        .target = target,
+        .clap_mod = clap.module("clap"),
+        .ll_generator_mod = ll_generator_mod,
+        .lr_generator_mod = lr_generator_mod,
+        .generate_parser_file_exe = generate_parser_file_exe,
+    });
+    test_step.dependOn(generated_parser_matrix_step);
 
     var ll_galley_exe: ?*std.Build.Step.Compile = null;
     var lr_galley_exe: ?*std.Build.Step.Compile = null;
