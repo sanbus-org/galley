@@ -55,7 +55,7 @@ You can explicitly bind a procedure to a grammar symbol by appending `@procedure
 Attaches directly to the left-hand-side variable name. The procedure executes whenever this variable is reduced anywhere in the grammar:
 
 ```
-Value@drop_children
+Value@dropChildren
 | Object OptionalBlank
 | Array OptionalBlank
 ```
@@ -66,13 +66,13 @@ Attaches to a specific symbol on the right-hand side of a production (which can 
 
 ```
 ArrayMembers
-| Value ArrayMembersTail@replace_with_children "]"
+| Value ArrayMembersTail@replaceWithChildren "]"
 
 ObjectMember
-| String OptionalBlank ":"@my_colon_hook OptionalBlank Value
+| String OptionalBlank ":"@myColonHook OptionalBlank Value
 
 Number
-| digit@my_digit_hook _PositiveIntegerNumberTail
+| digit@myDigitHook _PositiveIntegerNumberTail
 ```
 
 ### 3. Production Hooks
@@ -80,8 +80,8 @@ Number
 Attaches to an entire right-hand-side production by placing the hook immediately after the initial pipe (`|`). The procedure executes when the complete production is reduced:
 
 ```
-FloatTail@drop_self
-|@drop_self "." PositiveIntegerNumber
+FloatTail@dropSelf
+|@dropSelf "." PositiveIntegerNumber
 |
 ```
 
@@ -122,7 +122,7 @@ Every hook function must match the following signature:
 ```zig
 const ProcedureArguments = @import("root").data_structures.ProcedureArguments;
 
-pub fn my_hook(args: *ProcedureArguments) !void {
+pub fn myHook(args: *ProcedureArguments) !void {
     // If the node was allocated, inspect or modify it
     if (args.node) |node_address| {
         var node = args.context.node_allocator.at(node_address);
@@ -135,28 +135,28 @@ pub fn my_hook(args: *ProcedureArguments) !void {
 
 Many language implementations leverage standard tree-cleanup procedures:
 
-- **`drop_children`**: Discards all child nodes of the current node to save memory:
+- **`dropChildren`**: Discards all child nodes of the current node to save memory:
 
   ```zig
-  pub fn drop_children(args: *ProcedureArguments) !void {
+  pub fn dropChildren(args: *ProcedureArguments) !void {
       if (args.node) |node_address| {
           args.context.node_allocator.at(node_address).clean_children(args.context.node_allocator);
       }
   }
   ```
 
-- **`drop_self`**: Discards the current node itself by setting it to `null`:
+- **`dropSelf`**: Discards the current node itself by setting it to `null`:
 
   ```zig
-  pub fn drop_self(args: *ProcedureArguments) !void {
+  pub fn dropSelf(args: *ProcedureArguments) !void {
       args.node = null;
   }
   ```
 
-- **`replace_with_children`**: Discards the current parent node's structure and replaces it with its first child in the AST hierarchy:
+- **`replaceWithChildren`**: Discards the current parent node's structure and replaces it with its first child in the AST hierarchy:
 
   ```zig
-  pub fn replace_with_children(args: *ProcedureArguments) !void {
+  pub fn replaceWithChildren(args: *ProcedureArguments) !void {
       if (args.node) |node_address| {
           var node = args.context.node_allocator.at(node_address);
           if (node.children.first) |first_child| {

@@ -80,7 +80,7 @@ You can register custom semantic logic to run automatically during parsing by ap
 1. **LHS Variable Hook:** Attaches to the left-hand-side variable definition, executing whenever this variable is reduced anywhere:
 
    ```
-   Value@drop_children
+   Value@dropChildren
    | Object OptionalBlank
    | Array OptionalBlank
    ```
@@ -89,7 +89,7 @@ You can register custom semantic logic to run automatically during parsing by ap
 
    ```
    ArrayMembers
-   | Value ArrayMembersTail@replace_with_children "]"
+   | Value ArrayMembersTail@replaceWithChildren "]"
 
    Number
    | digit@my_digit_hook _PositiveIntegerNumberTail
@@ -98,8 +98,8 @@ You can register custom semantic logic to run automatically during parsing by ap
 3. **Production Hook:** Attaches to a complete right-hand-side production, placed immediately after the pipe (`|`), executing when the production is reduced:
 
    ```
-   FloatTail@drop_self
-   |@drop_self "." PositiveIntegerNumber
+   FloatTail@dropSelf
+   |@dropSelf "." PositiveIntegerNumber
    |
    ```
 

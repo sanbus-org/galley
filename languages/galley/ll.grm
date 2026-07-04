@@ -60,7 +60,7 @@ GenerativeTerminalExceptions
 |
 
 ProcedureTail
-| "@" LowercaseId ProcedureTail
+| "@" CamelCaseId ProcedureTail
 |
 
 StringContent
@@ -97,3 +97,11 @@ LowercaseId
 
 UppercaseId
 | uppercase_letter IdTail
+
+CamelCaseId
+| lowercase_letter CamelCaseIdTail
+
+CamelCaseIdTail
+| letter CamelCaseIdTail
+| digit CamelCaseIdTail
+|

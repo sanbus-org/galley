@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("galley");
-const Context = if (builtin.is_test) MockContext else root.data_structures.Context;
+const Context = root.data_structures.Context;
 
 pub fn ASTAllocator(comptime PayloadType: type) type {
     return struct {
@@ -72,7 +72,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 pub fn ASTNode(comptime PayloadType: type) type {
     return struct {
         pub const Pointer = Context.Size;
-        pub const NodeAllocator = if (builtin.is_test) MockNodeAllocator else *ASTAllocator(PayloadType);
+        pub const NodeAllocator = *ASTAllocator(PayloadType);
         pub const invalid_pointer: Context.Size = ASTAllocator(PayloadType).invalid_pointer;
         pub const invalid_variable: u16 = std.math.maxInt(u16);
 
@@ -204,7 +204,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Insert `first_node` (and any chain) into `self.children` at position `index`.
         /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insert_children(self_address: Pointer, context: *Context, index: u8, first_node: Pointer) !void {
+        pub fn insert_children(self_address: Pointer, context: *Context, index: u16, first_node: Pointer) !void {
             const self = context.node_allocator.at(self_address);
             if (comptime builtin.mode == .Debug) {
                 std.debug.assert(context.node_allocator.at(first_node).parent == invalid_pointer);
@@ -230,7 +230,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
             } else {
                 if (comptime builtin.mode == .Debug) {
                     // Ensure index is valid
-                    var count: u8 = 0;
+                    var count: u16 = 0;
                     var curr = self.first_child;
                     while (curr != invalid_pointer) {
                         count += 1;
@@ -244,7 +244,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 } else {
                     // Traverse to find the child at index - 1
                     var current_child = self.first_child;
-                    var i: u8 = 0;
+                    var i: u16 = 0;
                     while (i < index - 1) : (i += 1) {
                         if (current_child != invalid_pointer) {
                             current_child = context.node_allocator.at(current_child).next;
@@ -325,7 +325,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Remove `count` consecutive siblings starting at `self_address`, detaching them from parent
         /// and sibling chains. Returns a caller-owned slice of the removed nodes.
-        pub fn remove(self_address: Pointer, context: *Context, count: u8) ![]Pointer {
+        pub fn remove(self_address: Pointer, context: *Context, count: u16) ![]Pointer {
             if (count == 0) {
                 return &[0]Pointer{};
             }
@@ -333,7 +333,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
             const self = context.node_allocator.at(self_address);
 
             var last_removed_address = self_address;
-            var i: u8 = 1;
+            var i: u16 = 1;
             while (i < count) : (i += 1) {
                 const last_removed = context.node_allocator.at(last_removed_address);
                 last_removed_address = last_removed.next;
@@ -368,7 +368,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
                 // Extract to the return slice and clear parents
                 var current = self_address;
-                var idx: u8 = 0;
+                var idx: u16 = 0;
                 while (current != invalid_pointer) : (idx += 1) {
                     const node = context.node_allocator.at(current);
                     removed_items[idx] = current;
@@ -378,7 +378,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 }
             } else {
                 var current = self_address;
-                var idx: u8 = 0;
+                var idx: u16 = 0;
                 while (current != invalid_pointer) : (idx += 1) {
                     const node = context.node_allocator.at(current);
                     removed_items[idx] = current;
@@ -398,7 +398,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Remove `count` consecutive children starting at `index`, detaching them from parent
         /// and sibling chains. Returns a caller-owned slice of the removed nodes.
-        pub fn remove_children(self_address: Pointer, context: *Context, index: u8, count: u8) ![]Pointer {
+        pub fn remove_children(self_address: Pointer, context: *Context, index: u16, count: u16) ![]Pointer {
             const self = context.node_allocator.at(self_address);
             if (count == 0) {
                 return &[0]Pointer{};
@@ -406,7 +406,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
             // Find the child at index
             var current_child = self.first_child;
-            var i: u8 = 0;
+            var i: u16 = 0;
             while (i < index) : (i += 1) {
                 if (current_child != invalid_pointer) {
                     current_child = context.node_allocator.at(current_child).next;
@@ -424,7 +424,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Remove one child at `index`, detaching it from parent and sibling chains.
         /// Returns a caller-owned pointer to the removed node.
-        pub fn remove_child(self_address: Pointer, context: *Context, index: u8) !Pointer {
+        pub fn remove_child(self_address: Pointer, context: *Context, index: u16) !Pointer {
             const removed_address = (try Self.remove_children(self_address, context, index, 1))[0];
             return removed_address;
         }
@@ -433,7 +433,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
         /// Returns a caller-owned slice of the removed nodes.
         pub fn clean_children(self_address: Pointer, context: *Context) ![]Pointer {
             // Count children
-            var count: u8 = 0;
+            var count: u16 = 0;
             var curr = context.node_allocator.at(self_address).first_child;
             while (curr != invalid_pointer) {
                 count += 1;
@@ -442,19 +442,19 @@ pub fn ASTNode(comptime PayloadType: type) type {
             return try Self.remove_children(self_address, context, 0, count);
         }
 
-        pub fn augmented_back_length(self_address: Pointer, node_allocator: NodeAllocator) u8 {
+        pub fn augmented_back_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
             const self = node_allocator.at(self_address);
             if (self.prior != invalid_pointer) return 1 + Self.augmented_back_length(self.prior, node_allocator);
             return 0;
         }
 
-        pub fn augmented_length(self_address: Pointer, node_allocator: NodeAllocator) u8 {
+        pub fn augmented_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
             return Self.augmented_back_length(self_address, node_allocator) +
                 1 +
                 Self.augmented_front_length(self_address, node_allocator);
         }
 
-        pub fn augmented_front_length(self_address: Pointer, node_allocator: NodeAllocator) u8 {
+        pub fn augmented_front_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
             const self = node_allocator.at(self_address);
             if (self.next != invalid_pointer) return 1 + Self.augmented_front_length(self.next, node_allocator);
             return 0;
@@ -494,55 +494,32 @@ pub fn ASTNode(comptime PayloadType: type) type {
     };
 }
 
-// Mock types for tests
+// Test types
 const TestASTNode = ASTNode(void);
-
-const MockNodeAllocator = struct {
-    nodes: []TestASTNode,
-
-    pub fn at(self: MockNodeAllocator, address: Context.Size) *TestASTNode {
-        return &self.nodes[address];
-    }
-};
-
-const MockContext = struct {
-    pub const Size = root.data_structures.Context.Size;
-
-    arena_allocator: std.mem.Allocator,
-    node_allocator: MockNodeAllocator,
-    text: []const u8,
-
-    pub fn runtime(self: *MockContext) *MockContext {
-        return self;
-    }
-
-    pub fn get_text_slice(self: *MockContext, start: usize, length: usize) ![]const u8 {
-        return self.text[start..][0..length];
-    }
-};
+const TestASTAllocator = ASTAllocator(void);
 
 test "zero length augmented node" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var nodes = [_]TestASTNode{
-        .{
-            .text_start = 0,
-            .text_length = 1,
-            .payload = {},
-        },
-    };
-    const mock_context = MockContext{ .arena_allocator = std.testing.allocator, .node_allocator = .{ .nodes = &nodes }, .text = "-" };
+    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    defer std.testing.allocator.free(node_allocator.memory);
+    const nodes = node_allocator.memory;
 
-    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_back_length(0, mock_context.node_allocator));
-    try std.testing.expectEqual(@as(usize, 1), TestASTNode.augmented_length(0, mock_context.node_allocator));
-    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_front_length(0, mock_context.node_allocator));
+    nodes[0] = .{
+        .text_start = 0,
+        .text_length = 1,
+        .payload = {},
+    };
+
+    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_back_length(0, &node_allocator));
+    try std.testing.expectEqual(@as(usize, 1), TestASTNode.augmented_length(0, &node_allocator));
+    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_front_length(0, &node_allocator));
 }
 
 test "augmented length" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var nodes: [20]TestASTNode = undefined;
-    @memset(&nodes, std.mem.zeroes(TestASTNode));
-
-    const mock_context = MockContext{ .arena_allocator = std.testing.allocator, .node_allocator = .{ .nodes = &nodes }, .text = "-" };
+    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    defer std.testing.allocator.free(node_allocator.memory);
+    const nodes = node_allocator.memory[0..20];
 
     for (&nodes, 0..) |*node, index| {
         if (index > 0) {
@@ -557,22 +534,17 @@ test "augmented length" {
     }
 
     for (nodes, 0..) |_, index| {
-        try std.testing.expectEqual(@as(usize, index), TestASTNode.augmented_back_length(@intCast(index), mock_context.node_allocator));
-        try std.testing.expectEqual(@as(usize, 20), TestASTNode.augmented_length(@intCast(index), mock_context.node_allocator));
-        try std.testing.expectEqual(@as(usize, 19 - index), TestASTNode.augmented_front_length(@intCast(index), mock_context.node_allocator));
+        try std.testing.expectEqual(@as(usize, index), TestASTNode.augmented_back_length(@intCast(index), &node_allocator));
+        try std.testing.expectEqual(@as(usize, 20), TestASTNode.augmented_length(@intCast(index), &node_allocator));
+        try std.testing.expectEqual(@as(usize, 19 - index), TestASTNode.augmented_front_length(@intCast(index), &node_allocator));
     }
 }
 
 test "augmented iterate" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var nodes: [20]TestASTNode = undefined;
-    @memset(&nodes, std.mem.zeroes(TestASTNode));
-
-    var mock_context = MockContext{
-        .arena_allocator = std.testing.allocator,
-        .node_allocator = .{ .nodes = &nodes },
-        .text = "-",
-    };
+    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    defer std.testing.allocator.free(node_allocator.memory);
+    const nodes = node_allocator.memory[0..20];
 
     for (&nodes, 0..) |*node, index| {
         if (index > 0) {
@@ -586,8 +558,9 @@ test "augmented iterate" {
         };
     }
 
+    var context = testContext(&node_allocator, "-");
     const initial_node: Context.Size = 10;
-    var iterator = TestASTNode.iterate_augmented(initial_node, &mock_context);
+    var iterator = TestASTNode.iterate_augmented(initial_node, &context);
     var counter: usize = 0;
     while (iterator.next()) |current| {
         try std.testing.expectEqual(@as(Context.Size, @intCast(counter)), current);
@@ -595,8 +568,19 @@ test "augmented iterate" {
     }
 }
 
+fn testContext(node_allocator: *TestASTAllocator, text: []u8) Context {
+    var context = Context{};
+    context.node_allocator = node_allocator;
+    context.token.reset(text);
+    context.token.head = @intCast(text.len);
+    context.token.len = @intCast(text.len);
+    return context;
+}
+
 const TestFixture = struct {
     arena: std.heap.ArenaAllocator,
+    node_allocator: TestASTAllocator,
+    text: []u8,
     nodes: []TestASTNode,
     root: Context.Size,
     free_nodes: []Context.Size,
@@ -605,20 +589,18 @@ const TestFixture = struct {
         return self.arena.allocator();
     }
 
-    pub fn getContext(self: *TestFixture) MockContext {
-        return MockContext{
-            .arena_allocator = self.allocator(),
-            .node_allocator = .{ .nodes = self.nodes },
-            .text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        };
+    pub fn getContext(self: *TestFixture) Context {
+        return testContext(&self.node_allocator, self.text);
     }
 
     pub fn init() !TestFixture {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         const alloc = arena.allocator();
 
-        const nodes = try alloc.alloc(TestASTNode, 30);
-        for (nodes) |*node| {
+        var node_allocator = try TestASTAllocator.init_capacity(alloc);
+        node_allocator.counter = 30;
+        const nodes = node_allocator.memory;
+        for (nodes[0..30]) |*node| {
             node.* = .{
                 .text_start = 0,
                 .text_length = 0,
@@ -626,11 +608,8 @@ const TestFixture = struct {
             };
         }
 
-        var init_context = MockContext{
-            .arena_allocator = alloc,
-            .node_allocator = .{ .nodes = nodes },
-            .text = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-        };
+        const text = try alloc.dupe(u8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        var init_context = testContext(&node_allocator, text);
 
         const root_node: Context.Size = 0;
         nodes[root_node] = .{
@@ -679,6 +658,8 @@ const TestFixture = struct {
 
         return TestFixture{
             .arena = arena,
+            .node_allocator = node_allocator,
+            .text = text,
             .nodes = nodes,
             .root = root_node,
             .free_nodes = free_nodes,
@@ -890,6 +871,12 @@ test "insert_children" {
 fn test_augmented_text(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
+    var runtime_context = root.data_structures.RuntimeContext{
+        .io = undefined,
+        .arena_allocator = fixture.allocator(),
+    };
+    root.data_structures.context.activateRuntimeContext(&runtime_context);
+    defer root.data_structures.context.deactivateRuntimeContext(&runtime_context);
 
     // Leaf nodes return their own text
     fixture.nodes[5].text_start = 0;
