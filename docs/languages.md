@@ -29,7 +29,7 @@ The standard RFC 8259 JSON implementation used for JSON benchmarking. It support
 ### JSON Structured AST (`languages/json-structured-ast`)
 A full RFC 8259 JSON grammar with additional non-terminals for a richer AST shape. It parses the same language as `languages/json`, but preserves more intermediate structure and therefore has lower benchmark throughput.
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-- **Hooks:** Implements `@drop_children`, `@drop_self`, and `@replace_with_children` in `procedures.zig` to shape AST generation.
+- **Hooks:** Implements `@dropChildren`, `@dropSelf`, and `@replaceWithChildren` in `procedures.zig` to shape AST generation.
 
 ### Augmented JSON (`languages/augmented-json`)
 An extended JSON variant designed to test extreme recursion depths and stress-test the parser's stack overflow recovery mechanisms. It introduces special grouping syntax (`*(...)` and `(...)`) that allows deeply nested structures without exceeding memory limits.

@@ -24,18 +24,45 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     lr_generator_mod.addImport("generator_common", generator_common_mod);
-    const generator_grammar_mod = b.addModule("generator_grammar", .{
-        .root_source_file = b.path("src/generator/grammar.zig"),
+    const galley_grammar_procedures_mod = b.addModule("galley_grammar_procedures", .{
+        .root_source_file = b.path("languages/galley/procedures.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const galley_grammar_config_mod = b.addModule("galley_grammar_config", .{
+        .root_source_file = b.path("languages/galley/config.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const galley_grammar_parser_mod = b.addModule("galley_grammar_parser", .{
+        .root_source_file = b.path("languages/galley/_ll-parser.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const galley_grammar_library_mod = b.addModule("galley_grammar", .{
+        .root_source_file = b.path("src/parser_library.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "procedures", .module = galley_grammar_procedures_mod },
+            .{ .name = "config", .module = galley_grammar_config_mod },
+            .{ .name = "parser", .module = galley_grammar_parser_mod },
+        },
+    });
+    galley_grammar_library_mod.addImport("galley", galley_grammar_library_mod);
+    galley_grammar_procedures_mod.addImport("galley", galley_grammar_library_mod);
+    galley_grammar_procedures_mod.addImport("ll_generator", ll_generator_mod);
+    galley_grammar_procedures_mod.addImport("lr_generator", lr_generator_mod);
+    galley_grammar_config_mod.addImport("galley", galley_grammar_library_mod);
+    galley_grammar_parser_mod.addImport("galley", galley_grammar_library_mod);
+
     const galley_generator_mod = b.addModule("galley_generator", .{
         .root_source_file = b.path("src/generator/api.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "generator_common", .module = generator_common_mod },
-            .{ .name = "generator_grammar", .module = generator_grammar_mod },
+            .{ .name = "galley_grammar", .module = galley_grammar_library_mod },
             .{ .name = "ll_generator", .module = ll_generator_mod },
             .{ .name = "lr_generator", .module = lr_generator_mod },
         },
@@ -47,6 +74,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "generator_common", .module = generator_common_mod },
             .{ .name = "galley_generator", .module = galley_generator_mod },
+            .{ .name = "galley_grammar", .module = galley_grammar_library_mod },
             .{ .name = "ll_generator", .module = ll_generator_mod },
             .{ .name = "lr_generator", .module = lr_generator_mod },
         },
@@ -227,20 +255,37 @@ pub fn build(b: *std.Build) !void {
                 const run_parser_library_tests = b.addRunArtifact(parser_library_tests);
                 test_step.dependOn(&run_parser_library_tests.step);
 
-                if (std.mem.eql(u8, entry.path, "json")) {
-                    const parser_api_test_mod = b.createModule(.{
-                        .root_source_file = b.path("src/generated_parser_library_test.zig"),
-                        .target = target,
-                        .optimize = optimize,
-                        .imports = &.{
-                            .{ .name = "parser-under-test", .module = galley_parser_mod },
-                        },
-                    });
-                    const parser_api_tests = b.addTest(.{
-                        .root_module = parser_api_test_mod,
-                    });
-                    const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
-                    test_step.dependOn(&run_parser_api_tests.step);
+                const samples_path = try std.fs.path.join(
+                    b.allocator,
+                    &[_][]const u8{ languages_path, entry.path, "samples" },
+                );
+                defer b.allocator.free(samples_path);
+
+                var samples_dir: ?@TypeOf(b.build_root.handle) = b.build_root.handle.openDir(b.graph.io, samples_path, .{ .iterate = true }) catch |err| switch (err) {
+                    error.FileNotFound => null,
+                    else => return err,
+                };
+                if (samples_dir) |*samples_dir_handle| {
+                    defer samples_dir_handle.close(b.graph.io);
+                    var samples_walker = try samples_dir_handle.walk(b.allocator);
+                    defer samples_walker.deinit();
+
+                    while (try samples_walker.next(b.graph.io)) |sample_entry| {
+                        if (sample_entry.kind != .file and sample_entry.kind != .sym_link) continue;
+                        if (!std.mem.startsWith(u8, std.fs.path.basename(sample_entry.path), "code-")) continue;
+
+                        const sample_path = try std.fs.path.join(
+                            b.allocator,
+                            &[_][]const u8{ samples_path, sample_entry.path },
+                        );
+                        const sample_input = try b.build_root.handle.readFileAlloc(
+                            b.graph.io,
+                            sample_path,
+                            b.allocator,
+                            .limited(std.math.maxInt(usize)),
+                        );
+                        addGeneratedParserApiTest(b, test_step, target, optimize, galley_parser_mod, sample_path, sample_input);
+                    }
                 }
             } else |err| {
                 // File doesn't exist in this subdir - ignore
@@ -259,6 +304,42 @@ pub fn build(b: *std.Build) !void {
             test_step.dependOn(parity_step);
         }
     }
+}
+
+fn addGeneratedParserApiTest(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    galley_parser_mod: *std.Build.Module,
+    sample_path: []const u8,
+    sample_input: []const u8,
+) void {
+    const parser_api_test_options = b.addOptions();
+    parser_api_test_options.addOption(
+        []const u8,
+        "sample_path",
+        sample_path,
+    );
+    parser_api_test_options.addOption(
+        []const u8,
+        "sample_input",
+        sample_input,
+    );
+    const parser_api_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/generated_parser_library_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "parser-under-test", .module = galley_parser_mod },
+            .{ .name = "test_options", .module = parser_api_test_options.createModule() },
+        },
+    });
+    const parser_api_tests = b.addTest(.{
+        .root_module = parser_api_test_mod,
+    });
+    const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
+    test_step.dependOn(&run_parser_api_tests.step);
 }
 
 fn addGalleyBootstrapParityCase(

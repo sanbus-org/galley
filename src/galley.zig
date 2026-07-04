@@ -3,6 +3,8 @@ pub const generator_common = @import("generator_common");
 pub const ll_generator = @import("ll_generator");
 pub const lr_generator = @import("lr_generator");
 
-pub const string_utilities = @import("utilities/string.zig");
-pub const stack_overflow_utilities = @import("utilities/stack-overflow.zig");
-pub const data_structures = @import("utilities/data-structures/data-structures.zig");
+const bootstrap_galley = @import("galley_grammar");
+
+pub const string_utilities = bootstrap_galley.string_utilities;
+pub const stack_overflow_utilities = bootstrap_galley.stack_overflow_utilities;
+pub const data_structures = bootstrap_galley.data_structures;

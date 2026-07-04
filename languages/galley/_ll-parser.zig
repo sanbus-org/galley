@@ -43,21 +43,23 @@ pub const symbols = &[_][]const u8{
     "GenerativeTerminalExceptions", // 29
     "^", // 30
     "@", // 31
-    "character", // 32
-    "character^'\"\x03", // 33
-    "ControlCharacter", // 34
-    "\x01", // 35
-    "\x04", // 36
-    "character^\"\n\"", // 37
-    "AnyContentTail", // 38
-    "IdTail", // 39
-    "letter", // 40
-    "digit", // 41
-    "lowercase_letter", // 42
-    "uppercase_letter", // 43
-    "_AugmentedStart", // 44
-    "\x00", // 45
-    "GenerativeTerminal", // 46
+    "CamelCaseId", // 32
+    "character", // 33
+    "character^'\"\x03", // 34
+    "ControlCharacter", // 35
+    "\x01", // 36
+    "\x04", // 37
+    "character^\"\n\"", // 38
+    "AnyContentTail", // 39
+    "IdTail", // 40
+    "letter", // 41
+    "digit", // 42
+    "lowercase_letter", // 43
+    "uppercase_letter", // 44
+    "CamelCaseIdTail", // 45
+    "_AugmentedStart", // 46
+    "\x00", // 47
+    "GenerativeTerminal", // 48
 };
 
 pub const is_terminal = &[_]bool{
@@ -93,6 +95,7 @@ pub const is_terminal = &[_]bool{
     false,
     true,
     true,
+    false,
     true,
     true,
     false,
@@ -105,6 +108,7 @@ pub const is_terminal = &[_]bool{
     true,
     true,
     true,
+    false,
     false,
     true,
     false,
@@ -143,6 +147,7 @@ pub const is_generative_terminal = &[_]bool{
     false,
     false,
     false,
+    false,
     true,
     true,
     false,
@@ -155,6 +160,7 @@ pub const is_generative_terminal = &[_]bool{
     true,
     true,
     true,
+    false,
     false,
     false,
     false,
@@ -183,9 +189,11 @@ pub const variables = &[_][]const u8{
     "SimpleStringContent",
     "LowercaseId",
     "GenerativeTerminalExceptions",
+    "CamelCaseId",
     "ControlCharacter",
     "AnyContentTail",
     "IdTail",
+    "CamelCaseIdTail",
     "_AugmentedStart",
     "GenerativeTerminal",
 };
@@ -213,37 +221,43 @@ pub const symbol_by_variable = &[_]usize{
     27,
     28,
     29,
-    34,
-    38,
+    32,
+    35,
     39,
-    44,
+    40,
+    45,
     46,
+    48,
 };
 
 pub const rules = &[_]data_structures.Rule{
-    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 34, 38 }, .right_hand_side_index = "1" }, // AnyContent
-    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 37, 38 }, .right_hand_side_index = "0" }, // AnyContent
-    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // AnyContentTail
-    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{ 34, 38 }, .right_hand_side_index = "1" }, // AnyContentTail
-    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{ 37, 38 }, .right_hand_side_index = "0" }, // AnyContentTail
-    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{25}, .right_hand_side_index = "1" }, // ControlCharacter
-    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{35}, .right_hand_side_index = "0" }, // ControlCharacter
-    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{36}, .right_hand_side_index = "2" }, // ControlCharacter
-    data_structures.Rule{ .header = 26, .right_hand_side = &[_]u16{}, .right_hand_side_index = "0" }, // GenerativeTerminal
+    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 35, 39 }, .right_hand_side_index = "1" }, // AnyContent
+    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 38, 39 }, .right_hand_side_index = "0" }, // AnyContent
+    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // AnyContentTail
+    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 35, 39 }, .right_hand_side_index = "1" }, // AnyContentTail
+    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 38, 39 }, .right_hand_side_index = "0" }, // AnyContentTail
+    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{ 43, 45 }, .right_hand_side_index = "0" }, // CamelCaseId
+    data_structures.Rule{ .header = 26, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // CamelCaseIdTail
+    data_structures.Rule{ .header = 26, .right_hand_side = &[_]u16{ 41, 45 }, .right_hand_side_index = "0" }, // CamelCaseIdTail
+    data_structures.Rule{ .header = 26, .right_hand_side = &[_]u16{ 42, 45 }, .right_hand_side_index = "1" }, // CamelCaseIdTail
+    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{25}, .right_hand_side_index = "1" }, // ControlCharacter
+    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{36}, .right_hand_side_index = "0" }, // ControlCharacter
+    data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{37}, .right_hand_side_index = "2" }, // ControlCharacter
+    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{}, .right_hand_side_index = "0" }, // GenerativeTerminal
     data_structures.Rule{ .header = 21, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // GenerativeTerminalExceptions
     data_structures.Rule{ .header = 21, .right_hand_side = &[_]u16{ 30, 19, 29 }, .right_hand_side_index = "0" }, // GenerativeTerminalExceptions
     data_structures.Rule{ .header = 16, .right_hand_side = &[_]u16{ 28, 29 }, .right_hand_side_index = "0" }, // GenerativeTerminalSymbol
-    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{}, .right_hand_side_index = "3" }, // IdTail
-    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 22, 39 }, .right_hand_side_index = "2" }, // IdTail
-    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 40, 39 }, .right_hand_side_index = "0" }, // IdTail
-    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 41, 39 }, .right_hand_side_index = "1" }, // IdTail
-    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 42, 39 }, .right_hand_side_index = "0" }, // LowercaseId
+    data_structures.Rule{ .header = 25, .right_hand_side = &[_]u16{}, .right_hand_side_index = "3" }, // IdTail
+    data_structures.Rule{ .header = 25, .right_hand_side = &[_]u16{ 22, 40 }, .right_hand_side_index = "2" }, // IdTail
+    data_structures.Rule{ .header = 25, .right_hand_side = &[_]u16{ 41, 40 }, .right_hand_side_index = "0" }, // IdTail
+    data_structures.Rule{ .header = 25, .right_hand_side = &[_]u16{ 42, 40 }, .right_hand_side_index = "1" }, // IdTail
+    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 43, 40 }, .right_hand_side_index = "0" }, // LowercaseId
     data_structures.Rule{ .header = 4, .right_hand_side = &[_]u16{ 5, 6 }, .right_hand_side_index = "0" }, // NewLines
     data_structures.Rule{ .header = 5, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // NewLinesTail
     data_structures.Rule{ .header = 5, .right_hand_side = &[_]u16{ 5, 6 }, .right_hand_side_index = "0" }, // NewLinesTail
     data_structures.Rule{ .header = 5, .right_hand_side = &[_]u16{ 7, 8, 5, 6 }, .right_hand_side_index = "1" }, // NewLinesTail
     data_structures.Rule{ .header = 8, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // ProcedureTail
-    data_structures.Rule{ .header = 8, .right_hand_side = &[_]u16{ 31, 28, 10 }, .right_hand_side_index = "0" }, // ProcedureTail
+    data_structures.Rule{ .header = 8, .right_hand_side = &[_]u16{ 31, 32, 10 }, .right_hand_side_index = "0" }, // ProcedureTail
     data_structures.Rule{ .header = 12, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // RightHandSide
     data_structures.Rule{ .header = 12, .right_hand_side = &[_]u16{ 16, 17, 10, 18 }, .right_hand_side_index = "0" }, // RightHandSide
     data_structures.Rule{ .header = 10, .right_hand_side = &[_]u16{ 7, 8, 5 }, .right_hand_side_index = "1" }, // RightHandSideLine
@@ -258,23 +272,23 @@ pub const rules = &[_]data_structures.Rule{
     data_structures.Rule{ .header = 3, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // RulesTail
     data_structures.Rule{ .header = 3, .right_hand_side = &[_]u16{ 4, 2, 3 }, .right_hand_side_index = "0" }, // RulesTail
     data_structures.Rule{ .header = 19, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // SimpleStringContent
-    data_structures.Rule{ .header = 19, .right_hand_side = &[_]u16{ 33, 27 }, .right_hand_side_index = "0" }, // SimpleStringContent
+    data_structures.Rule{ .header = 19, .right_hand_side = &[_]u16{ 34, 27 }, .right_hand_side_index = "0" }, // SimpleStringContent
     data_structures.Rule{ .header = 0, .right_hand_side = &[_]u16{1}, .right_hand_side_index = "0" }, // Start
     data_structures.Rule{ .header = 18, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // StringContent
-    data_structures.Rule{ .header = 18, .right_hand_side = &[_]u16{ 32, 24 }, .right_hand_side_index = "0" }, // StringContent
+    data_structures.Rule{ .header = 18, .right_hand_side = &[_]u16{ 33, 24 }, .right_hand_side_index = "0" }, // StringContent
     data_structures.Rule{ .header = 13, .right_hand_side = &[_]u16{9}, .right_hand_side_index = "0" }, // Symbol
     data_structures.Rule{ .header = 13, .right_hand_side = &[_]u16{19}, .right_hand_side_index = "1" }, // Symbol
     data_structures.Rule{ .header = 13, .right_hand_side = &[_]u16{20}, .right_hand_side_index = "2" }, // Symbol
     data_structures.Rule{ .header = 15, .right_hand_side = &[_]u16{ 23, 24, 25 }, .right_hand_side_index = "0" }, // TerminalSymbol
     data_structures.Rule{ .header = 15, .right_hand_side = &[_]u16{ 26, 27, 26 }, .right_hand_side_index = "1" }, // TerminalSymbol
-    data_structures.Rule{ .header = 17, .right_hand_side = &[_]u16{ 43, 39 }, .right_hand_side_index = "0" }, // UppercaseId
+    data_structures.Rule{ .header = 17, .right_hand_side = &[_]u16{ 44, 40 }, .right_hand_side_index = "0" }, // UppercaseId
     data_structures.Rule{ .header = 7, .right_hand_side = &[_]u16{21}, .right_hand_side_index = "0" }, // VariableSymbol
     data_structures.Rule{ .header = 7, .right_hand_side = &[_]u16{ 22, 21 }, .right_hand_side_index = "1" }, // VariableSymbol
-    data_structures.Rule{ .header = 25, .right_hand_side = &[_]u16{ 0, 45 }, .right_hand_side_index = "0" }, // _AugmentedStart
+    data_structures.Rule{ .header = 27, .right_hand_side = &[_]u16{ 0, 47 }, .right_hand_side_index = "0" }, // _AugmentedStart
 };
 
 pub const rule_procedures = rule_procedures: {
-    var arr: [50]?*const data_structures.Procedure = .{null} ** 50;
+    var arr: [54]?*const data_structures.Procedure = .{null} ** 54;
 
     for (rules, 0..) |rule, index| {
         const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
@@ -287,7 +301,7 @@ pub const rule_procedures = rule_procedures: {
 };
 
 pub const symbol_procedures = symbol_procedures: {
-    var arr: [47]?*const data_structures.Procedure = .{null} ** 47;
+    var arr: [49]?*const data_structures.Procedure = .{null} ** 49;
 
     for (symbols, 0..) |symbol, index| {
         const procedure_name = "reduction_" ++ symbol;
@@ -327,6 +341,8 @@ const variable_procedure_names = &[_][]const []const u8{
     &[_][]const u8{},
     &[_][]const u8{},
     &[_][]const u8{},
+    &[_][]const u8{},
+    &[_][]const u8{},
 };
 
 const ProcedureSequenceNode = struct {
@@ -335,7 +351,7 @@ const ProcedureSequenceNode = struct {
 };
 
 pub const variable_procedures = variable_procedures: {
-    var arr: [27]?*const ProcedureSequenceNode = .{null} ** 27;
+    var arr: [29]?*const ProcedureSequenceNode = .{null} ** 29;
 
     for (variable_procedure_names, 0..) |procedure_names, index| {
         var last: ?*const ProcedureSequenceNode = null;
@@ -367,11 +383,11 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Rules(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[38],
+                .rule = rules[42],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[38]) |procedure_pointer| {
+            if (comptime rule_procedures[42]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -434,11 +450,11 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RulesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[33],
+                .rule = rules[37],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[33]) |procedure_pointer| {
+            if (comptime rule_procedures[37]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -503,11 +519,11 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSides(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[32],
+                .rule = rules[36],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[32]) |procedure_pointer| {
+            if (comptime rule_procedures[36]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -601,11 +617,11 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[35],
+            .rule = rules[39],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[35]) |procedure_pointer| {
+        if (comptime rule_procedures[39]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -658,11 +674,11 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RulesTail_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[35],
+                .rule = rules[39],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[35]) |procedure_pointer| {
+            if (comptime rule_procedures[39]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -725,11 +741,11 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[17],
+                .rule = rules[21],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[17]) |procedure_pointer| {
+            if (comptime rule_procedures[21]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -839,11 +855,11 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[19],
+            .rule = rules[23],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[19]) |procedure_pointer| {
+        if (comptime rule_procedures[23]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -925,11 +941,11 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[20],
+            .rule = rules[24],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[20]) |procedure_pointer| {
+        if (comptime rule_procedures[24]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -979,11 +995,11 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[19],
+                .rule = rules[23],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[19]) |procedure_pointer| {
+            if (comptime rule_procedures[23]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1031,11 +1047,11 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail_1_3(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[20],
+                .rule = rules[24],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[20]) |procedure_pointer| {
+            if (comptime rule_procedures[24]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1233,11 +1249,11 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_UppercaseId(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[47],
+                .rule = rules[51],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[47]) |procedure_pointer| {
+            if (comptime rule_procedures[51]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1283,11 +1299,11 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_UppercaseId(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[48],
+                .rule = rules[52],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[48]) |procedure_pointer| {
+            if (comptime rule_procedures[52]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1336,7 +1352,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
 }
 
 // Self-Repeating Parser for Symbol "ProcedureTail" at index 2 of its right hand side
-// Right hand side: -> '@', LowercaseId, ProcedureTail
+// Right hand side: -> '@', CamelCaseId, ProcedureTail
 fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
     var repeating_node_address = node_address;
@@ -1347,7 +1363,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
-                        std.debug.print("Rule expansion: ProcedureTail -> '@', LowercaseId, ProcedureTail\n", .{});
+                        std.debug.print("Rule expansion: ProcedureTail -> '@', CamelCaseId, ProcedureTail\n", .{});
                     }
                 }
                 const temporary_address = context.node_allocator.create(context.pos(), 8);
@@ -1359,7 +1375,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x64(context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_LowercaseId(context), context); // child 1
+                repeating_node.immediate_insert_child(repeating_node_address, try parse_CamelCaseId(context), context); // child 1
             },
             else => break,
         }
@@ -1375,17 +1391,17 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
-                std.debug.print("Reduction: ProcedureTail <~ '@', LowercaseId, ProcedureTail\n", .{});
+                std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
             }
         }
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[22],
+            .rule = rules[26],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[22]) |procedure_pointer| {
+        if (comptime rule_procedures[26]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -1430,19 +1446,19 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
         64 => { // '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: ProcedureTail -> '@', LowercaseId, ProcedureTail\n", .{});
+                    std.debug.print("Rule expansion: ProcedureTail -> '@', CamelCaseId, ProcedureTail\n", .{});
                 }
             }
             try parse_terminal__x64(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_LowercaseId(context), context); // child 1
+            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseId(context), context); // child 1
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[22],
+                .rule = rules[26],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[22]) |procedure_pointer| {
+            if (comptime rule_procedures[26]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1474,7 +1490,7 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
 
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: ProcedureTail <~ '@', LowercaseId, ProcedureTail\n", .{});
+                    std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
                 }
             }
         },
@@ -1505,11 +1521,11 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSidesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[29],
+                .rule = rules[33],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[29]) |procedure_pointer| {
+            if (comptime rule_procedures[33]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1573,11 +1589,11 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
             try parse_generative_terminal_new_line(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[25],
+                .rule = rules[29],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[25]) |procedure_pointer| {
+            if (comptime rule_procedures[29]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1625,11 +1641,11 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
             try parse_generative_terminal_new_line(context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[26],
+                .rule = rules[30],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[26]) |procedure_pointer| {
+            if (comptime rule_procedures[30]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1722,11 +1738,11 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[31],
+            .rule = rules[35],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[31]) |procedure_pointer| {
+        if (comptime rule_procedures[35]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -1778,11 +1794,11 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSidesTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[31],
+                .rule = rules[35],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[31]) |procedure_pointer| {
+            if (comptime rule_procedures[35]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1866,11 +1882,11 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideTail(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[24],
+                .rule = rules[28],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[24]) |procedure_pointer| {
+            if (comptime rule_procedures[28]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1949,11 +1965,11 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_TerminalSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[42],
+                .rule = rules[46],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[42]) |procedure_pointer| {
+            if (comptime rule_procedures[46]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -1998,11 +2014,11 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_VariableSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[41],
+                .rule = rules[45],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[41]) |procedure_pointer| {
+            if (comptime rule_procedures[45]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2047,11 +2063,11 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[43],
+                .rule = rules[47],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[43]) |procedure_pointer| {
+            if (comptime rule_procedures[47]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2146,11 +2162,11 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[28],
+            .rule = rules[32],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[28]) |procedure_pointer| {
+        if (comptime rule_procedures[32]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -2204,11 +2220,11 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideTail_0_3(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[28],
+                .rule = rules[32],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[28]) |procedure_pointer| {
+            if (comptime rule_procedures[32]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2272,11 +2288,11 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
             try parse_terminal__x34(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[45],
+                .rule = rules[49],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[45]) |procedure_pointer| {
+            if (comptime rule_procedures[49]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2323,11 +2339,11 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
             try parse_terminal__x92x03(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[44],
+                .rule = rules[48],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[44]) |procedure_pointer| {
+            if (comptime rule_procedures[48]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2390,11 +2406,11 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalExceptions(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[11],
+                .rule = rules[15],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[11]) |procedure_pointer| {
+            if (comptime rule_procedures[15]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2457,11 +2473,11 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[46],
+                .rule = rules[50],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[46]) |procedure_pointer| {
+            if (comptime rule_procedures[50]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2588,11 +2604,11 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[40],
+            .rule = rules[44],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[40]) |procedure_pointer| {
+        if (comptime rule_procedures[44]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -2644,11 +2660,11 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_StringContent_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[40],
+                .rule = rules[44],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[40]) |procedure_pointer| {
+            if (comptime rule_procedures[44]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2775,11 +2791,11 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[37],
+            .rule = rules[41],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[37]) |procedure_pointer| {
+        if (comptime rule_procedures[41]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -2829,11 +2845,11 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_SimpleStringContent_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[37],
+                .rule = rules[41],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[37]) |procedure_pointer| {
+            if (comptime rule_procedures[41]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2898,11 +2914,11 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[16],
+                .rule = rules[20],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[16]) |procedure_pointer| {
+            if (comptime rule_procedures[20]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -2996,11 +3012,11 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[10],
+            .rule = rules[14],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[10]) |procedure_pointer| {
+        if (comptime rule_procedures[14]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3053,11 +3069,11 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalExceptions_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[10],
+                .rule = rules[14],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[10]) |procedure_pointer| {
+            if (comptime rule_procedures[14]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3139,7 +3155,74 @@ inline fn parse_terminal__x64(context: *data_structures.Context) anyerror!void {
     }
 }
 
-// Parser for Symbol "generative_terminal_character" with index 32
+// Parser for Symbol "CamelCaseId" with index 32
+fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    const node_address = context.node_allocator.create(context.pos(), 22);
+
+    switch (context.head(u8, 0)) {
+        97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
+                }
+            }
+            try parse_generative_terminal_lowercase_letter(context); // child 0
+            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail(context), context); // child 1
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[5],
+                .node = node_address,
+            };
+
+            if (comptime rule_procedures[5]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[22];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[32]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for CamelCaseId: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
+                }
+            }
+        },
+        else => {
+            std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mCamelCaseId\x1b[0m.\nExpected tokens: \x1b[32m\'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z\'\x1b[0m\n", .{
+                if (comptime builtin.mode != .ReleaseFast) context.line else 0,
+                if (comptime builtin.mode != .ReleaseFast) context.column else 0,
+                string_utilities.fmtString(context.token.items()),
+            });
+            return error.SyntaxError;
+        },
+    }
+    return node_address;
+}
+
+// Parser for Symbol "generative_terminal_character" with index 33
 inline fn parse_generative_terminal_character(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -3156,7 +3239,7 @@ inline fn parse_generative_terminal_character(context: *data_structures.Context)
     }
 }
 
-// Parser for Symbol "generative_terminal_character^'"\x03" with index 33
+// Parser for Symbol "generative_terminal_character^'"\x03" with index 34
 inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -3173,9 +3256,9 @@ inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_
     }
 }
 
-// Parser for Symbol "ControlCharacter" with index 34
+// Parser for Symbol "ControlCharacter" with index 35
 fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 22);
+    const node_address = context.node_allocator.create(context.pos(), 23);
 
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
@@ -3187,23 +3270,23 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             try parse_terminal__x92x01(context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[6],
+                .rule = rules[10],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[6]) |procedure_pointer| {
+            if (comptime rule_procedures[10]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[22];
+            comptime var procedure_pointer_head = variable_procedures[23];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[34]) |procedure_pointer| {
+            if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3236,23 +3319,23 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             try parse_terminal__x92x03(context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[5],
+                .rule = rules[9],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[5]) |procedure_pointer| {
+            if (comptime rule_procedures[9]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[22];
+            comptime var procedure_pointer_head = variable_procedures[23];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[34]) |procedure_pointer| {
+            if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3285,23 +3368,23 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             try parse_terminal__x92x04(context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[7],
+                .rule = rules[11],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[7]) |procedure_pointer| {
+            if (comptime rule_procedures[11]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[22];
+            comptime var procedure_pointer_head = variable_procedures[23];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[34]) |procedure_pointer| {
+            if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3337,7 +3420,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
     return node_address;
 }
 
-// Parser for Symbol "terminal_\x01" with index 35
+// Parser for Symbol "terminal_\x01" with index 36
 inline fn parse_terminal__x92x01(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
@@ -3354,7 +3437,7 @@ inline fn parse_terminal__x92x01(context: *data_structures.Context) anyerror!voi
     }
 }
 
-// Parser for Symbol "terminal_\x04" with index 36
+// Parser for Symbol "terminal_\x04" with index 37
 inline fn parse_terminal__x92x04(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         4 => { // '\x04'
@@ -3371,7 +3454,7 @@ inline fn parse_terminal__x92x04(context: *data_structures.Context) anyerror!voi
     }
 }
 
-// Parser for Symbol "generative_terminal_character^"\n"" with index 37
+// Parser for Symbol "generative_terminal_character^"\n"" with index 38
 inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -3403,7 +3486,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
                         std.debug.print("Rule expansion: AnyContentTail -> ControlCharacter, AnyContentTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 23);
+                const temporary_address = context.node_allocator.create(context.pos(), 24);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3442,14 +3525,14 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
             try procedure(&args);
         }
 
-        comptime var procedure_pointer_head = variable_procedures[23];
+        comptime var procedure_pointer_head = variable_procedures[24];
         inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
             try procedure(&args);
             procedure_pointer_head = procedure_pointer_head_.next;
         }
 
-        if (comptime symbol_procedures[38]) |procedure_pointer| {
+        if (comptime symbol_procedures[39]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3487,7 +3570,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
                         std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\n\"', AnyContentTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 23);
+                const temporary_address = context.node_allocator.create(context.pos(), 24);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3526,14 +3609,14 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
             try procedure(&args);
         }
 
-        comptime var procedure_pointer_head = variable_procedures[23];
+        comptime var procedure_pointer_head = variable_procedures[24];
         inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
             try procedure(&args);
             procedure_pointer_head = procedure_pointer_head_.next;
         }
 
-        if (comptime symbol_procedures[38]) |procedure_pointer| {
+        if (comptime symbol_procedures[39]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3556,9 +3639,9 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
     return node_address;
 }
 
-// Parser for Symbol "AnyContentTail" with index 38
+// Parser for Symbol "AnyContentTail" with index 39
 fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 23);
+    const node_address = context.node_allocator.create(context.pos(), 24);
 
     switch (context.head(u8, 0)) {
         1, 3, 4 => { // '\x01', '\x03', '\x04'
@@ -3580,14 +3663,14 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[23];
+            comptime var procedure_pointer_head = variable_procedures[24];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[38]) |procedure_pointer| {
+            if (comptime symbol_procedures[39]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3630,14 +3713,14 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[23];
+            comptime var procedure_pointer_head = variable_procedures[24];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[38]) |procedure_pointer| {
+            if (comptime symbol_procedures[39]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3690,7 +3773,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 24);
+                const temporary_address = context.node_allocator.create(context.pos(), 25);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3720,23 +3803,23 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[13],
+            .rule = rules[17],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[13]) |procedure_pointer| {
+        if (comptime rule_procedures[17]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
 
-        comptime var procedure_pointer_head = variable_procedures[24];
+        comptime var procedure_pointer_head = variable_procedures[25];
         inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
             try procedure(&args);
             procedure_pointer_head = procedure_pointer_head_.next;
         }
 
-        if (comptime symbol_procedures[39]) |procedure_pointer| {
+        if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3774,7 +3857,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 24);
+                const temporary_address = context.node_allocator.create(context.pos(), 25);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3804,23 +3887,23 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[14],
+            .rule = rules[18],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[14]) |procedure_pointer| {
+        if (comptime rule_procedures[18]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
 
-        comptime var procedure_pointer_head = variable_procedures[24];
+        comptime var procedure_pointer_head = variable_procedures[25];
         inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
             try procedure(&args);
             procedure_pointer_head = procedure_pointer_head_.next;
         }
 
-        if (comptime symbol_procedures[39]) |procedure_pointer| {
+        if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3858,7 +3941,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 24);
+                const temporary_address = context.node_allocator.create(context.pos(), 25);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3888,23 +3971,23 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
 
         var args = data_structures.ProcedureArguments{
             .context = context,
-            .rule = rules[15],
+            .rule = rules[19],
             .node = repeating_node_address,
         };
 
-        if (comptime rule_procedures[15]) |procedure_pointer| {
+        if (comptime rule_procedures[19]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
 
-        comptime var procedure_pointer_head = variable_procedures[24];
+        comptime var procedure_pointer_head = variable_procedures[25];
         inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
             try procedure(&args);
             procedure_pointer_head = procedure_pointer_head_.next;
         }
 
-        if (comptime symbol_procedures[39]) |procedure_pointer| {
+        if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -3927,9 +4010,9 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
     return node_address;
 }
 
-// Parser for Symbol "IdTail" with index 39
+// Parser for Symbol "IdTail" with index 40
 fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 24);
+    const node_address = context.node_allocator.create(context.pos(), 25);
 
     switch (context.head(u8, 0)) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
@@ -3944,23 +4027,23 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_1_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[15],
+                .rule = rules[19],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[15]) |procedure_pointer| {
+            if (comptime rule_procedures[19]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[24];
+            comptime var procedure_pointer_head = variable_procedures[25];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[39]) |procedure_pointer| {
+            if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -3994,23 +4077,23 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[14],
+                .rule = rules[18],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[14]) |procedure_pointer| {
+            if (comptime rule_procedures[18]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[24];
+            comptime var procedure_pointer_head = variable_procedures[25];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[39]) |procedure_pointer| {
+            if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -4044,23 +4127,23 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_2_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[13],
+                .rule = rules[17],
                 .node = node_address,
             };
 
-            if (comptime rule_procedures[13]) |procedure_pointer| {
+            if (comptime rule_procedures[17]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[24];
+            comptime var procedure_pointer_head = variable_procedures[25];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[39]) |procedure_pointer| {
+            if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -4096,7 +4179,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
     return node_address;
 }
 
-// Parser for Symbol "generative_terminal_letter" with index 40
+// Parser for Symbol "generative_terminal_letter" with index 41
 inline fn parse_generative_terminal_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -4113,7 +4196,7 @@ inline fn parse_generative_terminal_letter(context: *data_structures.Context) an
     }
 }
 
-// Parser for Symbol "generative_terminal_digit" with index 41
+// Parser for Symbol "generative_terminal_digit" with index 42
 inline fn parse_generative_terminal_digit(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
@@ -4130,7 +4213,7 @@ inline fn parse_generative_terminal_digit(context: *data_structures.Context) any
     }
 }
 
-// Parser for Symbol "generative_terminal_lowercase_letter" with index 42
+// Parser for Symbol "generative_terminal_lowercase_letter" with index 43
 inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -4147,7 +4230,7 @@ inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.C
     }
 }
 
-// Parser for Symbol "generative_terminal_uppercase_letter" with index 43
+// Parser for Symbol "generative_terminal_uppercase_letter" with index 44
 inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -4164,7 +4247,294 @@ inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.C
     }
 }
 
-// Parser for Symbol "_AugmentedStart" with index 44
+// Self-Repeating Parser for Symbol "CamelCaseIdTail" at index 1 of its right hand side
+// Right hand side: -> 'letter', CamelCaseIdTail
+fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    var node_address = data_structures.ASTNode.invalid_pointer;
+    var repeating_node_address = node_address;
+    var repeating_node: *data_structures.ASTNode = undefined;
+
+    while (true) {
+        switch (context.head(u8, 0)) {
+            65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+                if (comptime builtin.mode == .Debug) {
+                    if (context.verbosityLevel() > 1) {
+                        std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
+                    }
+                }
+                const temporary_address = context.node_allocator.create(context.pos(), 26);
+                if (node_address == data_structures.ASTNode.invalid_pointer) {
+                    node_address = temporary_address;
+                } else {
+                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                }
+                repeating_node_address = temporary_address;
+                repeating_node = context.node_allocator.at(repeating_node_address);
+                try parse_generative_terminal_letter(context); // child 0
+            },
+            else => break,
+        }
+    }
+    const exit_node = try parse_CamelCaseIdTail(context);
+    if (node_address == data_structures.ASTNode.invalid_pointer) {
+        node_address = exit_node;
+    } else {
+        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+    }
+    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
+        repeating_node = context.node_allocator.at(repeating_node_address);
+
+        if (comptime builtin.mode == .Debug) {
+            if (context.verbosityLevel() > 1) {
+                std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
+            }
+        }
+
+        var args = data_structures.ProcedureArguments{
+            .context = context,
+            .rule = rules[7],
+            .node = repeating_node_address,
+        };
+
+        if (comptime rule_procedures[7]) |procedure_pointer| {
+            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        comptime var procedure_pointer_head = variable_procedures[26];
+        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+            try procedure(&args);
+            procedure_pointer_head = procedure_pointer_head_.next;
+        }
+
+        if (comptime symbol_procedures[45]) |procedure_pointer| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        if (comptime reduction_procedure) |procedure_pointer| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        if (comptime builtin.mode == .Debug) {
+            if (context.verbosityLevel() > 2) {
+                std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
+                    string_utilities.fmtASTNode(args.node, context),
+                });
+            }
+        }
+
+        repeating_node_address = repeating_node.parent;
+    }
+    return node_address;
+}
+
+// Self-Repeating Parser for Symbol "CamelCaseIdTail" at index 1 of its right hand side
+// Right hand side: -> 'digit', CamelCaseIdTail
+fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    var node_address = data_structures.ASTNode.invalid_pointer;
+    var repeating_node_address = node_address;
+    var repeating_node: *data_structures.ASTNode = undefined;
+
+    while (true) {
+        switch (context.head(u8, 0)) {
+            48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+                if (comptime builtin.mode == .Debug) {
+                    if (context.verbosityLevel() > 1) {
+                        std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
+                    }
+                }
+                const temporary_address = context.node_allocator.create(context.pos(), 26);
+                if (node_address == data_structures.ASTNode.invalid_pointer) {
+                    node_address = temporary_address;
+                } else {
+                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                }
+                repeating_node_address = temporary_address;
+                repeating_node = context.node_allocator.at(repeating_node_address);
+                try parse_generative_terminal_digit(context); // child 0
+            },
+            else => break,
+        }
+    }
+    const exit_node = try parse_CamelCaseIdTail(context);
+    if (node_address == data_structures.ASTNode.invalid_pointer) {
+        node_address = exit_node;
+    } else {
+        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+    }
+    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
+        repeating_node = context.node_allocator.at(repeating_node_address);
+
+        if (comptime builtin.mode == .Debug) {
+            if (context.verbosityLevel() > 1) {
+                std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
+            }
+        }
+
+        var args = data_structures.ProcedureArguments{
+            .context = context,
+            .rule = rules[8],
+            .node = repeating_node_address,
+        };
+
+        if (comptime rule_procedures[8]) |procedure_pointer| {
+            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        comptime var procedure_pointer_head = variable_procedures[26];
+        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+            try procedure(&args);
+            procedure_pointer_head = procedure_pointer_head_.next;
+        }
+
+        if (comptime symbol_procedures[45]) |procedure_pointer| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        if (comptime reduction_procedure) |procedure_pointer| {
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            try procedure(&args);
+        }
+
+        if (comptime builtin.mode == .Debug) {
+            if (context.verbosityLevel() > 2) {
+                std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
+                    string_utilities.fmtASTNode(args.node, context),
+                });
+            }
+        }
+
+        repeating_node_address = repeating_node.parent;
+    }
+    return node_address;
+}
+
+// Parser for Symbol "CamelCaseIdTail" with index 45
+fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    const node_address = context.node_allocator.create(context.pos(), 26);
+
+    switch (context.head(u8, 0)) {
+        10, 32, 64 => { // '\n', ' ', '@'
+        },
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
+                }
+            }
+            try parse_generative_terminal_digit(context); // child 0
+            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail_1_1(context), context); // child 1
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[8],
+                .node = node_address,
+            };
+
+            if (comptime rule_procedures[8]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[26];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[45]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
+                }
+            }
+        },
+        65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
+                }
+            }
+            try parse_generative_terminal_letter(context); // child 0
+            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail_0_1(context), context); // child 1
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[7],
+                .node = node_address,
+            };
+
+            if (comptime rule_procedures[7]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[26];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[45]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
+                }
+            }
+        },
+        else => {
+            std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mCamelCaseIdTail\x1b[0m.\nExpected tokens: \x1b[32m\'\\n', ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z\'\x1b[0m\n", .{
+                if (comptime builtin.mode != .ReleaseFast) context.line else 0,
+                if (comptime builtin.mode != .ReleaseFast) context.column else 0,
+                string_utilities.fmtString(context.token.items()),
+            });
+            return error.SyntaxError;
+        },
+    }
+    return node_address;
+}
+
+// Parser for Symbol "_AugmentedStart" with index 46
 fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -4177,23 +4547,23 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
             try parse_special_EOF(context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
-                .rule = rules[49],
+                .rule = rules[53],
                 .node = null,
             };
 
-            if (comptime rule_procedures[49]) |procedure_pointer| {
+            if (comptime rule_procedures[53]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
 
-            comptime var procedure_pointer_head = variable_procedures[25];
+            comptime var procedure_pointer_head = variable_procedures[27];
             inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
                 try procedure(&args);
                 procedure_pointer_head = procedure_pointer_head_.next;
             }
 
-            if (comptime symbol_procedures[44]) |procedure_pointer| {
+            if (comptime symbol_procedures[46]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -4220,7 +4590,7 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
     }
 }
 
-// Parser for Symbol "special_EOF" with index 45
+// Parser for Symbol "special_EOF" with index 47
 inline fn parse_special_EOF(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
@@ -4245,9 +4615,8 @@ pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
     if (context.verbosityLevel() > 0) {
         std.log.info("The input file was parsed successfully!", .{});
     }
-
     const ast_root: ?data_structures.ASTNode.Pointer = if (context.node_allocator.counter > 0) 0 else null;
-    return .{ .parsed_bytes = context.pos(), .ast_root = ast_root };
+    return .{ .parsed_bytes = context.pos() - 1, .ast_root = ast_root };
 }
 
 pub fn parse(context: *data_structures.Context) !void {

@@ -49,7 +49,7 @@ GenerativeTerminalExceptions
 | "^" TerminalSymbol
 
 ProcedureTail
-| ProcedureTail "@" LowercaseId
+| ProcedureTail "@" CamelCaseId
 |
 
 StringContent
@@ -87,3 +87,8 @@ UppercaseId
 | UppercaseId letter
 | UppercaseId digit
 | UppercaseId "_"
+
+CamelCaseId
+| lowercase_letter
+| CamelCaseId letter
+| CamelCaseId digit

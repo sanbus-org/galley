@@ -44,17 +44,17 @@ pub fn reduction_null(args: *ProcedureArguments) !void {
     }
 }
 
-pub fn drop_self(args: *ProcedureArguments) !void {
+pub fn dropSelf(args: *ProcedureArguments) !void {
     args.node = null;
 }
 
-pub fn drop_children(args: *ProcedureArguments) !void {
+pub fn dropChildren(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         _ = try data_structures.ASTNode.clean_children(node_address, args.context);
     }
 }
 
-pub fn replace_with_children(args: *ProcedureArguments) !void {
+pub fn replaceWithChildren(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         const removed_children = try data_structures.ASTNode.clean_children(node_address, args.context);
         if (removed_children.len > 0) args.node = removed_children[0] else args.node = null;

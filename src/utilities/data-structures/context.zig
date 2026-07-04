@@ -194,7 +194,7 @@ pub const Context = struct {
 
     pub inline fn advance_input_without_check(self: *@This()) void {
         if (comptime root.procedures.indentation_syntax) {
-            self.seek += 1;
+            self.seek +%= 1;
         }
     }
 
@@ -309,7 +309,10 @@ pub const Context = struct {
     }
 
     pub inline fn pos(self: *Self) Size {
-        return (if (comptime root.procedures.indentation_syntax) self.read_bytes else 0) + self.token.head - self.token.len;
+        return if (comptime root.procedures.indentation_syntax)
+            self.read_bytes + self.seek
+        else
+            self.token.head - self.token.len;
     }
 
     pub inline fn get_text_slice(self: *const Self, start: Size, length: Size) []const u8 {
