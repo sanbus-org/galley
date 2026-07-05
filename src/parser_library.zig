@@ -40,6 +40,16 @@ pub fn parseBytes(io: std.Io, allocator: std.mem.Allocator, input: []const u8, o
     };
 }
 
+pub fn parseSentinelBytes(io: std.Io, allocator: std.mem.Allocator, input: [:0]const u8, options: ParseOptions) !ParsedInput {
+    var session = try Session.init(io, allocator, options);
+    errdefer session.deinit();
+    const result = try session.parseSentinelBytes(input, options.input_path);
+    return .{
+        .session = session,
+        .result = result,
+    };
+}
+
 pub const Session = struct {
     io: std.Io,
     allocator: std.mem.Allocator,
@@ -49,7 +59,7 @@ pub const Session = struct {
     chunk_buffer: []u8,
     owned_input: ?[]u8 = null,
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
-    verbosity: usize,
+    verbosity: if (builtin.mode == .Debug) usize else void,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
         var arena = std.heap.ArenaAllocator.init(allocator);
@@ -79,7 +89,7 @@ pub const Session = struct {
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
             .node_allocator = node_allocator,
-            .verbosity = options.verbosity,
+            .verbosity = if (builtin.mode == .Debug) options.verbosity else {},
         };
     }
 
@@ -108,6 +118,16 @@ pub const Session = struct {
         self.owned_input = owned_input;
 
         var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
+        return try self._parseContext(&context_value);
+    }
+
+    pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+        if (self.owned_input) |owned_input| {
+            self.allocator.free(owned_input);
+            self.owned_input = null;
+        }
+
+        var context_value = self._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, input_path);
         return try self._parseContext(&context_value);
     }
 

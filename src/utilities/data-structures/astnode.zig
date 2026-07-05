@@ -55,6 +55,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             const node = &self.memory[address];
             node.text_start = start;
             node.variable = variable;
+            node.payload = .{};
 
             return address;
         }
