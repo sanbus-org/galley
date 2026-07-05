@@ -15,16 +15,16 @@ A parser generator and high-performance parser runtime written in [Zig](https://
 ## Documentation
 
 Full user guides and architectural documentation are available online at:
-👉 **[sassanh.github.io/galley](https://sassanh.github.io/galley/)**
+👉 **[sanbus-org.github.io/galley](https://sanbus-org.github.io/galley/)**
 
-* **[Getting Started](https://sassanh.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
-* **[Included Languages](https://sassanh.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
-* **[Configuration & Flags](https://sassanh.github.io/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
-* **[Writing a Language](https://sassanh.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
-* **[Reduction Procedures](https://sassanh.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
-* **[Core Architecture](https://sassanh.github.io/galley/architecture)** — Under the hood of Galley's stack-overflow recovery, lexer-less design, and self-hosting roadmap.
-* **[AST Allocations](https://sassanh.github.io/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
-* **[Benchmarks](https://sassanh.github.io/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.
+* **[Getting Started](https://sanbus-org.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
+* **[Included Languages](https://sanbus-org.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
+* **[Configuration & Flags](https://sanbus-org.github.io/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
+* **[Writing a Language](https://sanbus-org.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
+* **[Reduction Procedures](https://sanbus-org.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
+* **[Core Architecture](https://sanbus-org.github.io/galley/architecture)** — Under the hood of Galley's stack-overflow recovery, lexer-less design, and self-hosting roadmap.
+* **[AST Allocations](https://sanbus-org.github.io/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
+* **[Benchmarks](https://sanbus-org.github.io/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.
 
 For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.md](BENCHMARKS.md).
 
