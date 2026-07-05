@@ -4,7 +4,7 @@ Start
 Value
 | Object OptionalBlank@dropChildren
 | Array OptionalBlank
-| Number@dropChildren OptionalBlank
+| _Number@dropChildren OptionalBlank
 | String OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
@@ -35,11 +35,11 @@ Array
 | "[" OptionalBlank ArrayMembers@replaceWithChildren
 
 ArrayMembers
-| Value ArrayMembersTail@replaceWithChildren "]"
+| Value _ArrayMembersTail@replaceWithChildren "]"
 | "]"
 
-ArrayMembersTail
-| "," OptionalBlank Value ArrayMembersTail
+_ArrayMembersTail
+| "," OptionalBlank Value _ArrayMembersTail
 |
 
 OptionalBlank
@@ -63,7 +63,7 @@ _StringContent
 | character^'" _StringContent
 |
 
-Number
+_Number
 | IntegerNumber@dropChildren FloatTail@dropChildren
 
 IntegerNumber

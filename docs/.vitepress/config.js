@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitepress'
 
-const githubRepository = process.env.GITHUB_REPOSITORY || 'sassanh/galley'
+const githubRepository = process.env.GITHUB_REPOSITORY || 'sanbus-org/galley'
 const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://codeberg.org'
 const isGitHub = githubServerUrl.includes('github.com')
 

@@ -4,7 +4,7 @@ Start
 Value
 | Object OptionalBlank@dropChildren
 | Array OptionalBlank
-| Number@dropChildren OptionalBlank
+| _Number OptionalBlank
 | String OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
@@ -56,7 +56,7 @@ _StringContent
 | character^'" _StringContent
 |
 
-Number
+_Number
 | IntegerNumber@dropChildren FloatTail@dropChildren
 
 IntegerNumber
