@@ -110,7 +110,6 @@ pub fn build(b: *std.Build) !void {
 
     var walker = try dir.walk(b.allocator);
     defer walker.deinit();
-
     while (try walker.next(b.graph.io)) |entry| {
         if (entry.kind != .directory and entry.kind != .sym_link) continue;
 
@@ -155,6 +154,18 @@ pub fn build(b: *std.Build) !void {
                     u8,
                     &[_][]const u8{ parser_type, "-", entry.path },
                 );
+                const api_benchmark_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "api-bench-", parser_name },
+                );
+                const api_benchmark_run_step_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "run-", api_benchmark_name },
+                );
+                const parser_cli_options = b.addOptions();
+                parser_cli_options.addOption([]const u8, "api_benchmark_step", api_benchmark_run_step_name);
                 const galley_parser_mod = b.addModule(parser_name, .{
                     .root_source_file = b.path("src/parser_library.zig"),
                     .target = target,
@@ -174,6 +185,15 @@ pub fn build(b: *std.Build) !void {
                     .link_libc = true,
                     .imports = &.{
                         .{ .name = "clap", .module = clap.module("clap") },
+                        .{ .name = "build_options", .module = parser_cli_options.createModule() },
+                        .{ .name = "galley", .module = galley_parser_mod },
+                    },
+                });
+                const api_benchmark_mod = b.createModule(.{
+                    .root_source_file = b.path("src/api_benchmark.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{
                         .{ .name = "galley", .module = galley_parser_mod },
                     },
                 });
@@ -187,7 +207,12 @@ pub fn build(b: *std.Build) !void {
                     .name = parser_name,
                     .root_module = galley_cli_mod,
                 });
+                const api_benchmark_exe = b.addExecutable(.{
+                    .name = api_benchmark_name,
+                    .root_module = api_benchmark_mod,
+                });
                 const install_artifact = b.addInstallArtifact(exe, .{});
+                const install_api_benchmark_artifact = b.addInstallArtifact(api_benchmark_exe, .{});
 
                 const description = try std.mem.concat(
                     b.allocator,
@@ -198,6 +223,14 @@ pub fn build(b: *std.Build) !void {
 
                 const build_step = b.step(parser_name, description);
                 build_step.dependOn(&install_artifact.step);
+                const api_benchmark_description = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "Benchmark the ", entry.path, " parser API" },
+                );
+                defer b.allocator.free(api_benchmark_description);
+                const api_benchmark_step = b.step(api_benchmark_name, api_benchmark_description);
+                api_benchmark_step.dependOn(&install_api_benchmark_artifact.step);
 
                 const run_step_name = try std.mem.concat(
                     b.allocator,
@@ -206,14 +239,19 @@ pub fn build(b: *std.Build) !void {
                 );
                 defer b.allocator.free(run_step_name);
                 const run_step = b.step(run_step_name, description);
+                const api_benchmark_run_step = b.step(api_benchmark_run_step_name, api_benchmark_description);
 
                 const run_cmd = b.addRunArtifact(exe);
                 run_step.dependOn(&run_cmd.step);
 
                 run_cmd.step.dependOn(&install_artifact.step);
+                const api_benchmark_run_cmd = b.addRunArtifact(api_benchmark_exe);
+                api_benchmark_run_step.dependOn(&api_benchmark_run_cmd.step);
+                api_benchmark_run_cmd.step.dependOn(&install_api_benchmark_artifact.step);
 
                 if (b.args) |args| {
                     run_cmd.addArgs(args);
+                    api_benchmark_run_cmd.addArgs(args);
                 }
             } else |err| {
                 if (err != error.FileNotFound) return err;

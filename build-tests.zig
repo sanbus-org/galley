@@ -121,7 +121,6 @@ pub fn build(b: *std.Build) !void {
 
     var walker = try dir.walk(b.allocator);
     defer walker.deinit();
-
     const test_step = b.step("test", "Run tests");
     const generator_tests = b.addTest(.{
         .root_module = galley_generator_mod,
@@ -138,6 +137,7 @@ pub fn build(b: *std.Build) !void {
     const generated_parser_matrix_step = b.step("test-generated-parser-matrix", "Generate and test parser option matrix");
     try generated_parser_matrix.add(b, generated_parser_matrix_step, .{
         .target = target,
+        .optimize = optimize,
         .clap_mod = clap.module("clap"),
         .ll_generator_mod = ll_generator_mod,
         .lr_generator_mod = lr_generator_mod,
@@ -193,6 +193,13 @@ pub fn build(b: *std.Build) !void {
                     u8,
                     &[_][]const u8{ parser_type, "-", entry.path },
                 );
+                const api_benchmark_run_step_name = try std.mem.concat(
+                    b.allocator,
+                    u8,
+                    &[_][]const u8{ "run-api-bench-", parser_name },
+                );
+                const parser_cli_options = b.addOptions();
+                parser_cli_options.addOption([]const u8, "api_benchmark_step", api_benchmark_run_step_name);
                 const galley_parser_mod = b.addModule(parser_name, .{
                     .root_source_file = b.path("src/parser_library.zig"),
                     .target = target,
@@ -212,6 +219,7 @@ pub fn build(b: *std.Build) !void {
                     .link_libc = true,
                     .imports = &.{
                         .{ .name = "clap", .module = clap.module("clap") },
+                        .{ .name = "build_options", .module = parser_cli_options.createModule() },
                         .{ .name = "galley", .module = galley_parser_mod },
                     },
                 });

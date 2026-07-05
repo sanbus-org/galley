@@ -50,6 +50,27 @@ def metric_mbps(metrics):
         return 0.0
 
 
+def benchmark_target(base_target, route):
+    if route == "api":
+        return f"api-bench-{base_target}"
+    return base_target
+
+
+def benchmark_run_args(route, input_file, iterations):
+    args = [input_file]
+    if route == "cli":
+        args.extend(["--verbosity", "0"])
+    args.extend(["--iterations", str(iterations)])
+    return args
+
+
+def benchmark_debug_args(route, input_file):
+    args = [input_file]
+    if route == "cli":
+        args.extend(["--verbosity", "0"])
+    return args
+
+
 def best_metrics(results):
     if not results:
         return {}
@@ -503,6 +524,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
 
     if input_size is not None:
         header_details.append(f"Size Limit: 2^{input_size}")
+    header_details.append(f"Route: {args.route.upper()}")
 
     details_str = " | ".join(header_details)
     title_text = f" {name.upper()} BENCHMARKS ({details_str}) "
@@ -548,14 +570,12 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
 
             card_title = f"[{p_type}] {input_file.replace('languages/', '')}"
 
-            # Calculate iterations for calibration run (aiming for 10MB)
-            calibration_iterations = 1
-            if not args.validate_only:
-                calibration_bytes = 30 * 1024 * 1024
-                if file_size > 0:
-                    calibration_iterations = max(2, int(calibration_bytes / file_size))
-                else:
-                    calibration_iterations = 10000
+            # Calculate iterations for calibration run (aiming for 30MB)
+            calibration_bytes = 30 * 1024 * 1024
+            if file_size > 0:
+                calibration_iterations = max(2, int(calibration_bytes / file_size))
+            else:
+                calibration_iterations = 10000
 
             # Render placeholder only when this specific card starts running and is not skipped
             if is_interactive and not is_too_large:
@@ -585,7 +605,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     row_cards.append(card_lines)
                 continue
 
-            target = f"{p_type.lower()}-{name}"
+            parser_target = f"{p_type.lower()}-{name}"
+            target = benchmark_target(parser_target, args.route)
 
             # Render placeholder as "Building..."
             if is_interactive and not is_too_large:
@@ -646,14 +667,13 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 print(f"\033[33mCommand Output:\033[0m\n{debug_result.stdout}")
                 sys.exit(1)
 
-            # Render placeholder as "Running..." or "Calibrating..."
+            # Render placeholder as "Calibrating..."
             if is_interactive and not is_too_large:
-                status_str = "Running..." if args.validate_only else "Calibrating..."
                 placeholder = format_placeholder_card(
                     card_title,
                     width=args.width,
                     no_color=args.no_color,
-                    status=status_str,
+                    status="Calibrating...",
                 )
                 draw_card_in_row(placeholder, col_idx, width=args.width, spacing=2)
 
@@ -663,221 +683,131 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             binary_name = f"{target}.exe" if pysys.platform == "win32" else target
             binary_path = os.path.abspath(os.path.join("zig-out", "bin", binary_name))
 
-            if args.validate_only:
-                # Validation only - single run with 1 iteration
-                run_cmd = [
-                    binary_path,
-                    input_file,
-                    "--verbosity",
-                    "0",
-                    "--iterations",
-                    "1",
-                ]
-                try:
-                    subprocess.run(
-                        run_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        check=True,
-                    )
-                    metrics = {
-                        "File size": format_file_size(file_size),
-                        "Parsed bytes": format_file_size(file_size),
-                    }
-                    input_results.setdefault(input_file, []).append(
-                        (p_type, "Ran successfully (No errors)")
-                    )
-                    card_lines = format_card(
+            # Benchmark mode - Calibration run aiming for 30MB
+            run_cmd = [binary_path] + benchmark_run_args(
+                args.route, input_file, calibration_iterations
+            )
+            import time
+
+            start_time = time.perf_counter()
+            try:
+                result = subprocess.run(
+                    run_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=True,
+                )
+                end_time = time.perf_counter()
+                python_duration = end_time - start_time
+                metrics = parse_zig_output(result.stdout)
+
+                # Extract duration from metrics
+                elapsed_seconds = None
+                if "Duration" in metrics:
+                    try:
+                        ns_val = int(
+                            metrics["Duration"]
+                            .replace("ns", "")
+                            .replace(",", "")
+                            .strip()
+                        )
+                        elapsed_seconds = ns_val / 1e9
+                    except ValueError:
+                        pass
+                if elapsed_seconds is None or elapsed_seconds <= 0:
+                    elapsed_seconds = python_duration
+
+                # Calculate second run iterations aiming for 1.0 second runtime
+                iterations_per_sec = calibration_iterations / elapsed_seconds
+                second_iterations = max(2, int(iterations_per_sec * 1.0))
+
+                # Update placeholder to "Running..." for final benchmarking run
+                if is_interactive:
+                    placeholder_run = format_placeholder_card(
                         card_title,
-                        metrics,
                         width=args.width,
                         no_color=args.no_color,
-                        error_msg="success",
+                        status="Running...",
                     )
-                    if is_interactive:
-                        draw_card_in_row(
-                            card_lines, col_idx, width=args.width, spacing=2
-                        )
-                    else:
-                        row_cards.append(card_lines)
-                except subprocess.CalledProcessError as run_err:
-                    # If execution fails, compile and run in Debug mode to get detailed stack traces
-                    debug_build_cmd = [
-                        "zig",
-                        "build",
-                        "-Doptimize=Debug",
-                        target,
-                    ]
-                    subprocess.run(
-                        debug_build_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
+                    draw_card_in_row(
+                        placeholder_run, col_idx, width=args.width, spacing=2
                     )
 
-                    debug_run_cmd = [
-                        binary_path,
-                        input_file,
-                        "--verbosity",
-                        "0",
-                    ]
-                    if is_interactive:
-                        sys.stdout.write("\033[9B\033[1G")
-                        sys.stdout.flush()
-                    print(
-                        f"\n\033[31mError running benchmark command for {input_file} ({p_type}) in ReleaseFast mode.\033[0m"
-                        f"\n\033[33mRunning Debug mode execution for detailed diagnostics:\033[0m"
-                    )
-                    debug_run_result = subprocess.run(
-                        debug_run_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                    )
-                    print(
-                        f"\033[31mError running {target} in Debug mode for {input_file}:\033[0m"
-                    )
-                    print(f"\033[33mCommand Output:\033[0m\n{debug_run_result.stdout}")
-                    sys.exit(1)
-            else:
-                # Benchmark mode - Calibration run aiming for 10MB
-                run_cmd = [
-                    binary_path,
-                    input_file,
-                    "--verbosity",
-                    "0",
-                    "--iterations",
-                    str(calibration_iterations),
-                ]
-                import time
-
-                start_time = time.perf_counter()
-                try:
-                    result = subprocess.run(
-                        run_cmd,
+                # Run repeated measured processes. The first process after a cold
+                # period can be slower even after in-process warmup, so discard it
+                # by default and report the best remaining run. Benchmark noise is
+                # mostly downward, so best-of-run tracks parser capacity better.
+                run_cmd_2 = [binary_path] + benchmark_run_args(
+                    args.route, input_file, second_iterations
+                )
+                measured_runs = []
+                for run_idx in range(args.benchmark_runs):
+                    result_2 = subprocess.run(
+                        run_cmd_2,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
                         check=True,
                     )
-                    end_time = time.perf_counter()
-                    python_duration = end_time - start_time
-                    metrics = parse_zig_output(result.stdout)
+                    if args.discard_first_run and run_idx == 0:
+                        continue
+                    measured_runs.append(parse_zig_output(result_2.stdout))
 
-                    # Extract duration from metrics
-                    elapsed_seconds = None
-                    if "Duration" in metrics:
-                        try:
-                            ns_val = int(
-                                metrics["Duration"]
-                                .replace("ns", "")
-                                .replace(",", "")
-                                .strip()
-                            )
-                            elapsed_seconds = ns_val / 1e9
-                        except ValueError:
-                            pass
-                    if elapsed_seconds is None or elapsed_seconds <= 0:
-                        elapsed_seconds = python_duration
+                metrics_2 = best_metrics(measured_runs)
+                metrics_2["File size"] = format_file_size(file_size)
+                if (
+                    "Parsed bytes" not in metrics_2
+                    or metrics_2["Parsed bytes"] == "N/A"
+                ):
+                    metrics_2["Parsed bytes"] = format_file_size(file_size)
 
-                    # Calculate second run iterations aiming for 1.0 second runtime
-                    iterations_per_sec = calibration_iterations / elapsed_seconds
-                    second_iterations = max(2, int(iterations_per_sec * 1.0))
-
-                    # Update placeholder to "Running..." for final benchmarking run
-                    if is_interactive:
-                        placeholder_run = format_placeholder_card(
-                            card_title,
-                            width=args.width,
-                            no_color=args.no_color,
-                            status="Running...",
-                        )
-                        draw_card_in_row(
-                            placeholder_run, col_idx, width=args.width, spacing=2
-                        )
-
-                    # Run repeated measured processes. The first process after a cold
-                    # period can be slower even after in-process warmup, so discard it
-                    # by default and report the best remaining run. Benchmark noise is
-                    # mostly downward, so best-of-run tracks parser capacity better.
-                    run_cmd_2 = [
-                        binary_path,
-                        input_file,
-                        "--verbosity",
-                        "0",
-                        "--iterations",
-                        str(second_iterations),
-                    ]
-                    measured_runs = []
-                    for run_idx in range(args.benchmark_runs):
-                        result_2 = subprocess.run(
-                            run_cmd_2,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            text=True,
-                            check=True,
-                        )
-                        if args.discard_first_run and run_idx == 0:
-                            continue
-                        measured_runs.append(parse_zig_output(result_2.stdout))
-
-                    metrics_2 = best_metrics(measured_runs)
-                    metrics_2["File size"] = format_file_size(file_size)
-                    if (
-                        "Parsed bytes" not in metrics_2
-                        or metrics_2["Parsed bytes"] == "N/A"
-                    ):
-                        metrics_2["Parsed bytes"] = format_file_size(file_size)
-
-                    input_results.setdefault(input_file, []).append((p_type, metrics_2))
-                    card_lines = format_card(
-                        card_title, metrics_2, width=args.width, no_color=args.no_color
+                input_results.setdefault(input_file, []).append((p_type, metrics_2))
+                card_lines = format_card(
+                    card_title, metrics_2, width=args.width, no_color=args.no_color
+                )
+                if is_interactive:
+                    draw_card_in_row(
+                        card_lines, col_idx, width=args.width, spacing=2
                     )
-                    if is_interactive:
-                        draw_card_in_row(
-                            card_lines, col_idx, width=args.width, spacing=2
-                        )
-                    else:
-                        row_cards.append(card_lines)
+                else:
+                    row_cards.append(card_lines)
 
-                except subprocess.CalledProcessError as run_err:
-                    # If execution fails, compile and run in Debug mode to get detailed stack traces
-                    debug_build_cmd = [
-                        "zig",
-                        "build",
-                        "-Doptimize=Debug",
-                        target,
-                    ]
-                    subprocess.run(
-                        debug_build_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                    )
+            except subprocess.CalledProcessError as run_err:
+                # If execution fails, compile and run in Debug mode to get detailed stack traces
+                debug_build_cmd = [
+                    "zig",
+                    "build",
+                    "-Doptimize=Debug",
+                    target,
+                ]
+                subprocess.run(
+                    debug_build_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
 
-                    debug_run_cmd = [
-                        binary_path,
-                        input_file,
-                        "--verbosity",
-                        "0",
-                    ]
-                    if is_interactive:
-                        sys.stdout.write("\033[9B\033[1G")
-                        sys.stdout.flush()
-                    print(
-                        f"\n\033[31mError running benchmark command for {input_file} ({p_type}) in ReleaseFast mode.\033[0m"
-                        f"\n\033[33mRunning Debug mode execution for detailed diagnostics:\033[0m"
-                    )
-                    debug_run_result = subprocess.run(
-                        debug_run_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                    )
-                    print(
-                        f"\033[31mError running {target} in Debug mode for {input_file}:\033[0m"
-                    )
-                    print(f"\033[33mCommand Output:\033[0m\n{debug_run_result.stdout}")
-                    sys.exit(1)
+                debug_run_cmd = [binary_path] + benchmark_debug_args(
+                    args.route, input_file
+                )
+                if is_interactive:
+                    sys.stdout.write("\033[9B\033[1G")
+                    sys.stdout.flush()
+                print(
+                    f"\n\033[31mError running benchmark command for {input_file} ({p_type}) in ReleaseFast mode.\033[0m"
+                    f"\n\033[33mRunning Debug mode execution for detailed diagnostics:\033[0m"
+                )
+                debug_run_result = subprocess.run(
+                    debug_run_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                print(
+                    f"\033[31mError running {target} in Debug mode for {input_file}:\033[0m"
+                )
+                print(f"\033[33mCommand Output:\033[0m\n{debug_run_result.stdout}")
+                sys.exit(1)
 
         if is_interactive:
             # Move cursor past the completed cards row
@@ -909,6 +839,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             f"AST Mode: {ast_mode}",
             f"Input Size Limit: {input_size_dir}",
             f"Terminal AST: {term_ast}",
+            f"Benchmark Route: {args.route}",
             "-" * 40,
         ]
 
@@ -1099,9 +1030,10 @@ def main():
         help="Fix terminal AST mode to --no-ast-for-terminals",
     )
     parser.add_argument(
-        "--validate-only",
-        action="store_true",
-        help="Only run validation checks (iterations=1) instead of benchmarking.",
+        "--route",
+        choices=["api", "cli"],
+        default="api",
+        help="Benchmark route: api uses api-bench-* parser API targets, cli uses generated executables (default: api).",
     )
     parser.add_argument(
         "--benchmark-runs",

@@ -37,12 +37,32 @@ fn expectParsedAll(result: parser.ParseResult) !void {
     }
 }
 
+fn allocSentinelSample() ![:0]u8 {
+    const input = try std.testing.allocator.allocSentinel(u8, sample_input.len, 0);
+    @memcpy(input, sample_input);
+    return input;
+}
+
 test "parse bytes through generated parser library API" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
     if (!sampleFitsParserInputSize()) return error.SkipZigTest;
 
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, sample_input, .{ .input_path = test_options.sample_path });
+    defer parsed.deinit();
+
+    try expectParsedAll(parsed.result);
+}
+
+test "parse sentinel bytes through generated parser library API" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
+
+    const input = try allocSentinelSample();
+    defer std.testing.allocator.free(input);
+
+    var parsed = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, input, .{ .input_path = test_options.sample_path });
     defer parsed.deinit();
 
     try expectParsedAll(parsed.result);
@@ -60,6 +80,24 @@ test "reusable generated parser session parses multiple byte slices" {
     try expectParsedAll(first);
 
     const second = try session.parseBytes(sample_input, test_options.sample_path);
+    try expectParsedAll(second);
+}
+
+test "reusable generated parser session parses multiple sentinel byte slices" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return;
+
+    const input = try allocSentinelSample();
+    defer std.testing.allocator.free(input);
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    const first = try session.parseSentinelBytes(input, test_options.sample_path);
+    try expectParsedAll(first);
+
+    const second = try session.parseSentinelBytes(input, test_options.sample_path);
     try expectParsedAll(second);
 }
 

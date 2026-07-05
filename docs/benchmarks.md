@@ -1,64 +1,156 @@
-# Benchmarks & Performance Methodology
+# Benchmarks
 
-## Table of Contents
+## Purpose
 
-- [Overview](#overview)
-- [Running Benchmarks](#running-benchmarks)
-- [Understanding Output Metrics](#understanding-output-metrics)
-- [Reference Benchmark Results](#reference-benchmark-results)
-- [Tips for Reliable Measurement](#tips-for-reliable-measurement)
+Galley has more than one benchmark route because it can answer more than one performance question.
+
+The main split is:
+
+- **Parser-only throughput**
+  This tries to measure the parser itself with as little wrapper noise as possible.
+- **Executable throughput**
+  This measures the full generated executable, including its CLI path and executable-level layout effects.
+
+Use parser-only numbers for parser comparisons. Use executable numbers when you care about the real shipped binary as a whole.
+
+See [Benchmark Layout Findings](/benchmark_layout_findings) for the code-layout issue behind this split.
 
 ---
 
-## Overview
+## Parser-only Throughput
 
-Galley is engineered from the ground up to maximize parsing throughput. To accurately evaluate performance and verify zero-overhead assertions across different hardware, every generated executable includes built-in benchmarking profiling support.
+This route benchmarks the generated parser API directly. It reuses one `Session`, reads the input once into sentinel-terminated memory, and times `Session.parseSentinelBytes`.
 
----
+Use it when:
 
-## Running Benchmarks
+- you want raw parser throughput
+- you are comparing parser versions
+- you are comparing Galley to other parser libraries
 
-Always compile binaries with `-Doptimize=ReleaseFast` when measuring speed. Debug and ReleaseSafe builds include extensive safety checks and trace logging that significantly degrade throughput.
-
-To execute a benchmark run, pass the target file along with the `-r` (`--iterations`) and `-w` (`--warmup-iterations`) flags:
+Run it like this:
 
 ```sh
-# Run 100 benchmark iterations with 10 warmup passes on large JSON input
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json -r 100 -w 10 languages/json/samples/code-02.json
+zig build -Doptimize=ReleaseFast run-api-bench-ll-json -- languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
+```
+
+General form:
+
+```text
+zig build -Doptimize=ReleaseFast run-api-bench-<parser>-<language> -- <file> --iterations <n> --warmup-iterations <m>
 ```
 
 ---
 
-## Understanding Output Metrics
+## Executable Throughput
 
-When invoked with `--verbosity 0` (the default), the parser executable prints a succinct benchmark summary to stdout:
+This route benchmarks the normal generated executable. It includes the CLI path and executable-level layout effects.
 
+Use it when:
+
+- you care about the real shipped binary
+- you want end-to-end executable timing
+- you suspect an executable-level change affected throughput
+
+Run it like this:
+
+```sh
+zig build -Doptimize=ReleaseFast run-ll-json -- languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```
-Parsed 100 times in 6.5ms (avg: 65us) -> ~722.7 MB/s
-```
 
-- **Iterations (`Parsed N times`):** The exact number of timed parse repetitions.
-- **Total & Average Duration:** Time elapsed across all timed iterations and average latency per parse pass.
-- **Throughput (`MB/s`):** Calculated as `(FileSizeBytes * Iterations) / TotalTimeSeconds / 1_000_000`.
+General form:
 
-When invoked with `--verbosity 1`, additional statistics regarding AST allocations and memory pool usage are reported alongside throughput:
-
-```
-AST Nodes Allocated: 14,230
-Node Pool Memory Footprint: 227.68 KB
+```text
+zig build -Doptimize=ReleaseFast run-<parser>-<language> -- <file> --iterations <n> --warmup-iterations <m>
 ```
 
 ---
 
-## Reference Benchmark Results
+## Benchmark Suite And Result Generation
 
-For full benchmark results, see the **[Benchmark Results](/benchmark_results)** page. It includes per-grammar Galley measurements for JSON, Lisp, Lua, and Galley's own grammar format, plus a JSON-specific comparison against third-party parsers (simdjson, RapidJSON, Bison, LALRPOP, Nom, Tree-sitter).
+This route is the repository’s benchmark pipeline. `scripts/benchmark.py` generates raw result files under `benchmark_results/`, and `scripts/generate_benchmarks_doc.py` turns those files into the published benchmark markdown.
+
+Use it when:
+
+- you want repository benchmark result files
+- you want a repeatable scripted benchmark sweep
+- you want to refresh the published benchmark document
+
+Run it like this:
+
+```sh
+python3 scripts/benchmark.py --language json --parser-type LL --no-ast --input-size 16 --no-ast-for-terminals
+```
+
+If you intentionally want executable-level suite results instead:
+
+```sh
+python3 scripts/benchmark.py --route cli --language json --parser-type LL --no-ast --input-size 16 --no-ast-for-terminals
+```
+
+After collecting fresh result files, regenerate the benchmark markdown like this:
+
+```sh
+python3 scripts/generate_benchmarks_doc.py
+```
 
 ---
 
-## Tips for Reliable Measurement
+## Validation Without Benchmarking
 
-1. **Always Use Warmup Passes (`-w 10`):** Modern CPUs throttle clock speeds when idle. Warmup iterations prime instruction caches (L1i/L2) and force CPU governor frequency scaling before timing begins.
-2. **Use Large Input Files:** Parsing tiny files (< 1 KB) measures OS timer precision resolution rather than parsing throughput. Use inputs of at least 100 KB to obtain stable metrics.
-3. **Isolate Background Noise:** Close CPU-heavy applications (browsers, background builds) during benchmark loops to minimize thread preemption variance.
+This is for correctness checks, not throughput reporting.
+
+Use it when:
+
+- you only care that parsing still works
+- you want the main repository test suite
+
+Run them like this:
+
+```sh
+zig build test
+```
+
+---
+
+## Reading Benchmark Output
+
+Galley benchmark outputs report:
+
+- **Parsed bytes**
+  Total bytes parsed across timed iterations.
+- **Duration**
+  Total timed duration.
+- **Throughput**
+  Parsed bytes divided by duration.
+- **Nodes allocated**
+  AST node allocations during the run.
+
+Interpretation depends on route:
+
+- parser-only route means these numbers are intended to represent parser capacity
+- executable route means these numbers represent the full generated executable path
+
+---
+
+## Measurement Rules
+
+Always benchmark with:
+
+```text
+-Doptimize=ReleaseFast
+```
+
+Practical rules:
+
+1. Use warmup iterations.
+2. Use inputs large enough to drown timer noise.
+3. Avoid background CPU noise during comparisons.
+4. Compare parser-only with parser-only, and executable with executable.
+
+---
+
+## Related Pages
+
+- [Benchmark Layout Findings](/benchmark_layout_findings)
+- [Benchmark Results](/benchmark_results)
+- [Writing a Language](/writing_a_language#use-a-generated-parser-from-zig-code)

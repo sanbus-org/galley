@@ -216,6 +216,15 @@ _ = try session.parseBytes("[]", null);
 
 Use `session.parseFile(file, input_path)` when parsing from a `std.Io.File`.
 
+For callers that already own sentinel-terminated input, use `parseSentinelBytes` or `session.parseSentinelBytes`:
+
+```zig
+const input: [:0]const u8 = "{\"ok\": true}";
+const result = try session.parseSentinelBytes(input, "inline-json");
+```
+
+The sentinel byte must remain valid for the duration of the parse. This path avoids the defensive copy that `parseBytes` performs to add Galley's required trailing zero byte.
+
 ---
 
 ## Parsing Verbose Output
