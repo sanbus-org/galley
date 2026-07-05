@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const Options = struct {
     target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
     clap_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
@@ -123,7 +124,6 @@ fn addCase(
     grammar_path: []const u8,
     variant: MatrixVariant,
 ) !void {
-    const matrix_optimize: std.builtin.OptimizeMode = .ReleaseFast;
     const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type, "-", language, "-", variant.name });
     const parser_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, ".zig" });
 
@@ -145,22 +145,22 @@ fn addCase(
     const procedures_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }), .{
         .root_source_file = b.path(procedures_path),
         .target = options.target,
-        .optimize = matrix_optimize,
+        .optimize = options.optimize,
     });
     const config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-config" }), .{
         .root_source_file = b.path(config_path),
         .target = options.target,
-        .optimize = matrix_optimize,
+        .optimize = options.optimize,
     });
     const parser_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-parser" }), .{
         .root_source_file = generated_parser_path,
         .target = options.target,
-        .optimize = matrix_optimize,
+        .optimize = options.optimize,
     });
     const galley_parser_mod = b.addModule(case_name, .{
         .root_source_file = b.path("src/parser_library.zig"),
         .target = options.target,
-        .optimize = matrix_optimize,
+        .optimize = options.optimize,
         .imports = &.{
             .{ .name = "procedures", .module = procedures_mod },
             .{ .name = "config", .module = config_mod },
@@ -173,6 +173,12 @@ fn addCase(
     procedures_mod.addImport("lr_generator", options.lr_generator_mod);
     config_mod.addImport("galley", galley_parser_mod);
     parser_mod.addImport("galley", galley_parser_mod);
+    const parser_cli_options = b.addOptions();
+    parser_cli_options.addOption(
+        []const u8,
+        "api_benchmark_step",
+        "run-api-bench-generated-parser-matrix",
+    );
 
     const parser_library_tests = b.addTest(.{
         .root_module = galley_parser_mod,
@@ -183,10 +189,11 @@ fn addCase(
     const galley_cli_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = options.target,
-        .optimize = matrix_optimize,
+        .optimize = options.optimize,
         .link_libc = true,
         .imports = &.{
             .{ .name = "clap", .module = options.clap_mod },
+            .{ .name = "build_options", .module = parser_cli_options.createModule() },
             .{ .name = "galley", .module = galley_parser_mod },
         },
     });
@@ -195,7 +202,7 @@ fn addCase(
         .root_module = galley_cli_mod,
     });
 
-    try addValidationInputs(b, matrix_step, options.target, matrix_optimize, galley_parser_mod, exe, language, variant.input_size);
+    try addValidationInputs(b, matrix_step, options.target, options.optimize, galley_parser_mod, exe, language, variant.input_size);
 }
 
 fn addValidationInputs(

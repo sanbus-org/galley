@@ -1,5 +1,6 @@
 const clap = @import("clap");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const galley = @import("galley");
 const std = @import("std");
 
@@ -108,5 +109,6 @@ fn run(session: *galley.Session, program_file: std.Io.File, input_path: ?[]const
             nodes_allocated,
             &buffer,
         )});
+        std.debug.print("\n\x1b[2;3mParser-only timing: zig build -Doptimize=ReleaseFast {s} -- <file> --iterations <n>\x1b[0m\n", .{build_options.api_benchmark_step});
     }
 }
