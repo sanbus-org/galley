@@ -5,6 +5,7 @@ const procedures = root.procedures;
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
+pub const parser_type = data_structures.ParserType.ll;
 pub const is_ast_enabled = true;
 pub const are_procedures_enabled = true;
 pub const input_size_cap = u16;

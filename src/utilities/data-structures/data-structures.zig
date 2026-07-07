@@ -16,6 +16,17 @@ pub const Procedure = @import("procedure-utilities.zig").Procedure;
 pub const wrap_procedure = @import("procedure-utilities.zig").wrap_procedure;
 pub const Token = @import("token.zig").Token;
 
+pub const ParserType = enum {
+    ll,
+    lr,
+
+    pub fn parse(value: []const u8) ?ParserType {
+        if (std.ascii.eqlIgnoreCase(value, "ll")) return .ll;
+        if (std.ascii.eqlIgnoreCase(value, "lr")) return .lr;
+        return null;
+    }
+};
+
 pub const SymbolType = enum {
     variable,
     procedure,

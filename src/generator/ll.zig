@@ -213,7 +213,16 @@ const Generator = struct {
             \\const string_utilities = root.string_utilities;
             \\
         );
-        try writer.print("\npub const is_ast_enabled = {};\npub const are_procedures_enabled = {};\npub const input_size_cap = u{d};\npub const longest_terminal_length = {d};\n\n", .{
+        try writer.print(
+            \\
+            \\pub const parser_type = data_structures.ParserType.ll;
+            \\pub const is_ast_enabled = {};
+            \\pub const are_procedures_enabled = {};
+            \\pub const input_size_cap = u{d};
+            \\pub const longest_terminal_length = {d};
+            \\
+            \\
+        , .{
             self.options.with_ast,
             self.options.with_procedures,
             self.options.input_size,
