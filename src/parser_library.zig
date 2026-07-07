@@ -73,7 +73,7 @@ pub const Session = struct {
         errdefer allocator.free(chunk_buffer);
 
         const node_allocator = if (parser.is_ast_enabled)
-            try data_structures.ASTAllocator.init_capacity(allocator)
+            try data_structures.ASTAllocator.initCapacity(allocator)
         else {};
         errdefer if (parser.is_ast_enabled) allocator.free(node_allocator.memory);
 
@@ -161,8 +161,8 @@ pub const Session = struct {
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
         _ = self.arena.reset(.retain_capacity);
-        data_structures.context.activate_runtime_context(&self.runtime_context);
-        defer data_structures.context.deactivate_runtime_context(&self.runtime_context);
+        data_structures.context.activateRuntimeContext(&self.runtime_context);
+        defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
         try context_value.reset();
         return try parser.parseWithResult(context_value);

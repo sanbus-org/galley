@@ -10,7 +10,7 @@ const c = @cImport({
 });
 
 threadlocal var jmp_env_ptr: ?*c.sigjmp_buf = null;
-export fn segv_handler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque) callconv(.c) void {
+export fn segvHandler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque) callconv(.c) void {
     _ = sig;
     _ = info;
     _ = ucontext;
@@ -25,7 +25,7 @@ export fn segv_handler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque)
     c.abort();
 }
 
-pub fn protected_run(
+pub fn protectedRun(
     run: fn (*data_structures.Context, usize, usize) anyerror!void,
     context: *data_structures.Context,
     warmup_iterations: usize,
@@ -49,9 +49,9 @@ pub fn protected_run(
     // 2. Register the Signal Handler
     var sa: c.struct_sigaction = undefined;
     if (comptime builtin.target.os.tag.isDarwin()) {
-        sa.__sigaction_u.__sa_sigaction = segv_handler;
+        sa.__sigaction_u.__sa_sigaction = segvHandler;
     } else {
-        sa.__sigaction_handler.sa_sigaction = segv_handler;
+        sa.__sigaction_handler.sa_sigaction = segvHandler;
     }
     _ = c.sigemptyset(&sa.sa_mask);
 

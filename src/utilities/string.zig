@@ -64,18 +64,18 @@ const ASTNodeFormatter = struct {
                     "-"
                 else
                     parser.variables[ast_node.variable],
-                fmtString(self.context.get_text_slice(ast_node.text_start, ast_node.text_length)),
+                fmtString(self.context.getTextSlice(ast_node.text_start, ast_node.text_length)),
                 if (ast_node.first_child == ASTNode.invalid_pointer)
                     0
                 else
-                    ASTNode.augmented_length(ast_node.first_child, self.context.node_allocator),
+                    ASTNode.augmentedLength(ast_node.first_child, self.context.node_allocator),
             });
 
             var child_indent_status: [256]bool = undefined;
             @memcpy(child_indent_status[0..self.indentation], self.indent_status);
             child_indent_status[self.indentation] = false;
 
-            var iterator = ASTNode.iterate_augmented(ast_node.first_child, self.context);
+            var iterator = ASTNode.iterateAugmented(ast_node.first_child, self.context);
             while (iterator.next()) |node_address| {
                 const node = self.context.node_allocator.at(node_address);
                 if (node.next == ASTNode.invalid_pointer) {
