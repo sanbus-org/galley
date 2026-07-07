@@ -381,7 +381,7 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Rules(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rules(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[42],
@@ -447,8 +447,8 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     std.debug.print("Rule expansion: Rules -> Rule, RulesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Rule(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RulesTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rule(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RulesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[37],
@@ -514,10 +514,10 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, ProcedureTail, 'new_line', RightHandSides\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_VariableSymbol(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_VariableSymbol(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 1
             try parse_generative_terminal_new_line(context); // child 2
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSides(context), context); // child 3
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSides(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[36],
@@ -591,12 +591,12 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_NewLines(context), context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_Rule(context), context); // child 1
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_NewLines(context), context); // child 0
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_Rule(context), context); // child 1
             },
             else => break,
         }
@@ -605,7 +605,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 2
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -670,9 +670,9 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
                     std.debug.print("Rule expansion: RulesTail -> NewLines, Rule, RulesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLines(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Rule(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RulesTail_0_2(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLines(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rule(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RulesTail_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[39],
@@ -739,7 +739,7 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
                 }
             }
             try parse_generative_terminal_new_line(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[21],
@@ -798,7 +798,7 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
 inline fn parse_generative_terminal_new_line(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         10 => { // '\n'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mnew_line\x1b[0m.\nExpected tokens: \x1b[32m\'\\n\'\x1b[0m\n", .{
@@ -830,7 +830,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -843,7 +843,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -914,12 +914,12 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 3
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 3
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x35(context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_AnyContent(context), context); // child 1
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_AnyContent(context), context); // child 1
                 try parse_generative_terminal_new_line(context); // child 2
             },
             else => break,
@@ -929,7 +929,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 3
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 3
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -993,7 +993,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             try parse_generative_terminal_new_line(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[23],
@@ -1043,9 +1043,9 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             try parse_terminal__x35(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContent(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContent(context), context); // child 1
             try parse_generative_terminal_new_line(context); // child 2
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_NewLinesTail_1_3(context), context); // child 3
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail_1_3(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[24],
@@ -1106,7 +1106,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
 inline fn parse_terminal__x35(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         35 => { // '#'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m#\x1b[0m.\nExpected tokens: \x1b[32m\'#\'\x1b[0m\n", .{
@@ -1130,8 +1130,8 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContentTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ControlCharacter(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContentTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ControlCharacter(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[0],
@@ -1181,7 +1181,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                 }
             }
             try parse_generative_terminal_character_x94_x34_x92n_x34(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContentTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[1],
@@ -1247,7 +1247,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_UppercaseId(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_UppercaseId(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[51],
@@ -1297,7 +1297,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_UppercaseId(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_UppercaseId(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[52],
@@ -1371,12 +1371,12 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x64(context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_CamelCaseId(context), context); // child 1
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_CamelCaseId(context), context); // child 1
             },
             else => break,
         }
@@ -1385,7 +1385,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 2
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -1451,8 +1451,8 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_terminal__x64(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseId(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail_0_2(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseId(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[26],
@@ -1518,8 +1518,8 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSidesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideLine(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSidesTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideLine(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSidesTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[33],
@@ -1586,7 +1586,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_terminal__x35(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContent(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContent(context), context); // child 1
             try parse_generative_terminal_new_line(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
@@ -1637,8 +1637,8 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_terminal__x124(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSide(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSide(context), context); // child 2
             try parse_generative_terminal_new_line(context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
@@ -1713,11 +1713,11 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_RightHandSideLine(context), context); // child 0
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_RightHandSideLine(context), context); // child 0
             },
             else => break,
         }
@@ -1726,7 +1726,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -1791,8 +1791,8 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
                     std.debug.print("Rule expansion: RightHandSidesTail -> RightHandSideLine, RightHandSidesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideLine(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSidesTail_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideLine(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSidesTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[35],
@@ -1851,7 +1851,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
 inline fn parse_terminal__x124(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         124 => { // '|'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m|\x1b[0m.\nExpected tokens: \x1b[32m\'|\'\x1b[0m\n", .{
@@ -1878,9 +1878,9 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_generative_terminal_space(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Symbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail(context), context); // child 2
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideTail(context), context); // child 3
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Symbol(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideTail(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[28],
@@ -1939,7 +1939,7 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
 inline fn parse_generative_terminal_space(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         32 => { // ' '
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mspace\x1b[0m.\nExpected tokens: \x1b[32m\' \'\x1b[0m\n", .{
@@ -1963,7 +1963,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_TerminalSymbol(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_TerminalSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[46],
@@ -2012,7 +2012,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_VariableSymbol(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_VariableSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[45],
@@ -2061,7 +2061,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalSymbol(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalSymbol(context), context); // child 0
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[47],
@@ -2135,13 +2135,13 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 3
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 3
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_generative_terminal_space(context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_Symbol(context), context); // child 1
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_ProcedureTail(context), context); // child 2
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_Symbol(context), context); // child 1
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_ProcedureTail(context), context); // child 2
             },
             else => break,
         }
@@ -2150,7 +2150,7 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 3
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 3
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2216,9 +2216,9 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_generative_terminal_space(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_Symbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ProcedureTail(context), context); // child 2
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_RightHandSideTail_0_3(context), context); // child 3
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Symbol(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideTail_0_3(context), context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[32],
@@ -2285,7 +2285,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__x34(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_SimpleStringContent(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_SimpleStringContent(context), context); // child 1
             try parse_terminal__x34(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
@@ -2336,7 +2336,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__x39(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_StringContent(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_StringContent(context), context); // child 1
             try parse_terminal__x92x03(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
@@ -2403,8 +2403,8 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_LowercaseId(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalExceptions(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_LowercaseId(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalExceptions(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[15],
@@ -2471,7 +2471,7 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_uppercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[50],
@@ -2530,7 +2530,7 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
 inline fn parse_terminal__(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         95 => { // '_'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m_\x1b[0m.\nExpected tokens: \x1b[32m\'_\'\x1b[0m\n", .{
@@ -2547,7 +2547,7 @@ inline fn parse_terminal__(context: *data_structures.Context) anyerror!void {
 inline fn parse_terminal__x39(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         39 => { // '''
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m'\x1b[0m.\nExpected tokens: \x1b[32m\''\'\x1b[0m\n", .{
@@ -2579,7 +2579,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2592,7 +2592,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2658,7 +2658,7 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_generative_terminal_character(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_StringContent_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_StringContent_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[44],
@@ -2717,7 +2717,7 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
 inline fn parse_terminal__x92x03(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         3 => { // '\x03'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m\\x03\x1b[0m.\nExpected tokens: \x1b[32m\'\\x03\'\x1b[0m\n", .{
@@ -2734,7 +2734,7 @@ inline fn parse_terminal__x92x03(context: *data_structures.Context) anyerror!voi
 inline fn parse_terminal__x34(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         34 => { // '\"'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m\"\x1b[0m.\nExpected tokens: \x1b[32m\'\"\'\x1b[0m\n", .{
@@ -2766,7 +2766,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2779,7 +2779,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2843,7 +2843,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
                 }
             }
             try parse_generative_terminal_character_x94_x39_x34_x92x03(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_SimpleStringContent_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_SimpleStringContent_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[41],
@@ -2912,7 +2912,7 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_lowercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[20],
@@ -2986,12 +2986,12 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x94(context); // child 0
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_TerminalSymbol(context), context); // child 1
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_TerminalSymbol(context), context); // child 1
             },
             else => break,
         }
@@ -3000,7 +3000,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 2
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3066,8 +3066,8 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
                 }
             }
             try parse_terminal__x94(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_TerminalSymbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_GenerativeTerminalExceptions_0_2(context), context); // child 2
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_TerminalSymbol(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalExceptions_0_2(context), context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[14],
@@ -3126,7 +3126,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
 inline fn parse_terminal__x94(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         94 => { // '^'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m^\x1b[0m.\nExpected tokens: \x1b[32m\'^\'\x1b[0m\n", .{
@@ -3143,7 +3143,7 @@ inline fn parse_terminal__x94(context: *data_structures.Context) anyerror!void {
 inline fn parse_terminal__x64(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         64 => { // '@'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m@\x1b[0m.\nExpected tokens: \x1b[32m\'@\'\x1b[0m\n", .{
@@ -3168,7 +3168,7 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_lowercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[5],
@@ -3227,7 +3227,7 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
 inline fn parse_generative_terminal_character(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mcharacter\x1b[0m.\nExpected tokens: \x1b[32m\'\\t', '\\n', '\\x0b', '\\x0c', '\\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{{', '|', '}}', '~\'\x1b[0m\n", .{
@@ -3244,7 +3244,7 @@ inline fn parse_generative_terminal_character(context: *data_structures.Context)
 inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mcharacter^'\"\\x03\x1b[0m.\nExpected tokens: \x1b[32m\'\\t', '\\n', '\\x0b', '\\x0c', '\\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{{', '|', '}}', '~\'\x1b[0m\n", .{
@@ -3425,7 +3425,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
 inline fn parse_terminal__x92x01(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m\\x01\x1b[0m.\nExpected tokens: \x1b[32m\'\\x01\'\x1b[0m\n", .{
@@ -3442,7 +3442,7 @@ inline fn parse_terminal__x92x01(context: *data_structures.Context) anyerror!voi
 inline fn parse_terminal__x92x04(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         4 => { // '\x04'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m\\x04\x1b[0m.\nExpected tokens: \x1b[32m\'\\x04\'\x1b[0m\n", .{
@@ -3459,7 +3459,7 @@ inline fn parse_terminal__x92x04(context: *data_structures.Context) anyerror!voi
 inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mcharacter^\"\\n\"\x1b[0m.\nExpected tokens: \x1b[32m\'\\t', '\\x0b', '\\x0c', '\\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{{', '|', '}}', '~\'\x1b[0m\n", .{
@@ -3491,11 +3491,11 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediate_insert_child(repeating_node_address, try parse_ControlCharacter(context), context); // child 0
+                repeating_node.immediateInsertChild(repeating_node_address, try parse_ControlCharacter(context), context); // child 0
             },
             else => break,
         }
@@ -3504,7 +3504,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3575,7 +3575,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3588,7 +3588,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3651,8 +3651,8 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: AnyContentTail -> ControlCharacter, AnyContentTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_ControlCharacter(context), context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContentTail_1_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ControlCharacter(context), context); // child 0
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail_1_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[3],
@@ -3702,7 +3702,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_generative_terminal_character_x94_x34_x92n_x34(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_AnyContentTail_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[4],
@@ -3778,7 +3778,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3791,7 +3791,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3862,7 +3862,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3875,7 +3875,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3946,7 +3946,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3959,7 +3959,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4025,7 +4025,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_generative_terminal_digit(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_1_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_1_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[19],
@@ -4075,7 +4075,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_generative_terminal_letter(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[18],
@@ -4125,7 +4125,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_terminal__(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_IdTail_2_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_2_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[17],
@@ -4184,7 +4184,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
 inline fn parse_generative_terminal_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mletter\x1b[0m.\nExpected tokens: \x1b[32m\'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z\'\x1b[0m\n", .{
@@ -4201,7 +4201,7 @@ inline fn parse_generative_terminal_letter(context: *data_structures.Context) an
 inline fn parse_generative_terminal_digit(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mdigit\x1b[0m.\nExpected tokens: \x1b[32m\'0', '1', '2', '3', '4', '5', '6', '7', '8', '9\'\x1b[0m\n", .{
@@ -4218,7 +4218,7 @@ inline fn parse_generative_terminal_digit(context: *data_structures.Context) any
 inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mlowercase_letter\x1b[0m.\nExpected tokens: \x1b[32m\'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z\'\x1b[0m\n", .{
@@ -4235,7 +4235,7 @@ inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.C
 inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34muppercase_letter\x1b[0m.\nExpected tokens: \x1b[32m\'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z\'\x1b[0m\n", .{
@@ -4267,7 +4267,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4280,7 +4280,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4351,7 +4351,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4364,7 +4364,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
     if (node_address == data_structures.ASTNode.invalid_pointer) {
         node_address = exit_node;
     } else {
-        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child 1
+        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4430,7 +4430,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             try parse_generative_terminal_digit(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail_1_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail_1_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[8],
@@ -4480,7 +4480,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             try parse_generative_terminal_letter(context); // child 0
-            context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_CamelCaseIdTail_0_1(context), context); // child 1
+            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail_0_1(context), context); // child 1
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[7],
@@ -4595,7 +4595,7 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
 inline fn parse_special_EOF(context: *data_structures.Context) anyerror!void {
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
-            context.release_token(1);
+            context.releaseToken(1);
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34m\\x00\x1b[0m.\nExpected tokens: \x1b[32m\'\\x00\'\x1b[0m\n", .{

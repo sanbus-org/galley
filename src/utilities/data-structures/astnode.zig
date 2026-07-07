@@ -28,7 +28,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
         const Self = @This();
 
-        pub fn init_capacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
+        pub fn initCapacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
             const memory = try allocator.alloc(ASTNodeType, preallocated_nodes + 1);
 
             @memset(memory, default);
@@ -64,7 +64,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             return address;
         }
 
-        pub inline fn terminal_node(terminal: u8) ASTNodeType.Pointer {
+        pub inline fn terminalNode(terminal: u8) ASTNodeType.Pointer {
             return terminal;
         }
 
@@ -127,7 +127,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Insert `first_node` (and any chain attached via `.next`) immediately before `self_address`.
         /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insert_before(self_address: Pointer, context: *Context, first_node: Pointer) !void {
+        pub fn insertBefore(self_address: Pointer, context: *Context, first_node: Pointer) !void {
             const self = context.node_allocator.at(self_address);
             const first = context.node_allocator.at(first_node);
 
@@ -168,7 +168,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Insert `first_node` (and any chain attached via `.next`) immediately after `self_address`.
         /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insert_after(self_address: Pointer, context: *Context, first_node: Pointer) !void {
+        pub fn insertAfter(self_address: Pointer, context: *Context, first_node: Pointer) !void {
             const self = context.node_allocator.at(self_address);
             const first = context.node_allocator.at(first_node);
 
@@ -209,7 +209,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Insert `first_node` (and any chain) into `self.children` at position `index`.
         /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insert_children(self_address: Pointer, context: *Context, index: u16, first_node: Pointer) !void {
+        pub fn insertChildren(self_address: Pointer, context: *Context, index: u16, first_node: Pointer) !void {
             const self = context.node_allocator.at(self_address);
             if (comptime builtin.mode == .Debug) {
                 std.debug.assert(context.node_allocator.at(first_node).parent == invalid_pointer);
@@ -245,7 +245,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 }
 
                 if (index == 0) {
-                    try Self.insert_before(self.first_child, context, first_node);
+                    try Self.insertBefore(self.first_child, context, first_node);
                 } else {
                     // Traverse to find the child at index - 1
                     var current_child = self.first_child;
@@ -258,7 +258,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                         }
                     }
                     if (current_child != invalid_pointer) {
-                        try Self.insert_after(current_child, context, first_node);
+                        try Self.insertAfter(current_child, context, first_node);
                     } else {
                         return error.IndexOutOfBounds;
                     }
@@ -268,7 +268,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Append `first_node` (and any chain) to `self.children` in the end.
         /// The appended nodes must be detached orphans (no parent, no prior).
-        pub fn append_children(self_address: Pointer, context: *Context, first_node: Pointer) !void {
+        pub fn appendChildren(self_address: Pointer, context: *Context, first_node: Pointer) !void {
             const self = context.node_allocator.at(self_address);
             const first = context.node_allocator.at(first_node);
 
@@ -307,7 +307,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Immediately append a single orphan child node to `self_address` with zero overhead.
         /// This assumes the child is a single node (not a chain) and is already an orphan and the parent has no children.
-        pub inline fn immediate_insert_child(
+        pub inline fn immediateInsertChild(
             self: *Self,
             self_address: Pointer,
             child_address: Pointer,
@@ -397,13 +397,13 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Remove `self_address`, detaching from parent and sibling chains.
         /// Returns the removed node address.
-        pub fn remove_self(self_address: Pointer, context: *Context) !Pointer {
+        pub fn removeSelf(self_address: Pointer, context: *Context) !Pointer {
             return (try Self.remove(self_address, context, 1))[0];
         }
 
         /// Remove `count` consecutive children starting at `index`, detaching them from parent
         /// and sibling chains. Returns a caller-owned slice of the removed nodes.
-        pub fn remove_children(self_address: Pointer, context: *Context, index: u16, count: u16) ![]Pointer {
+        pub fn removeChildren(self_address: Pointer, context: *Context, index: u16, count: u16) ![]Pointer {
             const self = context.node_allocator.at(self_address);
             if (count == 0) {
                 return &[0]Pointer{};
@@ -429,14 +429,14 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
         /// Remove one child at `index`, detaching it from parent and sibling chains.
         /// Returns a caller-owned pointer to the removed node.
-        pub fn remove_child(self_address: Pointer, context: *Context, index: u16) !Pointer {
-            const removed_address = (try Self.remove_children(self_address, context, index, 1))[0];
+        pub fn removeChild(self_address: Pointer, context: *Context, index: u16) !Pointer {
+            const removed_address = (try Self.removeChildren(self_address, context, index, 1))[0];
             return removed_address;
         }
 
         /// Clean all children detaching them from parent and sibling chains.
         /// Returns a caller-owned slice of the removed nodes.
-        pub fn clean_children(self_address: Pointer, context: *Context) ![]Pointer {
+        pub fn cleanChildren(self_address: Pointer, context: *Context) ![]Pointer {
             // Count children
             var count: u16 = 0;
             var curr = context.node_allocator.at(self_address).first_child;
@@ -444,56 +444,56 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 count += 1;
                 curr = context.node_allocator.at(curr).next;
             }
-            return try Self.remove_children(self_address, context, 0, count);
+            return try Self.removeChildren(self_address, context, 0, count);
         }
 
-        pub fn augmented_back_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
+        pub fn augmentedBackLength(self_address: Pointer, node_allocator: NodeAllocator) u16 {
             const self = node_allocator.at(self_address);
-            if (self.prior != invalid_pointer) return 1 + Self.augmented_back_length(self.prior, node_allocator);
+            if (self.prior != invalid_pointer) return 1 + Self.augmentedBackLength(self.prior, node_allocator);
             return 0;
         }
 
-        pub fn augmented_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
-            return Self.augmented_back_length(self_address, node_allocator) +
+        pub fn augmentedLength(self_address: Pointer, node_allocator: NodeAllocator) u16 {
+            return Self.augmentedBackLength(self_address, node_allocator) +
                 1 +
-                Self.augmented_front_length(self_address, node_allocator);
+                Self.augmentedFrontLength(self_address, node_allocator);
         }
 
-        pub fn augmented_front_length(self_address: Pointer, node_allocator: NodeAllocator) u16 {
+        pub fn augmentedFrontLength(self_address: Pointer, node_allocator: NodeAllocator) u16 {
             const self = node_allocator.at(self_address);
-            if (self.next != invalid_pointer) return 1 + Self.augmented_front_length(self.next, node_allocator);
+            if (self.next != invalid_pointer) return 1 + Self.augmentedFrontLength(self.next, node_allocator);
             return 0;
         }
 
-        pub fn augmented_text(self_address: Pointer, context: *Context) ![]const u8 {
+        pub fn augmentedText(self_address: Pointer, context: *Context) ![]const u8 {
             const self = context.node_allocator.at(self_address);
             if (self.first_child == invalid_pointer) {
-                return context.get_text_slice(self.text_start, self.text_length);
+                return context.getTextSlice(self.text_start, self.text_length);
             }
 
             var combined_text = try std.ArrayList(u8).initCapacity(context.runtime().arena_allocator, 256 * 256);
             var current_child = self.first_child;
             while (current_child != invalid_pointer) {
-                try combined_text.appendSlice(context.runtime().arena_allocator, try Self.augmented_text(current_child, context));
+                try combined_text.appendSlice(context.runtime().arena_allocator, try Self.augmentedText(current_child, context));
                 current_child = context.node_allocator.at(current_child).next;
             }
             return combined_text.items;
         }
 
-        pub fn augmented_first(self_address: Pointer, node_allocator: NodeAllocator) Pointer {
+        pub fn augmentedFirst(self_address: Pointer, node_allocator: NodeAllocator) Pointer {
             if (self_address != invalid_pointer) {
                 const self = node_allocator.at(self_address);
                 if (self.prior != invalid_pointer) {
-                    return Self.augmented_first(self.prior, node_allocator);
+                    return Self.augmentedFirst(self.prior, node_allocator);
                 }
             }
             return self_address;
         }
 
-        pub fn iterate_augmented(self_address: Pointer, context: *Context) Iterator(*Context) {
+        pub fn iterateAugmented(self_address: Pointer, context: *Context) Iterator(*Context) {
             return .{
                 .context = context,
-                .current = Self.augmented_first(self_address, context.node_allocator),
+                .current = Self.augmentedFirst(self_address, context.node_allocator),
             };
         }
     };
@@ -505,7 +505,7 @@ const TestASTAllocator = ASTAllocator(void);
 
 test "zero length augmented node" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory;
 
@@ -515,14 +515,14 @@ test "zero length augmented node" {
         .payload = {},
     };
 
-    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_back_length(0, &node_allocator));
-    try std.testing.expectEqual(@as(usize, 1), TestASTNode.augmented_length(0, &node_allocator));
-    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmented_front_length(0, &node_allocator));
+    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmentedBackLength(0, &node_allocator));
+    try std.testing.expectEqual(@as(usize, 1), TestASTNode.augmentedLength(0, &node_allocator));
+    try std.testing.expectEqual(@as(usize, 0), TestASTNode.augmentedFrontLength(0, &node_allocator));
 }
 
 test "augmented length" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory[0..20];
 
@@ -539,15 +539,15 @@ test "augmented length" {
     }
 
     for (nodes, 0..) |_, index| {
-        try std.testing.expectEqual(@as(usize, index), TestASTNode.augmented_back_length(@intCast(index), &node_allocator));
-        try std.testing.expectEqual(@as(usize, 20), TestASTNode.augmented_length(@intCast(index), &node_allocator));
-        try std.testing.expectEqual(@as(usize, 19 - index), TestASTNode.augmented_front_length(@intCast(index), &node_allocator));
+        try std.testing.expectEqual(@as(usize, index), TestASTNode.augmentedBackLength(@intCast(index), &node_allocator));
+        try std.testing.expectEqual(@as(usize, 20), TestASTNode.augmentedLength(@intCast(index), &node_allocator));
+        try std.testing.expectEqual(@as(usize, 19 - index), TestASTNode.augmentedFrontLength(@intCast(index), &node_allocator));
     }
 }
 
 test "augmented iterate" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.init_capacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory[0..20];
 
@@ -565,7 +565,7 @@ test "augmented iterate" {
 
     var context = testContext(&node_allocator, "-");
     const initial_node: Context.Size = 10;
-    var iterator = TestASTNode.iterate_augmented(initial_node, &context);
+    var iterator = TestASTNode.iterateAugmented(initial_node, &context);
     var counter: usize = 0;
     while (iterator.next()) |current| {
         try std.testing.expectEqual(@as(Context.Size, @intCast(counter)), current);
@@ -602,7 +602,7 @@ const TestFixture = struct {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         const alloc = arena.allocator();
 
-        var node_allocator = try TestASTAllocator.init_capacity(alloc);
+        var node_allocator = try TestASTAllocator.initCapacity(alloc);
         node_allocator.counter = 30;
         const nodes = node_allocator.memory;
         for (nodes[0..30]) |*node| {
@@ -631,7 +631,7 @@ const TestFixture = struct {
                 .text_length = 1,
                 .payload = {},
             };
-            try TestASTNode.append_children(root_node, &init_context, child_addr);
+            try TestASTNode.appendChildren(root_node, &init_context, child_addr);
         }
 
         // For each of root's children, append 3 children
@@ -646,7 +646,7 @@ const TestFixture = struct {
                     .text_length = 1,
                     .payload = {},
                 };
-                try TestASTNode.append_children(parent_addr, &init_context, child_addr);
+                try TestASTNode.appendChildren(parent_addr, &init_context, child_addr);
             }
         }
 
@@ -676,13 +676,13 @@ const TestFixture = struct {
     }
 };
 
-fn run_with_context(test_fn: *const fn (*TestFixture) anyerror!void) !void {
+fn runWithContext(test_fn: *const fn (*TestFixture) anyerror!void) !void {
     var fixture = try TestFixture.init();
     defer fixture.deinit();
     try test_fn(&fixture);
 }
 
-fn test_remove(fixture: *TestFixture) !void {
+fn testRemove(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
     const root_node = fixture.root;
@@ -707,34 +707,34 @@ fn test_remove(fixture: *TestFixture) !void {
         curr = fixture.nodes[curr].next;
     }
     try std.testing.expectEqual(@as(usize, 2), count);
-    try std.testing.expectEqual(as_size(1), fixture.nodes[root_node].first_child);
-    try std.testing.expectEqual(as_size(4), fixture.nodes[root_node].last_child);
+    try std.testing.expectEqual(asSize(1), fixture.nodes[root_node].first_child);
+    try std.testing.expectEqual(asSize(4), fixture.nodes[root_node].last_child);
 
     // Sibling chain updated correctly
-    try std.testing.expectEqual(as_size(4), fixture.nodes[1].next);
-    try std.testing.expectEqual(as_size(1), fixture.nodes[4].prior);
+    try std.testing.expectEqual(asSize(4), fixture.nodes[1].next);
+    try std.testing.expectEqual(asSize(1), fixture.nodes[4].prior);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[1].prior);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[4].next);
 
     // Removed nodes are detached orphans
     try std.testing.expectEqual(@as(usize, 2), removed.len);
-    try std.testing.expectEqual(as_size(2), removed[0]);
-    try std.testing.expectEqual(as_size(3), removed[1]);
+    try std.testing.expectEqual(asSize(2), removed[0]);
+    try std.testing.expectEqual(asSize(3), removed[1]);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[2].parent);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[2].prior);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[3].parent);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[3].next);
 }
 
-fn as_size(val: anytype) Context.Size {
+fn asSize(val: anytype) Context.Size {
     return @intCast(val);
 }
 
 test "remove" {
-    try run_with_context(test_remove);
+    try runWithContext(testRemove);
 }
 
-fn test_insert_before(fixture: *TestFixture) !void {
+fn testInsertBefore(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
     const root_node = fixture.root;
@@ -746,7 +746,7 @@ fn test_insert_before(fixture: *TestFixture) !void {
     fixture.nodes[new_b].prior = new_a;
 
     // Insert the chain before root's children[2] (child3 = 3)
-    try TestASTNode.insert_before(3, ctx, new_a);
+    try TestASTNode.insertBefore(3, ctx, new_a);
 
     // Root should now have 6 children: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
@@ -759,12 +759,12 @@ fn test_insert_before(fixture: *TestFixture) !void {
     }
 
     try std.testing.expectEqual(@as(usize, 6), count);
-    try std.testing.expectEqual(as_size(1), children_list[0]);
-    try std.testing.expectEqual(as_size(2), children_list[1]);
+    try std.testing.expectEqual(asSize(1), children_list[0]);
+    try std.testing.expectEqual(asSize(2), children_list[1]);
     try std.testing.expectEqual(new_a, children_list[2]);
     try std.testing.expectEqual(new_b, children_list[3]);
-    try std.testing.expectEqual(as_size(3), children_list[4]);
-    try std.testing.expectEqual(as_size(4), children_list[5]);
+    try std.testing.expectEqual(asSize(3), children_list[4]);
+    try std.testing.expectEqual(asSize(4), children_list[5]);
 
     // Parent pointers set
     try std.testing.expectEqual(root_node, fixture.nodes[new_a].parent);
@@ -772,17 +772,17 @@ fn test_insert_before(fixture: *TestFixture) !void {
 
     // Sibling chain is contiguous
     try std.testing.expectEqual(new_a, fixture.nodes[2].next);
-    try std.testing.expectEqual(as_size(2), fixture.nodes[new_a].prior);
+    try std.testing.expectEqual(asSize(2), fixture.nodes[new_a].prior);
     try std.testing.expectEqual(new_b, fixture.nodes[new_a].next);
-    try std.testing.expectEqual(as_size(3), fixture.nodes[new_b].next);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[new_b].next);
     try std.testing.expectEqual(new_b, fixture.nodes[3].prior);
 }
 
-test "insert_before" {
-    try run_with_context(test_insert_before);
+test "insertBefore" {
+    try runWithContext(testInsertBefore);
 }
 
-fn test_insert_after(fixture: *TestFixture) !void {
+fn testInsertAfter(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
     const root_node = fixture.root;
@@ -793,7 +793,7 @@ fn test_insert_after(fixture: *TestFixture) !void {
     fixture.nodes[new_b].prior = new_a;
 
     // Insert chain after root's children[1] (child2 = 2)
-    try TestASTNode.insert_after(2, ctx, new_a);
+    try TestASTNode.insertAfter(2, ctx, new_a);
 
     // Root: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
@@ -806,33 +806,33 @@ fn test_insert_after(fixture: *TestFixture) !void {
     }
 
     try std.testing.expectEqual(@as(usize, 6), count);
-    try std.testing.expectEqual(as_size(2), children_list[1]);
+    try std.testing.expectEqual(asSize(2), children_list[1]);
     try std.testing.expectEqual(new_a, children_list[2]);
     try std.testing.expectEqual(new_b, children_list[3]);
-    try std.testing.expectEqual(as_size(3), children_list[4]);
+    try std.testing.expectEqual(asSize(3), children_list[4]);
 
     try std.testing.expectEqual(root_node, fixture.nodes[new_a].parent);
     try std.testing.expectEqual(root_node, fixture.nodes[new_b].parent);
 
     try std.testing.expectEqual(new_a, fixture.nodes[2].next);
-    try std.testing.expectEqual(as_size(2), fixture.nodes[new_a].prior);
+    try std.testing.expectEqual(asSize(2), fixture.nodes[new_a].prior);
     try std.testing.expectEqual(new_b, fixture.nodes[new_a].next);
-    try std.testing.expectEqual(as_size(3), fixture.nodes[new_b].next);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[new_b].next);
 }
 
-test "insert_after" {
-    try run_with_context(test_insert_after);
+test "insertAfter" {
+    try runWithContext(testInsertAfter);
 }
 
-fn test_insert_children(fixture: *TestFixture) !void {
+fn testInsertChildren(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
-    const parent = as_size(1); // child1 (has 3 children: 5, 6, 7)
+    const parent = asSize(1); // child1 (has 3 children: 5, 6, 7)
 
     const new_node = fixture.free_nodes[0];
 
     // Insert at the beginning (index 0)
-    try TestASTNode.insert_children(parent, ctx, 0, new_node);
+    try TestASTNode.insertChildren(parent, ctx, 0, new_node);
 
     var count: usize = 0;
     var curr = fixture.nodes[parent].first_child;
@@ -847,12 +847,12 @@ fn test_insert_children(fixture: *TestFixture) !void {
     try std.testing.expectEqual(new_node, children_list[0]);
     try std.testing.expectEqual(parent, fixture.nodes[new_node].parent);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[new_node].prior);
-    try std.testing.expectEqual(as_size(5), fixture.nodes[new_node].next);
+    try std.testing.expectEqual(asSize(5), fixture.nodes[new_node].next);
     try std.testing.expectEqual(new_node, fixture.nodes[5].prior);
 
     // Insert at the end (index 4)
     const new_node2 = fixture.free_nodes[1];
-    try TestASTNode.insert_children(parent, ctx, 4, new_node2);
+    try TestASTNode.insertChildren(parent, ctx, 4, new_node2);
 
     count = 0;
     curr = fixture.nodes[parent].first_child;
@@ -866,14 +866,14 @@ fn test_insert_children(fixture: *TestFixture) !void {
     try std.testing.expectEqual(new_node2, children_list[4]);
     try std.testing.expectEqual(parent, fixture.nodes[new_node2].parent);
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[new_node2].next);
-    try std.testing.expectEqual(as_size(7), fixture.nodes[new_node2].prior);
+    try std.testing.expectEqual(asSize(7), fixture.nodes[new_node2].prior);
 }
 
-test "insert_children" {
-    try run_with_context(test_insert_children);
+test "insertChildren" {
+    try runWithContext(testInsertChildren);
 }
 
-fn test_augmented_text(fixture: *TestFixture) !void {
+fn testAugmentedText(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
     var runtime_context = root.data_structures.RuntimeContext{
@@ -886,7 +886,7 @@ fn test_augmented_text(fixture: *TestFixture) !void {
     // Leaf nodes return their own text
     fixture.nodes[5].text_start = 0;
     fixture.nodes[5].text_length = 1;
-    const leaf_text = try TestASTNode.augmented_text(5, ctx);
+    const leaf_text = try TestASTNode.augmentedText(5, ctx);
     try std.testing.expectEqualStrings("A", leaf_text);
 
     // Set distinguishable leaf texts on child1's children (5, 6, 7)
@@ -897,15 +897,15 @@ fn test_augmented_text(fixture: *TestFixture) !void {
     fixture.nodes[7].text_start = 2;
     fixture.nodes[7].text_length = 1; // "C"
 
-    const combined = try TestASTNode.augmented_text(1, ctx);
+    const combined = try TestASTNode.augmentedText(1, ctx);
     try std.testing.expectEqualStrings("ABC", combined);
 }
 
-test "augmented_text" {
-    try run_with_context(test_augmented_text);
+test "augmentedText" {
+    try runWithContext(testAugmentedText);
 }
 
-fn test_remove_count_exceeds(fixture: *TestFixture) !void {
+fn testRemoveCountExceeds(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
     // child 4 (address 4) is the last child of root; asking for 2 beyond it should error
@@ -914,10 +914,10 @@ fn test_remove_count_exceeds(fixture: *TestFixture) !void {
 }
 
 test "remove count exceeds remaining siblings" {
-    try run_with_context(test_remove_count_exceeds);
+    try runWithContext(testRemoveCountExceeds);
 }
 
-fn test_immediate_insert_child(fixture: *TestFixture) !void {
+fn testImmediateInsertChild(fixture: *TestFixture) !void {
     var ctx_val = fixture.getContext();
     const ctx = &ctx_val;
 
@@ -926,7 +926,7 @@ fn test_immediate_insert_child(fixture: *TestFixture) !void {
     const child2 = fixture.free_nodes[2];
 
     // Insert first child
-    ctx.node_allocator.at(parent).immediate_insert_child(parent, child1, ctx);
+    ctx.node_allocator.at(parent).immediateInsertChild(parent, child1, ctx);
     try std.testing.expectEqual(child1, fixture.nodes[parent].first_child);
     try std.testing.expectEqual(child1, fixture.nodes[parent].last_child);
     try std.testing.expectEqual(parent, fixture.nodes[child1].parent);
@@ -934,7 +934,7 @@ fn test_immediate_insert_child(fixture: *TestFixture) !void {
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[child1].next);
 
     // Insert second child
-    ctx.node_allocator.at(parent).immediate_insert_child(parent, child2, ctx);
+    ctx.node_allocator.at(parent).immediateInsertChild(parent, child2, ctx);
     try std.testing.expectEqual(child1, fixture.nodes[parent].first_child);
     try std.testing.expectEqual(child2, fixture.nodes[parent].last_child);
     try std.testing.expectEqual(parent, fixture.nodes[child2].parent);
@@ -943,6 +943,6 @@ fn test_immediate_insert_child(fixture: *TestFixture) !void {
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[child2].next);
 }
 
-test "immediate_insert_child" {
-    try run_with_context(test_immediate_insert_child);
+test "immediateInsertChild" {
+    try runWithContext(testImmediateInsertChild);
 }

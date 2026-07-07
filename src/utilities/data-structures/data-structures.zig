@@ -13,7 +13,7 @@ pub const RuntimeContext = @import("context.zig").RuntimeContext;
 pub const Offsets = @import("offsets.zig").Offsets;
 pub const ProcedureArguments = @import("procedure-utilities.zig").ProcedureArguments;
 pub const Procedure = @import("procedure-utilities.zig").Procedure;
-pub const wrap_procedure = @import("procedure-utilities.zig").wrap_procedure;
+pub const wrap_procedure = @import("procedure-utilities.zig").wrapProcedure;
 pub const Token = @import("token.zig").Token;
 
 pub const ParserType = enum {
@@ -194,7 +194,7 @@ pub fn StaticStringMap(comptime V: type) type {
             }
         };
 
-        pub fn keys_terator(self: *const Self) KeyIterator {
+        pub fn keysTerator(self: *const Self) KeyIterator {
             return .{ .entries = self.entries };
         }
     };

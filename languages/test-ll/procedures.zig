@@ -128,7 +128,7 @@ pub const reduction_IntegerNumber = dropChildren;
 pub const reduction_Number = dropChildren;
 pub const reduction_text = dropChildren;
 
-fn block_edge(parse_id: comptime_int) type {
+fn blockEdge(parse_id: comptime_int) type {
     return struct {
         fn function(args: *ProcedureArguments) !void {
             if (args.node) |node_address| {
@@ -147,8 +147,8 @@ fn block_edge(parse_id: comptime_int) type {
     };
 }
 
-pub const reduction_block_start = block_edge(block_start_id).function;
-pub const reduction_block_end = block_edge(block_end_id).function;
+pub const reduction_block_start = blockEdge(block_start_id).function;
+pub const reduction_block_end = blockEdge(block_end_id).function;
 
 pub fn replaceWithChildren(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {

@@ -18,7 +18,7 @@ pub const ProcedureArguments = struct {
 
 pub const Procedure = fn (args: *ProcedureArguments) anyerror!void;
 
-pub fn wrap_procedure(comptime Signature: type, comptime procedure: anytype, comptime procedure_name: []const u8) Signature {
+pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comptime procedure_name: []const u8) Signature {
     const signature_type_info = @typeInfo(Signature);
 
     if (signature_type_info != .@"fn") {

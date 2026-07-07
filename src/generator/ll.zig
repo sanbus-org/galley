@@ -540,7 +540,7 @@ const Generator = struct {
                 \\                if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
-                \\                    repeating_node.immediate_insert_child(repeating_node_address, temporary_address, context); // child {d}
+                \\                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child {d}
                 \\                }}
                 \\                repeating_node_address = temporary_address;
                 \\                repeating_node = context.node_allocator.at(repeating_node_address);
@@ -563,7 +563,7 @@ const Generator = struct {
                 \\    if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\        node_address = exit_node;
                 \\    }} else {{
-                \\        repeating_node.immediate_insert_child(repeating_node_address, exit_node, context); // child {d}
+                \\        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child {d}
                 \\    }}
                 \\    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {{
                 \\        repeating_node = context.node_allocator.at(repeating_node_address);
@@ -777,7 +777,7 @@ const Generator = struct {
         if (symbol.kind == .variable) {
             try self.emitRuleBody(writer, rule_index, symbol_index, try indented(self.allocator, indent, 8), non_ast);
         } else {
-            try writer.print("{s}        context.release_token({d});\n", .{ indent, length });
+            try writer.print("{s}        context.releaseToken({d});\n", .{ indent, length });
         }
     }
 
@@ -839,7 +839,7 @@ const Generator = struct {
             else
                 name;
             if (parent_returns_node and child_returns_node) {
-                try writer.print("{s}context.node_allocator.at(node_address).immediate_insert_child(node_address, try parse_{s}(context), context); // child {d}\n", .{ indent, call_name, child_index });
+                try writer.print("{s}context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_{s}(context), context); // child {d}\n", .{ indent, call_name, child_index });
             } else if (child_returns_node) {
                 try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
             } else {
@@ -919,7 +919,7 @@ const Generator = struct {
             name;
         if (parent) |parent_expr| {
             if (child_returns_node) {
-                try writer.print("{s}{s}.immediate_insert_child({s}, try parse_{s}(context), context); // child {d}\n", .{ indent, parent_expr, parent_address.?, call_name, child_index });
+                try writer.print("{s}{s}.immediateInsertChild({s}, try parse_{s}(context), context); // child {d}\n", .{ indent, parent_expr, parent_address.?, call_name, child_index });
             } else {
                 try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
             }
