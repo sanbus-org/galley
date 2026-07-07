@@ -8,7 +8,6 @@ pub const string_utilities = @import("utilities/string.zig");
 pub const stack_overflow_utilities = @import("utilities/stack-overflow.zig");
 pub const data_structures = @import("utilities/data-structures/data-structures.zig");
 pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
-pub const preallocated_nodes = if (parser.is_ast_enabled) (std.math.maxInt(std.math.Min(data_structures.Context.Size, u27)) - 1) else 0;
 
 pub const ParseOptions = struct {
     language_options: config.Options = .{},

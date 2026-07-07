@@ -4,23 +4,13 @@ const ll_generator = @import("ll_generator");
 const lr_generator = @import("lr_generator");
 const common = @import("generator_common");
 
+pub const ParserType = galley_grammar.data_structures.ParserType;
 pub const Grammar = galley_grammar.procedures.Grammar;
 pub const Rule = galley_grammar.procedures.Rule;
 pub const RightHandSide = galley_grammar.procedures.RightHandSide;
 pub const SymbolRef = galley_grammar.procedures.SymbolRef;
 pub const SymbolKind = galley_grammar.procedures.SymbolKind;
 pub const Options = common.Options;
-
-pub const ParserType = enum {
-    ll,
-    lr,
-
-    pub fn parse(value: []const u8) ?ParserType {
-        if (std.ascii.eqlIgnoreCase(value, "ll")) return .ll;
-        if (std.ascii.eqlIgnoreCase(value, "lr")) return .lr;
-        return null;
-    }
-};
 
 pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar {
     var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});

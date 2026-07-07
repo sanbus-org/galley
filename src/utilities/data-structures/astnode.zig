@@ -6,7 +6,11 @@ const Context = root.data_structures.Context;
 pub fn ASTAllocator(comptime PayloadType: type) type {
     return struct {
         const ASTNodeType = ASTNode(PayloadType);
-        const invalid_pointer = root.preallocated_nodes;
+        pub const preallocated_nodes = if (root.parser.is_ast_enabled)
+            (std.math.maxInt(std.math.Min(root.data_structures.Context.Size, u27)) - 1)
+        else
+            0;
+        const invalid_pointer = preallocated_nodes;
         const default: ASTNodeType = .{
             .text_start = 0,
             .text_length = 0,
@@ -25,7 +29,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
         const Self = @This();
 
         pub fn init_capacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
-            const memory = try allocator.alloc(ASTNodeType, root.preallocated_nodes + 1);
+            const memory = try allocator.alloc(ASTNodeType, preallocated_nodes + 1);
 
             @memset(memory, default);
 
