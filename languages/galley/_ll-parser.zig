@@ -4617,7 +4617,12 @@ pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
         std.log.info("The input file was parsed successfully!", .{});
     }
     const ast_root: ?data_structures.ASTNode.Pointer = if (context.node_allocator.counter > 0) 0 else null;
-    return .{ .parsed_bytes = context.pos() - 1, .ast_root = ast_root };
+    return .{
+        .parsed_bytes = context.pos() - 1,
+        .line = context.line,
+        .column = context.column,
+        .ast_root = ast_root,
+    };
 }
 
 pub fn parse(context: *data_structures.Context) !void {

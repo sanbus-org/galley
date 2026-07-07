@@ -101,6 +101,8 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void 
             };
 
             for (matrix_variants) |variant| {
+                const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type.name, "-", language, "-", variant.name });
+                std.debug.print("REGISTERING: {s}\n", .{case_name});
                 try addCase(
                     b,
                     matrix_step,
@@ -201,6 +203,26 @@ fn addCase(
         .name = case_name,
         .root_module = galley_cli_mod,
     });
+    const install_artifact = b.addInstallArtifact(exe, .{});
+    const build_step = b.step(case_name, try std.mem.concat(b.allocator, u8, &.{ "Build matrix variant: ", case_name }));
+    build_step.dependOn(&install_artifact.step);
+
+    const api_benchmark_mod = b.createModule(.{
+        .root_source_file = b.path("src/benchmarks/api_benchmark.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "galley", .module = galley_parser_mod },
+        },
+    });
+    const api_benchmark_name = try std.mem.concat(b.allocator, u8, &.{ "api-bench-", case_name });
+    const api_benchmark_exe = b.addExecutable(.{
+        .name = api_benchmark_name,
+        .root_module = api_benchmark_mod,
+    });
+    const install_api_benchmark_artifact = b.addInstallArtifact(api_benchmark_exe, .{});
+    const api_benchmark_step = b.step(api_benchmark_name, try std.mem.concat(b.allocator, u8, &.{ "Benchmark matrix variant API: ", case_name }));
+    api_benchmark_step.dependOn(&install_api_benchmark_artifact.step);
 
     try addValidationInputs(b, matrix_step, options.target, options.optimize, galley_parser_mod, exe, language, variant.input_size);
 }
@@ -308,7 +330,7 @@ fn addGeneratedParserApiTest(
     parser_api_test_options.addOption([]const u8, "sample_path", sample_path);
     parser_api_test_options.addOption([]const u8, "sample_input", sample_input);
     const parser_api_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/generated_parser_library_test.zig"),
+        .root_source_file = b.path("src/tests/generated_parser_library_test.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

@@ -350,7 +350,12 @@ const Generator = struct {
             \\    }
             \\
             \\    const ast_root = if (comptime is_ast_enabled) stack.items[stack.items.len - 1] else null;
-            \\    return .{ .parsed_bytes = context.pos(), .ast_root = ast_root };
+            \\    return .{
+            \\        .parsed_bytes = context.pos(),
+            \\        .line = context.line,
+            \\        .column = context.column,
+            \\        .ast_root = ast_root,
+            \\    };
             \\}
             \\
             \\pub fn parse(context: *data_structures.Context) !void {

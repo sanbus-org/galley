@@ -284,7 +284,12 @@ const Generator = struct {
             try writer.writeAll("    const ast_root = null;\n");
         }
         try writer.writeAll(
-            \\    return .{ .parsed_bytes = context.pos() - 1, .ast_root = ast_root };
+            \\    return .{
+            \\        .parsed_bytes = context.pos() - 1,
+            \\        .line = context.line,
+            \\        .column = context.column,
+            \\        .ast_root = ast_root,
+            \\    };
             \\}
             \\
             \\pub fn parse(context: *data_structures.Context) !void {
