@@ -1,0 +1,132 @@
+const std = @import("std");
+
+const galley_root = "{s}";
+
+pub fn build(b: *std.Build) !void {{
+    const target = b.standardTargetOptions(.{{}});
+    const optimize = b.standardOptimizeOption(.{{}});
+
+    const generator_common_mod = b.createModule(.{{
+        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/generator/common.zig" }},
+        .target = target,
+        .optimize = optimize,
+    }});
+    const ll_generator_mod = b.createModule(.{{
+        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/generator/ll.zig" }},
+        .target = target,
+        .optimize = optimize,
+    }});
+    ll_generator_mod.addImport("generator_common", generator_common_mod);
+    const lr_generator_mod = b.createModule(.{{
+        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/generator/lr.zig" }},
+        .target = target,
+        .optimize = optimize,
+    }});
+    lr_generator_mod.addImport("generator_common", generator_common_mod);
+
+    const procedures_mod = b.addModule("procedures", .{{
+        .root_source_file = b.path("procedures.zig"),
+        .target = target,
+    }});
+    const config_mod = b.addModule("config", .{{
+        .root_source_file = b.path("config.zig"),
+        .target = target,
+    }});
+
+    const ll_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig");
+    const lr_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig");
+    const preferred_mod = ll_mod orelse lr_mod;
+    if (preferred_mod) |parser_mod| {{
+        addTests(b, target, optimize, parser_mod);
+    }}
+}}
+
+fn addParser(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    procedures_mod: *std.Build.Module,
+    config_mod: *std.Build.Module,
+    ll_generator_mod: *std.Build.Module,
+    lr_generator_mod: *std.Build.Module,
+    parser_type: []const u8,
+    parser_path: []const u8,
+) !?*std.Build.Module {{
+    b.build_root.handle.access(b.graph.io, parser_path, .{{}}) catch |err| switch (err) {{
+        error.FileNotFound => return null,
+        else => |e| return e,
+    }};
+
+    const parser_mod = b.addModule("parser", .{{
+        .root_source_file = b.path(parser_path),
+        .target = target,
+    }});
+
+    const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
+    const galley_mod = b.addModule(exe_name, .{{
+        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/parser_library.zig" }},
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{{
+            .{{ .name = "procedures", .module = procedures_mod }},
+            .{{ .name = "config", .module = config_mod }},
+            .{{ .name = "parser", .module = parser_mod }},
+        }},
+    }});
+    galley_mod.addImport("galley", galley_mod);
+    procedures_mod.addImport("galley", galley_mod);
+    procedures_mod.addImport("ll_generator", ll_generator_mod);
+    procedures_mod.addImport("lr_generator", lr_generator_mod);
+    config_mod.addImport("galley", galley_mod);
+    parser_mod.addImport("galley", galley_mod);
+
+    const exe_mod = b.createModule(.{{
+        .root_source_file = b.path("main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{{
+            .{{ .name = "generated_parser", .module = galley_mod }},
+        }},
+    }});
+
+    const exe = b.addExecutable(.{{
+        .name = exe_name,
+        .root_module = exe_mod,
+    }});
+    const install_artifact = b.addInstallArtifact(exe, .{{}});
+    const build_step = b.step(parser_type, "Build the generated parser");
+    build_step.dependOn(&install_artifact.step);
+
+    const run_step_name = try std.mem.concat(b.allocator, u8, &.{{ "run-", parser_type }});
+    const run_step = b.step(run_step_name, "Run the generated parser");
+    const run_cmd = b.addRunArtifact(exe);
+    run_step.dependOn(&run_cmd.step);
+    run_cmd.step.dependOn(&install_artifact.step);
+    if (b.args) |args| {{
+        run_cmd.addArgs(args);
+    }}
+
+    return galley_mod;
+}}
+
+fn addTests(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    parser_mod: *std.Build.Module,
+) void {{
+    const test_mod = b.createModule(.{{
+        .root_source_file = b.path("tests/parser_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{{
+            .{{ .name = "generated_parser", .module = parser_mod }},
+        }},
+    }});
+    const tests = b.addExecutable(.{{ .name = "parser-tests", .root_module = test_mod }});
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run parser tests");
+    test_step.dependOn(&run_tests.step);
+}}

@@ -68,25 +68,14 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "lr_generator", .module = lr_generator_mod },
         },
     });
-    const public_galley_mod = b.addModule("galley", .{
-        .root_source_file = b.path("src/galley.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "generator_common", .module = generator_common_mod },
-            .{ .name = "galley_generator", .module = galley_generator_mod },
-            .{ .name = "galley_grammar", .module = galley_grammar_library_mod },
-            .{ .name = "ll_generator", .module = ll_generator_mod },
-            .{ .name = "lr_generator", .module = lr_generator_mod },
-        },
-    });
+
 
     const cli_options = b.addOptions();
     cli_options.addOption([]const u8, "galley_root", b.pathFromRoot("."));
     cli_options.addOption([]const u8, "clap_source", b.pathFromRoot("zig-pkg/clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5/clap.zig"));
 
     const generator_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/generator_cli.zig"),
+        .root_source_file = b.path("src/generator/cli.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -99,7 +88,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = generator_cli_mod,
     });
     const generate_parser_file_mod = b.createModule(.{
-        .root_source_file = b.path("src/generate_parser_file.zig"),
+        .root_source_file = b.path("src/tools/generate_parser_file.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -128,11 +117,7 @@ pub fn build(b: *std.Build) !void {
     const run_generator_tests = b.addRunArtifact(generator_tests);
     test_step.dependOn(&run_generator_tests.step);
 
-    const public_galley_tests = b.addTest(.{
-        .root_module = public_galley_mod,
-    });
-    const run_public_galley_tests = b.addRunArtifact(public_galley_tests);
-    test_step.dependOn(&run_public_galley_tests.step);
+
 
     const generated_parser_matrix_step = b.step("test-generated-parser-matrix", "Generate and test parser option matrix");
     try generated_parser_matrix.add(b, generated_parser_matrix_step, .{
@@ -358,7 +343,7 @@ fn addGeneratedParserApiTest(
         sample_input,
     );
     const parser_api_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/generated_parser_library_test.zig"),
+        .root_source_file = b.path("src/tests/generated_parser_library_test.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

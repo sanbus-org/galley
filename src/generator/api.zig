@@ -79,7 +79,12 @@ pub fn emitParserFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    const parsed_grammar = try parseGrammar(allocator, source);
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
+    defer parsed.deinit();
+
+    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(parsed.session.astAllocator()) orelse
+        return error.GrammarModelMissing;
+
     try emitParser(allocator, parsed_grammar, writer, parser_type, options);
 }
 

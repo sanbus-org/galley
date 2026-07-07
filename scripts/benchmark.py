@@ -381,62 +381,12 @@ def write_result_to_file(filepath, content):
         f.write(content)
 
 
-def generated_parser_paths():
-    return [os.path.join("languages", "galley", "_ll-parser.zig")]
-
-
-def preserve_generated_parsers():
-    snapshots = {}
-    for path in generated_parser_paths():
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                snapshots[path] = f.read()
-        else:
-            snapshots[path] = None
-
-    def restore():
-        for path, content in snapshots.items():
-            if content is None:
-                if os.path.exists(path):
-                    os.remove(path)
-            else:
-                with open(path, "wb") as f:
-                    f.write(content)
-
-    return restore
-
-
-FROZEN_GENERATOR = None
-
-
-def frozen_generator_path():
-    global FROZEN_GENERATOR
-    if FROZEN_GENERATOR is not None:
-        return FROZEN_GENERATOR
-
-    subprocess.run(
-        ["zig", "build", "galley"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=True,
-    )
-
-    binary_name = "galley.exe" if sys.platform == "win32" else "galley"
-    source = os.path.join("zig-out", "bin", binary_name)
-    tools_dir = os.path.join(".zig-cache", "benchmark-tools")
-    os.makedirs(tools_dir, exist_ok=True)
-    target = os.path.join(tools_dir, binary_name)
-    shutil.copy2(source, target)
-    os.chmod(target, os.stat(target).st_mode | 0o111)
-
-    FROZEN_GENERATOR = os.path.abspath(target)
-    return FROZEN_GENERATOR
+# No local code generation needed as we compile matrix targets directly.
 
 
 def run_benchmark_suite(name, gen_opts, args, inputs=None):
     """
-    Runs parser generator and compiles/runs benchmarks for all input files.
+    Compiles/runs benchmarks for all input files using the matrix build targets.
     """
     parser_types = get_parser_types_for_language(name, args)
     if not parser_types:
@@ -446,7 +396,6 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     if inputs is None:
         inputs = sample_inputs(name)
 
-    # Extract AST mode
     # Extract AST mode
     ast_mode = "default-ast"
     if "--no-ast" in gen_opts:
@@ -470,31 +419,6 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     elif "--ast-for-terminals" in gen_opts:
         term_ast = "ast-for-terminals"
 
-    # 1. Run parser generator command for all parser types
-    generator = frozen_generator_path()
-    language_dir = os.path.join("languages", name)
-    for p_type in parser_types:
-        cmd_args = [
-            generator,
-            language_dir,
-            "--parser-type",
-            p_type.lower(),
-        ] + list(gen_opts)
-        try:
-            subprocess.run(
-                cmd_args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(
-                f"\n\033[31mError running parser generator command:\033[0m {' '.join(cmd_args)}"
-            )
-            print(f"\033[33mCommand Output:\033[0m\n{e.stdout}")
-            sys.exit(1)
-
     # Extract input size from gen_opts (defaults to None if not specified)
     input_size = None
     if "--input-size" in gen_opts:
@@ -503,6 +427,21 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             input_size = int(gen_opts[size_idx + 1])
         except (ValueError, IndexError):
             pass
+
+    # Map generator options to matrix variant names in build/generated_parser_matrix.zig
+    is_no_ast = "--no-ast" in gen_opts
+    is_no_procedures = "--no-procedures" in gen_opts
+    is_ast_for_terminals = "--ast-for-terminals" in gen_opts
+
+    variant_size = input_size if input_size is not None else 16
+    if is_no_ast:
+        variant_name = f"no-ast-procedures-size{variant_size}"
+    elif is_no_procedures:
+        term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
+        variant_name = f"ast-no-procedures-{term_suffix}-size{variant_size}"
+    else:
+        term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
+        variant_name = f"ast-procedures-{term_suffix}-size{variant_size}"
 
     RESET = "" if args.no_color else "\033[0m"
     BOLD = "" if args.no_color else "\033[1m"
@@ -605,8 +544,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     row_cards.append(card_lines)
                 continue
 
-            parser_target = f"{p_type.lower()}-{name}"
-            target = benchmark_target(parser_target, args.route)
+            base_target = f"generated-{p_type.lower()}-{name}-{variant_name}"
+            target = benchmark_target(base_target, args.route)
 
             # Render placeholder as "Building..."
             if is_interactive and not is_too_large:
@@ -632,6 +571,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             build_cmd = [
                 "zig",
                 "build",
+                "--build-file",
+                "build-tests.zig",
                 "-Doptimize=ReleaseFast",
                 target,
             ]
@@ -647,6 +588,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 debug_cmd = [
                     "zig",
                     "build",
+                    "--build-file",
+                    "build-tests.zig",
                     "-Doptimize=Debug",
                     target,
                 ]
@@ -778,6 +721,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 debug_build_cmd = [
                     "zig",
                     "build",
+                    "--build-file",
+                    "build-tests.zig",
                     "-Doptimize=Debug",
                     target,
                 ]
@@ -1056,11 +1001,6 @@ def main():
             "--benchmark-runs must be at least 2 when discarding the first run."
         )
 
-    restore_generated_parsers = (
-        preserve_generated_parsers()
-        if args.language is None or args.language == "galley"
-        else lambda: None
-    )
     try:
         if args.language is None:
             if args.inputs:
@@ -1093,7 +1033,7 @@ def main():
                 print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
                 sys.exit(1)
     finally:
-        restore_generated_parsers()
+        pass
 
 
 if __name__ == "__main__":
