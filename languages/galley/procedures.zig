@@ -90,11 +90,11 @@ fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
         const nested_tail_address = node.last_child;
         if (args.context.node_allocator.at(nested_tail_address).variable != node.variable) return;
 
-        _ = try ASTNode.remove_self(nested_tail_address, args.context);
+        _ = try ASTNode.removeSelf(nested_tail_address, args.context);
         if (args.context.node_allocator.at(nested_tail_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.clean_children(nested_tail_address, args.context);
+            const nested_children = try ASTNode.cleanChildren(nested_tail_address, args.context);
             if (nested_children.len > 0) {
-                try ASTNode.append_children(node_address, args.context, nested_children[0]);
+                try ASTNode.appendChildren(node_address, args.context, nested_children[0]);
             }
         }
     }
@@ -111,11 +111,11 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
                 const tail_address = node.last_child;
                 if (!nodeIs(args.context, tail_address, child_name)) return;
 
-                _ = try ASTNode.remove_self(tail_address, args.context);
+                _ = try ASTNode.removeSelf(tail_address, args.context);
                 if (args.context.node_allocator.at(tail_address).first_child != ASTNode.invalid_pointer) {
-                    const tail_children = try ASTNode.clean_children(tail_address, args.context);
+                    const tail_children = try ASTNode.cleanChildren(tail_address, args.context);
                     if (tail_children.len > 0) {
-                        try ASTNode.append_children(node_address, args.context, tail_children[0]);
+                        try ASTNode.appendChildren(node_address, args.context, tail_children[0]);
                     }
                 }
             }
@@ -132,11 +132,11 @@ fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
         const nested_list_address = node.first_child;
         if (args.context.node_allocator.at(nested_list_address).variable != node.variable) return;
 
-        _ = try ASTNode.remove_self(nested_list_address, args.context);
+        _ = try ASTNode.removeSelf(nested_list_address, args.context);
         if (args.context.node_allocator.at(nested_list_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.clean_children(nested_list_address, args.context);
+            const nested_children = try ASTNode.cleanChildren(nested_list_address, args.context);
             if (nested_children.len > 0) {
-                try ASTNode.insert_children(node_address, args.context, 0, nested_children[0]);
+                try ASTNode.insertChildren(node_address, args.context, 0, nested_children[0]);
             }
         }
     }
@@ -324,7 +324,7 @@ fn nodeIs(context: *data_structures.Context, node_address: ASTNode.Pointer, name
 
 fn nodeText(context: *data_structures.Context, node_address: ASTNode.Pointer) []const u8 {
     const node = context.node_allocator.at(node_address);
-    return context.get_text_slice(node.text_start, node.text_length);
+    return context.getTextSlice(node.text_start, node.text_length);
 }
 
 pub fn grammarFromContext(context: *data_structures.Context) ?*Grammar {

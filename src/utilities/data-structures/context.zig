@@ -4,7 +4,7 @@ const std = @import("std");
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
-fn find_scalar_last(comptime T: type, slice: []const T, value: T) ?Context.Size {
+fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
     var i = slice.len;
     while (i > 0) {
         i -= 1;
@@ -27,16 +27,16 @@ pub const RuntimeContext = struct {
 
 var active_runtime_context: ?*RuntimeContext = null;
 
-pub fn activate_runtime_context(runtime_context_: *RuntimeContext) void {
+pub fn activateRuntimeContext(runtime_context_: *RuntimeContext) void {
     active_runtime_context = runtime_context_;
 }
 
-pub fn deactivate_runtime_context(runtime_context_: *RuntimeContext) void {
+pub fn deactivateRuntimeContext(runtime_context_: *RuntimeContext) void {
     std.debug.assert(active_runtime_context == runtime_context_);
     active_runtime_context = null;
 }
 
-fn runtime_context() *RuntimeContext {
+fn runtimeContext() *RuntimeContext {
     return active_runtime_context orelse unreachable;
 }
 
@@ -85,12 +85,12 @@ pub const Context = struct {
 
     pub inline fn runtime(self: *Self) *RuntimeContext {
         _ = self;
-        return runtime_context();
+        return runtimeContext();
     }
 
     pub inline fn runtimeConst(self: *const Self) *const RuntimeContext {
         _ = self;
-        return runtime_context();
+        return runtimeContext();
     }
 
     pub inline fn verbosityLevel(self: *const Self) usize {
@@ -100,7 +100,7 @@ pub const Context = struct {
         return 0;
     }
 
-    pub fn release_token(self: *@This(), length: Size) void {
+    pub fn releaseToken(self: *@This(), length: Size) void {
         if (comptime builtin.mode != .ReleaseFast) {
             if (comptime root.procedures.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
@@ -108,7 +108,7 @@ pub const Context = struct {
             self.column += self.column_offsets.sum(0, length);
             var last_newline: i16 = -1;
             for ("\n\x01\x02") |newline_char| {
-                if (find_scalar_last(u8, self.token.items()[0..length], newline_char)) |index| {
+                if (findScalarLast(u8, self.token.items()[0..length], newline_char)) |index| {
                     if (index > last_newline) {
                         self.column = self.column_offsets.sum(index, length);
                         last_newline = @intCast(index);
@@ -181,7 +181,7 @@ pub const Context = struct {
         }
     }
 
-    pub inline fn advance_input_with_check(self: *@This()) void {
+    pub inline fn advanceInputWithCheck(self: *@This()) void {
         if (comptime root.procedures.indentation_syntax) {
             if (self.seek == root.read_chunk_size - 1) {
                 self.read_bytes += self.seek;
@@ -192,27 +192,27 @@ pub const Context = struct {
         }
     }
 
-    pub inline fn advance_input_without_check(self: *@This()) void {
+    pub inline fn advanceInputWithoutCheck(self: *@This()) void {
         if (comptime root.procedures.indentation_syntax) {
             self.seek +%= 1;
         }
     }
 
-    pub inline fn advance_input(self: *@This()) void {
+    pub inline fn advanceInput(self: *@This()) void {
         if (comptime root.procedures.indentation_syntax) {
-            self.advance_input_without_check();
+            self.advanceInputWithoutCheck();
         }
     }
 
-    pub inline fn advance_lexer(self: *@This()) void {
+    pub inline fn advanceLexer(self: *@This()) void {
         if (comptime root.procedures.indentation_syntax) {
             const chunk_buffer = self.chunk_buffer;
             while (chunk_buffer[self.seek] == '\n') {
-                self.advance_input();
+                self.advanceInput();
                 var line_spaces: u16 = 0;
 
                 while (chunk_buffer[self.seek] == ' ') {
-                    self.advance_input();
+                    self.advanceInput();
                     line_spaces += 1;
                 }
 
@@ -275,9 +275,9 @@ pub const Context = struct {
         }
         if (comptime root.procedures.indentation_syntax) {
             self.token.append(self.chunk_buffer[self.seek]);
-            self.advance_input();
+            self.advanceInput();
         } else {
-            self.token.append_no_copy();
+            self.token.appendNoCopy();
         }
 
         if (comptime builtin.mode == .Debug) {
@@ -295,7 +295,7 @@ pub const Context = struct {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
         while (self.token.len < needed_len) {
-            self.advance_lexer();
+            self.advanceLexer();
         }
 
         const base_ptr = self.token.items().ptr + offset;
@@ -315,7 +315,7 @@ pub const Context = struct {
             self.token.head - self.token.len;
     }
 
-    pub inline fn get_text_slice(self: *const Self, start: Size, length: Size) []const u8 {
+    pub inline fn getTextSlice(self: *const Self, start: Size, length: Size) []const u8 {
         return self.token.buffer[start .. start + length];
     }
 };

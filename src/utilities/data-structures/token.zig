@@ -26,7 +26,7 @@ pub const Token = struct {
         self.len += 1;
     }
 
-    pub inline fn append_no_copy(self: *Self) void {
+    pub inline fn appendNoCopy(self: *Self) void {
         std.debug.assert(self.len < Self.max_length);
         self.head += 1;
         self.len += 1;

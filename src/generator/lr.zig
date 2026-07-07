@@ -584,7 +584,7 @@ const Generator = struct {
                     }
                     _ = symbol;
                 }
-                try writer.print("{s}context.release_token({d});\n", .{ indent, length });
+                try writer.print("{s}context.releaseToken({d});\n", .{ indent, length });
                 try writer.print(
                     \\{s}if (comptime builtin.mode == .Debug) {{
                     \\{s}    if (context.verbosityLevel() > 1) {{
@@ -641,7 +641,7 @@ const Generator = struct {
                 try writer.print("{s}const parent_address = context.node_allocator.create(start_pos, {d});\n", .{ indent, variable_index });
                 for (rule.rhs.items, 0..) |sym, child_index| {
                     if (self.symbolReturnsStackNode(sym)) {
-                        try writer.print("{s}context.node_allocator.at(parent_address).immediate_insert_child(parent_address, child_{d}, context); // child {d}\n", .{ indent, child_index + 1, child_index });
+                        try writer.print("{s}context.node_allocator.at(parent_address).immediateInsertChild(parent_address, child_{d}, context); // child {d}\n", .{ indent, child_index + 1, child_index });
                     }
                 }
                 if (self.options.with_procedures) {
