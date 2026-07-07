@@ -6,10 +6,6 @@ const sample_input = test_options.sample_input;
 fn sampleFitsParserInputSize() bool {
     const max_input_size = std.math.maxInt(parser.parser.input_size_cap);
     if (sample_input.len > max_input_size) {
-        std.debug.print(
-            "sample {s} is {d} bytes, exceeding parser input_size_cap {s} max {d}\n",
-            .{ test_options.sample_path, sample_input.len, @typeName(parser.parser.input_size_cap), max_input_size },
-        );
         return false;
     }
     return true;
@@ -17,18 +13,8 @@ fn sampleFitsParserInputSize() bool {
 
 fn expectParsedAll(result: parser.ParseResult) !void {
     if (result.parsed_bytes != sample_input.len) {
-        // var line: usize = 1;
-        // var col: usize = 1;
-        // for (sample_input[0..result.parsed_bytes]) |char| {
-        //     if (char == '\n') {
-        //         line += 1;
-        //         col = 1;
-        //     } else {
-        //         col += 1;
-        //     }
-        // }
-        const line = 0;
-        const col = 0;
+        const line = if (@TypeOf(result.line) == u32) result.line else 0;
+        const col = if (@TypeOf(result.column) == u32) result.column else 0;
         std.debug.print(
             "sample {s} parsed {d} of {d} bytes (stopped at line {d}, col {d})\n",
             .{ test_options.sample_path, result.parsed_bytes, sample_input.len, line, col },

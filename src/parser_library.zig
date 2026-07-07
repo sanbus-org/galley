@@ -17,6 +17,8 @@ pub const ParseOptions = struct {
 
 pub const ParseResult = struct {
     parsed_bytes: usize,
+    line: if (builtin.mode != .ReleaseFast) u32 else void,
+    column: if (builtin.mode != .ReleaseFast) u32 else void,
     ast_root: ?data_structures.ASTNode.Pointer = null,
 };
 

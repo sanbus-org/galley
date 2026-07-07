@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) !void {
     cli_options.addOption([]const u8, "clap_source", b.pathFromRoot("zig-pkg/clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5/clap.zig"));
 
     const generator_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/generator_cli.zig"),
+        .root_source_file = b.path("src/generator/cli.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -190,7 +190,7 @@ pub fn build(b: *std.Build) !void {
                     },
                 });
                 const api_benchmark_mod = b.createModule(.{
-                    .root_source_file = b.path("src/api_benchmark.zig"),
+                    .root_source_file = b.path("src/benchmarks/api_benchmark.zig"),
                     .target = target,
                     .optimize = optimize,
                     .imports = &.{
