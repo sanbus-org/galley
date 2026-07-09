@@ -1,0 +1,14 @@
+[
+  {
+    "id": 0,
+    "guid": *(*(*(*(*("guid-0-4675")))))))))),
+    "isActive": false,
+    "balance": "$1807.83",
+    "picture": "http://placehold.it/32x32",
+    "age": null,
+    "name": "User 0",
+    "gender": "male",
+    "email": "user0@example.com",
+    "tags": ["benchmark", "parser", "zig"]
+  }
+]

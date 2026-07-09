@@ -199,3 +199,8 @@ pub fn StaticStringMap(comptime V: type) type {
         }
     };
 }
+
+test "pull in astnode tests for generator and parser builds" {
+    if (comptime !root.parser.is_ast_enabled) return;
+    _ = @import("astnode.zig");
+}

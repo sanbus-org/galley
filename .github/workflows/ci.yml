@@ -11,7 +11,8 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ contains(github.server_url, 'github') && 'blacksmith-16vcpu-ubuntu-2404' || 'codeberg-medium' }}
+    runs-on: ${{ contains(github.server_url, 'github') && 'blacksmith-32vcpu-ubuntu-2404' || 'codeberg-medium' }}
+    timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -25,5 +26,5 @@ jobs:
           tar -xf zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
-      - name: Run unit tests
-        run: zig build test --summary all
+      - name: Run tests
+        run: zig build test --summary all --test-timeout 30m

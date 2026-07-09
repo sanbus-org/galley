@@ -7,6 +7,7 @@ pub const parser = @import("parser");
 pub const string_utilities = @import("utilities/string.zig");
 pub const stack_overflow_utilities = @import("utilities/stack-overflow.zig");
 pub const data_structures = @import("utilities/data-structures/data-structures.zig");
+pub const standard_procedures = @import("utilities/standard-procedures.zig");
 pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
 
 pub const ParseOptions = struct {
@@ -168,3 +169,9 @@ pub const Session = struct {
         return try parser.parseWithResult(context_value);
     }
 };
+
+comptime {
+    if (builtin.is_test and parser.is_ast_enabled) {
+        _ = @import("utilities/data-structures/astnode.zig");
+    }
+}

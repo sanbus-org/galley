@@ -45,20 +45,69 @@ const ASTNodeFormatter = struct {
     indentation: usize = 0,
     indent_status: []bool = &[0]bool{},
 
+    const Frame = struct {
+        node: ASTNode.Pointer,
+        depth: usize,
+        is_last: bool,
+    };
+
+    const Child = struct {
+        node: ASTNode.Pointer,
+        is_last: bool,
+    };
+
+    fn writeIndent(indent: []const bool, depth: usize, writer: *std.Io.Writer) !void {
+        for (indent, 0..) |is_ended, index| {
+            if (is_ended) {
+                try writer.writeAll(if (index == depth - 1) " ╰" else "  ");
+            } else {
+                try writer.writeAll(if (index == depth - 1) " ├" else " │");
+            }
+        }
+    }
+
+    fn syncIndent(indent: *std.ArrayList(bool), allocator: std.mem.Allocator, depth: usize, is_last: bool) error{WriteFailed}!void {
+        if (indent.items.len > depth) {
+            indent.shrinkRetainingCapacity(depth);
+        }
+        if (indent.items.len < depth) {
+            const old_len = indent.items.len;
+            indent.resize(allocator, depth) catch return error.WriteFailed;
+            for (old_len..depth) |index| {
+                indent.items[index] = false;
+            }
+        }
+        if (depth > 0) {
+            indent.items[depth - 1] = is_last;
+        }
+    }
+
     pub fn format(
         self: @This(),
         writer: *std.Io.Writer,
     ) !void {
-        for (self.indent_status, 0..) |is_ended, index| {
-            if (is_ended) {
-                try writer.writeAll(if (index == self.indentation - 1) " ╰" else "  ");
-            } else {
-                try writer.writeAll(if (index == self.indentation - 1) " ├" else " │");
-            }
-        }
+        const allocator = self.context.runtime().arena_allocator;
 
-        if (self.ast_node_address) |ast_node_address| {
-            const ast_node = self.context.node_allocator.at(ast_node_address);
+        const root_node = self.ast_node_address orelse {
+            try writer.print("NULL\n", .{});
+            return;
+        };
+
+        var stack: std.ArrayList(Frame) = .empty;
+        var indent: std.ArrayList(bool) = .empty;
+        var children: std.ArrayList(Child) = .empty;
+
+        stack.append(allocator, .{
+            .node = root_node,
+            .depth = 0,
+            .is_last = true,
+        }) catch return error.WriteFailed;
+
+        while (stack.pop()) |frame| {
+            try syncIndent(&indent, allocator, frame.depth, frame.is_last);
+            try writeIndent(indent.items, frame.depth, writer);
+
+            const ast_node = self.context.node_allocator.at(frame.node);
             try writer.print(" {s} \"{f}\" ({d})\n", .{
                 if (ast_node.variable == std.math.maxInt(u16))
                     "-"
@@ -68,30 +117,29 @@ const ASTNodeFormatter = struct {
                 if (ast_node.first_child == ASTNode.invalid_pointer)
                     0
                 else
-                    ASTNode.augmentedLength(ast_node.first_child, self.context.node_allocator),
+                    self.context.node_allocator.at(ast_node.first_child).children_count,
             });
 
-            var child_indent_status: [256]bool = undefined;
-            @memcpy(child_indent_status[0..self.indentation], self.indent_status);
-            child_indent_status[self.indentation] = false;
-
-            var iterator = ASTNode.iterateAugmented(ast_node.first_child, self.context);
+            children.items.len = 0;
+            var iterator = ASTNode.iterateAugmented(ast_node.first_child, self.context.node_allocator);
             while (iterator.next()) |node_address| {
                 const node = self.context.node_allocator.at(node_address);
-                if (node.next == ASTNode.invalid_pointer) {
-                    child_indent_status[self.indentation] = true;
-                }
-                const f = ASTNodeFormatter{
-                    .ast_node_address = node_address,
-                    .context = self.context,
-                    .indentation = self.indentation + 1,
-                    .indent_status = child_indent_status[0 .. self.indentation + 1],
-                };
-                try f.format(writer);
+                children.append(allocator, .{
+                    .node = node_address,
+                    .is_last = node.next == ASTNode.invalid_pointer,
+                }) catch return error.WriteFailed;
             }
-        } else {
-            try writer.print("NULL\n", .{});
-            return;
+
+            var child_index = children.items.len;
+            while (child_index > 0) {
+                child_index -= 1;
+                const child = children.items[child_index];
+                stack.append(allocator, .{
+                    .node = child.node,
+                    .depth = frame.depth + 1,
+                    .is_last = child.is_last,
+                }) catch return error.WriteFailed;
+            }
         }
     }
 };

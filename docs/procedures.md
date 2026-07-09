@@ -140,7 +140,7 @@ Many language implementations leverage standard tree-cleanup procedures:
   ```zig
   pub fn dropChildren(args: *ProcedureArguments) !void {
       if (args.node) |node_address| {
-          args.context.node_allocator.at(node_address).clean_children(args.context.node_allocator);
+          _ = try data_structures.ASTNode.cleanChildren(node_address, args.context.node_allocator);
       }
   }
   ```
@@ -194,9 +194,9 @@ pub const indentation_syntax = true; // or false
 ```
 
 When `indentation_syntax` is set to `true`:
+
 - The parser dynamically tracks indentation changes (spaces/tabs) at the beginning of lines.
 - **`block_start` (`\x01`):** A virtual token automatically emitted by the lexer when the indentation level increases.
 - **`block_end` (`\x02`):** Virtual tokens automatically emitted by the lexer when the indentation level decreases (one token per indentation step).
 
 This configuration allows building parsers for indentation-sensitive (off-side rule) languages (like Python) without manually managing indentation tokens in the lexer.
-

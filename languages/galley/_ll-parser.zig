@@ -372,7 +372,7 @@ pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(
 
 // Parser for Symbol "Start" with index 0
 fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 0);
+    var node_address = context.node_allocator.create(context.pos(), 0);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -381,12 +381,19 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rules(context), context); // child 0
+            {
+                const child_node = try parse_Rules(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[42],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[42]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -417,7 +424,7 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
@@ -438,7 +445,7 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
 
 // Parser for Symbol "Rules" with index 1
 fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 1);
+    var node_address = context.node_allocator.create(context.pos(), 1);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -447,13 +454,25 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     std.debug.print("Rule expansion: Rules -> Rule, RulesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rule(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RulesTail(context), context); // child 1
+            {
+                const child_node = try parse_Rule(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RulesTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[37],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[37]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -484,7 +503,7 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Rule, RulesTail\n", .{});
@@ -505,7 +524,7 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
 
 // Parser for Symbol "Rule" with index 2
 fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 2);
+    var node_address = context.node_allocator.create(context.pos(), 2);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -514,15 +533,32 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, ProcedureTail, 'new_line', RightHandSides\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_VariableSymbol(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 1
+            {
+                const child_node = try parse_VariableSymbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_ProcedureTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             try parse_generative_terminal_new_line(context); // child 2
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSides(context), context); // child 3
+            {
+                const child_node = try parse_RightHandSides(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[36],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[36]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -553,7 +589,7 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, ProcedureTail, 'new_line', RightHandSides\n", .{});
@@ -576,8 +612,13 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
 // Right hand side: -> NewLines, Rule, RulesTail
 fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -591,21 +632,33 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_NewLines(context), context); // child 0
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_Rule(context), context); // child 1
+                {
+                    const child_node = try parse_NewLines(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                    }
+                }
+                {
+                    const child_node = try parse_Rule(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_RulesTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -621,6 +674,8 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
             .rule = rules[39],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[39]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -652,6 +707,16 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -659,10 +724,58 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
 
 // Parser for Symbol "RulesTail" with index 3
 fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 3);
+    var node_address = context.node_allocator.create(context.pos(), 3);
 
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: RulesTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[38],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[38]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[3];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[3]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: RulesTail <~ \n", .{});
+                }
+            }
         },
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
@@ -670,14 +783,31 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
                     std.debug.print("Rule expansion: RulesTail -> NewLines, Rule, RulesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLines(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Rule(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RulesTail_0_2(context), context); // child 2
+            {
+                const child_node = try parse_NewLines(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_Rule(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RulesTail_0_2(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[39],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[39]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -708,7 +838,7 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLines, Rule, RulesTail\n", .{});
@@ -729,7 +859,7 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
 
 // Parser for Symbol "NewLines" with index 4
 fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 4);
+    var node_address = context.node_allocator.create(context.pos(), 4);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -739,12 +869,19 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
                 }
             }
             try parse_generative_terminal_new_line(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail(context), context); // child 1
+            {
+                const child_node = try parse_NewLinesTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[21],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[21]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -775,7 +912,7 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLines <~ 'new_line', NewLinesTail\n", .{});
@@ -815,8 +952,13 @@ inline fn parse_generative_terminal_new_line(context: *data_structures.Context) 
 // Right hand side: -> 'new_line', NewLinesTail
 fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -830,7 +972,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -840,10 +982,12 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
         }
     }
     const exit_node = try parse_NewLinesTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -859,6 +1003,8 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
             .rule = rules[23],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[23]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -890,6 +1036,16 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -899,8 +1055,13 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
 // Right hand side: -> '#', AnyContent, 'new_line', NewLinesTail
 fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -914,22 +1075,29 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 3
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x35(context); // child 0
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_AnyContent(context), context); // child 1
+                {
+                    const child_node = try parse_AnyContent(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                    }
+                }
                 try parse_generative_terminal_new_line(context); // child 2
             },
             else => break,
         }
     }
     const exit_node = try parse_NewLinesTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 3
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -945,6 +1113,8 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
             .rule = rules[24],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[24]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -976,6 +1146,16 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -983,7 +1163,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
 
 // Parser for Symbol "NewLinesTail" with index 6
 fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 5);
+    var node_address = context.node_allocator.create(context.pos(), 5);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -993,12 +1173,19 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             try parse_generative_terminal_new_line(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail_0_1(context), context); // child 1
+            {
+                const child_node = try parse_NewLinesTail_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[23],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[23]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1029,7 +1216,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ 'new_line', NewLinesTail\n", .{});
@@ -1043,14 +1230,26 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             try parse_terminal__x35(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContent(context), context); // child 1
+            {
+                const child_node = try parse_AnyContent(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             try parse_generative_terminal_new_line(context); // child 2
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_NewLinesTail_1_3(context), context); // child 3
+            {
+                const child_node = try parse_NewLinesTail_1_3(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[24],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[24]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1081,7 +1280,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ '#', AnyContent, 'new_line', NewLinesTail\n", .{});
@@ -1089,6 +1288,54 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             }
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: NewLinesTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[22],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[22]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[5];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[6]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for NewLinesTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: NewLinesTail <~ \n", .{});
+                }
+            }
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mNewLinesTail\x1b[0m.\nExpected tokens: \x1b[32m\'\\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_\'\x1b[0m\n", .{
@@ -1121,7 +1368,7 @@ inline fn parse_terminal__x35(context: *data_structures.Context) anyerror!void {
 
 // Parser for Symbol "AnyContent" with index 8
 fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 6);
+    var node_address = context.node_allocator.create(context.pos(), 6);
 
     switch (context.head(u8, 0)) {
         1, 3, 4 => { // '\x01', '\x03', '\x04'
@@ -1130,13 +1377,25 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContentTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ControlCharacter(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail(context), context); // child 1
+            {
+                const child_node = try parse_ControlCharacter(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_AnyContentTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[0],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[0]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1167,7 +1426,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContentTail\n", .{});
@@ -1181,12 +1440,19 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                 }
             }
             try parse_generative_terminal_character_x94_x34_x92n_x34(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail(context), context); // child 1
+            {
+                const child_node = try parse_AnyContentTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[1],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[1]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1217,7 +1483,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\n\"', AnyContentTail\n", .{});
@@ -1238,7 +1504,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
 
 // Parser for Symbol "VariableSymbol" with index 9
 fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 7);
+    var node_address = context.node_allocator.create(context.pos(), 7);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -1247,12 +1513,19 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_UppercaseId(context), context); // child 0
+            {
+                const child_node = try parse_UppercaseId(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[51],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[51]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1283,7 +1556,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
@@ -1297,12 +1570,19 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_UppercaseId(context), context); // child 1
+            {
+                const child_node = try parse_UppercaseId(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[52],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[52]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1333,7 +1613,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
@@ -1356,8 +1636,13 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
 // Right hand side: -> '@', CamelCaseId, ProcedureTail
 fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -1371,21 +1656,28 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x64(context); // child 0
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_CamelCaseId(context), context); // child 1
+                {
+                    const child_node = try parse_CamelCaseId(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_ProcedureTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -1401,6 +1693,8 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
             .rule = rules[26],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[26]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1432,6 +1726,16 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -1439,10 +1743,58 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
 
 // Parser for Symbol "ProcedureTail" with index 10
 fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 8);
+    var node_address = context.node_allocator.create(context.pos(), 8);
 
     switch (context.head(u8, 0)) {
         10, 32 => { // '\n', ' '
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: ProcedureTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[25],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[25]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[8];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[10]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for ProcedureTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: ProcedureTail <~ \n", .{});
+                }
+            }
         },
         64 => { // '@'
             if (comptime builtin.mode == .Debug) {
@@ -1451,13 +1803,25 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_terminal__x64(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseId(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail_0_2(context), context); // child 2
+            {
+                const child_node = try parse_CamelCaseId(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_ProcedureTail_0_2(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[26],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[26]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1488,7 +1852,7 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
@@ -1509,7 +1873,7 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
 
 // Parser for Symbol "RightHandSides" with index 11
 fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 9);
+    var node_address = context.node_allocator.create(context.pos(), 9);
 
     switch (context.head(u8, 0)) {
         35, 124 => { // '#', '|'
@@ -1518,13 +1882,25 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSidesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideLine(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSidesTail(context), context); // child 1
+            {
+                const child_node = try parse_RightHandSideLine(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RightHandSidesTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[33],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[33]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1555,7 +1931,7 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSidesTail\n", .{});
@@ -1576,7 +1952,7 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
 
 // Parser for Symbol "RightHandSideLine" with index 12
 fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 10);
+    var node_address = context.node_allocator.create(context.pos(), 10);
 
     switch (context.head(u8, 0)) {
         35 => { // '#'
@@ -1586,13 +1962,20 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_terminal__x35(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContent(context), context); // child 1
+            {
+                const child_node = try parse_AnyContent(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             try parse_generative_terminal_new_line(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[29],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[29]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1623,7 +2006,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '#', AnyContent, 'new_line'\n", .{});
@@ -1637,14 +2020,26 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_terminal__x124(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSide(context), context); // child 2
+            {
+                const child_node = try parse_ProcedureTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RightHandSide(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
             try parse_generative_terminal_new_line(context); // child 3
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[30],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[30]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1675,7 +2070,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', ProcedureTail, RightHandSide, 'new_line'\n", .{});
@@ -1698,8 +2093,13 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
 // Right hand side: -> RightHandSideLine, RightHandSidesTail
 fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -1713,20 +2113,27 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_RightHandSideLine(context), context); // child 0
+                {
+                    const child_node = try parse_RightHandSideLine(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_RightHandSidesTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -1742,6 +2149,8 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
             .rule = rules[35],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[35]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1773,6 +2182,16 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -1780,10 +2199,58 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
 
 // Parser for Symbol "RightHandSidesTail" with index 13
 fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 11);
+    var node_address = context.node_allocator.create(context.pos(), 11);
 
     switch (context.head(u8, 0)) {
         0, 10 => { // '\x00', '\n'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: RightHandSidesTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[34],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[34]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[11];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[13]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for RightHandSidesTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: RightHandSidesTail <~ \n", .{});
+                }
+            }
         },
         35, 124 => { // '#', '|'
             if (comptime builtin.mode == .Debug) {
@@ -1791,13 +2258,25 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
                     std.debug.print("Rule expansion: RightHandSidesTail -> RightHandSideLine, RightHandSidesTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideLine(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSidesTail_0_1(context), context); // child 1
+            {
+                const child_node = try parse_RightHandSideLine(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RightHandSidesTail_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[35],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[35]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1828,7 +2307,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSidesTail <~ RightHandSideLine, RightHandSidesTail\n", .{});
@@ -1866,10 +2345,58 @@ inline fn parse_terminal__x124(context: *data_structures.Context) anyerror!void 
 
 // Parser for Symbol "RightHandSide" with index 15
 fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 12);
+    var node_address = context.node_allocator.create(context.pos(), 12);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: RightHandSide -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[27],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[27]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[12];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[15]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: RightHandSide <~ \n", .{});
+                }
+            }
         },
         32 => { // ' '
             if (comptime builtin.mode == .Debug) {
@@ -1878,14 +2405,31 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_generative_terminal_space(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Symbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 2
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideTail(context), context); // child 3
+            {
+                const child_node = try parse_Symbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_ProcedureTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RightHandSideTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[28],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[28]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1916,7 +2460,7 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, ProcedureTail, RightHandSideTail\n", .{});
@@ -1954,7 +2498,7 @@ inline fn parse_generative_terminal_space(context: *data_structures.Context) any
 
 // Parser for Symbol "Symbol" with index 17
 fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 13);
+    var node_address = context.node_allocator.create(context.pos(), 13);
 
     switch (context.head(u8, 0)) {
         34, 39 => { // '\"', '''
@@ -1963,12 +2507,19 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_TerminalSymbol(context), context); // child 0
+            {
+                const child_node = try parse_TerminalSymbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[46],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[46]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -1999,7 +2550,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
@@ -2012,12 +2563,19 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_VariableSymbol(context), context); // child 0
+            {
+                const child_node = try parse_VariableSymbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[45],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[45]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2048,7 +2606,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
@@ -2061,12 +2619,19 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalSymbol(context), context); // child 0
+            {
+                const child_node = try parse_GenerativeTerminalSymbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[47],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[47]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2097,7 +2662,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
@@ -2120,8 +2685,13 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
 // Right hand side: -> 'space', Symbol, ProcedureTail, RightHandSideTail
 fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2135,22 +2705,34 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 3
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_generative_terminal_space(context); // child 0
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_Symbol(context), context); // child 1
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_ProcedureTail(context), context); // child 2
+                {
+                    const child_node = try parse_Symbol(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                    }
+                }
+                {
+                    const child_node = try parse_ProcedureTail(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_RightHandSideTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 3
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2166,6 +2748,8 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
             .rule = rules[32],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[32]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2197,6 +2781,16 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -2204,10 +2798,58 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
 
 // Parser for Symbol "RightHandSideTail" with index 18
 fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 14);
+    var node_address = context.node_allocator.create(context.pos(), 14);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: RightHandSideTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[31],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[31]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[14];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[18]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for RightHandSideTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: RightHandSideTail <~ \n", .{});
+                }
+            }
         },
         32 => { // ' '
             if (comptime builtin.mode == .Debug) {
@@ -2216,14 +2858,31 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             try parse_generative_terminal_space(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_Symbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ProcedureTail(context), context); // child 2
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_RightHandSideTail_0_3(context), context); // child 3
+            {
+                const child_node = try parse_Symbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_ProcedureTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_RightHandSideTail_0_3(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[32],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[32]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2254,7 +2913,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideTail <~ 'space', Symbol, ProcedureTail, RightHandSideTail\n", .{});
@@ -2275,7 +2934,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
 
 // Parser for Symbol "TerminalSymbol" with index 19
 fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 15);
+    var node_address = context.node_allocator.create(context.pos(), 15);
 
     switch (context.head(u8, 0)) {
         34 => { // '\"'
@@ -2285,13 +2944,20 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__x34(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_SimpleStringContent(context), context); // child 1
+            {
+                const child_node = try parse_SimpleStringContent(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             try parse_terminal__x34(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[49],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[49]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2322,7 +2988,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
@@ -2336,13 +3002,20 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_terminal__x39(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_StringContent(context), context); // child 1
+            {
+                const child_node = try parse_StringContent(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             try parse_terminal__x92x03(context); // child 2
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[48],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[48]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2373,7 +3046,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ ''', StringContent, '\\x03'\n", .{});
@@ -2394,7 +3067,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
 
 // Parser for Symbol "GenerativeTerminalSymbol" with index 20
 fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 16);
+    var node_address = context.node_allocator.create(context.pos(), 16);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -2403,13 +3076,25 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_LowercaseId(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalExceptions(context), context); // child 1
+            {
+                const child_node = try parse_LowercaseId(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_GenerativeTerminalExceptions(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[15],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[15]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2440,7 +3125,7 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
@@ -2461,7 +3146,7 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
 
 // Parser for Symbol "UppercaseId" with index 21
 fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 17);
+    var node_address = context.node_allocator.create(context.pos(), 17);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -2471,12 +3156,19 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_uppercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail(context), context); // child 1
+            {
+                const child_node = try parse_IdTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[50],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[50]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2507,7 +3199,7 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
@@ -2564,8 +3256,13 @@ inline fn parse_terminal__x39(context: *data_structures.Context) anyerror!void {
 // Right hand side: -> 'character', StringContent
 fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2579,7 +3276,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2589,10 +3286,12 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
         }
     }
     const exit_node = try parse_StringContent(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2608,6 +3307,8 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
             .rule = rules[44],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[44]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2639,6 +3340,16 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -2646,10 +3357,58 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
 
 // Parser for Symbol "StringContent" with index 24
 fn parse_StringContent(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 18);
+    var node_address = context.node_allocator.create(context.pos(), 18);
 
     switch (context.head(u8, 0)) {
         3 => { // '\x03'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: StringContent -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[43],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[43]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[18];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[24]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for StringContent: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: StringContent <~ \n", .{});
+                }
+            }
         },
         9, 10, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
@@ -2658,12 +3417,19 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             try parse_generative_terminal_character(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_StringContent_0_1(context), context); // child 1
+            {
+                const child_node = try parse_StringContent_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[44],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[44]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2694,7 +3460,7 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: StringContent <~ 'character', StringContent\n", .{});
@@ -2751,8 +3517,13 @@ inline fn parse_terminal__x34(context: *data_structures.Context) anyerror!void {
 // Right hand side: -> 'character^'\"\\x03', SimpleStringContent
 fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2766,7 +3537,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2776,10 +3547,12 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
         }
     }
     const exit_node = try parse_SimpleStringContent(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -2795,6 +3568,8 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
             .rule = rules[41],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[41]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2826,6 +3601,16 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -2833,7 +3618,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
 
 // Parser for Symbol "SimpleStringContent" with index 27
 fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 19);
+    var node_address = context.node_allocator.create(context.pos(), 19);
 
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -2843,12 +3628,19 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
                 }
             }
             try parse_generative_terminal_character_x94_x39_x34_x92x03(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_SimpleStringContent_0_1(context), context); // child 1
+            {
+                const child_node = try parse_SimpleStringContent_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[41],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[41]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2879,7 +3671,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^'\"\\x03', SimpleStringContent\n", .{});
@@ -2887,6 +3679,54 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
             }
         },
         34 => { // '\"'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[40],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[40]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[19];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[27]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
+                }
+            }
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mSimpleStringContent\x1b[0m.\nExpected tokens: \x1b[32m\'\\t', '\\n', '\\x0b', '\\x0c', '\\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{{', '|', '}}', '~\'\x1b[0m\n", .{
@@ -2902,7 +3742,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
 
 // Parser for Symbol "LowercaseId" with index 28
 fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 20);
+    var node_address = context.node_allocator.create(context.pos(), 20);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -2912,12 +3752,19 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_lowercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail(context), context); // child 1
+            {
+                const child_node = try parse_IdTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[20],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[20]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -2948,7 +3795,7 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
@@ -2971,8 +3818,13 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
 // Right hand side: -> '^', TerminalSymbol, GenerativeTerminalExceptions
 fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2986,21 +3838,28 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 2
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
                 try parse_terminal__x94(context); // child 0
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_TerminalSymbol(context), context); // child 1
+                {
+                    const child_node = try parse_TerminalSymbol(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_GenerativeTerminalExceptions(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 2
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3016,6 +3875,8 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
             .rule = rules[14],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[14]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3047,6 +3908,16 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -3054,10 +3925,58 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
 
 // Parser for Symbol "GenerativeTerminalExceptions" with index 29
 fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 21);
+    var node_address = context.node_allocator.create(context.pos(), 21);
 
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[13],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[13]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[21];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[29]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
+                }
+            }
         },
         94 => { // '^'
             if (comptime builtin.mode == .Debug) {
@@ -3066,13 +3985,25 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
                 }
             }
             try parse_terminal__x94(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_TerminalSymbol(context), context); // child 1
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_GenerativeTerminalExceptions_0_2(context), context); // child 2
+            {
+                const child_node = try parse_TerminalSymbol(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_GenerativeTerminalExceptions_0_2(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[14],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[14]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3103,7 +4034,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
@@ -3158,7 +4089,7 @@ inline fn parse_terminal__x64(context: *data_structures.Context) anyerror!void {
 
 // Parser for Symbol "CamelCaseId" with index 32
 fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 22);
+    var node_address = context.node_allocator.create(context.pos(), 22);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -3168,12 +4099,19 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             try parse_generative_terminal_lowercase_letter(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail(context), context); // child 1
+            {
+                const child_node = try parse_CamelCaseIdTail(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[5],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[5]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3204,7 +4142,7 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
@@ -3259,7 +4197,7 @@ inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_
 
 // Parser for Symbol "ControlCharacter" with index 35
 fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 23);
+    var node_address = context.node_allocator.create(context.pos(), 23);
 
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
@@ -3274,6 +4212,8 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 .rule = rules[10],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[10]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3304,7 +4244,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
@@ -3323,6 +4263,8 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 .rule = rules[9],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[9]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3353,7 +4295,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x03'\n", .{});
@@ -3372,6 +4314,8 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 .rule = rules[11],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[11]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3402,7 +4346,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x04'\n", .{});
@@ -3476,8 +4420,13 @@ inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_st
 // Right hand side: -> ControlCharacter, AnyContentTail
 fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3491,20 +4440,27 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
-                repeating_node.immediateInsertChild(repeating_node_address, try parse_ControlCharacter(context), context); // child 0
+                {
+                    const child_node = try parse_ControlCharacter(context);
+                    if (child_node != data_structures.ASTNode.invalid_pointer) {
+                        context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                    }
+                }
             },
             else => break,
         }
     }
     const exit_node = try parse_AnyContentTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3520,6 +4476,8 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
             .rule = rules[3],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[3]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3551,6 +4509,16 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -3560,8 +4528,13 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
 // Right hand side: -> 'character^\"\\n\"', AnyContentTail
 fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3575,7 +4548,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3585,10 +4558,12 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
         }
     }
     const exit_node = try parse_AnyContentTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3604,6 +4579,8 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
             .rule = rules[4],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[4]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3635,6 +4612,16 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -3642,7 +4629,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
 
 // Parser for Symbol "AnyContentTail" with index 39
 fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 24);
+    var node_address = context.node_allocator.create(context.pos(), 24);
 
     switch (context.head(u8, 0)) {
         1, 3, 4 => { // '\x01', '\x03', '\x04'
@@ -3651,13 +4638,25 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                     std.debug.print("Rule expansion: AnyContentTail -> ControlCharacter, AnyContentTail\n", .{});
                 }
             }
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_ControlCharacter(context), context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail_1_1(context), context); // child 1
+            {
+                const child_node = try parse_ControlCharacter(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                }
+            }
+            {
+                const child_node = try parse_AnyContentTail_1_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[3],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[3]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3688,7 +4687,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ ControlCharacter, AnyContentTail\n", .{});
@@ -3702,12 +4701,19 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             try parse_generative_terminal_character_x94_x34_x92n_x34(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_AnyContentTail_0_1(context), context); // child 1
+            {
+                const child_node = try parse_AnyContentTail_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[4],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[4]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3738,7 +4744,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
@@ -3746,6 +4752,54 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
             }
         },
         10 => { // '\n'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: AnyContentTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[2],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[2]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[24];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[39]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for AnyContentTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: AnyContentTail <~ \n", .{});
+                }
+            }
         },
         else => {
             std.debug.print("\x1b[35mSyntaxError at {d}:{d}:\n\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m while parsing \x1b[34mAnyContentTail\x1b[0m.\nExpected tokens: \x1b[32m\'\\x01', '\\x03', '\\x04', '\\t', '\\n', '\\x0b', '\\x0c', '\\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{{', '|', '}}', '~\'\x1b[0m\n", .{
@@ -3763,8 +4817,13 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
 // Right hand side: -> '_', IdTail
 fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3778,7 +4837,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3788,10 +4847,12 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
         }
     }
     const exit_node = try parse_IdTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3807,6 +4868,8 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
             .rule = rules[17],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[17]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3838,6 +4901,16 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -3847,8 +4920,13 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
 // Right hand side: -> 'letter', IdTail
 fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3862,7 +4940,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3872,10 +4950,12 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
         }
     }
     const exit_node = try parse_IdTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3891,6 +4971,8 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
             .rule = rules[18],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[18]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -3922,6 +5004,16 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -3931,8 +5023,13 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
 // Right hand side: -> 'digit', IdTail
 fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3946,7 +5043,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3956,10 +5053,12 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
         }
     }
     const exit_node = try parse_IdTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -3975,6 +5074,8 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
             .rule = rules[19],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[19]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4006,6 +5107,16 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -4013,10 +5124,58 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
 
 // Parser for Symbol "IdTail" with index 40
 fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 25);
+    var node_address = context.node_allocator.create(context.pos(), 25);
 
     switch (context.head(u8, 0)) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: IdTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[16],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[16]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[25];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[40]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for IdTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: IdTail <~ \n", .{});
+                }
+            }
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             if (comptime builtin.mode == .Debug) {
@@ -4025,12 +5184,19 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_generative_terminal_digit(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_1_1(context), context); // child 1
+            {
+                const child_node = try parse_IdTail_1_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[19],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[19]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4061,7 +5227,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
@@ -4075,12 +5241,19 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_generative_terminal_letter(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_0_1(context), context); // child 1
+            {
+                const child_node = try parse_IdTail_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[18],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[18]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4111,7 +5284,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
@@ -4125,12 +5298,19 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             try parse_terminal__(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_IdTail_2_1(context), context); // child 1
+            {
+                const child_node = try parse_IdTail_2_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[17],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[17]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4161,7 +5341,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
@@ -4252,8 +5432,13 @@ inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.C
 // Right hand side: -> 'letter', CamelCaseIdTail
 fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -4267,7 +5452,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4277,10 +5462,12 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
         }
     }
     const exit_node = try parse_CamelCaseIdTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4296,6 +5483,8 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
             .rule = rules[7],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[7]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4327,6 +5516,16 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -4336,8 +5535,13 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
 // Right hand side: -> 'digit', CamelCaseIdTail
 fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     var node_address = data_structures.ASTNode.invalid_pointer;
+    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+    _ = &node_address;
     var repeating_node_address = node_address;
+    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
     var repeating_node: *data_structures.ASTNode = undefined;
+    repeating_node = repeating_node; // dummy store for 0-repetition paths
+    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -4351,7 +5555,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child 1
+                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4361,10 +5565,12 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
         }
     }
     const exit_node = try parse_CamelCaseIdTail(context);
-    if (node_address == data_structures.ASTNode.invalid_pointer) {
-        node_address = exit_node;
-    } else {
-        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child 1
+    if (exit_node != data_structures.ASTNode.invalid_pointer) {
+        if (node_address == data_structures.ASTNode.invalid_pointer) {
+            node_address = exit_node;
+        } else {
+            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+        }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
         repeating_node = context.node_allocator.at(repeating_node_address);
@@ -4380,6 +5586,8 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
             .rule = rules[8],
             .node = repeating_node_address,
         };
+        _ = &args;
+        args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
         if (comptime rule_procedures[8]) |procedure_pointer| {
             const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4411,6 +5619,16 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
             }
         }
 
+        if (args.node) |effective| {
+            if (node_address == repeating_node_address) {
+                node_address = effective;
+            }
+        } else {
+            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+            if (node_address == repeating_node_address) {
+                node_address = data_structures.ASTNode.invalid_pointer;
+            }
+        }
         repeating_node_address = repeating_node.parent;
     }
     return node_address;
@@ -4418,10 +5636,58 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
 
 // Parser for Symbol "CamelCaseIdTail" with index 45
 fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
-    const node_address = context.node_allocator.create(context.pos(), 26);
+    var node_address = context.node_allocator.create(context.pos(), 26);
 
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
+                }
+            }
+            var args = data_structures.ProcedureArguments{
+                .context = context,
+                .rule = rules[6],
+                .node = node_address,
+            };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
+
+            if (comptime rule_procedures[6]) |procedure_pointer| {
+                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            comptime var procedure_pointer_head = variable_procedures[26];
+            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
+                try procedure(&args);
+                procedure_pointer_head = procedure_pointer_head_.next;
+            }
+
+            if (comptime symbol_procedures[45]) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime reduction_procedure) |procedure_pointer| {
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                try procedure(&args);
+            }
+
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 2) {
+                    std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
+                        string_utilities.fmtASTNode(args.node, context),
+                    });
+                }
+            }
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
+                }
+            }
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             if (comptime builtin.mode == .Debug) {
@@ -4430,12 +5696,19 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             try parse_generative_terminal_digit(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail_1_1(context), context); // child 1
+            {
+                const child_node = try parse_CamelCaseIdTail_1_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[8],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[8]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4466,7 +5739,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
@@ -4480,12 +5753,19 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             try parse_generative_terminal_letter(context); // child 0
-            context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_CamelCaseIdTail_0_1(context), context); // child 1
+            {
+                const child_node = try parse_CamelCaseIdTail_0_1(context);
+                if (child_node != data_structures.ASTNode.invalid_pointer) {
+                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                }
+            }
             var args = data_structures.ProcedureArguments{
                 .context = context,
                 .rule = rules[7],
                 .node = node_address,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[7]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -4516,7 +5796,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                     });
                 }
             }
-
+            node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
@@ -4551,6 +5831,8 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
                 .rule = rules[53],
                 .node = null,
             };
+            _ = &args;
+            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
 
             if (comptime rule_procedures[53]) |procedure_pointer| {
                 const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));

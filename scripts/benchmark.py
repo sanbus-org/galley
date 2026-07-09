@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import shutil
 import subprocess
 import sys
+import time
+
+MAX_BENCHMARK_INPUT_BYTES = 1024 * 1024
+BENCHMARK_COOLDOWN_SECONDS = 5
+
+
+def truncate_text(text, max_len):
+    if len(text) <= max_len:
+        return text
+    if max_len < 4:
+        return text[:max_len]
+    return "..." + text[-(max_len - 3) :]
 
 
 def truncate_name(name, inner_width):
@@ -16,7 +27,7 @@ def truncate_name(name, inner_width):
         avail_width = inner_width - len(prefix)
         if avail_width >= 5:
             return prefix + "..." + rest[-(avail_width - 3) :]
-    return "..." + name[-(inner_width - 3) :]
+    return truncate_text(name, inner_width)
 
 
 def format_file_size(size_bytes):
@@ -77,7 +88,7 @@ def best_metrics(results):
     return max(results, key=metric_mbps)
 
 
-def format_card(name, metrics, width, no_color=False, error_msg=None):
+def format_card(name, metrics, width, no_color=False, error_msg=None, skip_limit=None):
     """
     Formats a single benchmark result block into a list of strings representing card lines.
     """
@@ -112,7 +123,8 @@ def format_card(name, metrics, width, no_color=False, error_msg=None):
     if error_msg:
 
         def make_centered_line(text_visible, text_styled):
-            pad_total = inner_width - text_visible
+            text_visible = truncate_text(text_visible, inner_width)
+            pad_total = inner_width - len(text_visible)
             if pad_total < 0:
                 pad_total = 0
             pad_left = pad_total // 2
@@ -134,39 +146,55 @@ def format_card(name, metrics, width, no_color=False, error_msg=None):
         )
 
         if error_msg == "success":
-            skipped_visible = "Ran successfully"
-            skipped_styled = (
-                f"{GREEN}{BOLD}{skipped_visible}{RESET}"
+            status_visible = truncate_text("Ran successfully", inner_width)
+            status_styled = (
+                f"{GREEN}{BOLD}{status_visible}{RESET}"
                 if not no_color
-                else skipped_visible
+                else status_visible
             )
-            lines.append(make_centered_line(len(skipped_visible), skipped_styled))
+            lines.append(make_centered_line(status_visible, status_styled))
 
             parsed_bytes = metrics.get("Parsed bytes", None)
             if parsed_bytes:
-                msg_visible = f"Size: {parsed_bytes}"
+                detail_visible = truncate_text(f"Size: {parsed_bytes}", inner_width)
             else:
-                msg_visible = "(No errors)"
-            msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
-            lines.append(make_centered_line(len(msg_visible), msg_styled))
+                detail_visible = "(No errors)"
+            detail_styled = (
+                f"{DIM}{detail_visible}{RESET}" if not no_color else detail_visible
+            )
+            lines.append(make_centered_line(detail_visible, detail_styled))
         else:
-            skipped_visible = "SKIPPED (TOO LARGE)"
-            skipped_styled = (
-                f"{YELLOW}{BOLD}{skipped_visible}{RESET}"
+            status_visible = truncate_text("SKIPPED (TOO LARGE)", inner_width)
+            status_styled = (
+                f"{YELLOW}{BOLD}{status_visible}{RESET}"
                 if not no_color
-                else skipped_visible
+                else status_visible
             )
-            lines.append(make_centered_line(len(skipped_visible), skipped_styled))
+            lines.append(make_centered_line(status_visible, status_styled))
 
             parsed_bytes = metrics.get("Parsed bytes", None)
-            if parsed_bytes:
-                msg_visible = f"Size: {parsed_bytes} ({error_msg})"
+            if skip_limit:
+                if parsed_bytes:
+                    size_line = f"{parsed_bytes} {skip_limit}"
+                else:
+                    size_line = str(skip_limit)
+            elif parsed_bytes:
+                size_line = str(parsed_bytes)
             else:
-                msg_visible = error_msg
-            msg_styled = f"{DIM}{msg_visible}{RESET}" if not no_color else msg_visible
-            lines.append(make_centered_line(len(msg_visible), msg_styled))
+                size_line = str(error_msg)
 
-        for _ in range(2):
+            size_visible = truncate_text(size_line, inner_width)
+            size_styled = f"{DIM}{size_visible}{RESET}" if not no_color else size_visible
+            lines.append(make_centered_line(size_visible, size_styled))
+
+            if skip_limit:
+                reason_visible = truncate_text(str(error_msg), inner_width)
+                reason_styled = (
+                    f"{DIM}{reason_visible}{RESET}" if not no_color else reason_visible
+                )
+                lines.append(make_centered_line(reason_visible, reason_styled))
+
+        for _ in range(1):
             lines.append(
                 f"{border_color}{VL}{RESET}{' ' * (inner_width + 2)}{border_color}{VL}{RESET}"
             )
@@ -432,6 +460,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     is_no_ast = "--no-ast" in gen_opts
     is_no_procedures = "--no-procedures" in gen_opts
     is_ast_for_terminals = "--ast-for-terminals" in gen_opts
+    procedures_enabled = not is_no_procedures
 
     variant_size = input_size if input_size is not None else 16
     if is_no_ast:
@@ -498,14 +527,23 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             sys.stdout.flush()
 
         for col_idx, (input_file, p_type) in enumerate(row_items):
-            # Check if file size >= 2^input_size
+            # With procedures enabled, skip inputs larger than 1 MB. Always
+            # respect the parser input-size limit.
             file_path = input_file
             is_too_large = False
+            skip_limit = None
+            skip_cause = None
             file_size = 0
             if os.path.exists(file_path):
                 file_size = os.path.getsize(file_path)
-                if input_size is not None and file_size >= (2**input_size):
+                if procedures_enabled and file_size > MAX_BENCHMARK_INPUT_BYTES:
                     is_too_large = True
+                    skip_limit = "> 1 MB"
+                    skip_cause = "procedures enabled"
+                elif input_size is not None and file_size >= (2**input_size):
+                    is_too_large = True
+                    skip_limit = f">= 2^{input_size}"
+                    skip_cause = "input size limit"
 
             card_title = f"[{p_type}] {input_file.replace('languages/', '')}"
 
@@ -524,10 +562,9 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 draw_card_in_row(placeholder, col_idx, width=args.width, spacing=2)
 
             if is_too_large:
-                msg = f">= 2^{input_size}"
                 # Collect error message for file
                 input_results.setdefault(input_file, []).append(
-                    (p_type, f"SKIPPED (TOO LARGE): {msg}")
+                    (p_type, f"SKIPPED (TOO LARGE): {skip_limit} ({skip_cause})")
                 )
 
                 metrics = {"Parsed bytes": format_file_size(file_size)}
@@ -536,7 +573,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     metrics,
                     width=args.width,
                     no_color=args.no_color,
-                    error_msg=msg,
+                    error_msg=skip_cause,
+                    skip_limit=skip_limit,
                 )
                 if is_interactive:
                     draw_card_in_row(card_lines, col_idx, width=args.width, spacing=2)
@@ -584,7 +622,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     text=True,
                     check=True,
                 )
-            except subprocess.CalledProcessError as compile_err:
+            except subprocess.CalledProcessError:
                 debug_cmd = [
                     "zig",
                     "build",
@@ -610,7 +648,17 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 print(f"\033[33mCommand Output:\033[0m\n{debug_result.stdout}")
                 sys.exit(1)
 
-            # Render placeholder as "Calibrating..."
+            # Let the CPU settle after compilation before calibration.
+            if is_interactive and not is_too_large:
+                placeholder = format_placeholder_card(
+                    card_title,
+                    width=args.width,
+                    no_color=args.no_color,
+                    status="Cooling down...",
+                )
+                draw_card_in_row(placeholder, col_idx, width=args.width, spacing=2)
+            time.sleep(BENCHMARK_COOLDOWN_SECONDS)
+
             if is_interactive and not is_too_large:
                 placeholder = format_placeholder_card(
                     card_title,
@@ -630,7 +678,6 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             run_cmd = [binary_path] + benchmark_run_args(
                 args.route, input_file, calibration_iterations
             )
-            import time
 
             start_time = time.perf_counter()
             try:
@@ -710,9 +757,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     card_title, metrics_2, width=args.width, no_color=args.no_color
                 )
                 if is_interactive:
-                    draw_card_in_row(
-                        card_lines, col_idx, width=args.width, spacing=2
-                    )
+                    draw_card_in_row(card_lines, col_idx, width=args.width, spacing=2)
                 else:
                     row_cards.append(card_lines)
 
@@ -852,8 +897,8 @@ def json_structured_ast_benchmark(gen_opts, args):
 
 
 def augmented_json_benchmark(gen_opts, args):
-    inputs = sample_inputs("json") + sample_inputs("augmented-json")
-    run_benchmark_suite("augmented-json", gen_opts, args, inputs)
+    inputs = sample_inputs("json") + sample_inputs("json-augmented")
+    run_benchmark_suite("json-augmented", gen_opts, args, inputs)
 
 
 def test_ll_benchmark(gen_opts, args):
@@ -902,8 +947,8 @@ def run_all_modes(benchmark_fn, args):
 
 BENCHMARKS = {
     "galley": galley_benchmark,
-    "augmented-json": augmented_json_benchmark,
     "json": json_benchmark,
+    "json-augmented": augmented_json_benchmark,
     "json-structured-ast": json_structured_ast_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,

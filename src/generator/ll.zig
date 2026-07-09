@@ -119,10 +119,19 @@ const Generator = struct {
     }
 
     fn nullableRule(self: *Generator, variable: usize) ?usize {
+        var visited = std.AutoHashMap(usize, void).init(self.allocator);
+        defer visited.deinit();
+        return self.nullableRuleImpl(variable, &visited);
+    }
+
+    fn nullableRuleImpl(self: *Generator, variable: usize, visited: *std.AutoHashMap(usize, void)) ?usize {
+        if (visited.contains(variable)) return null;
+        visited.put(variable, {}) catch return null;
+        defer _ = visited.remove(variable);
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
             for (rule.rhs.items) |symbol_index| {
-                if (self.symbols.items[symbol_index].kind != .variable or self.nullableRule(symbol_index) == null) break;
+                if (self.symbols.items[symbol_index].kind != .variable or self.nullableRuleImpl(symbol_index, visited) == null) break;
             } else {
                 return rule_index;
             }
@@ -432,7 +441,8 @@ const Generator = struct {
         try writer.print("fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (non_ast) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
-            try writer.print("    const node_address = context.node_allocator.create(context.pos(), {d});\n\n", .{variable_index});
+            const is_var = self.options.with_procedures and self.options.with_ast and !non_ast;
+            try writer.print("    {s} node_address = context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
         }
 
         var entries = std.ArrayList(SwitchEntry).empty;
@@ -499,13 +509,19 @@ const Generator = struct {
         if (returns_node) {
             try writer.writeAll(
                 \\    var node_address = data_structures.ASTNode.invalid_pointer;
+                \\    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
+                \\    _ = &node_address;
                 \\    var repeating_node_address = node_address;
+                \\    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
                 \\    var repeating_node: *data_structures.ASTNode = undefined;
+                \\    repeating_node = repeating_node; // dummy store for 0-repetition paths
+                \\    _ = &repeating_node;
                 \\
             );
         } else if (rule.rhs.items.len > self_index + 1) {
             try writer.writeAll(
                 \\    var counter: usize = 0;
+                \\    counter = counter; // dummy store for 0-repetition paths
                 \\
             );
         }
@@ -540,7 +556,7 @@ const Generator = struct {
                 \\                if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
-                \\                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context); // child {d}
+                \\                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
                 \\                }}
                 \\                repeating_node_address = temporary_address;
                 \\                repeating_node = context.node_allocator.at(repeating_node_address);
@@ -560,10 +576,12 @@ const Generator = struct {
         if (returns_node) {
             try writer.print(
                 \\    const exit_node = try parse_{s}(context);
-                \\    if (node_address == data_structures.ASTNode.invalid_pointer) {{
-                \\        node_address = exit_node;
-                \\    }} else {{
-                \\        repeating_node.immediateInsertChild(repeating_node_address, exit_node, context); // child {d}
+                \\    if (exit_node != data_structures.ASTNode.invalid_pointer) {{
+                \\        if (node_address == data_structures.ASTNode.invalid_pointer) {{
+                \\            node_address = exit_node;
+                \\        }} else {{
+                \\            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                \\        }}
                 \\    }}
                 \\    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {{
                 \\        repeating_node = context.node_allocator.at(repeating_node_address);
@@ -578,9 +596,22 @@ const Generator = struct {
                 try writer.writeByte('\n');
                 try self.emitProcedureBlock(writer, rule_index, variable, "repeating_node_address", "        ", true);
                 try writer.writeByte('\n');
+                try writer.writeAll(
+                    \\        if (args.node) |effective| {
+                    \\            if (node_address == repeating_node_address) {
+                    \\                node_address = effective;
+                    \\            }
+                    \\        } else {
+                    \\            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+                    \\            if (node_address == repeating_node_address) {
+                    \\                node_address = data_structures.ASTNode.invalid_pointer;
+                    \\            }
+                    \\        }
+                    \\
+                );
             }
+            try writer.writeAll("        repeating_node_address = repeating_node.parent;\n");
             try writer.writeAll(
-                \\        repeating_node_address = repeating_node.parent;
                 \\    }
                 \\    return node_address;
                 \\
@@ -824,26 +855,35 @@ const Generator = struct {
     fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, non_ast);
-        if (rule.rhs.items.len == 0) return;
 
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
-        for (rule.rhs.items, 0..) |symbol_index, child_index| {
-            const name = try self.parserName(symbol_index);
-            const child = self.symbols.items[symbol_index];
-            const child_non_ast = self.options.with_ast and (non_ast or (child.kind == .variable and !child.ast_enabled));
-            if (child_non_ast) try self.markNeedsNonAst(symbol_index);
-            const child_returns_node = self.symbolReturnsNode(symbol_index, child_non_ast);
-            const call_name = if (symbol_index == parent_variable)
-                try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
-            else
-                name;
-            if (parent_returns_node and child_returns_node) {
-                try writer.print("{s}context.node_allocator.at(node_address).immediateInsertChild(node_address, try parse_{s}(context), context); // child {d}\n", .{ indent, call_name, child_index });
-            } else if (child_returns_node) {
-                try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
-            } else {
-                try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
+        if (rule.rhs.items.len != 0) {
+            for (rule.rhs.items, 0..) |symbol_index, child_index| {
+                const name = try self.parserName(symbol_index);
+                const child = self.symbols.items[symbol_index];
+                const child_non_ast = self.options.with_ast and (non_ast or (child.kind == .variable and !child.ast_enabled));
+                if (child_non_ast) try self.markNeedsNonAst(symbol_index);
+                const child_returns_node = self.symbolReturnsNode(symbol_index, child_non_ast);
+                const call_name = if (symbol_index == parent_variable)
+                    try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
+                else
+                    name;
+                if (parent_returns_node and child_returns_node) {
+                    try writer.print(
+                        \\{s}{{
+                        \\{s}    const child_node = try parse_{s}(context);
+                        \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
+                        \\{s}        context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                        \\{s}    }}
+                        \\{s}}}
+                        \\
+                    , .{ indent, indent, call_name, indent, indent, child_index, indent, indent });
+                } else if (child_returns_node) {
+                    try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
+                } else {
+                    try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
+                }
             }
         }
 
@@ -855,6 +895,8 @@ const Generator = struct {
                 \\{s}    .rule = rules[{d}],
                 \\{s}    .node = {s},
                 \\{s}}};
+                \\{s}_ = &args;
+                \\{s}args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
                 \\
                 \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
                 \\{s}    const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -879,10 +921,11 @@ const Generator = struct {
                 \\{s}}}
                 \\
             , .{
-                indent, indent,     indent, rule_index, indent, if (parent_returns_node) "node_address" else "null", indent,
-                indent, rule_index, indent, indent,     indent, indent,                                              variable_index,
-                indent, indent,     indent, indent,     indent, indent,                                              parent_variable,
-                indent, indent,     indent, indent,     indent, indent,                                              indent,
+                indent, indent,          indent, rule_index, indent, if (parent_returns_node) "node_address" else "null", indent,
+                indent, indent,          indent, rule_index, indent, indent,                                              indent,
+                indent, variable_index,  indent, indent,     indent, indent,                                              indent,
+                indent, parent_variable, indent, indent,     indent, indent,                                              indent,
+                indent, indent,
             });
             if (parent_returns_node) {
                 try writer.writeByte('\n');
@@ -901,6 +944,11 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, indent, indent });
             }
+            if (parent_returns_node) {
+                try writer.print(
+                    \\{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+                , .{indent});
+            }
         }
 
         if (self.options.with_procedures and self.options.with_ast and !non_ast) try writer.writeByte('\n');
@@ -917,9 +965,17 @@ const Generator = struct {
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
             name;
-        if (parent) |parent_expr| {
+        if (parent != null) {
             if (child_returns_node) {
-                try writer.print("{s}{s}.immediateInsertChild({s}, try parse_{s}(context), context); // child {d}\n", .{ indent, parent_expr, parent_address.?, call_name, child_index });
+                try writer.print(
+                    \\{s}{{
+                    \\{s}    const child_node = try parse_{s}(context);
+                    \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
+                    \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                    \\{s}    }}
+                    \\{s}}}
+                    \\
+                , .{ indent, indent, call_name, indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
                 try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
             }
@@ -938,6 +994,8 @@ const Generator = struct {
             \\{s}    .rule = rules[{d}],
             \\{s}    .node = {s},
             \\{s}}};
+            \\{s}_ = &args;
+            \\{s}args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
             \\
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
             \\{s}    const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
@@ -962,10 +1020,11 @@ const Generator = struct {
             \\{s}}}
             \\
         , .{
-            indent, indent,     indent, rule_index, indent, node_expr, indent,
-            indent, rule_index, indent, indent,     indent, indent,    variable_index,
-            indent, indent,     indent, indent,     indent, indent,    parent_variable,
-            indent, indent,     indent, indent,     indent, indent,    indent,
+            indent, indent,          indent, rule_index, indent, node_expr, indent,
+            indent, indent,          indent, rule_index, indent, indent,    indent,
+            indent, variable_index,  indent, indent,     indent, indent,    indent,
+            indent, parent_variable, indent, indent,     indent, indent,    indent,
+            indent, indent,
         });
         if (include_outcome) {
             try writer.print(
