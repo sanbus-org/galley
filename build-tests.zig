@@ -1,4 +1,5 @@
 const std = @import("std");
+const common = @import("build/common.zig");
 const generated_parser_matrix = @import("build/generated_parser_matrix.zig");
 
 pub fn build(b: *std.Build) !void {
@@ -7,355 +8,140 @@ pub fn build(b: *std.Build) !void {
 
     const clap = b.dependency("clap", .{});
 
-    const languages_path = "languages";
-    const generator_common_mod = b.addModule("generator_common", .{
-        .root_source_file = b.path("src/generator/common.zig"),
-        .target = target,
-        .optimize = optimize,
+    const core = common.addCoreModules(b, target, optimize);
+    const galley_cli = common.addGalleyCli(b, target, optimize, core, .{
+        .install_default = true,
+        .add_galley_step = true,
+        .include_generate_parser_file = true,
     });
-    const ll_generator_mod = b.addModule("ll_generator", .{
-        .root_source_file = b.path("src/generator/ll.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    ll_generator_mod.addImport("generator_common", generator_common_mod);
-    const lr_generator_mod = b.addModule("lr_generator", .{
-        .root_source_file = b.path("src/generator/lr.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    lr_generator_mod.addImport("generator_common", generator_common_mod);
-    const galley_grammar_procedures_mod = b.addModule("galley_grammar_procedures", .{
-        .root_source_file = b.path("languages/galley/procedures.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const galley_grammar_config_mod = b.addModule("galley_grammar_config", .{
-        .root_source_file = b.path("languages/galley/config.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const galley_grammar_parser_mod = b.addModule("galley_grammar_parser", .{
-        .root_source_file = b.path("languages/galley/_ll-parser.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const galley_grammar_library_mod = b.addModule("galley_grammar", .{
-        .root_source_file = b.path("src/parser_library.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "procedures", .module = galley_grammar_procedures_mod },
-            .{ .name = "config", .module = galley_grammar_config_mod },
-            .{ .name = "parser", .module = galley_grammar_parser_mod },
-        },
-    });
-    galley_grammar_library_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_procedures_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_procedures_mod.addImport("ll_generator", ll_generator_mod);
-    galley_grammar_procedures_mod.addImport("lr_generator", lr_generator_mod);
-    galley_grammar_config_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_parser_mod.addImport("galley", galley_grammar_library_mod);
+    const generate_parser_file_exe = galley_cli.generate_parser_file_exe.?;
 
-    const galley_generator_mod = b.addModule("galley_generator", .{
-        .root_source_file = b.path("src/generator/api.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "generator_common", .module = generator_common_mod },
-            .{ .name = "galley_grammar", .module = galley_grammar_library_mod },
-            .{ .name = "ll_generator", .module = ll_generator_mod },
-            .{ .name = "lr_generator", .module = lr_generator_mod },
-        },
-    });
+    // Usage: zig build test -Dtest-filter="ll-test-ll"
+    // Usage: zig build test -Dtest-filter="generated_parser_api"
+    // Long-running samples: zig build test --test-timeout 30m
+    const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &.{};
+    var filtered_test_run_steps: std.ArrayList(*std.Build.Step) = .empty;
 
-
-    const cli_options = b.addOptions();
-    cli_options.addOption([]const u8, "galley_root", b.pathFromRoot("."));
-    cli_options.addOption([]const u8, "clap_source", b.pathFromRoot("zig-pkg/clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5/clap.zig"));
-
-    const generator_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/generator/cli.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "build_options", .module = cli_options.createModule() },
-            .{ .name = "galley_generator", .module = galley_generator_mod },
-        },
-    });
-    const generator_cli_exe = b.addExecutable(.{
-        .name = "galley",
-        .root_module = generator_cli_mod,
-    });
-    const generate_parser_file_mod = b.createModule(.{
-        .root_source_file = b.path("src/tools/generate_parser_file.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "galley_generator", .module = galley_generator_mod },
-        },
-    });
-    const generate_parser_file_exe = b.addExecutable(.{
-        .name = "generate-parser-file",
-        .root_module = generate_parser_file_mod,
-    });
-    const install_generator_cli = b.addInstallArtifact(generator_cli_exe, .{});
-    b.getInstallStep().dependOn(&install_generator_cli.step);
-
-    const generator_cli_step = b.step("galley", "Build the Galley generator");
-    generator_cli_step.dependOn(&install_generator_cli.step);
-
-    var dir = try b.build_root.handle.openDir(b.graph.io, languages_path, .{ .iterate = true });
-    defer dir.close(b.graph.io);
-
-    var walker = try dir.walk(b.allocator);
-    defer walker.deinit();
-    const test_step = b.step("test", "Run tests");
+    const test_step = b.step("test", "Run all tests (generator + matrix + parity)");
     const generator_tests = b.addTest(.{
-        .root_module = galley_generator_mod,
+        .name = "generator-tests",
+        .root_module = core.galley_generator_mod,
+        .filters = test_filters,
     });
     const run_generator_tests = b.addRunArtifact(generator_tests);
     test_step.dependOn(&run_generator_tests.step);
+    trackFilteredTestRun(b.allocator, &filtered_test_run_steps, test_filters, &run_generator_tests.step);
 
-
+    const install_generator_test = b.addInstallArtifact(generator_tests, .{});
+    test_step.dependOn(&install_generator_test.step);
 
     const generated_parser_matrix_step = b.step("test-generated-parser-matrix", "Generate and test parser option matrix");
     try generated_parser_matrix.add(b, generated_parser_matrix_step, .{
         .target = target,
         .optimize = optimize,
         .clap_mod = clap.module("clap"),
-        .ll_generator_mod = ll_generator_mod,
-        .lr_generator_mod = lr_generator_mod,
+        .ll_generator_mod = core.ll_generator_mod,
+        .lr_generator_mod = core.lr_generator_mod,
         .generate_parser_file_exe = generate_parser_file_exe,
+        .filters = test_filters,
+        .filtered_test_run_steps = &filtered_test_run_steps,
     });
     test_step.dependOn(generated_parser_matrix_step);
 
-    var ll_galley_exe: ?*std.Build.Step.Compile = null;
-    var lr_galley_exe: ?*std.Build.Step.Compile = null;
+    const ll_galley = (try common.addLanguageParser(b, target, optimize, core, clap.module("clap"), "galley", "ll")) orelse
+        return error.MissingBootstrapGalleyParser;
+    const generate_lr_galley_parser = b.addRunArtifact(generate_parser_file_exe);
+    generate_lr_galley_parser.addArg("--grammar");
+    generate_lr_galley_parser.addFileArg(b.path("languages/galley/lr.grm"));
+    generate_lr_galley_parser.addArg("--parser-type");
+    generate_lr_galley_parser.addArg("lr");
+    generate_lr_galley_parser.addArg("--label");
+    generate_lr_galley_parser.addArg("lr/galley/bootstrap-parity");
+    generate_lr_galley_parser.addArg("--output");
+    const lr_galley_parser_path = generate_lr_galley_parser.addOutputFileArg("galley-lr-bootstrap.zig");
+    const lr_galley = try common.addLanguageParserFromFile(
+        b,
+        target,
+        optimize,
+        core,
+        clap.module("clap"),
+        "galley",
+        "lr",
+        lr_galley_parser_path,
+    );
 
-    while (try walker.next(b.graph.io)) |entry| {
-        if (entry.kind != .directory and entry.kind != .sym_link) continue;
-
-        inline for ([_][]const u8{ "ll", "lr" }) |parser_type| {
-            const parser_path = try std.fs.path.join(
-                b.allocator,
-                &[_][]const u8{ languages_path, entry.path, "_" ++ parser_type ++ "-" ++ "parser.zig" },
-            );
-            defer b.allocator.free(parser_path);
-
-            const procedures_path = try std.fs.path.join(
-                b.allocator,
-                &[_][]const u8{ languages_path, entry.path, "procedures.zig" },
-            );
-            defer b.allocator.free(procedures_path);
-
-            const config_path = try std.fs.path.join(
-                b.allocator,
-                &[_][]const u8{ languages_path, entry.path, "config.zig" },
-            );
-            defer b.allocator.free(config_path);
-
-            // Check if file exists in this subdirectory
-            const exists = b.build_root.handle.access(b.graph.io, parser_path, .{});
-            if (exists) |_| {
-                const procedures_mod = b.addModule("procedures", .{
-                    .root_source_file = b.path(procedures_path),
-                    .target = target,
-                });
-
-                const config_mod = b.addModule("config", .{
-                    .root_source_file = b.path(config_path),
-                    .target = target,
-                });
-
-                const parser_mod = b.addModule("parser", .{
-                    .root_source_file = b.path(parser_path),
-                    .target = target,
-                });
-
-                const parser_name = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ parser_type, "-", entry.path },
-                );
-                const api_benchmark_run_step_name = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "run-api-bench-", parser_name },
-                );
-                const parser_cli_options = b.addOptions();
-                parser_cli_options.addOption([]const u8, "api_benchmark_step", api_benchmark_run_step_name);
-                const galley_parser_mod = b.addModule(parser_name, .{
-                    .root_source_file = b.path("src/parser_library.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                    .imports = &.{
-                        .{ .name = "procedures", .module = procedures_mod },
-                        .{ .name = "config", .module = config_mod },
-                        .{ .name = "parser", .module = parser_mod },
-                    },
-                });
-                galley_parser_mod.addImport("galley", galley_parser_mod);
-
-                const galley_cli_mod = b.createModule(.{
-                    .root_source_file = b.path("src/main.zig"),
-                    .target = target,
-                    .optimize = optimize,
-                    .link_libc = true,
-                    .imports = &.{
-                        .{ .name = "clap", .module = clap.module("clap") },
-                        .{ .name = "build_options", .module = parser_cli_options.createModule() },
-                        .{ .name = "galley", .module = galley_parser_mod },
-                    },
-                });
-                procedures_mod.addImport("galley", galley_parser_mod);
-                procedures_mod.addImport("ll_generator", ll_generator_mod);
-                procedures_mod.addImport("lr_generator", lr_generator_mod);
-                config_mod.addImport("galley", galley_parser_mod);
-                parser_mod.addImport("galley", galley_parser_mod);
-
-                const exe = b.addExecutable(.{
-                    .name = parser_name,
-                    // .use_llvm = false,
-                    // .use_lld = false,
-                    .root_module = galley_cli_mod,
-                });
-                if (std.mem.eql(u8, entry.path, "galley")) {
-                    if (std.mem.eql(u8, parser_type, "ll")) {
-                        ll_galley_exe = exe;
-                    } else if (std.mem.eql(u8, parser_type, "lr")) {
-                        lr_galley_exe = exe;
-                    }
-                }
-
-                const install_artifact = b.addInstallArtifact(exe, .{});
-
-                const result = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "Run the ", entry.path, " compiler" },
-                );
-                defer b.allocator.free(result);
-
-                const build_step = b.step(parser_name, result);
-                build_step.dependOn(&install_artifact.step);
-
-                const run_step_name = try std.mem.concat(
-                    b.allocator,
-                    u8,
-                    &[_][]const u8{ "run-", parser_name },
-                );
-                defer b.allocator.free(run_step_name);
-                const run_step = b.step(run_step_name, result);
-
-                const run_cmd = b.addRunArtifact(exe);
-                run_step.dependOn(&run_cmd.step);
-
-                run_cmd.step.dependOn(&install_artifact.step);
-
-                if (b.args) |args| {
-                    run_cmd.addArgs(args);
-                }
-
-                const exe_tests = b.addTest(.{
-                    .root_module = exe.root_module,
-                });
-
-                const run_exe_tests = b.addRunArtifact(exe_tests);
-                test_step.dependOn(&run_exe_tests.step);
-
-                const parser_library_tests = b.addTest(.{
-                    .root_module = galley_parser_mod,
-                });
-
-                const run_parser_library_tests = b.addRunArtifact(parser_library_tests);
-                test_step.dependOn(&run_parser_library_tests.step);
-
-                const samples_path = try std.fs.path.join(
-                    b.allocator,
-                    &[_][]const u8{ languages_path, entry.path, "samples" },
-                );
-                defer b.allocator.free(samples_path);
-
-                var samples_dir: ?@TypeOf(b.build_root.handle) = b.build_root.handle.openDir(b.graph.io, samples_path, .{ .iterate = true }) catch |err| switch (err) {
-                    error.FileNotFound => null,
-                    else => return err,
-                };
-                if (samples_dir) |*samples_dir_handle| {
-                    defer samples_dir_handle.close(b.graph.io);
-                    var samples_walker = try samples_dir_handle.walk(b.allocator);
-                    defer samples_walker.deinit();
-
-                    while (try samples_walker.next(b.graph.io)) |sample_entry| {
-                        if (sample_entry.kind != .file and sample_entry.kind != .sym_link) continue;
-                        if (!std.mem.startsWith(u8, std.fs.path.basename(sample_entry.path), "code-")) continue;
-
-                        const sample_path = try std.fs.path.join(
-                            b.allocator,
-                            &[_][]const u8{ samples_path, sample_entry.path },
-                        );
-                        const sample_input = try b.build_root.handle.readFileAlloc(
-                            b.graph.io,
-                            sample_path,
-                            b.allocator,
-                            .limited(std.math.maxInt(usize)),
-                        );
-                        addGeneratedParserApiTest(b, test_step, target, optimize, galley_parser_mod, sample_path, sample_input);
-                    }
-                }
-            } else |err| {
-                // File doesn't exist in this subdir - ignore
-                if (err != error.FileNotFound) return err;
-            }
-        }
+    const parity_step = b.step("test-galley-bootstrap-parity", "Compare parser output generated by ll-galley and lr-galley");
+    parity_step.dependOn(ll_galley.build_step);
+    parity_step.dependOn(lr_galley.build_step);
+    try addGalleyBootstrapParityCase(b, parity_step, ll_galley.exe, lr_galley.exe, "json-ll-no-ast", "languages/json/ll.grm", "_ll-parser.zig", &.{"--no-ast"});
+    try addGalleyBootstrapParityCase(b, parity_step, ll_galley.exe, lr_galley.exe, "json-lr-no-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--no-ast"});
+    try addGalleyBootstrapParityCase(b, parity_step, ll_galley.exe, lr_galley.exe, "json-ll-with-ast", "languages/json/ll.grm", "_ll-parser.zig", &.{"--with-ast"});
+    try addGalleyBootstrapParityCase(b, parity_step, ll_galley.exe, lr_galley.exe, "json-lr-with-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--with-ast"});
+    if (generated_parser_matrix.filterMatchesGalleyParity(b.allocator, test_filters)) {
+        test_step.dependOn(parity_step);
     }
 
-    if (ll_galley_exe) |ll_exe| {
-        if (lr_galley_exe) |lr_exe| {
-            const parity_step = b.step("test-galley-bootstrap-parity", "Compare parser output generated by ll-galley and lr-galley");
-            try addGalleyBootstrapParityCase(b, parity_step, ll_exe, lr_exe, "json-ll-no-ast", "languages/json/ll.grm", "_ll-parser.zig", &.{"--no-ast"});
-            try addGalleyBootstrapParityCase(b, parity_step, ll_exe, lr_exe, "json-lr-no-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--no-ast"});
-            try addGalleyBootstrapParityCase(b, parity_step, ll_exe, lr_exe, "json-ll-with-ast", "languages/json/ll.grm", "_ll-parser.zig", &.{"--with-ast"});
-            try addGalleyBootstrapParityCase(b, parity_step, ll_exe, lr_exe, "json-lr-with-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--with-ast"});
-            test_step.dependOn(parity_step);
-        }
+    if (test_filters.len > 0) {
+        addTestFilterGuard(b, test_step, filtered_test_run_steps.items);
     }
 }
 
-fn addGeneratedParserApiTest(
+fn trackFilteredTestRun(
+    allocator: std.mem.Allocator,
+    filtered_test_run_steps: *std.ArrayList(*std.Build.Step),
+    test_filters: []const []const u8,
+    run_step: *std.Build.Step,
+) void {
+    if (test_filters.len == 0) return;
+    filtered_test_run_steps.append(allocator, run_step) catch @panic("OOM");
+}
+
+const TestFilterGuard = struct {
+    step: std.Build.Step,
+    run_steps: []const *std.Build.Step,
+
+    fn create(b: *std.Build, run_steps: []const *std.Build.Step) *TestFilterGuard {
+        const guard = b.allocator.create(TestFilterGuard) catch @panic("OOM");
+        guard.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .fail,
+                .name = "test-filter-guard",
+                .owner = b,
+                .makeFn = make,
+            }),
+            .run_steps = run_steps,
+        };
+        return guard;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const guard: *TestFilterGuard = @fieldParentPtr("step", step);
+
+        var total_ran: u32 = 0;
+        for (guard.run_steps) |run_step| {
+            total_ran += run_step.test_results.test_count;
+        }
+        if (total_ran == 0) {
+            try step.result_error_msgs.append(
+                step.owner.allocator,
+                "no tests matched -Dtest-filter; nothing was run",
+            );
+            return error.MakeFailed;
+        }
+    }
+};
+
+fn addTestFilterGuard(
     b: *std.Build,
     test_step: *std.Build.Step,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    galley_parser_mod: *std.Build.Module,
-    sample_path: []const u8,
-    sample_input: []const u8,
+    run_steps: []const *std.Build.Step,
 ) void {
-    const parser_api_test_options = b.addOptions();
-    parser_api_test_options.addOption(
-        []const u8,
-        "sample_path",
-        sample_path,
-    );
-    parser_api_test_options.addOption(
-        []const u8,
-        "sample_input",
-        sample_input,
-    );
-    const parser_api_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/tests/generated_parser_library_test.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "parser-under-test", .module = galley_parser_mod },
-            .{ .name = "test_options", .module = parser_api_test_options.createModule() },
-        },
-    });
-    const parser_api_tests = b.addTest(.{
-        .root_module = parser_api_test_mod,
-    });
-    const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
-    test_step.dependOn(&run_parser_api_tests.step);
+    const guard = TestFilterGuard.create(b, run_steps);
+    for (run_steps) |run_step| {
+        guard.step.dependOn(run_step);
+    }
+    test_step.dependOn(&guard.step);
 }
 
 fn addGalleyBootstrapParityCase(

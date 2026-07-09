@@ -7,6 +7,8 @@ pub const Options = struct {
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
     generate_parser_file_exe: *std.Build.Step.Compile,
+    filters: []const []const u8 = &.{},
+    filtered_test_run_steps: ?*std.ArrayList(*std.Build.Step) = null,
 };
 
 const MatrixVariant = struct {
@@ -78,20 +80,26 @@ const parser_type_specs = [_]ParserTypeSpec{
     .{ .name = "lr", .grammar_name = "lr.grm" },
 };
 
+const languages = [_][]const u8{
+    "galley",
+    "json",
+    "json-augmented",
+    "json-structured-ast",
+    "lisp",
+    "lua",
+    "test-ll",
+    "test-ll1",
+};
+
 pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void {
-    const languages = [_][]const u8{
-        "galley",
-        "augmented-json",
-        "json",
-        "json-structured-ast",
-        "lisp",
-        "lua",
-        "test-ll",
-        "test-ll1",
-    };
+    const parser_types: []const ParserTypeSpec = parser_type_specs[0..];
+
+    var prev_generate_step: ?*std.Build.Step = null;
 
     for (languages) |language| {
-        for (parser_type_specs) |parser_type| {
+        for (parser_types) |parser_type| {
+            if (!filterMatchesMatrixCase(b.allocator, options.filters, parser_type.name, language)) continue;
+
             const grammar_path = try std.fs.path.join(b.allocator, &.{ "languages", language, parser_type.grammar_name });
             defer b.allocator.free(grammar_path);
 
@@ -100,9 +108,7 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void 
                 else => return err,
             };
 
-            for (matrix_variants) |variant| {
-                const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type.name, "-", language, "-", variant.name });
-                std.debug.print("REGISTERING: {s}\n", .{case_name});
+            for (matrix_variants, 0..) |variant, variant_index| {
                 try addCase(
                     b,
                     matrix_step,
@@ -111,6 +117,8 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void 
                     parser_type.name,
                     grammar_path,
                     variant,
+                    variant_index == 0,
+                    &prev_generate_step,
                 );
             }
         }
@@ -125,6 +133,8 @@ fn addCase(
     parser_type: []const u8,
     grammar_path: []const u8,
     variant: MatrixVariant,
+    is_first_variant: bool,
+    prev_generate_step: *?*std.Build.Step,
 ) !void {
     const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type, "-", language, "-", variant.name });
     const parser_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, ".zig" });
@@ -140,6 +150,11 @@ fn addCase(
     const generated_parser_path = generate_parser.addOutputFileArg(parser_basename);
     generate_parser.addArgs(variant.args);
     generate_parser.stdio = .inherit;
+    if (prev_generate_step.*) |prev| {
+        generate_parser.step.dependOn(prev);
+    }
+    prev_generate_step.* = &generate_parser.step;
+    matrix_step.dependOn(&generate_parser.step);
 
     const procedures_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "procedures.zig" });
     const config_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "config.zig" });
@@ -184,9 +199,11 @@ fn addCase(
 
     const parser_library_tests = b.addTest(.{
         .root_module = galley_parser_mod,
+        .filters = options.filters,
     });
     const run_parser_library_tests = b.addRunArtifact(parser_library_tests);
     matrix_step.dependOn(&run_parser_library_tests.step);
+    trackFilteredTestRun(b, options, &run_parser_library_tests.step);
 
     const galley_cli_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -206,6 +223,16 @@ fn addCase(
     const install_artifact = b.addInstallArtifact(exe, .{});
     const build_step = b.step(case_name, try std.mem.concat(b.allocator, u8, &.{ "Build matrix variant: ", case_name }));
     build_step.dependOn(&install_artifact.step);
+    build_step.dependOn(&generate_parser.step);
+
+    if (is_first_variant) {
+        const exe_tests = b.addTest(.{
+            .root_module = exe.root_module,
+        });
+        const run_exe_tests = b.addRunArtifact(exe_tests);
+        matrix_step.dependOn(&run_exe_tests.step);
+        trackFilteredTestRun(b, options, &run_exe_tests.step);
+    }
 
     const api_benchmark_mod = b.createModule(.{
         .root_source_file = b.path("src/benchmarks/api_benchmark.zig"),
@@ -224,50 +251,35 @@ fn addCase(
     const api_benchmark_step = b.step(api_benchmark_name, try std.mem.concat(b.allocator, u8, &.{ "Benchmark matrix variant API: ", case_name }));
     api_benchmark_step.dependOn(&install_api_benchmark_artifact.step);
 
-    try addValidationInputs(b, matrix_step, options.target, options.optimize, galley_parser_mod, exe, language, variant.input_size);
+    try addLanguageSamples(
+        b,
+        matrix_step,
+        options,
+        galley_parser_mod,
+        exe,
+        language,
+        case_name,
+        variant.name,
+        variant.args,
+        variant.input_size,
+    );
 }
 
-fn addValidationInputs(
+fn addLanguageSamples(
     b: *std.Build,
     matrix_step: *std.Build.Step,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    options: Options,
     galley_parser_mod: *std.Build.Module,
     exe: *std.Build.Step.Compile,
     language: []const u8,
+    case_name: []const u8,
+    config_label: []const u8,
+    variant_args: []const []const u8,
     input_size: u16,
 ) !void {
-    if (std.mem.eql(u8, language, "galley")) {
-        for (&[_][]const u8{
-            "languages/galley/ll.grm",
-            "languages/galley/lr.grm",
-            "languages/json/ll.grm",
-            "languages/test-ll/ll.grm",
-            "languages/test-ll1/ll.grm",
-        }) |input_path| {
-            try addValidationInput(b, matrix_step, target, optimize, galley_parser_mod, exe, input_path, input_size);
-        }
-    } else if (std.mem.eql(u8, language, "json-structured-ast")) {
-        try addSampleValidationInputs(b, matrix_step, target, optimize, galley_parser_mod, exe, "json", input_size);
-    } else if (std.mem.eql(u8, language, "augmented-json")) {
-        try addSampleValidationInputs(b, matrix_step, target, optimize, galley_parser_mod, exe, "json", input_size);
-        try addSampleValidationInputs(b, matrix_step, target, optimize, galley_parser_mod, exe, "augmented-json", input_size);
-    } else {
-        try addSampleValidationInputs(b, matrix_step, target, optimize, galley_parser_mod, exe, language, input_size);
-    }
-}
+    const samples_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "samples" });
+    defer b.allocator.free(samples_path);
 
-fn addSampleValidationInputs(
-    b: *std.Build,
-    matrix_step: *std.Build.Step,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    galley_parser_mod: *std.Build.Module,
-    exe: *std.Build.Step.Compile,
-    sample_language: []const u8,
-    input_size: u16,
-) !void {
-    const samples_path = try std.fs.path.join(b.allocator, &.{ "languages", sample_language, "samples" });
     var samples_dir: ?@TypeOf(b.build_root.handle) = b.build_root.handle.openDir(b.graph.io, samples_path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => null,
         else => return err,
@@ -284,7 +296,18 @@ fn addSampleValidationInputs(
                 b.allocator,
                 &.{ samples_path, sample_entry.path },
             );
-            try addValidationInput(b, matrix_step, target, optimize, galley_parser_mod, exe, sample_path, input_size);
+            try addValidationInput(
+                b,
+                matrix_step,
+                options,
+                galley_parser_mod,
+                exe,
+                case_name,
+                config_label,
+                sample_path,
+                variant_args,
+                input_size,
+            );
         }
     }
 }
@@ -292,41 +315,79 @@ fn addSampleValidationInputs(
 fn addValidationInput(
     b: *std.Build,
     matrix_step: *std.Build.Step,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    options: Options,
     galley_parser_mod: *std.Build.Module,
     exe: *std.Build.Step.Compile,
+    case_name: []const u8,
+    config_label: []const u8,
     input_path: []const u8,
+    variant_args: []const []const u8,
     input_size: u16,
 ) !void {
     const stat = try b.build_root.handle.statFile(b.graph.io, input_path, .{});
     const max_size = (@as(u64, 1) << @intCast(input_size));
     if (stat.size >= max_size) return;
 
-    const sample_input = try b.build_root.handle.readFileAlloc(
-        b.graph.io,
-        input_path,
-        b.allocator,
-        .limited(std.math.maxInt(usize)),
-    );
-    addGeneratedParserApiTest(b, matrix_step, target, optimize, galley_parser_mod, input_path, sample_input);
+    if (!shouldSkipGeneratedParserApiTests(variant_args, stat.size)) {
+        const sample_input = try b.build_root.handle.readFileAlloc(
+            b.graph.io,
+            input_path,
+            b.allocator,
+            .limited(std.math.maxInt(usize)),
+        );
+        const run_parser_api_tests = addGeneratedParserApiTest(
+            b,
+            options.target,
+            options.optimize,
+            galley_parser_mod,
+            case_name,
+            "matrix",
+            config_label,
+            input_path,
+            sample_input,
+        );
+        matrix_step.dependOn(&run_parser_api_tests.step);
+        trackFilteredTestRun(b, options, &run_parser_api_tests.step);
+    }
 
     const run_cmd = b.addRunArtifact(exe);
-    run_cmd.addFileArg(b.path(input_path));
     run_cmd.addArgs(&.{ "--verbosity", "0", "--iterations", "1" });
+
+    if (std.mem.endsWith(u8, input_path, ".grm")) {
+        const cache_dir = try std.fs.path.join(b.allocator, &.{ ".zig-cache", "matrix-validation", case_name });
+        const cached_input = try std.fs.path.join(b.allocator, &.{ cache_dir, std.fs.path.basename(input_path) });
+
+        const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", cache_dir });
+        mkdir.has_side_effects = true;
+
+        const copy_input = b.addSystemCommand(&.{ "cp", input_path, cached_input });
+        copy_input.has_side_effects = true;
+        copy_input.step.dependOn(&mkdir.step);
+
+        run_cmd.addArg(cached_input);
+        run_cmd.step.dependOn(&copy_input.step);
+    } else {
+        run_cmd.addFileArg(b.path(input_path));
+    }
+
     matrix_step.dependOn(&run_cmd.step);
 }
 
 fn addGeneratedParserApiTest(
     b: *std.Build,
-    test_step: *std.Build.Step,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     galley_parser_mod: *std.Build.Module,
+    case_name: []const u8,
+    suite: []const u8,
+    config_label: []const u8,
     sample_path: []const u8,
     sample_input: []const u8,
-) void {
+) *std.Build.Step.Run {
     const parser_api_test_options = b.addOptions();
+    parser_api_test_options.addOption([]const u8, "case_name", case_name);
+    parser_api_test_options.addOption([]const u8, "suite", suite);
+    parser_api_test_options.addOption([]const u8, "config_label", config_label);
     parser_api_test_options.addOption([]const u8, "sample_path", sample_path);
     parser_api_test_options.addOption([]const u8, "sample_input", sample_input);
     const parser_api_test_mod = b.createModule(.{
@@ -342,5 +403,53 @@ fn addGeneratedParserApiTest(
         .root_module = parser_api_test_mod,
     });
     const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
-    test_step.dependOn(&run_parser_api_tests.step);
+    run_parser_api_tests.addFileInput(b.path(sample_path));
+    return run_parser_api_tests;
+}
+
+const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
+
+fn shouldSkipGeneratedParserApiTests(variant_args: []const []const u8, sample_size: u64) bool {
+    if (sample_size <= large_sample_api_test_skip_threshold) return false;
+
+    var procedures_enabled = false;
+    var terminal_ast_enabled = false;
+    for (variant_args) |arg| {
+        if (std.mem.eql(u8, arg, "--with-procedures")) procedures_enabled = true;
+        if (std.mem.eql(u8, arg, "--ast-for-terminals")) terminal_ast_enabled = true;
+    }
+    return procedures_enabled and terminal_ast_enabled;
+}
+
+pub fn filterMatchesMatrixCase(
+    allocator: std.mem.Allocator,
+    test_filters: []const []const u8,
+    parser_type: []const u8,
+    language: []const u8,
+) bool {
+    if (test_filters.len == 0) return true;
+
+    const parser_name = std.mem.concat(allocator, u8, &.{ parser_type, "-", language }) catch return false;
+    defer allocator.free(parser_name);
+
+    for (test_filters) |filter| {
+        if (std.mem.eql(u8, filter, "generated_parser_api")) return true;
+        if (std.mem.eql(u8, filter, parser_name)) return true;
+        if (std.mem.indexOf(u8, filter, parser_name) != null) return true;
+        if (std.mem.indexOf(u8, parser_name, filter) != null) return true;
+    }
+    return false;
+}
+
+pub fn filterMatchesGalleyParity(allocator: std.mem.Allocator, test_filters: []const []const u8) bool {
+    if (test_filters.len == 0) return true;
+    return filterMatchesMatrixCase(allocator, test_filters, "ll", "galley") or
+        filterMatchesMatrixCase(allocator, test_filters, "lr", "galley");
+}
+
+fn trackFilteredTestRun(b: *std.Build, options: Options, run_step: *std.Build.Step) void {
+    if (options.filters.len == 0) return;
+    if (options.filtered_test_run_steps) |filtered_test_run_steps| {
+        filtered_test_run_steps.append(b.allocator, run_step) catch @panic("OOM");
+    }
 }

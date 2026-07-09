@@ -1,2 +1,2 @@
 languages/json/samples/code-02.json filter=lfs diff=lfs merge=lfs -text
-languages/augmented-json/samples/code-01.json filter=lfs diff=lfs merge=lfs -text
+languages/json-augmented/samples/code-02-recursive-stress.json filter=lfs diff=lfs merge=lfs -text

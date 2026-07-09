@@ -90,11 +90,11 @@ fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
         const nested_tail_address = node.last_child;
         if (args.context.node_allocator.at(nested_tail_address).variable != node.variable) return;
 
-        _ = try ASTNode.removeSelf(nested_tail_address, args.context);
+        _ = try ASTNode.removeSelf(nested_tail_address, args.context.node_allocator);
         if (args.context.node_allocator.at(nested_tail_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.cleanChildren(nested_tail_address, args.context);
-            if (nested_children.len > 0) {
-                try ASTNode.appendChildren(node_address, args.context, nested_children[0]);
+            const nested_children = try ASTNode.cleanChildren(nested_tail_address, args.context.node_allocator);
+            if (nested_children != ASTNode.invalid_pointer) {
+                try ASTNode.appendChildren(node_address, args.context.node_allocator, nested_children);
             }
         }
     }
@@ -111,11 +111,11 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
                 const tail_address = node.last_child;
                 if (!nodeIs(args.context, tail_address, child_name)) return;
 
-                _ = try ASTNode.removeSelf(tail_address, args.context);
+                _ = try ASTNode.removeSelf(tail_address, args.context.node_allocator);
                 if (args.context.node_allocator.at(tail_address).first_child != ASTNode.invalid_pointer) {
-                    const tail_children = try ASTNode.cleanChildren(tail_address, args.context);
-                    if (tail_children.len > 0) {
-                        try ASTNode.appendChildren(node_address, args.context, tail_children[0]);
+                    const tail_children = try ASTNode.cleanChildren(tail_address, args.context.node_allocator);
+                    if (tail_children != ASTNode.invalid_pointer) {
+                        try ASTNode.appendChildren(node_address, args.context.node_allocator, tail_children);
                     }
                 }
             }
@@ -132,11 +132,11 @@ fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
         const nested_list_address = node.first_child;
         if (args.context.node_allocator.at(nested_list_address).variable != node.variable) return;
 
-        _ = try ASTNode.removeSelf(nested_list_address, args.context);
+        _ = try ASTNode.removeSelf(nested_list_address, args.context.node_allocator);
         if (args.context.node_allocator.at(nested_list_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.cleanChildren(nested_list_address, args.context);
-            if (nested_children.len > 0) {
-                try ASTNode.insertChildren(node_address, args.context, 0, nested_children[0]);
+            const nested_children = try ASTNode.cleanChildren(nested_list_address, args.context.node_allocator);
+            if (nested_children != ASTNode.invalid_pointer) {
+                try ASTNode.insertChildren(node_address, args.context.node_allocator, 0, nested_children);
             }
         }
     }

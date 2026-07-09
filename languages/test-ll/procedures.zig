@@ -3,6 +3,7 @@ const ProcedureArguments = @import("galley").data_structures.ProcedureArguments;
 const ASTNode = @import("galley").data_structures.ASTNode;
 const string_utilities = @import("galley").string_utilities;
 const parser = @import("galley").parser;
+const standard_procedures = @import("galley").standard_procedures;
 
 const control_characters_uppper_bound = 4;
 
@@ -32,10 +33,10 @@ pub fn reduction(args: *ProcedureArguments) !void {
         {
             // We need last BlockStart which is the last when iterating from
             // start of the array and has most indentation
-            block_start = try ASTNode.remove_self(child_address, args.context);
+            block_start = try ASTNode.removeSelf(child_address, args.context.node_allocator);
         }
         if (block_start) |to_prepend| {
-            try ASTNode.insert_before(node_address, args.context, to_prepend);
+            try ASTNode.insertBefore(node_address, args.context.node_allocator, to_prepend);
         }
 
         var block_end: ?ASTNode.Pointer = null;
@@ -45,7 +46,7 @@ pub fn reduction(args: *ProcedureArguments) !void {
         else
             null) |child_address|
         {
-            const new_block_end = try ASTNode.remove_self(child_address, args.context);
+            const new_block_end = try ASTNode.removeSelf(child_address, args.context.node_allocator);
             // We need last BlockEnd which is the first when iterating from
             // the end of the array and has least indenation
             if (block_end == null) {
@@ -53,10 +54,10 @@ pub fn reduction(args: *ProcedureArguments) !void {
             }
         }
         if (block_end) |to_append| {
-            try ASTNode.insert_after(node_address, args.context, to_append);
+            try ASTNode.insertAfter(node_address, args.context.node_allocator, to_append);
         }
 
-        var iterator = ASTNode.iterate_augmented(node.first_child, args.context);
+        var iterator = ASTNode.iterateAugmented(node.first_child, args.context.node_allocator);
         while (iterator.next()) |child_address| {
             const child = args.context.node_allocator.at(child_address);
             node.payload.rules += child.payload.rules;
@@ -68,7 +69,7 @@ pub fn reduction(args: *ProcedureArguments) !void {
 
 fn summerize(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
-        _ = try ASTNode.clean_children(node_address, args.context);
+        _ = try ASTNode.cleanChildren(node_address, args.context.node_allocator);
         // node.label = try std.fmt.allocPrint(args.allocator, "{s} ('{s}')", .{
         //     node.label,
         //     node.text,
@@ -82,9 +83,7 @@ pub const reduction_Id = summerize;
 pub const reduction_Operator = summerize;
 pub const reduction_String = summerize;
 
-pub fn dropSelf(args: *ProcedureArguments) void {
-    args.node = null;
-}
+pub const dropSelf = standard_procedures.dropSelf;
 
 pub const reduction_OptionalTypeArray_1 = dropSelf;
 pub const reduction_OptionalBlank = dropSelf;
@@ -94,7 +93,7 @@ fn toCharacter(character: u8, ignore_empty: bool) type {
     return struct {
         fn function(args: *ProcedureArguments) !void {
             if (args.node) |node_address| {
-                _ = try ASTNode.clean_children(node_address, args.context);
+                _ = try ASTNode.cleanChildren(node_address, args.context.node_allocator);
                 const node = args.context.node_allocator.at(node_address);
                 if (ignore_empty) {
                     if (node.first_child == 0) {
@@ -116,11 +115,7 @@ pub const reduction_OptionalNewLineMany = toCharacter('\n', false).function;
 pub const reduction_ForceNewLineMany = toCharacter('\n', false).function;
 pub const reduction_new_line = toCharacter('\n', false).function;
 
-pub fn dropChildren(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        _ = try ASTNode.clean_children(node_address, args.context);
-    }
-}
+pub const dropChildren = standard_procedures.dropChildren;
 
 pub const reduction_PositiveIntegerNumber = dropChildren;
 pub const reduction_NegativeIntegerNumber = dropChildren;
@@ -150,15 +145,7 @@ fn blockEdge(parse_id: comptime_int) type {
 pub const reduction_block_start = blockEdge(block_start_id).function;
 pub const reduction_block_end = blockEdge(block_end_id).function;
 
-pub fn replaceWithChildren(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        const removed_children = try ASTNode.clean_children(node_address, args.context);
-        if (removed_children.len > 0)
-            args.node = removed_children[0]
-        else
-            args.node = null;
-    }
-}
+pub const replaceWithChildren = standard_procedures.replaceWithChildren;
 
 pub const reduction_Operand = replaceWithChildren;
 pub const reduction_Expression_1 = replaceWithChildren;
@@ -167,7 +154,7 @@ pub const reduction_ActionBody = replaceWithChildren;
 
 pub fn reduction_ActionOutcomeEntry(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
-        const removed_address = try ASTNode.remove_child(node_address, args.context, 0);
+        const removed_address = try ASTNode.removeChild(node_address, args.context.node_allocator, 0);
         args.context.node_allocator.at(removed_address).payload.outcomes = 1;
         args.node = removed_address;
     }
@@ -185,17 +172,17 @@ pub fn rightRecursiveReduction(args: *ProcedureArguments) !void {
         const node = args.context.node_allocator.at(node_address);
         if (node.first_child != ASTNode.invalid_pointer) {
             try reduction(args);
-            const removing_address = (try ASTNode.remove(node.last_child, args.context, 1))[0];
-            // const removing_node = try ASTNode.remove_child(
+            const removing_address = try ASTNode.remove(node.last_child, args.context.node_allocator, 1);
+            // const removing_node = try ASTNode.removeChild(
             //     node_address,
             //     args.context,
             //     data_structures.ASTNode.augmented_length(node_address, args.context.node_allocator) - 1,
             // );
             if (args.context.node_allocator.at(removing_address).first_child != ASTNode.invalid_pointer) {
-                try ASTNode.append_children(
+                try ASTNode.appendChildren(
                     node_address,
-                    args.context,
-                    (try ASTNode.clean_children(removing_address, args.context))[0],
+                    args.context.node_allocator,
+                    try ASTNode.cleanChildren(removing_address, args.context.node_allocator),
                 );
             }
         }
@@ -213,7 +200,7 @@ pub const reduction_Parameters_0 = rightRecursiveReduction;
 pub fn dropFirstChild(args: *ProcedureArguments) !void {
     // Let's keep "- "
     _ = args;
-    // _ = try args.node.?.remove_children(args.allocator, 0, 2);
+    // _ = try args.node.?.removeChildren(args.allocator, 0, 2);
 }
 
 pub const reduction_ActionsToDispatch_1 = dropFirstChild;
@@ -255,7 +242,7 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
 
 pub fn reduction_Start(args: *ProcedureArguments) !void {
     if (if (args.context.verbosityLevel() > 0) args.node else null) |node_address| {
-        std.debug.print("\nProgram text:\n{s}\n", .{try ASTNode.augmented_text(node_address, args.context)});
+        std.debug.print("\nProgram text:\n{s}\n", .{try ASTNode.augmentedText(node_address, args.context)});
     }
 
     const log_file = try std.Io.Dir.cwd().createFile(args.context.runtime().io, "sanbus-parse.log", .{
