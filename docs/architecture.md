@@ -1,4 +1,4 @@
-# Core Architecture
+# Architecture
 
 ## Table of Contents
 
@@ -7,8 +7,8 @@
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Dynamic Stack-Overflow Recovery](#dynamic-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
-- [Role of the Python Generator](#role-of-the-python-generator)
-- [Self-Hosting Roadmap](#self-hosting-roadmap)
+- [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
+- [Self-Hosting](#self-hosting)
 
 ---
 

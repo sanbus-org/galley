@@ -26,5 +26,8 @@ jobs:
           tar -xf zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
-      - name: Run tests
+      - name: Verify package consumer
+        run: zig build test-package-consumer --summary all
+
+      - name: Run parser test suite
         run: zig build test --summary all --test-timeout 30m
