@@ -51,4 +51,4 @@ zig build -Doptimize=ReleaseFast lr-json
 
 ## Next Steps
 
-Now that you have verified the bundled JSON parsers work, you can explore the other [included languages](languages.md), check out the [CLI configuration and flags](configuration.md), or start [writing your own custom language](writing_a_language.md).
+Now that you have verified the bundled JSON parsers work, you can learn how to [use Galley from another Zig project](using-galley.md), explore the other [included languages](languages.md), check out the [CLI configuration and flags](configuration.md), or start [writing your own custom language](writing_a_language.md).

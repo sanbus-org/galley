@@ -15,8 +15,8 @@ ActionBody
 | block_start Fields block_end ActionBodyTail@dropIfEmpty
 | "[" WrappedLogicBody
 
-ActionBodyTail@test
-|@back "-" WrappedLogicBody
+ActionBodyTail
+| "-" WrappedLogicBody
 |
 
 Fields

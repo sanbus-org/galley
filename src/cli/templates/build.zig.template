@@ -64,7 +64,7 @@ fn addParser(
 
     const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
     const galley_mod = b.addModule(exe_name, .{{
-        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/parser_library.zig" }},
+        .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/runtime/api.zig" }},
         .target = target,
         .optimize = optimize,
         .imports = &.{{

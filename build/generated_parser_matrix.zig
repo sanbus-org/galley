@@ -1,11 +1,11 @@
 const std = @import("std");
+const common = @import("common.zig");
 
 pub const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     clap_mod: *std.Build.Module,
-    ll_generator_mod: *std.Build.Module,
-    lr_generator_mod: *std.Build.Module,
+    generator_modules: common.GeneratorModules,
     generate_parser_file_exe: *std.Build.Step.Compile,
     filters: []const []const u8 = &.{},
     filtered_test_run_steps: ?*std.ArrayList(*std.Build.Step) = null,
@@ -169,27 +169,19 @@ fn addCase(
         .target = options.target,
         .optimize = options.optimize,
     });
-    const parser_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-parser" }), .{
-        .root_source_file = generated_parser_path,
-        .target = options.target,
-        .optimize = options.optimize,
-    });
-    const galley_parser_mod = b.addModule(case_name, .{
-        .root_source_file = b.path("src/parser_library.zig"),
-        .target = options.target,
-        .optimize = options.optimize,
-        .imports = &.{
-            .{ .name = "procedures", .module = procedures_mod },
-            .{ .name = "config", .module = config_mod },
-            .{ .name = "parser", .module = parser_mod },
-        },
-    });
-    galley_parser_mod.addImport("galley", galley_parser_mod);
-    procedures_mod.addImport("galley", galley_parser_mod);
-    procedures_mod.addImport("ll_generator", options.ll_generator_mod);
-    procedures_mod.addImport("lr_generator", options.lr_generator_mod);
-    config_mod.addImport("galley", galley_parser_mod);
-    parser_mod.addImport("galley", galley_parser_mod);
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        case_name,
+        try std.mem.concat(b.allocator, u8, &.{ case_name, "-parser" }),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        options.generator_modules.ll_generator_mod,
+        options.generator_modules.lr_generator_mod,
+    );
+    const galley_parser_mod = generated_parser.runtime_mod;
     const parser_cli_options = b.addOptions();
     parser_cli_options.addOption(
         []const u8,
@@ -206,7 +198,7 @@ fn addCase(
     trackFilteredTestRun(b, options, &run_parser_library_tests.step);
 
     const galley_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/cli/parser.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .link_libc = true,
