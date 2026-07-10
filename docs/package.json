@@ -1,7 +1,7 @@
 {
   "name": "galley-docs",
   "version": "1.0.0",
-  "description": "Sanbus Galley Compiler Documentation",
+  "description": "Documentation for the Galley parser generator",
   "type": "module",
   "scripts": {
     "docs:dev": "vitepress dev .",

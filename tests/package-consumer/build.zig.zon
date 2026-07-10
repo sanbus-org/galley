@@ -1,0 +1,16 @@
+.{
+    .name = .galley_package_consumer,
+    .version = "0.0.0",
+    .fingerprint = 0x6e4668f70fd3dbb8,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .galley = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

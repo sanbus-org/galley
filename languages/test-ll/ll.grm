@@ -9,14 +9,31 @@ RulesTail
 |
 
 Rule
-| UppercaseId ":" ActionBody
+| UppercaseId RuleTail
+
+RuleTail
+| ".:" EnumBody
+| ":" ActionBody
+
+EnumBody
+| block_start EnumItems block_end
+
+EnumItems
+| EnumItemRow EnumItemsTail@dropIfEmpty
+
+EnumItemsTail
+| new_line EnumItemRow EnumItemsTail
+|
+
+EnumItemRow
+| "-" space UppercaseId
 
 ActionBody
 | block_start Fields block_end ActionBodyTail@dropIfEmpty
-| "\n---" WrappedLogicBody
+| "\n-" WrappedLogicBody
 
-ActionBodyTail@test
-|@back "---" WrappedLogicBody
+ActionBodyTail
+| "-" WrappedLogicBody
 |
 
 Fields

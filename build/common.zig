@@ -2,13 +2,58 @@ const std = @import("std");
 
 pub const languages_path = "languages";
 
-pub const CoreModules = struct {
+pub const GeneratorModules = struct {
     generator_common_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
     galley_grammar_library_mod: *std.Build.Module,
     galley_generator_mod: *std.Build.Module,
 };
+
+pub const GeneratedParserModule = struct {
+    runtime_mod: *std.Build.Module,
+    parser_mod: *std.Build.Module,
+};
+
+pub fn addGeneratedParserModule(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    runtime_module_name: []const u8,
+    parser_module_name: []const u8,
+    parser_source: std.Build.LazyPath,
+    procedures_mod: *std.Build.Module,
+    config_mod: *std.Build.Module,
+    ll_generator_mod: *std.Build.Module,
+    lr_generator_mod: *std.Build.Module,
+) GeneratedParserModule {
+    const parser_mod = b.addModule(parser_module_name, .{
+        .root_source_file = parser_source,
+        .target = target,
+        .optimize = optimize,
+    });
+    const runtime_mod = b.addModule(runtime_module_name, .{
+        .root_source_file = b.path("src/runtime/api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "procedures", .module = procedures_mod },
+            .{ .name = "config", .module = config_mod },
+            .{ .name = "parser", .module = parser_mod },
+        },
+    });
+    runtime_mod.addImport("galley", runtime_mod);
+    procedures_mod.addImport("galley", runtime_mod);
+    procedures_mod.addImport("ll_generator", ll_generator_mod);
+    procedures_mod.addImport("lr_generator", lr_generator_mod);
+    config_mod.addImport("galley", runtime_mod);
+    parser_mod.addImport("galley", runtime_mod);
+
+    return .{
+        .runtime_mod = runtime_mod,
+        .parser_mod = parser_mod,
+    };
+}
 
 pub const GalleyCli = struct {
     generator_cli_exe: *std.Build.Step.Compile,
@@ -37,11 +82,11 @@ pub const LanguageParser = struct {
     run_step: *std.Build.Step,
 };
 
-pub fn addCoreModules(
+pub fn addGeneratorModules(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-) CoreModules {
+) GeneratorModules {
     const generator_common_mod = b.addModule("generator_common", .{
         .root_source_file = b.path("src/generator/common.zig"),
         .target = target,
@@ -69,27 +114,19 @@ pub fn addCoreModules(
         .target = target,
         .optimize = optimize,
     });
-    const galley_grammar_parser_mod = b.addModule("galley_grammar_parser", .{
-        .root_source_file = b.path("languages/galley/_ll-parser.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const galley_grammar_library_mod = b.addModule("galley_grammar", .{
-        .root_source_file = b.path("src/parser_library.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "procedures", .module = galley_grammar_procedures_mod },
-            .{ .name = "config", .module = galley_grammar_config_mod },
-            .{ .name = "parser", .module = galley_grammar_parser_mod },
-        },
-    });
-    galley_grammar_library_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_procedures_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_procedures_mod.addImport("ll_generator", ll_generator_mod);
-    galley_grammar_procedures_mod.addImport("lr_generator", lr_generator_mod);
-    galley_grammar_config_mod.addImport("galley", galley_grammar_library_mod);
-    galley_grammar_parser_mod.addImport("galley", galley_grammar_library_mod);
+    const galley_grammar = addGeneratedParserModule(
+        b,
+        target,
+        optimize,
+        "galley_grammar",
+        "galley_grammar_parser",
+        b.path("languages/galley/_ll-parser.zig"),
+        galley_grammar_procedures_mod,
+        galley_grammar_config_mod,
+        ll_generator_mod,
+        lr_generator_mod,
+    );
+    const galley_grammar_library_mod = galley_grammar.runtime_mod;
 
     const galley_generator_mod = b.addModule("galley_generator", .{
         .root_source_file = b.path("src/generator/api.zig"),
@@ -116,24 +153,19 @@ pub fn addGalleyCli(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    core: CoreModules,
+    generator: GeneratorModules,
     options: GalleyCliOptions,
 ) GalleyCli {
     const cli_options = b.addOptions();
     cli_options.addOption([]const u8, "galley_root", b.pathFromRoot("."));
-    cli_options.addOption(
-        []const u8,
-        "clap_source",
-        b.pathFromRoot("zig-pkg/clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5/clap.zig"),
-    );
 
     const generator_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/generator/cli.zig"),
+        .root_source_file = b.path("src/cli/generator.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "build_options", .module = cli_options.createModule() },
-            .{ .name = "galley_generator", .module = core.galley_generator_mod },
+            .{ .name = "galley_generator", .module = generator.galley_generator_mod },
         },
     });
     const generator_cli_exe = b.addExecutable(.{
@@ -157,7 +189,7 @@ pub fn addGalleyCli(
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "galley_generator", .module = core.galley_generator_mod },
+                .{ .name = "galley_generator", .module = generator.galley_generator_mod },
             },
         });
         generate_parser_file_exe = b.addExecutable(.{
@@ -192,7 +224,7 @@ pub fn addLanguageParser(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    core: CoreModules,
+    generator: GeneratorModules,
     clap_mod: *std.Build.Module,
     entry_path: []const u8,
     parser_type: []const u8,
@@ -216,7 +248,7 @@ pub fn addLanguageParser(
         b,
         target,
         optimize,
-        core,
+        generator,
         clap_mod,
         entry_path,
         parser_type,
@@ -228,7 +260,7 @@ pub fn addLanguageParserFromFile(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    core: CoreModules,
+    generator: GeneratorModules,
     clap_mod: *std.Build.Module,
     entry_path: []const u8,
     parser_type: []const u8,
@@ -254,30 +286,29 @@ pub fn addLanguageParserFromFile(
         .root_source_file = b.path(config_path),
         .target = target,
     });
-    const parser_mod = b.addModule("parser", .{
-        .root_source_file = parser_file,
-        .target = target,
-    });
-
     const parser_name = try parserName(b.allocator, parser_type, entry_path);
+    const parser_module_name = try std.mem.concat(b.allocator, u8, &.{ parser_name, "-source" });
     const api_benchmark_run_step_name = try apiBenchmarkRunStepName(b.allocator, parser_name);
     const parser_cli_options = b.addOptions();
     parser_cli_options.addOption([]const u8, "api_benchmark_step", api_benchmark_run_step_name);
 
-    const galley_parser_mod = b.addModule(parser_name, .{
-        .root_source_file = b.path("src/parser_library.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "procedures", .module = procedures_mod },
-            .{ .name = "config", .module = config_mod },
-            .{ .name = "parser", .module = parser_mod },
-        },
-    });
-    galley_parser_mod.addImport("galley", galley_parser_mod);
+    const generated_parser = addGeneratedParserModule(
+        b,
+        target,
+        optimize,
+        parser_name,
+        parser_module_name,
+        parser_file,
+        procedures_mod,
+        config_mod,
+        generator.ll_generator_mod,
+        generator.lr_generator_mod,
+    );
+    const galley_parser_mod = generated_parser.runtime_mod;
+    const parser_mod = generated_parser.parser_mod;
 
     const galley_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/cli/parser.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -287,12 +318,6 @@ pub fn addLanguageParserFromFile(
             .{ .name = "galley", .module = galley_parser_mod },
         },
     });
-    procedures_mod.addImport("galley", galley_parser_mod);
-    procedures_mod.addImport("ll_generator", core.ll_generator_mod);
-    procedures_mod.addImport("lr_generator", core.lr_generator_mod);
-    config_mod.addImport("galley", galley_parser_mod);
-    parser_mod.addImport("galley", galley_parser_mod);
-
     const exe = b.addExecutable(.{
         .name = parser_name,
         .root_module = galley_cli_mod,

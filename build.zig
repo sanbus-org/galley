@@ -7,11 +7,23 @@ pub fn build(b: *std.Build) !void {
 
     const clap = b.dependency("clap", .{});
 
-    const core = common.addCoreModules(b, target, optimize);
-    _ = common.addGalleyCli(b, target, optimize, core, .{
+    const generator = common.addGeneratorModules(b, target, optimize);
+    _ = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
         .add_galley_step = true,
     });
+
+    const package_consumer_step = b.step(
+        "test-package-consumer",
+        "Build and run an external project using galley_generator",
+    );
+    const package_consumer = b.addSystemCommand(&.{
+        b.graph.zig_exe,
+        "build",
+        "--build-file",
+        b.pathFromRoot("tests/package-consumer/build.zig"),
+    });
+    package_consumer_step.dependOn(&package_consumer.step);
 
     const test_filter_opt = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &.{};
     common.addDelegatedTestStep(b, "test", "Run all tests (generator + matrix + parity)", "test", test_filter_opt);
@@ -43,7 +55,7 @@ pub fn build(b: *std.Build) !void {
                 b,
                 target,
                 optimize,
-                core,
+                generator,
                 clap.module("clap"),
                 entry.path,
                 parser_type,

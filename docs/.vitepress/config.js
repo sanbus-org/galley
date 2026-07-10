@@ -22,6 +22,7 @@ export default defineConfig({
         text: 'Introduction',
         items: [
           { text: 'Getting Started', link: '/getting_started' },
+          { text: 'Using Galley as a Library', link: '/using-galley' },
           { text: 'Included Languages', link: '/languages' },
           { text: 'Configuration & Flags', link: '/configuration' }
         ]
@@ -37,7 +38,7 @@ export default defineConfig({
       {
         text: 'Advanced Architecture & Performance',
         items: [
-          { text: 'Core Architecture', link: '/architecture' },
+          { text: 'Architecture', link: '/architecture' },
           { text: 'AST Node Allocations', link: '/ast_node_allocations' },
           { text: 'Benchmarks', link: '/benchmarks' },
           { text: 'Benchmark Layout Findings', link: '/benchmark_layout_findings' },

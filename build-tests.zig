@@ -8,8 +8,8 @@ pub fn build(b: *std.Build) !void {
 
     const clap = b.dependency("clap", .{});
 
-    const core = common.addCoreModules(b, target, optimize);
-    const galley_cli = common.addGalleyCli(b, target, optimize, core, .{
+    const generator = common.addGeneratorModules(b, target, optimize);
+    const galley_cli = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
         .add_galley_step = true,
         .include_generate_parser_file = true,
@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run all tests (generator + matrix + parity)");
     const generator_tests = b.addTest(.{
         .name = "generator-tests",
-        .root_module = core.galley_generator_mod,
+        .root_module = generator.galley_generator_mod,
         .filters = test_filters,
     });
     const run_generator_tests = b.addRunArtifact(generator_tests);
@@ -40,17 +40,17 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
         .clap_mod = clap.module("clap"),
-        .ll_generator_mod = core.ll_generator_mod,
-        .lr_generator_mod = core.lr_generator_mod,
+        .generator_modules = generator,
         .generate_parser_file_exe = generate_parser_file_exe,
         .filters = test_filters,
         .filtered_test_run_steps = &filtered_test_run_steps,
     });
     test_step.dependOn(generated_parser_matrix_step);
 
-    const ll_galley = (try common.addLanguageParser(b, target, optimize, core, clap.module("clap"), "galley", "ll")) orelse
+    const ll_galley = (try common.addLanguageParser(b, target, optimize, generator, clap.module("clap"), "galley", "ll")) orelse
         return error.MissingBootstrapGalleyParser;
     const generate_lr_galley_parser = b.addRunArtifact(generate_parser_file_exe);
+    generate_lr_galley_parser.stdio = .inherit;
     generate_lr_galley_parser.addArg("--grammar");
     generate_lr_galley_parser.addFileArg(b.path("languages/galley/lr.grm"));
     generate_lr_galley_parser.addArg("--parser-type");
@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) !void {
         b,
         target,
         optimize,
-        core,
+        generator,
         clap.module("clap"),
         "galley",
         "lr",
