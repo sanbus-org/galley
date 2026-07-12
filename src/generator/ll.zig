@@ -278,8 +278,9 @@ const Generator = struct {
         try self.emitNonAstParsers(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
-            \\    _ = parse__AugmentedStart(context) catch {
-            \\        return error.ParseError;
+            \\    _ = parse__AugmentedStart(context) catch |err| switch (err) {
+            \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
+            \\        else => return err,
             \\    };
             \\
             \\    if (context.verbosityLevel() > 0) {
@@ -456,7 +457,18 @@ const Generator = struct {
         }
 
         if (entries.items.len == 0) {
-            try writer.writeAll("    switch (context.head(u8, 0)) {\n        else => return error.SyntaxError,\n    }\n");
+            try writer.writeAll("    switch (context.head(u8, 0)) {\n");
+            try writer.writeAll("        else => {\n");
+            try writer.writeAll("            try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
+            try emitStringLiteral(writer, self.symbols.items[variable].id);
+            try writer.writeAll(" }, &[_][]const u8{});\n");
+            try writer.writeAll("            if (!builtin.is_test) {\n");
+            try writer.writeAll("                const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch \"\";\n");
+            try writer.writeAll("                std.debug.print(\"{s}\", .{diagnostic_message});\n");
+            try writer.writeAll("            }\n");
+            try writer.writeAll("            return root.ParseError.SyntaxError;\n");
+            try writer.writeAll("        },\n");
+            try writer.writeAll("    }\n");
         } else {
             try self.emitRuleSwitch(writer, variable, entries.items, 0, "    ", non_ast, false);
             try writer.writeByte('\n');
@@ -823,30 +835,28 @@ const Generator = struct {
             try writer.print("{s}    else => break,\n", .{indent});
             return;
         }
-        try writer.print(
-            \\{s}    else => {{
-            \\{s}        std.debug.print("\x1b[35mSyntaxError at {{d}}:{{d}}:\n\x1b[37mUnexpected token \x1b[31m\"{{f}}\"\x1b[37m while parsing \x1b[34m
-        , .{ indent, indent });
-        try emitFormatToken(writer, self.symbols.items[symbol_index].id);
-        try writer.writeAll("\\x1b[0m.\\nExpected tokens: \\x1b[32m\\'");
-        var first = true;
         var expected_heads = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected_heads.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected_heads.items, {}, headLessThan);
-        for (expected_heads.items) |head| {
-            if (!first) try writer.writeAll("', '");
-            first = false;
-            try emitFormatToken(writer, head);
+        try writer.print(
+            \\{s}    else => {{
+            \\{s}        try context.recordSyntaxDiagnostic(.{{ .while_parsing =
+        , .{ indent, indent });
+        try emitStringLiteral(writer, self.symbols.items[symbol_index].id);
+        try writer.writeAll(" }, &[_][]const u8{ ");
+        for (expected_heads.items, 0..) |head, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, head);
         }
         try writer.print(
-            \\\'\x1b[0m\n", .{{
-            \\{s}            if (comptime builtin.mode != .ReleaseFast) context.line else 0,
-            \\{s}            if (comptime builtin.mode != .ReleaseFast) context.column else 0,
-            \\{s}            string_utilities.fmtString(context.token.items()),
-            \\{s}        }});
-            \\{s}        return error.SyntaxError;
+            \\ }});
+            \\{s}        if (!builtin.is_test) {{
+            \\{s}            const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
+            \\{s}            std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}        }}
+            \\{s}        return root.ParseError.SyntaxError;
             \\{s}    }},
             \\
         , .{ indent, indent, indent, indent, indent, indent });

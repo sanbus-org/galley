@@ -6,7 +6,7 @@ import sys
 import time
 
 MAX_BENCHMARK_INPUT_BYTES = 1024 * 1024
-BENCHMARK_COOLDOWN_SECONDS = 5
+BENCHMARK_COOLDOWN_SECONDS = 15
 
 
 def truncate_text(text, max_len):
@@ -184,7 +184,9 @@ def format_card(name, metrics, width, no_color=False, error_msg=None, skip_limit
                 size_line = str(error_msg)
 
             size_visible = truncate_text(size_line, inner_width)
-            size_styled = f"{DIM}{size_visible}{RESET}" if not no_color else size_visible
+            size_styled = (
+                f"{DIM}{size_visible}{RESET}" if not no_color else size_visible
+            )
             lines.append(make_centered_line(size_visible, size_styled))
 
             if skip_limit:
@@ -881,8 +883,8 @@ def galley_benchmark(gen_opts, args):
         "languages/galley/ll.grm",
         "languages/galley/lr.grm",
         "languages/json/ll.grm",
-        "languages/test-ll/ll.grm",
-        "languages/test-ll1/ll.grm",
+        "languages/sanbus/ll.grm",
+        "languages/ll1/ll.grm",
     ]
     run_benchmark_suite("galley", gen_opts, args, inputs)
 
@@ -901,12 +903,12 @@ def augmented_json_benchmark(gen_opts, args):
     run_benchmark_suite("json-augmented", gen_opts, args, inputs)
 
 
-def test_ll_benchmark(gen_opts, args):
-    run_benchmark_suite("test-ll", gen_opts, args)
+def sanbus_benchmark(gen_opts, args):
+    run_benchmark_suite("sanbus", gen_opts, args)
 
 
-def test_ll1_benchmark(gen_opts, args):
-    run_benchmark_suite("test-ll1", gen_opts, args)
+def ll1_benchmark(gen_opts, args):
+    run_benchmark_suite("ll1", gen_opts, args)
 
 
 def lisp_benchmark(gen_opts, args):
@@ -952,8 +954,8 @@ BENCHMARKS = {
     "json-structured-ast": json_structured_ast_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
-    "test-ll": test_ll_benchmark,
-    "test-ll1": test_ll1_benchmark,
+    "sanbus": sanbus_benchmark,
+    "ll1": ll1_benchmark,
 }
 
 

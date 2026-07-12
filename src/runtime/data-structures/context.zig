@@ -23,6 +23,7 @@ pub const RuntimeContext = struct {
     input_path: ?[]const u8 = null,
     language_options: root.config.Options = .{},
     arena_allocator: std.mem.Allocator,
+    last_diagnostic: ?root.ParseDiagnostic = null,
 };
 
 var active_runtime_context: ?*RuntimeContext = null;
@@ -98,6 +99,23 @@ pub const Context = struct {
             return self.verbosity;
         }
         return 0;
+    }
+
+    pub fn recordSyntaxDiagnostic(
+        self: *@This(),
+        diagnostic_context: root.SyntaxDiagnosticContext,
+        expected_tokens: []const []const u8,
+    ) !void {
+        const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.token.items());
+        self.runtime().last_diagnostic = .{
+            .syntax = .{
+                .line = if (comptime builtin.mode != .ReleaseFast) self.line else 0,
+                .column = if (comptime builtin.mode != .ReleaseFast) self.column else 0,
+                .unexpected_token = unexpected_token,
+                .expected_tokens = expected_tokens,
+                .context = diagnostic_context,
+            },
+        };
     }
 
     pub fn releaseToken(self: *@This(), length: Size) void {

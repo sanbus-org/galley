@@ -564,17 +564,15 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "returns, function-call expressions, integer literals, strings, comments, "
         "and keyed table constructors."
     ),
-    "test-ll": (
-        "A structured data/schema language with `Name: { fields }` declarations and "
-        "embedded logic blocks. Uses the `@back` backtracking annotation, making it an "
-        "LL (with limited backtracking) grammar. Included as a regression and capability "
-        "test for the LL parser."
+    "sanbus": (
+        "An indentation-sensitive structured data/schema language with declarations and "
+        "embedded state, action, and effect logic. It exercises both LL and LR parsing "
+        "together with semantic reduction procedures."
     ),
-    "test-ll1": (
-        "The same schema language as test-ll, rewritten to be strictly LL(1) — no "
-        "backtracking. Delimiter tokens are chosen to make every decision point "
-        "unambiguous with one token of lookahead. Used to benchmark the LL(1) fast-path "
-        "against the backtracking variant."
+    "ll1": (
+        "A procedure-free indentation-sensitive grammar whose delimiter tokens make "
+        "every decision point unambiguous with one token of lookahead. Used to exercise "
+        "and benchmark the LL(1) fast path."
     ),
 }
 
@@ -586,8 +584,8 @@ GRAMMAR_SECTION_ORDER = [
     "galley",
     "json-augmented",
     "json-structured-ast",
-    "test-ll",
-    "test-ll1",
+    "sanbus",
+    "ll1",
 ]
 
 
@@ -598,8 +596,8 @@ GRAMMAR_SECTION_LABELS = {
     "galley": "Galley",
     "json-augmented": "JSON Augmented",
     "json-structured-ast": "JSON with Structured AST",
-    "test-ll": "Test LL",
-    "test-ll1": "Test LL1",
+    "sanbus": "Sanbus",
+    "ll1": "LL(1)",
 }
 
 

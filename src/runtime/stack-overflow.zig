@@ -98,6 +98,6 @@ pub fn protectedRun(
             padding[0..(pos % 10)],
             root.string_utilities.fmtString(context.token.items()),
         });
-        return error.StackOverflow;
+        return root.ParseError.StackOverflow;
     }
 }
