@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) !void {
     });
     const generate_parser_file_exe = galley_cli.generate_parser_file_exe.?;
 
-    // Usage: zig build test -Dtest-filter="ll-test-ll"
+    // Usage: zig build test -Dtest-filter="ll-sanbus"
     // Usage: zig build test -Dtest-filter="generated_parser_api"
     // Long-running samples: zig build test --test-timeout 30m
     const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &.{};

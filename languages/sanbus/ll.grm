@@ -30,10 +30,10 @@ EnumItemRow
 
 ActionBody
 | block_start Fields block_end ActionBodyTail@dropIfEmpty
-| "\n-" WrappedLogicBody
+| "\n---" WrappedLogicBody
 
 ActionBodyTail
-| "-" WrappedLogicBody
+| "---" WrappedLogicBody
 |
 
 Fields

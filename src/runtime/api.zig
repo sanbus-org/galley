@@ -10,6 +10,35 @@ pub const data_structures = @import("data-structures/data-structures.zig");
 pub const standard_procedures = @import("standard-procedures.zig");
 pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
 
+pub const ParseError = error{
+    SyntaxError,
+    IndentationError,
+    StackOverflow,
+};
+
+pub const SyntaxDiagnosticContext = union(enum) {
+    none,
+    while_parsing: []const u8,
+    state: usize,
+};
+
+pub const SyntaxDiagnostic = struct {
+    line: u32,
+    column: u32,
+    unexpected_token: []const u8,
+    expected_tokens: []const []const u8,
+    context: SyntaxDiagnosticContext = .none,
+};
+
+pub const ParseDiagnostic = union(enum) {
+    syntax: SyntaxDiagnostic,
+};
+
+pub const DiagnosticStyle = enum {
+    plain,
+    ansi,
+};
+
 pub const ParseOptions = struct {
     language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
@@ -50,6 +79,65 @@ pub fn parseSentinelBytes(io: std.Io, allocator: std.mem.Allocator, input: [:0]c
         .session = session,
         .result = result,
     };
+}
+
+fn writeExpectedTokens(writer: *std.Io.Writer, expected_tokens: []const []const u8) !void {
+    for (expected_tokens, 0..) |expected_token, index| {
+        if (index != 0) try writer.writeAll("', '");
+        try writer.print("{f}", .{string_utilities.fmtString(expected_token)});
+    }
+}
+
+pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic, style: DiagnosticStyle) !void {
+    switch (diagnostic) {
+        .syntax => |syntax| {
+            switch (style) {
+                .plain => {
+                    try writer.print(
+                        \\SyntaxError at {d}:{d}:
+                        \\Unexpected token "{f}"
+                    , .{
+                        syntax.line,
+                        syntax.column,
+                        string_utilities.fmtString(syntax.unexpected_token),
+                    });
+                    switch (syntax.context) {
+                        .none, .state => {},
+                        .while_parsing => |name| try writer.print(" while parsing {f}", .{string_utilities.fmtString(name)}),
+                    }
+                    try writer.writeAll(".\nExpected tokens: '");
+                    try writeExpectedTokens(writer, syntax.expected_tokens);
+                    try writer.writeAll("'\n");
+                },
+                .ansi => {
+                    try writer.print(
+                        "\x1b[35mSyntaxError at {d}:{d}:\n" ++
+                            "\x1b[37mUnexpected token \x1b[31m\"{f}\"\x1b[37m",
+                        .{
+                            syntax.line,
+                            syntax.column,
+                            string_utilities.fmtString(syntax.unexpected_token),
+                        },
+                    );
+                    switch (syntax.context) {
+                        .none => try writer.writeAll("."),
+                        .while_parsing => |name| try writer.print(" while parsing \x1b[34m{f}\x1b[0m.", .{string_utilities.fmtString(name)}),
+                        .state => |state| try writer.print(" in state {d}.", .{state}),
+                    }
+                    try writer.writeAll("\nExpected tokens: \x1b[32m'");
+                    try writeExpectedTokens(writer, syntax.expected_tokens);
+                    try writer.writeAll("'\x1b[0m\n");
+                },
+            }
+        },
+    }
+}
+
+pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiagnostic, style: DiagnosticStyle) ![]u8 {
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    errdefer output.deinit();
+    try formatParseDiagnostic(&output.writer, diagnostic, style);
+    return output.toOwnedSlice();
 }
 
 pub const Session = struct {
@@ -145,6 +233,10 @@ pub const Session = struct {
         return {};
     }
 
+    pub fn lastDiagnostic(self: *const Session) ?ParseDiagnostic {
+        return self.runtime_context.last_diagnostic;
+    }
+
     pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
         self.runtime_context.input_path = input_path;
         self.runtime_context.arena_allocator = self.arena.allocator();
@@ -162,6 +254,7 @@ pub const Session = struct {
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
         _ = self.arena.reset(.retain_capacity);
+        self.runtime_context.last_diagnostic = null;
         data_structures.context.activateRuntimeContext(&self.runtime_context);
         defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
