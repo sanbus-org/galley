@@ -353,7 +353,7 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
   LR  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      60.0 MB/s
 ```
 
-### `languages/test-ll/ll.grm`
+### `languages/sanbus/ll.grm`
 
 | AST | Term. | Limit | LL         | LR         | LL/LR |
 | --- | ----- | ----- | ---------- | ---------- | ----- |
@@ -379,7 +379,7 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
   LR  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      54.6 MB/s
 ```
 
-### `languages/test-ll1/ll.grm`
+### `languages/ll1/ll.grm`
 
 | AST | Term. | Limit | LL         | LR         | LL/LR |
 | --- | ----- | ----- | ---------- | ---------- | ----- |
@@ -583,13 +583,13 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 ---
 
-## Test LL
+## Sanbus
 
-_A structured data/schema language with `Name: { fields }` declarations and embedded logic blocks. Uses the `@back` backtracking annotation, making it an LL (with limited backtracking) grammar. Included as a regression and capability test for the LL parser._
+_An indentation-sensitive structured data/schema language with declarations and embedded state, action, and effect logic. It exercises both LL and LR parsing together with semantic reduction procedures._
 
 _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
 
-### `languages/test-ll/samples/code-01`
+### `languages/sanbus/samples/code-01`
 
 | AST | Term. | Limit | LL         | LR | LL/LR |
 | --- | ----- | ----- | ---------- | -- | ----- |
@@ -615,7 +615,7 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
   LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
-### `languages/test-ll/samples/code-02`
+### `languages/sanbus/samples/code-02`
 
 | AST | Term. | Limit | LL         | LR | LL/LR |
 | --- | ----- | ----- | ---------- | -- | ----- |
@@ -634,13 +634,13 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 ---
 
-## Test LL1
+## LL(1)
 
-_The same schema language as test-ll, rewritten to be strictly LL(1) — no backtracking. Delimiter tokens are chosen to make every decision point unambiguous with one token of lookahead. Used to benchmark the LL(1) fast-path against the backtracking variant._
+_A procedure-free indentation-sensitive grammar whose delimiter tokens make every decision point unambiguous with one token of lookahead. Used to exercise and benchmark the LL(1) fast path._
 
 _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
 
-### `languages/test-ll1/samples/code-01`
+### `languages/ll1/samples/code-01`
 
 | AST | Term. | Limit | LL         | LR | LL/LR |
 | --- | ----- | ----- | ---------- | -- | ----- |

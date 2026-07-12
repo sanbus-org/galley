@@ -1,0 +1,265 @@
+Start
+| Rules
+
+Rules
+| Rule RulesTail
+
+RulesTail
+| OptionalNewLineMany Rule RulesTail
+|
+
+Rule
+| UppercaseId RuleTail
+
+RuleTail
+| ".:" EnumBody
+| ":" ActionBody
+
+EnumBody
+| block_start EnumItems block_end
+
+EnumItems
+| EnumItemRow EnumItemsTail@dropIfEmpty
+
+EnumItemsTail
+| new_line EnumItemRow EnumItemsTail
+|
+
+EnumItemRow
+| "-" space UppercaseId
+
+ActionBody
+| block_start Fields block_end ActionBodyTail@dropIfEmpty
+| "\n---" WrappedLogicBody
+
+ActionBodyTail
+| "---" WrappedLogicBody
+|
+
+Fields
+| FieldRow FieldsTail@dropIfEmpty
+
+FieldsTail
+| new_line FieldRow FieldsTail
+|
+
+FieldRow
+| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue@dropIfEmpty@replaceWithChildren
+
+OptionalFieldDefaultValue
+| OptionalBlank "=" OptionalBlank Expression
+|
+
+Type
+| Id OptionalTypeArray
+
+OptionalTypeArray
+| "[]"
+|
+
+ActionOutcomeEntry
+| StateOutcome
+| ActionDispatchOutcome
+| SideEffects
+
+StateOutcome
+| ">state:" space State
+
+State
+| LowercaseId ":" UppercaseId InstantiationTail
+| UppercaseId InstantiationTail
+| "*" InstantiationTail
+
+ActionDispatchOutcome
+| ">actions:" block_start ActionsToDispatch block_end
+
+ActionsToDispatch
+| new_line "-" space Expression ActionsToDispatch
+| "-" space Expression
+
+SideEffects
+| ">effects:" block_start SideEffectsToDispatch block_end
+
+SideEffectsToDispatch
+| new_line "-" space Expression SideEffectsToDispatch
+| "-" space Expression
+
+WrappedLogicBody
+| block_start LogicBody block_end
+
+LogicBody
+| Expression LogicBodyTail@dropIfEmpty
+
+LogicBodyTail
+| new_line LogicBody
+|
+
+Expression
+| OperandAndNumber OptionalBlank ExpressionTail@dropIfEmpty
+| ActionOutcomeEntry
+
+ExpressionTail
+| Operator OptionalBlank Expression
+|
+
+OperandAndNumber
+| WrappedLogicBody
+| Number
+| Operand OperandTail@dropIfEmpty
+
+Operand
+| LowercaseId OperandLowercaseIdTail@replaceWithChildren
+| UppercaseId OperandUppercaseIdTail
+| UnderscoreId
+| String
+| List
+
+OperandTail
+| "[" ListGetTail
+|
+
+ListGetTail
+| Expression ListGetExpressionTail
+| "..]"
+| ".." Expression "]"
+
+ListGetExpressionTail
+| "]"
+| "..]"
+| ".." Expression "]"
+
+OperandLowercaseIdTail
+| "." Id
+| "(" Parameters ")"
+| "()"
+| ":" UppercaseId CompoundIdTail
+|
+
+CompoundIdTail
+| "." Id
+| InstantiationTail
+|
+
+OperandUppercaseIdTail
+| InstantiationTail
+|
+
+InstantiationParameters
+| InstantiationParameter InstantiationParametersTail
+
+InstantiationParametersTail
+| new_line InstantiationParameter InstantiationParametersTail
+|
+
+InstantiationParameter
+| Id OptionalBlank "=" OptionalBlank Expression
+
+InstantiationTail
+| "(" block_start InstantiationParameters block_end ")"
+| "()"
+
+Parameters
+| OptionalBlank Expression ParametersTail
+|
+
+ParametersTail
+| "," OptionalBlank Expression ParametersTail
+|
+
+List
+| "[" ListItems "]"
+
+ListItems
+| Expression ListItemsTail
+| "*" Expression
+|
+
+ListItemsTail
+| "," space NonEmptyListItems
+| "<|" Id "|" space Expression
+|
+
+NonEmptyListItems
+| Expression NonEmptyListItemsTail
+| "*" Expression
+
+NonEmptyListItemsTail
+| "," space NonEmptyListItems
+|
+
+String
+| '" StringContent '"
+
+StringContent
+| character^'" StringContent
+|
+
+LogicCondition
+| Condition WrappedLogicBody ElsePart
+
+ElsePart
+| "else" WrappedLogicBody
+|
+
+Condition
+| Id Operator Id
+
+Operator
+| operator
+| "{" Expression "}"
+
+Blank
+| space
+| "	"
+
+OptionalBlank
+| Blank OptionalBlank
+|
+
+ForceBlank
+| Blank OptionalBlank
+
+OptionalNewLineMany
+| new_line OptionalNewLineMany
+|
+
+Id
+| LowercaseId
+| UppercaseId
+| UnderscoreId
+
+IdTail
+| letter IdTail
+| digit IdTail
+| "_" IdTail
+|
+
+UnderscoreId
+| "_" IdTail
+
+LowercaseId
+| lowercase_letter IdTail
+
+UppercaseId
+| uppercase_letter IdTail
+
+Number
+| IntegerNumber FloatTail
+
+IntegerNumber
+| PositiveIntegerNumber
+| NegativeIntegerNumber
+
+PositiveIntegerNumber
+| digit PositiveIntegerNumberTail
+
+PositiveIntegerNumberTail
+| digit PositiveIntegerNumberTail
+|
+
+NegativeIntegerNumber
+| "-" PositiveIntegerNumber
+
+FloatTail
+| "." PositiveIntegerNumber
+|

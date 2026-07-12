@@ -87,8 +87,8 @@ const languages = [_][]const u8{
     "json-structured-ast",
     "lisp",
     "lua",
-    "test-ll",
-    "test-ll1",
+    "sanbus",
+    "ll1",
 };
 
 pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void {
@@ -182,6 +182,26 @@ fn addCase(
         options.generator_modules.lr_generator_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
+
+    if (errorInputs(language)) |inputs| {
+        const run_parser_error_tests = addGeneratedParserErrorTest(
+            b,
+            options.target,
+            options.optimize,
+            galley_parser_mod,
+            inputs.valid,
+            inputs.malformed,
+            inputs.diagnostic_line,
+            inputs.diagnostic_column,
+            inputs.unexpected_token_prefix,
+            inputs.expected_token,
+        );
+        matrix_step.dependOn(&run_parser_error_tests.step);
+        trackFilteredTestRun(b, options, &run_parser_error_tests.step);
+    }
+
+    if (onlyGeneratedParserError(options.filters)) return;
+
     const parser_cli_options = b.addOptions();
     parser_cli_options.addOption(
         []const u8,
@@ -399,6 +419,74 @@ fn addGeneratedParserApiTest(
     return run_parser_api_tests;
 }
 
+const ErrorInputs = struct {
+    valid: []const u8,
+    malformed: []const u8,
+    diagnostic_line: u32,
+    diagnostic_column: u32,
+    unexpected_token_prefix: []const u8,
+    expected_token: []const u8,
+};
+
+fn errorInputs(language: []const u8) ?ErrorInputs {
+    if (std.mem.eql(u8, language, "json")) {
+        return .{
+            .valid = "{}",
+            .malformed = "{",
+            .diagnostic_line = 1,
+            .diagnostic_column = 2,
+            .unexpected_token_prefix = "\x00",
+            .expected_token = "}",
+        };
+    }
+    if (std.mem.eql(u8, language, "sanbus")) {
+        return .{
+            .valid = "Item:\n  - value: str\n",
+            .malformed = "Item:\n  - value! str\n",
+            .diagnostic_line = 2,
+            .diagnostic_column = 10,
+            .unexpected_token_prefix = "!",
+            .expected_token = ":",
+        };
+    }
+    return null;
+}
+
+fn onlyGeneratedParserError(test_filters: []const []const u8) bool {
+    return test_filters.len == 1 and std.mem.eql(u8, test_filters[0], "generated_parser_error");
+}
+
+fn addGeneratedParserErrorTest(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    galley_parser_mod: *std.Build.Module,
+    valid_input: []const u8,
+    malformed_input: []const u8,
+    diagnostic_line: u32,
+    diagnostic_column: u32,
+    unexpected_token_prefix: []const u8,
+    expected_token: []const u8,
+) *std.Build.Step.Run {
+    const test_options = b.addOptions();
+    test_options.addOption([]const u8, "valid_input", valid_input);
+    test_options.addOption([]const u8, "malformed_input", malformed_input);
+    test_options.addOption(u32, "diagnostic_line", diagnostic_line);
+    test_options.addOption(u32, "diagnostic_column", diagnostic_column);
+    test_options.addOption([]const u8, "unexpected_token_prefix", unexpected_token_prefix);
+    test_options.addOption([]const u8, "expected_token", expected_token);
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/generated_parser_error_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "parser-under-test", .module = galley_parser_mod },
+            .{ .name = "test_options", .module = test_options.createModule() },
+        },
+    });
+    return b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
+}
+
 const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
 
 fn shouldSkipGeneratedParserApiTests(variant_args: []const []const u8, sample_size: u64) bool {
@@ -426,6 +514,9 @@ pub fn filterMatchesMatrixCase(
 
     for (test_filters) |filter| {
         if (std.mem.eql(u8, filter, "generated_parser_api")) return true;
+        if (std.mem.eql(u8, filter, "generated_parser_error")) {
+            return std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "sanbus");
+        }
         if (std.mem.eql(u8, filter, parser_name)) return true;
         if (std.mem.indexOf(u8, filter, parser_name) != null) return true;
         if (std.mem.indexOf(u8, parser_name, filter) != null) return true;

@@ -342,7 +342,7 @@ const Generator = struct {
             \\
             \\    const result = try state_0(context, &stack);
             \\    if (!result.is_accept) {
-            \\        return error.ParseError;
+            \\        return root.ParseError.SyntaxError;
             \\    }
             \\
             \\    if (context.verbosityLevel() > 0) {
@@ -351,7 +351,7 @@ const Generator = struct {
             \\
             \\    const ast_root = if (comptime is_ast_enabled) stack.items[stack.items.len - 1] else null;
             \\    return .{
-            \\        .parsed_bytes = context.pos(),
+            \\        .parsed_bytes = context.pos() - if (comptime procedures.indentation_syntax) 1 else 0,
             \\        .line = context.line,
             \\        .column = context.column,
             \\        .ast_root = ast_root,
@@ -506,7 +506,7 @@ const Generator = struct {
             \\
         );
         if (state.gotos.items.len == 0) {
-            try writer.writeAll("        return error.SyntaxError;\n");
+            try self.emitStateSyntaxError(writer, state_index, &.{}, "        ");
         } else {
             try writer.writeAll("        result = switch (result.variable) {\n");
             for (state.gotos.items) |goto| {
@@ -528,6 +528,13 @@ const Generator = struct {
     };
 
     fn emitActionSwitch(self: *Generator, writer: *std.Io.Writer, state: State, entries: []const SwitchEntry, state_index: usize, prefix_length: usize, indent: []const u8) !void {
+        var fallback_action: ?usize = null;
+        for (entries) |entry| {
+            if (entry.terminal.len != 0) continue;
+            if (fallback_action) |existing| std.debug.assert(existing == entry.action);
+            fallback_action = entry.action;
+        }
+
         const step_length = switchStepLength(entries);
         try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
         const groups = try self.buildSwitchGroups(entries, step_length);
@@ -554,7 +561,13 @@ const Generator = struct {
             }
             try writer.print("{s}    }},\n", .{indent});
         }
-        try self.emitSyntaxError(writer, state_index, groups.items, try indented(self.allocator, indent, 4));
+        if (fallback_action) |action| {
+            try writer.print("{s}    else => {{\n", .{indent});
+            try self.emitAction(writer, state.actions.items[action], prefix_length, try indented(self.allocator, indent, 8));
+            try writer.print("{s}    }},\n", .{indent});
+        } else {
+            try self.emitSyntaxError(writer, state_index, groups.items, try indented(self.allocator, indent, 4));
+        }
         try writer.print("{s}}}", .{indent});
     }
 
@@ -719,50 +732,50 @@ const Generator = struct {
     }
 
     fn emitSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8) !void {
-        try writer.print(
-            \\{s}else => {{
-            \\{s}    std.debug.print("\x1b[35mSyntaxError at {{d}}:{{d}}:\n\x1b[37mUnexpected token \x1b[31m\"{{f}}\"\x1b[37m in state {d}.\nExpected tokens: \x1b[32m\'
-        , .{ indent, indent, state_index });
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected.items, {}, headLessThan);
-        for (expected.items, 0..) |head, i| {
-            if (i != 0) try writer.writeAll("', '");
-            try emitFormatToken(writer, head);
+        try writer.print(
+            \\{s}else => {{
+            \\{s}    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{
+        , .{ indent, indent, state_index });
+        for (expected.items, 0..) |head, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, head);
         }
         try writer.print(
-            \\\'\x1b[0m\n", .{{
-            \\{s}        if (comptime builtin.mode != .ReleaseFast) context.line else 0,
-            \\{s}        if (comptime builtin.mode != .ReleaseFast) context.column else 0,
-            \\{s}        string_utilities.fmtString(context.token.items()),
-            \\{s}    }});
-            \\{s}    return error.SyntaxError;
+            \\ }});
+            \\{s}    if (!builtin.is_test) {{
+            \\{s}        const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
+            \\{s}        std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}    }}
+            \\{s}    return root.ParseError.SyntaxError;
             \\{s}}},
         , .{ indent, indent, indent, indent, indent, indent });
     }
 
     fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8) !void {
-        try writer.print(
-            \\{s}std.debug.print("\x1b[35mSyntaxError at {{d}}:{{d}}:\n\x1b[37mUnexpected token \x1b[31m\"{{f}}\"\x1b[37m in state {d}.\nExpected tokens: \x1b[32m\'
-        , .{ indent, state_index });
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected.items, {}, headLessThan);
-        for (expected.items, 0..) |head, i| {
-            if (i != 0) try writer.writeAll("', '");
-            try emitFormatToken(writer, head);
+        try writer.print(
+            \\{s}try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{
+        , .{ indent, state_index });
+        for (expected.items, 0..) |head, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, head);
         }
         try writer.print(
-            \\\'\x1b[0m\n", .{{
-            \\{s}    if (comptime builtin.mode != .ReleaseFast) context.line else 0,
-            \\{s}    if (comptime builtin.mode != .ReleaseFast) context.column else 0,
-            \\{s}    string_utilities.fmtString(context.token.items()),
-            \\{s}}});
-            \\{s}return error.SyntaxError;
+            \\ }});
+            \\{s}if (!builtin.is_test) {{
+            \\{s}    const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
+            \\{s}    std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}}}
+            \\{s}return root.ParseError.SyntaxError;
             \\
         , .{ indent, indent, indent, indent, indent });
     }
@@ -825,6 +838,7 @@ const Generator = struct {
     fn buildSwitchGroups(self: *Generator, entries: []const SwitchEntry, step_length: usize) !std.ArrayList(SwitchGroup) {
         var heads = std.ArrayList([]const u8).empty;
         for (entries) |entry| {
+            if (entry.terminal.len == 0) continue;
             const head = entry.terminal[0..step_length];
             for (heads.items) |existing| {
                 if (std.mem.eql(u8, existing, head)) break;
@@ -838,6 +852,7 @@ const Generator = struct {
         for (heads.items) |head| {
             var payload = std.ArrayList(SwitchEntry).empty;
             for (entries) |entry| {
+                if (entry.terminal.len == 0) continue;
                 if (!std.mem.eql(u8, entry.terminal[0..step_length], head)) continue;
                 try appendSwitchEntry(&payload, self.allocator, entry.terminal[step_length..], entry.action);
             }

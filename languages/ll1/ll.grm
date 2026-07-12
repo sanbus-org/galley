@@ -12,7 +12,7 @@ Rule
 | UppercaseId ":" ActionBody
 
 ActionBody
-| block_start Fields block_end ActionBodyTail@dropIfEmpty
+| block_start Fields block_end ActionBodyTail
 | "[" WrappedLogicBody
 
 ActionBodyTail
@@ -20,14 +20,14 @@ ActionBodyTail
 |
 
 Fields
-| FieldRow FieldsTail@dropIfEmpty
+| FieldRow FieldsTail
 
 FieldsTail
 | new_line FieldRow FieldsTail
 |
 
 FieldRow
-| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue@dropIfEmpty@replaceWithChildren
+| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue
 
 OptionalFieldDefaultValue
 | OptionalBlank "=" OptionalBlank Expression
@@ -71,14 +71,14 @@ WrappedLogicBody
 | block_start LogicBody block_end
 
 LogicBody
-| Expression LogicBodyTail@dropIfEmpty
+| Expression LogicBodyTail
 
 LogicBodyTail
 | new_line LogicBody
 |
 
 Expression
-| OperandAndNumber OptionalBlank ExpressionTail@dropIfEmpty
+| OperandAndNumber OptionalBlank ExpressionTail
 | ActionOutcomeEntry
 
 ExpressionTail
@@ -88,10 +88,10 @@ ExpressionTail
 OperandAndNumber
 | WrappedLogicBody
 | Number
-| Operand OperandTail@dropIfEmpty
+| Operand OperandTail
 
 Operand
-| LowercaseId OperandLowercaseIdTail@replaceWithChildren
+| LowercaseId OperandLowercaseIdTail
 | UppercaseId OperandUppercaseIdTail
 | UnderscoreId
 | String
