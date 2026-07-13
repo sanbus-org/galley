@@ -144,12 +144,24 @@ Many language implementations leverage standard tree-cleanup procedures:
   }
   ```
 
+- **`rightRecursiveReduction`** and **`leftRecursiveReduction`**: Flatten one level of a recursive node when its edge child has the same grammar variable:
+
+  ```zig
+  pub const reduction_ItemsTail_0 = standard_procedures.rightRecursiveReduction;
+  ```
+
 - **`dropSelf`**: Discards the current node itself by setting it to `null`:
 
   ```zig
   pub fn dropSelf(args: *ProcedureArguments) !void {
       args.node = null;
   }
+  ```
+
+- **`dropIfEmpty`**: Discards the current node when it has no children. This is useful for optional recursive tails:
+
+  ```zig
+  pub const dropIfEmpty = standard_procedures.dropIfEmpty;
   ```
 
 - **`replaceWithChildren`**: Discards the current parent node's structure and replaces it with its first child in the AST hierarchy:

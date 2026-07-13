@@ -87,34 +87,15 @@ pub const dropSelf = standard_procedures.dropSelf;
 pub const reduction_OptionalTypeArray_1 = dropSelf;
 pub const reduction_OptionalBlank = dropSelf;
 
-fn toCharacter(character: u8, ignore_empty: bool) type {
-    _ = character;
-    return struct {
-        fn function(args: *ProcedureArguments) !void {
-            if (args.node) |node_address| {
-                _ = try ASTNode.cleanChildren(node_address, args.context.node_allocator);
-                const node = args.context.node_allocator.at(node_address);
-                if (ignore_empty) {
-                    if (node.first_child == 0) {
-                        args.node = null;
-                        return;
-                    }
-                }
-                // const spaces = try args.allocator.alloc(u8, if (character == '\n') indent * 2 + 1 else 1);
-                // @memset(spaces, ' ');
-                // spaces[0] = character;
-                // node.text = spaces;
-            }
-        }
-    };
-}
-
-pub const reduction_OptionalBlankAndNewLine = toCharacter(' ', false).function;
-pub const reduction_OptionalNewLineMany = toCharacter('\n', false).function;
-pub const reduction_ForceNewLineMany = toCharacter('\n', false).function;
-pub const reduction_new_line = toCharacter('\n', false).function;
-
 pub const dropChildren = standard_procedures.dropChildren;
+pub const dropIfEmpty = standard_procedures.dropIfEmpty;
+pub const rightRecursiveReduction = standard_procedures.rightRecursiveReduction;
+pub const leftRecursiveReduction = standard_procedures.leftRecursiveReduction;
+
+pub const reduction_OptionalBlankAndNewLine = dropChildren;
+pub const reduction_OptionalNewLineMany = dropChildren;
+pub const reduction_ForceNewLineMany = dropChildren;
+pub const reduction_new_line = dropChildren;
 
 pub const reduction_PositiveIntegerNumber = dropChildren;
 pub const reduction_NegativeIntegerNumber = dropChildren;
@@ -166,28 +147,6 @@ pub fn reduction_FieldRow(args: *ProcedureArguments) void {
     }
 }
 
-pub fn rightRecursiveReduction(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        if (node.first_child != ASTNode.invalid_pointer) {
-            try reduction(args);
-            const removing_address = try ASTNode.remove(node.last_child, args.context.node_allocator, 1);
-            // const removing_node = try ASTNode.removeChild(
-            //     node_address,
-            //     args.context,
-            //     data_structures.ASTNode.augmented_length(node_address, args.context.node_allocator) - 1,
-            // );
-            if (args.context.node_allocator.at(removing_address).first_child != ASTNode.invalid_pointer) {
-                try ASTNode.appendChildren(
-                    node_address,
-                    args.context.node_allocator,
-                    try ASTNode.cleanChildren(removing_address, args.context.node_allocator),
-                );
-            }
-        }
-    }
-}
-
 pub const reduction_RulesTail_0 = rightRecursiveReduction;
 pub const reduction_Fields_0 = rightRecursiveReduction;
 pub const reduction_ActionOutcome_0 = rightRecursiveReduction;
@@ -195,15 +154,6 @@ pub const reduction_ActionsToDispatch_0 = rightRecursiveReduction;
 pub const reduction_SideEffectsToDispatch_0 = rightRecursiveReduction;
 pub const reduction_InstantiationParameters_0 = rightRecursiveReduction;
 pub const reduction_Parameters_0 = rightRecursiveReduction;
-
-pub fn dropFirstChild(args: *ProcedureArguments) !void {
-    // Let's keep "- "
-    _ = args;
-    // _ = try args.node.?.removeChildren(args.allocator, 0, 2);
-}
-
-pub const reduction_ActionsToDispatch_1 = dropFirstChild;
-pub const reduction_SideEffectsToDispatch_1 = dropFirstChild;
 
 pub fn reduction_Rule(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
@@ -265,14 +215,4 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
     }
 
     try writer.flush();
-}
-
-pub fn dropIfEmpty(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        if (node.first_child == ASTNode.invalid_pointer) {
-            // std.debug.print("drop from '{s}'\n", .{args.node.?.label});
-            args.node = null;
-        }
-    }
 }
