@@ -152,6 +152,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
             const last_node = getLastNode(node_allocator, first_node);
             const last = node_allocator.at(last_node);
+            const added = Self.chainLength(node_allocator, first_node);
 
             // 1. Wire siblings
             first.prior = self.prior;
@@ -174,7 +175,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 }
 
                 // Update children count
-                parent_node.children_count += Self.chainLength(node_allocator, first_node);
+                parent_node.children_count += added;
 
                 // If self_address was the first_child of the parent, update first_child to first_node
                 if (parent_node.first_child == self_address) {
@@ -196,6 +197,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
 
             const last_node = getLastNode(node_allocator, first_node);
             const last = node_allocator.at(last_node);
+            const added = Self.chainLength(node_allocator, first_node);
 
             // 1. Wire siblings
             first.prior = self_address;
@@ -218,7 +220,7 @@ pub fn ASTNode(comptime PayloadType: type) type {
                 }
 
                 // Update children count
-                parent_node.children_count += Self.chainLength(node_allocator, first_node);
+                parent_node.children_count += added;
 
                 // If self_address was the last_child of the parent, update last_child to last_node
                 if (parent_node.last_child == self_address) {
@@ -915,6 +917,7 @@ fn testInsertBefore(fixture: *TestFixture) !void {
     }
 
     try std.testing.expectEqual(@as(usize, 6), count);
+    try std.testing.expectEqual(@as(u32, 6), fixture.nodes[root_node].children_count);
     try std.testing.expectEqual(asSize(1), children_list[0]);
     try std.testing.expectEqual(asSize(2), children_list[1]);
     try std.testing.expectEqual(new_a, children_list[2]);
@@ -961,6 +964,7 @@ fn testInsertAfter(fixture: *TestFixture) !void {
     }
 
     try std.testing.expectEqual(@as(usize, 6), count);
+    try std.testing.expectEqual(@as(u32, 6), fixture.nodes[root_node].children_count);
     try std.testing.expectEqual(asSize(2), children_list[1]);
     try std.testing.expectEqual(new_a, children_list[2]);
     try std.testing.expectEqual(new_b, children_list[3]);

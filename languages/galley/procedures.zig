@@ -5,6 +5,7 @@ const lr_generator = @import("lr_generator");
 const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const ASTNode = data_structures.ASTNode;
+const standard_procedures = root.standard_procedures;
 
 pub const SymbolKind = enum {
     variable,
@@ -82,19 +83,7 @@ fn updateTextLength(context: *data_structures.Context, node_address: ASTNode.Poi
 fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         updateTextLength(args.context, node_address);
-        const node = args.context.node_allocator.at(node_address);
-        if (node.last_child == ASTNode.invalid_pointer) return;
-
-        const nested_tail_address = node.last_child;
-        if (args.context.node_allocator.at(nested_tail_address).variable != node.variable) return;
-
-        _ = try ASTNode.removeSelf(nested_tail_address, args.context.node_allocator);
-        if (args.context.node_allocator.at(nested_tail_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.cleanChildren(nested_tail_address, args.context.node_allocator);
-            if (nested_children != ASTNode.invalid_pointer) {
-                try ASTNode.appendChildren(node_address, args.context.node_allocator, nested_children);
-            }
-        }
+        try standard_procedures.rightRecursiveReduction(args);
     }
 }
 
@@ -124,19 +113,7 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
 fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
     if (args.node) |node_address| {
         updateTextLength(args.context, node_address);
-        const node = args.context.node_allocator.at(node_address);
-        if (node.first_child == ASTNode.invalid_pointer) return;
-
-        const nested_list_address = node.first_child;
-        if (args.context.node_allocator.at(nested_list_address).variable != node.variable) return;
-
-        _ = try ASTNode.removeSelf(nested_list_address, args.context.node_allocator);
-        if (args.context.node_allocator.at(nested_list_address).first_child != ASTNode.invalid_pointer) {
-            const nested_children = try ASTNode.cleanChildren(nested_list_address, args.context.node_allocator);
-            if (nested_children != ASTNode.invalid_pointer) {
-                try ASTNode.insertChildren(node_address, args.context.node_allocator, 0, nested_children);
-            }
-        }
+        try standard_procedures.leftRecursiveReduction(args);
     }
 }
 
