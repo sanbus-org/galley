@@ -27,6 +27,8 @@ pub fn addGeneratedParserModule(
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
 ) GeneratedParserModule {
+    const runtime_test_options = b.addOptions();
+    runtime_test_options.addOption(bool, "include", false);
     const parser_mod = b.addModule(parser_module_name, .{
         .root_source_file = parser_source,
         .target = target,
@@ -40,6 +42,7 @@ pub fn addGeneratedParserModule(
             .{ .name = "procedures", .module = procedures_mod },
             .{ .name = "config", .module = config_mod },
             .{ .name = "parser", .module = parser_mod },
+            .{ .name = "runtime_test_options", .module = runtime_test_options.createModule() },
         },
     });
     runtime_mod.addImport("galley", runtime_mod);
@@ -411,32 +414,6 @@ pub fn addApiBenchmark(
     if (b.args) |args| {
         api_benchmark_run_cmd.addArgs(args);
     }
-}
-
-pub fn addDelegatedTestStep(
-    b: *std.Build,
-    name: []const u8,
-    description: []const u8,
-    delegated_step_name: []const u8,
-    test_filter_opt: []const []const u8,
-) void {
-    const step = b.step(name, description);
-    const run_tests = b.addSystemCommand(&.{
-        b.graph.zig_exe,
-        "build",
-        "--build-file",
-        b.pathFromRoot("build-tests.zig"),
-        delegated_step_name,
-    });
-    for (test_filter_opt) |f| {
-        const d = std.fmt.allocPrint(b.allocator, "-Dtest-filter={s}", .{f}) catch unreachable;
-        run_tests.addArg(d);
-    }
-    if (b.args) |args| {
-        run_tests.addArg("--");
-        run_tests.addArgs(args);
-    }
-    step.dependOn(&run_tests.step);
 }
 
 fn parserFileName(allocator: std.mem.Allocator, parser_type: []const u8) ![]const u8 {

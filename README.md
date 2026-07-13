@@ -23,6 +23,7 @@ Full user guides and architectural documentation are available online at:
 * **[Writing a Language](https://sanbus-org.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
 * **[Using Galley from Another Project](docs/using-galley.md)** — Consuming the generator API and generated parser modules from Zig projects.
 * **[Reduction Procedures](https://sanbus-org.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
+* **[Testing](docs/testing.md)** — Running standalone suites, focused generated-parser cases, and typed test filters.
 * **[Architecture](https://sanbus-org.github.io/galley/architecture)** — Under the hood of Galley's stack-overflow recovery, lexer-less design, and self-hosting roadmap.
 * **[AST Allocations](https://sanbus-org.github.io/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
 * **[Benchmarks](https://sanbus-org.github.io/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.

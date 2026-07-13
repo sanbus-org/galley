@@ -1,5 +1,6 @@
 const std = @import("std");
 const common = @import("common.zig");
+const test_selection = @import("test_selection.zig");
 
 pub const Options = struct {
     target: std.Build.ResolvedTarget,
@@ -7,8 +8,19 @@ pub const Options = struct {
     clap_mod: *std.Build.Module,
     generator_modules: common.GeneratorModules,
     generate_parser_file_exe: *std.Build.Step.Compile,
-    filters: []const []const u8 = &.{},
+    selection: test_selection.Selection,
     filtered_test_run_steps: ?*std.ArrayList(*std.Build.Step) = null,
+};
+
+pub const Work = struct {
+    compile: usize = 0,
+    api: usize = 0,
+    errors: usize = 0,
+    cli: usize = 0,
+
+    pub fn total(self: Work) usize {
+        return self.compile + self.api + self.errors + self.cli;
+    }
 };
 
 const MatrixVariant = struct {
@@ -91,15 +103,15 @@ const languages = [_][]const u8{
     "ll1",
 };
 
-pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void {
+pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !Work {
     const parser_types: []const ParserTypeSpec = parser_type_specs[0..];
 
     var prev_generate_step: ?*std.Build.Step = null;
+    var matched_cases: std.ArrayList([]const u8) = .empty;
+    var work: Work = .{};
 
     for (languages) |language| {
         for (parser_types) |parser_type| {
-            if (!filterMatchesMatrixCase(b.allocator, options.filters, parser_type.name, language)) continue;
-
             const grammar_path = try std.fs.path.join(b.allocator, &.{ "languages", language, parser_type.grammar_name });
             defer b.allocator.free(grammar_path);
 
@@ -108,7 +120,11 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void 
                 else => return err,
             };
 
-            for (matrix_variants, 0..) |variant, variant_index| {
+            const selected_case = try std.mem.concat(b.allocator, u8, &.{ parser_type.name, "-", language });
+            if (!options.selection.matchesCase(selected_case)) continue;
+            matched_cases.append(b.allocator, selected_case) catch @panic("OOM");
+
+            for (matrix_variants) |variant| {
                 try addCase(
                     b,
                     matrix_step,
@@ -117,12 +133,27 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !void 
                     parser_type.name,
                     grammar_path,
                     variant,
-                    variant_index == 0,
                     &prev_generate_step,
+                    &work,
                 );
             }
         }
     }
+
+    for (options.selection.cases) |selected_case| {
+        for (matched_cases.items) |matched_case| {
+            if (std.mem.eql(u8, selected_case, matched_case)) break;
+        } else {
+            std.log.err("unknown or unavailable matrix case '{s}'", .{selected_case});
+            return error.InvalidTestFilter;
+        }
+    }
+
+    if (work.total() == 0) {
+        std.log.err("the selected matrix suites and cases contain no runnable work", .{});
+        return error.NoTestsSelected;
+    }
+    return work;
 }
 
 fn addCase(
@@ -133,9 +164,10 @@ fn addCase(
     parser_type: []const u8,
     grammar_path: []const u8,
     variant: MatrixVariant,
-    is_first_variant: bool,
     prev_generate_step: *?*std.Build.Step,
+    work: *Work,
 ) !void {
+    const work_before = work.total();
     const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type, "-", language, "-", variant.name });
     const parser_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, ".zig" });
 
@@ -150,12 +182,6 @@ fn addCase(
     const generated_parser_path = generate_parser.addOutputFileArg(parser_basename);
     generate_parser.addArgs(variant.args);
     generate_parser.stdio = .inherit;
-    if (prev_generate_step.*) |prev| {
-        generate_parser.step.dependOn(prev);
-    }
-    prev_generate_step.* = &generate_parser.step;
-    matrix_step.dependOn(&generate_parser.step);
-
     const procedures_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "procedures.zig" });
     const config_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "config.zig" });
 
@@ -183,7 +209,7 @@ fn addCase(
     );
     const galley_parser_mod = generated_parser.runtime_mod;
 
-    if (errorInputs(language)) |inputs| {
+    if (options.selection.includes(.matrix_error) and variant.input_size == 16) if (errorInputs(language)) |inputs| {
         const run_parser_error_tests = addGeneratedParserErrorTest(
             b,
             options.target,
@@ -195,12 +221,12 @@ fn addCase(
             inputs.diagnostic_column,
             inputs.unexpected_token_prefix,
             inputs.expected_token,
+            options.selection.names,
         );
         matrix_step.dependOn(&run_parser_error_tests.step);
         trackFilteredTestRun(b, options, &run_parser_error_tests.step);
-    }
-
-    if (onlyGeneratedParserError(options.filters)) return;
+        work.errors += 1;
+    };
 
     const parser_cli_options = b.addOptions();
     parser_cli_options.addOption(
@@ -208,14 +234,6 @@ fn addCase(
         "api_benchmark_step",
         "run-api-bench-generated-parser-matrix",
     );
-
-    const parser_library_tests = b.addTest(.{
-        .root_module = galley_parser_mod,
-        .filters = options.filters,
-    });
-    const run_parser_library_tests = b.addRunArtifact(parser_library_tests);
-    matrix_step.dependOn(&run_parser_library_tests.step);
-    trackFilteredTestRun(b, options, &run_parser_library_tests.step);
 
     const galley_cli_mod = b.createModule(.{
         .root_source_file = b.path("src/cli/parser.zig"),
@@ -237,13 +255,9 @@ fn addCase(
     build_step.dependOn(&install_artifact.step);
     build_step.dependOn(&generate_parser.step);
 
-    if (is_first_variant) {
-        const exe_tests = b.addTest(.{
-            .root_module = exe.root_module,
-        });
-        const run_exe_tests = b.addRunArtifact(exe_tests);
-        matrix_step.dependOn(&run_exe_tests.step);
-        trackFilteredTestRun(b, options, &run_exe_tests.step);
+    if (options.selection.includes(.matrix_compile)) {
+        matrix_step.dependOn(&exe.step);
+        work.compile += 1;
     }
 
     const api_benchmark_mod = b.createModule(.{
@@ -274,7 +288,15 @@ fn addCase(
         variant.name,
         variant.args,
         variant.input_size,
+        work,
     );
+
+    if (work.total() != work_before) {
+        if (prev_generate_step.*) |prev| {
+            generate_parser.step.dependOn(prev);
+        }
+        prev_generate_step.* = &generate_parser.step;
+    }
 }
 
 fn addLanguageSamples(
@@ -288,6 +310,7 @@ fn addLanguageSamples(
     config_label: []const u8,
     variant_args: []const []const u8,
     input_size: u16,
+    work: *Work,
 ) !void {
     const samples_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "samples" });
     defer b.allocator.free(samples_path);
@@ -319,6 +342,7 @@ fn addLanguageSamples(
                 sample_path,
                 variant_args,
                 input_size,
+                work,
             );
         }
     }
@@ -335,12 +359,13 @@ fn addValidationInput(
     input_path: []const u8,
     variant_args: []const []const u8,
     input_size: u16,
+    work: *Work,
 ) !void {
     const stat = try b.build_root.handle.statFile(b.graph.io, input_path, .{});
     const max_size = (@as(u64, 1) << @intCast(input_size));
     if (stat.size >= max_size) return;
 
-    if (!shouldSkipGeneratedParserApiTests(variant_args, stat.size)) {
+    if (options.selection.includes(.matrix_api) and !shouldSkipGeneratedParserApiTests(variant_args, stat.size)) {
         const sample_input = try b.build_root.handle.readFileAlloc(
             b.graph.io,
             input_path,
@@ -357,10 +382,14 @@ fn addValidationInput(
             config_label,
             input_path,
             sample_input,
+            options.selection.names,
         );
         matrix_step.dependOn(&run_parser_api_tests.step);
         trackFilteredTestRun(b, options, &run_parser_api_tests.step);
+        work.api += 1;
     }
+
+    if (!options.selection.includes(.matrix_cli)) return;
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.addArgs(&.{ "--verbosity", "0", "--iterations", "1" });
@@ -383,6 +412,7 @@ fn addValidationInput(
     }
 
     matrix_step.dependOn(&run_cmd.step);
+    work.cli += 1;
 }
 
 fn addGeneratedParserApiTest(
@@ -395,6 +425,7 @@ fn addGeneratedParserApiTest(
     config_label: []const u8,
     sample_path: []const u8,
     sample_input: []const u8,
+    filters: []const []const u8,
 ) *std.Build.Step.Run {
     const parser_api_test_options = b.addOptions();
     parser_api_test_options.addOption([]const u8, "case_name", case_name);
@@ -413,6 +444,7 @@ fn addGeneratedParserApiTest(
     });
     const parser_api_tests = b.addTest(.{
         .root_module = parser_api_test_mod,
+        .filters = filters,
     });
     const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
     run_parser_api_tests.addFileInput(b.path(sample_path));
@@ -452,10 +484,6 @@ fn errorInputs(language: []const u8) ?ErrorInputs {
     return null;
 }
 
-fn onlyGeneratedParserError(test_filters: []const []const u8) bool {
-    return test_filters.len == 1 and std.mem.eql(u8, test_filters[0], "generated_parser_error");
-}
-
 fn addGeneratedParserErrorTest(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -467,6 +495,7 @@ fn addGeneratedParserErrorTest(
     diagnostic_column: u32,
     unexpected_token_prefix: []const u8,
     expected_token: []const u8,
+    filters: []const []const u8,
 ) *std.Build.Step.Run {
     const test_options = b.addOptions();
     test_options.addOption([]const u8, "valid_input", valid_input);
@@ -484,7 +513,7 @@ fn addGeneratedParserErrorTest(
             .{ .name = "test_options", .module = test_options.createModule() },
         },
     });
-    return b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
+    return b.addRunArtifact(b.addTest(.{ .root_module = test_mod, .filters = filters }));
 }
 
 const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
@@ -501,37 +530,8 @@ fn shouldSkipGeneratedParserApiTests(variant_args: []const []const u8, sample_si
     return procedures_enabled and terminal_ast_enabled;
 }
 
-pub fn filterMatchesMatrixCase(
-    allocator: std.mem.Allocator,
-    test_filters: []const []const u8,
-    parser_type: []const u8,
-    language: []const u8,
-) bool {
-    if (test_filters.len == 0) return true;
-
-    const parser_name = std.mem.concat(allocator, u8, &.{ parser_type, "-", language }) catch return false;
-    defer allocator.free(parser_name);
-
-    for (test_filters) |filter| {
-        if (std.mem.eql(u8, filter, "generated_parser_api")) return true;
-        if (std.mem.eql(u8, filter, "generated_parser_error")) {
-            return std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "sanbus");
-        }
-        if (std.mem.eql(u8, filter, parser_name)) return true;
-        if (std.mem.indexOf(u8, filter, parser_name) != null) return true;
-        if (std.mem.indexOf(u8, parser_name, filter) != null) return true;
-    }
-    return false;
-}
-
-pub fn filterMatchesGalleyParity(allocator: std.mem.Allocator, test_filters: []const []const u8) bool {
-    if (test_filters.len == 0) return true;
-    return filterMatchesMatrixCase(allocator, test_filters, "ll", "galley") or
-        filterMatchesMatrixCase(allocator, test_filters, "lr", "galley");
-}
-
 fn trackFilteredTestRun(b: *std.Build, options: Options, run_step: *std.Build.Step) void {
-    if (options.filters.len == 0) return;
+    if (options.selection.names.len == 0) return;
     if (options.filtered_test_run_steps) |filtered_test_run_steps| {
         filtered_test_run_steps.append(b.allocator, run_step) catch @panic("OOM");
     }

@@ -1,5 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
+const runtime_test_options = @import("runtime_test_options");
 
 pub const procedures = @import("procedures");
 pub const config = @import("config");
@@ -60,6 +61,12 @@ pub const ParsedInput = struct {
         self.session.deinit();
     }
 };
+
+comptime {
+    if (builtin.is_test and runtime_test_options.include) {
+        _ = @import("runtime_test.zig");
+    }
+}
 
 pub fn parseBytes(io: std.Io, allocator: std.mem.Allocator, input: []const u8, options: ParseOptions) !ParsedInput {
     var session = try Session.init(io, allocator, options);
@@ -262,9 +269,3 @@ pub const Session = struct {
         return try parser.parseWithResult(context_value);
     }
 };
-
-comptime {
-    if (builtin.is_test and parser.is_ast_enabled) {
-        _ = @import("data-structures/astnode.zig");
-    }
-}

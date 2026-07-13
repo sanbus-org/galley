@@ -32,7 +32,8 @@ export default defineConfig({
         items: [
           { text: 'Writing a Language', link: '/writing_a_language' },
           { text: 'Grammar Guidelines', link: '/grammar_guidelines' },
-          { text: 'Reduction Procedures', link: '/procedures' }
+          { text: 'Reduction Procedures', link: '/procedures' },
+          { text: 'Testing', link: '/testing' }
         ]
       },
       {
