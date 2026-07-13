@@ -296,6 +296,7 @@ const Generator = struct {
             \\const builtin = @import("builtin");
             \\const std = @import("std");
             \\const root = @import("galley");
+            \\const config = root.config;
             \\const procedures = root.procedures;
             \\const data_structures = root.data_structures;
             \\const string_utilities = root.string_utilities;
@@ -351,7 +352,7 @@ const Generator = struct {
             \\
             \\    const ast_root = if (comptime is_ast_enabled) stack.items[stack.items.len - 1] else null;
             \\    return .{
-            \\        .parsed_bytes = context.pos() - if (comptime procedures.indentation_syntax) 1 else 0,
+            \\        .parsed_bytes = context.pos() - if (comptime config.indentation_syntax) 1 else 0,
             \\        .line = context.line,
             \\        .column = context.column,
             \\        .ast_root = ast_root,
