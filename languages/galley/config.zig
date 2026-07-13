@@ -16,6 +16,8 @@ pub const params =
     \\
 ;
 
+pub const indentation_syntax = false;
+
 pub const Options = struct {
     with_ast: bool = true,
     with_procedures: bool = true,

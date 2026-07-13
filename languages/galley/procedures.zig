@@ -6,8 +6,6 @@ const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const ASTNode = data_structures.ASTNode;
 
-pub const indentation_syntax = false;
-
 pub const SymbolKind = enum {
     variable,
     terminal,

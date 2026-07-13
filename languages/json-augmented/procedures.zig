@@ -4,7 +4,6 @@ const ProcedureArguments = data_structures.ProcedureArguments;
 const string_utilities = @import("galley").string_utilities;
 const standard_procedures = @import("galley").standard_procedures;
 
-pub const indentation_syntax = false;
 pub const Payload = struct {
     objects: u32 = 0,
     arrays: u32 = 0,

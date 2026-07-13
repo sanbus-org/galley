@@ -7,7 +7,6 @@ const standard_procedures = @import("galley").standard_procedures;
 
 const control_characters_uppper_bound = 4;
 
-pub const indentation_syntax = true;
 pub const Payload = struct {
     rules: usize = 0,
     fields: usize = 0,

@@ -5,14 +5,14 @@ const root = @import("galley");
 
 pub const Token = struct {
     pub const max_length = 65500;
-    buffer: if (root.procedures.indentation_syntax) [Token.max_length * 2]u8 else []u8 = undefined,
+    buffer: if (root.config.indentation_syntax) [Token.max_length * 2]u8 else []u8 = undefined,
     head: Context.Size = 0,
     len: Context.Size = 0,
 
     const Self = @This();
 
     pub inline fn reset(self: *Self, buffer: []u8) void {
-        if (comptime !root.procedures.indentation_syntax) {
+        if (comptime !root.config.indentation_syntax) {
             self.buffer = buffer;
         }
         self.head = 0;
@@ -36,7 +36,7 @@ pub const Token = struct {
         std.debug.assert(self.len >= amount);
 
         self.len -= amount;
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             if (self.head - self.len >= Self.max_length) {
                 const remaining = self.len;
                 @memcpy(self.buffer[0..remaining], self.items());
