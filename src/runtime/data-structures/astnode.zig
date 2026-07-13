@@ -728,7 +728,7 @@ fn testContext(node_allocator: *TestASTAllocator, text: []u8) Context {
     var context = Context{};
     context.node_allocator = node_allocator;
     context.token.reset(text);
-    if (comptime root.procedures.indentation_syntax) {
+    if (comptime root.config.indentation_syntax) {
         @memcpy(context.token.buffer[0..text.len], text);
     }
     context.token.head = @intCast(text.len);

@@ -59,10 +59,10 @@ pub const Context = struct {
     chunk_buffer: []u8 = undefined,
 
     // These fields are defined only when indentation syntax is enabled
-    indent_width: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
-    current_indent: if (root.procedures.indentation_syntax) u16 else void = if (root.procedures.indentation_syntax) 0 else {},
-    seek: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
-    read_bytes: if (root.procedures.indentation_syntax) Size else void = if (root.procedures.indentation_syntax) 0 else {},
+    indent_width: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
+    current_indent: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
+    seek: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
+    read_bytes: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
 
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
@@ -120,7 +120,7 @@ pub const Context = struct {
 
     pub fn releaseToken(self: *@This(), length: Size) void {
         if (comptime builtin.mode != .ReleaseFast) {
-            if (comptime root.procedures.indentation_syntax) {
+            if (comptime root.config.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
             }
             self.column += self.column_offsets.sum(0, length);
@@ -131,13 +131,13 @@ pub const Context = struct {
                         self.column = self.column_offsets.sum(index, length);
                         last_newline = @intCast(index);
                     }
-                    if (comptime !root.procedures.indentation_syntax) {
+                    if (comptime !root.config.indentation_syntax) {
                         self.line += 1;
                     }
                 }
             }
 
-            if (comptime root.procedures.indentation_syntax) {
+            if (comptime root.config.indentation_syntax) {
                 self.line_offsets.pop(length);
             }
             self.column_offsets.pop(length);
@@ -172,7 +172,7 @@ pub const Context = struct {
             .file => |*reader| try reader.seekTo(0),
             .bytes => |*bytes| bytes.offset = 0,
         }
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             self.read_bytes = 0;
             self.seek = 0;
             self.indent_width = 0;
@@ -187,7 +187,7 @@ pub const Context = struct {
         if (comptime root.parser.is_ast_enabled) {
             self.node_allocator.reset();
         }
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             self.token.reset(self.chunk_buffer);
             self.read();
         } else switch (self.source) {
@@ -200,7 +200,7 @@ pub const Context = struct {
     }
 
     pub inline fn advanceInputWithCheck(self: *@This()) void {
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             if (self.seek == root.read_chunk_size - 1) {
                 self.read_bytes += self.seek;
                 self.seek = 0;
@@ -211,19 +211,19 @@ pub const Context = struct {
     }
 
     pub inline fn advanceInputWithoutCheck(self: *@This()) void {
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             self.seek +%= 1;
         }
     }
 
     pub inline fn advanceInput(self: *@This()) void {
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             self.advanceInputWithoutCheck();
         }
     }
 
     pub inline fn advanceLexer(self: *@This()) void {
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             const chunk_buffer = self.chunk_buffer;
             while (chunk_buffer[self.seek] == '\n') {
                 self.advanceInput();
@@ -246,7 +246,7 @@ pub const Context = struct {
                     unreachable;
                 }
                 const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
-                if (comptime builtin.mode != .ReleaseFast and root.procedures.indentation_syntax) {
+                if (comptime builtin.mode != .ReleaseFast and root.config.indentation_syntax) {
                     self.line_offsets.append(1);
                 }
                 if (new_indent == self.current_indent) {
@@ -258,7 +258,7 @@ pub const Context = struct {
                     if (new_indent > self.current_indent) {
                         for (0..new_indent - self.current_indent) |index| {
                             if (comptime builtin.mode != .ReleaseFast) {
-                                if (comptime root.procedures.indentation_syntax) {
+                                if (comptime root.config.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
                                     }
@@ -270,7 +270,7 @@ pub const Context = struct {
                     } else if (new_indent < self.current_indent) {
                         for (0..self.current_indent - new_indent) |index| {
                             if (comptime builtin.mode != .ReleaseFast) {
-                                if (comptime root.procedures.indentation_syntax) {
+                                if (comptime root.config.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
                                     }
@@ -286,12 +286,12 @@ pub const Context = struct {
         }
 
         if (comptime builtin.mode != .ReleaseFast) {
-            if (comptime root.procedures.indentation_syntax) {
+            if (comptime root.config.indentation_syntax) {
                 self.line_offsets.append(0);
             }
             self.column_offsets.append(1);
         }
-        if (comptime root.procedures.indentation_syntax) {
+        if (comptime root.config.indentation_syntax) {
             self.token.append(self.chunk_buffer[self.seek]);
             self.advanceInput();
         } else {
@@ -327,7 +327,7 @@ pub const Context = struct {
     }
 
     pub inline fn pos(self: *Self) Size {
-        return if (comptime root.procedures.indentation_syntax)
+        return if (comptime root.config.indentation_syntax)
             self.read_bytes + self.seek
         else
             self.token.head - self.token.len;

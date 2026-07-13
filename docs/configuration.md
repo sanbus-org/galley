@@ -3,6 +3,7 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Generator CLI Options](#generator-cli-options)
+- [Language Configuration](#language-configuration)
 - [Runtime Executable Flags](#runtime-executable-flags)
 - [Quick Reference](#quick-reference)
 
@@ -31,6 +32,18 @@ zig build
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
+
+---
+
+## Language Configuration
+
+Each language's `config.zig` declares compile-time parser configuration:
+
+```zig
+pub const indentation_syntax = true; // or false
+```
+
+When `indentation_syntax` is set to `true`, the parser tracks indentation changes at the beginning of lines and emits virtual `block_start` (`\x01`) and `block_end` (`\x02`) tokens for indentation-sensitive grammars.
 
 ---
 
