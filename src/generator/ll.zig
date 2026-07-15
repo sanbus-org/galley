@@ -5,6 +5,7 @@ pub const Options = common.Options;
 const SymbolKind = common.SymbolKind;
 const Symbol = common.Symbol;
 const Rule = common.Rule;
+const ErrorMessageSpec = common.ErrorMessageSpec;
 const bytesToInt = common.bytesToInt;
 const emitEscapedForComment = common.emitEscapedForComment;
 const emitFormatToken = common.emitFormatToken;
@@ -20,6 +21,7 @@ const Generator = struct {
     variables: std.ArrayList(usize) = .empty,
     rules: std.ArrayList(Rule) = .empty,
     parse_table: std.ArrayList(ParseEntry) = .empty,
+    error_message_specs: std.ArrayList(ErrorMessageSpec) = .empty,
     needs_non_ast_parser: std.AutoHashMap(usize, void) = undefined,
     augmented_start: usize = 0,
 
@@ -218,6 +220,7 @@ const Generator = struct {
             \\const std = @import("std");
             \\const root = @import("galley");
             \\const procedures = root.procedures;
+            \\const error_messages = root.error_messages;
             \\const data_structures = root.data_structures;
             \\const string_utilities = root.string_utilities;
             \\
@@ -457,14 +460,14 @@ const Generator = struct {
         }
 
         if (entries.items.len == 0) {
+            const error_function_names = try self.syntaxErrorFunctionNames(variable, &.{});
             try writer.writeAll("    switch (context.head(u8, 0)) {\n");
             try writer.writeAll("        else => {\n");
             try writer.writeAll("            try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
             try emitStringLiteral(writer, self.symbols.items[variable].id);
             try writer.writeAll(" }, &[_][]const u8{});\n");
             try writer.writeAll("            if (!builtin.is_test) {\n");
-            try writer.writeAll("                const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch \"\";\n");
-            try writer.writeAll("                std.debug.print(\"{s}\", .{diagnostic_message});\n");
+            try self.emitSyntaxErrorMessagePrint(writer, error_function_names.exact, error_function_names.symbol, "                ");
             try writer.writeAll("            }\n");
             try writer.writeAll("            return root.ParseError.SyntaxError;\n");
             try writer.writeAll("        },\n");
@@ -684,6 +687,29 @@ const Generator = struct {
         try entries.append(allocator, .{ .terminal = terminal, .rule = rule });
     }
 
+    fn appendUniqueString(items: *std.ArrayList([]const u8), allocator: std.mem.Allocator, value: []const u8) !void {
+        for (items.items) |item| {
+            if (std.mem.eql(u8, item, value)) return;
+        }
+        try items.append(allocator, value);
+    }
+
+    fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+        return std.mem.order(u8, lhs, rhs) == .lt;
+    }
+
+    fn joinWithOr(allocator: std.mem.Allocator, items: []const []const u8) ![]const u8 {
+        if (items.len == 0) return allocator.dupe(u8, "valid_input");
+        if (items.len == 1) return allocator.dupe(u8, items[0]);
+
+        var out = std.ArrayList(u8).empty;
+        for (items, 0..) |item, index| {
+            if (index != 0) try out.appendSlice(allocator, "_or_");
+            try out.appendSlice(allocator, item);
+        }
+        return out.toOwnedSlice(allocator);
+    }
+
     fn switchEntryLessThan(_: void, lhs: SwitchEntry, rhs: SwitchEntry) bool {
         const order = std.mem.order(u8, lhs.terminal, rhs.terminal);
         if (order != .eq) return order == .lt;
@@ -840,6 +866,7 @@ const Generator = struct {
             for (group.heads.items) |head| try expected_heads.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected_heads.items, {}, headLessThan);
+        const error_function_names = try self.syntaxErrorFunctionNames(symbol_index, groups);
         try writer.print(
             \\{s}    else => {{
             \\{s}        try context.recordSyntaxDiagnostic(.{{ .while_parsing =
@@ -853,13 +880,108 @@ const Generator = struct {
         try writer.print(
             \\ }});
             \\{s}        if (!builtin.is_test) {{
-            \\{s}            const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
-            \\{s}            std.debug.print("{{s}}", .{{diagnostic_message}});
+        , .{indent});
+        try self.emitSyntaxErrorMessagePrint(writer, error_function_names.exact, error_function_names.symbol, try indented(self.allocator, indent, 12));
+        try writer.print(
             \\{s}        }}
             \\{s}        return root.ParseError.SyntaxError;
             \\{s}    }},
             \\
-        , .{ indent, indent, indent, indent, indent, indent });
+        , .{ indent, indent, indent });
+    }
+
+    const SyntaxErrorFunctionNames = struct {
+        exact: []const u8,
+        symbol: []const u8,
+    };
+
+    fn syntaxErrorFunctionNames(self: *Generator, symbol_index: usize, groups: []const SwitchGroup) !SyntaxErrorFunctionNames {
+        const symbol_stem = try self.parserName(symbol_index);
+        const expected_stem = try self.syntaxErrorExpectedStem(symbol_index, groups);
+        const exact = try std.fmt.allocPrint(self.allocator, "syntax_error_ll_{s}__expected_{s}", .{ symbol_stem, expected_stem });
+        const symbol = try std.fmt.allocPrint(self.allocator, "syntax_error_ll_{s}", .{symbol_stem});
+        try self.appendErrorMessageSpec(exact);
+        return .{ .exact = exact, .symbol = symbol };
+    }
+
+    fn syntaxErrorExpectedStem(self: *Generator, symbol_index: usize, groups: []const SwitchGroup) ![]const u8 {
+        var stems = std.ArrayList([]const u8).empty;
+        if (groups.len == 0) {
+            try appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{try self.parserName(symbol_index)}));
+        } else if (self.symbols.items[symbol_index].kind == .variable) {
+            for (groups) |group| {
+                for (group.payload.items) |entry| {
+                    try appendUniqueString(&stems, self.allocator, try self.ruleExpectedStem(symbol_index, entry.rule));
+                }
+            }
+        } else {
+            try appendUniqueString(&stems, self.allocator, try self.parserName(symbol_index));
+        }
+        if (stems.items.len == 0) {
+            try appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{try self.parserName(symbol_index)}));
+        }
+        std.mem.sort([]const u8, stems.items, {}, stringLessThan);
+        return try joinWithOr(self.allocator, stems.items);
+    }
+
+    fn ruleExpectedStem(self: *Generator, symbol_index: usize, rule_index: usize) ![]const u8 {
+        if (rule_index >= self.rules.items.len) return self.parserName(symbol_index);
+        const rule = self.rules.items[rule_index];
+        if (rule.header != symbol_index) return self.parserName(symbol_index);
+        if (rule.rhs.items.len == 0) {
+            return try std.fmt.allocPrint(self.allocator, "end_of_{s}", .{try self.parserName(symbol_index)});
+        }
+        return self.parserName(rule.rhs.items[0]);
+    }
+
+    fn appendErrorMessageSpec(self: *Generator, name: []const u8) !void {
+        for (self.error_message_specs.items) |spec| {
+            if (std.mem.eql(u8, spec.name, name)) return;
+        }
+        try self.error_message_specs.append(self.allocator, .{ .name = name });
+    }
+
+    fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, exact_name: []const u8, symbol_name: []const u8, indent: []const u8) !void {
+        try writer.print("{s}const diagnostic = context.runtime().last_diagnostic.?;\n", .{indent});
+        try writer.print("{s}const diagnostic_message = if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, exact_name });
+        try self.emitSyntaxErrorHookCall(writer, "", exact_name, indent);
+        try writer.print("{s}else if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, symbol_name });
+        try self.emitSyntaxErrorHookCall(writer, "", symbol_name, indent);
+        try writer.print("{s}else if (comptime @hasDecl(error_messages, \"syntax_error_ll\"))\n", .{indent});
+        try self.emitSyntaxErrorHookCall(writer, "error_messages.syntax_error_ll", null, indent);
+        try writer.print("{s}else if (comptime @hasDecl(error_messages, \"syntax_error\"))\n", .{indent});
+        try self.emitSyntaxErrorHookCall(writer, "error_messages.syntax_error", null, indent);
+        try writer.print(
+            \\{s}else
+            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            \\{s}std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\
+        , .{ indent, indent, indent });
+    }
+
+    fn emitSyntaxErrorHookCall(self: *Generator, writer: *std.Io.Writer, callee_prefix: []const u8, field_name: ?[]const u8, indent: []const u8) !void {
+        _ = self;
+        if (field_name) |name| {
+            try writer.print(
+                \\{s}    @field(error_messages, "{s}")(.{{
+                \\{s}        .allocator = context.runtime().arena_allocator,
+                \\{s}        .context = context,
+                \\{s}        .diagnostic = diagnostic,
+                \\{s}        .style = .ansi,
+                \\{s}    }}) catch ""
+                \\
+            , .{ indent, name, indent, indent, indent, indent, indent });
+        } else {
+            try writer.print(
+                \\{s}    {s}(.{{
+                \\{s}        .allocator = context.runtime().arena_allocator,
+                \\{s}        .context = context,
+                \\{s}        .diagnostic = diagnostic,
+                \\{s}        .style = .ansi,
+                \\{s}    }}) catch ""
+                \\
+            , .{ indent, callee_prefix, indent, indent, indent, indent, indent });
+        }
     }
 
     fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
@@ -1149,6 +1271,17 @@ pub fn emitParserWithOptions(allocator: std.mem.Allocator, grammar: anytype, wri
     var generator = Generator.init(allocator, options);
     try generator.fromGrammar(grammar);
     try generator.emit(writer);
+}
+
+pub fn emitErrorMessagesWithOptions(allocator: std.mem.Allocator, grammar: anytype, writer: *std.Io.Writer, options: Options) !void {
+    var generator = Generator.init(allocator, options);
+    try generator.fromGrammar(grammar);
+
+    var generated_parser: std.Io.Writer.Allocating = .init(allocator);
+    defer generated_parser.deinit();
+    try generator.emit(&generated_parser.writer);
+
+    try common.emitErrorMessageFile(writer, "LL", generator.error_message_specs.items);
 }
 
 fn putUnique(map: *std.AutoHashMap(usize, usize), key: usize, value: usize) !void {

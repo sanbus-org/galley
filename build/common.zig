@@ -24,6 +24,7 @@ pub fn addGeneratedParserModule(
     parser_source: std.Build.LazyPath,
     procedures_mod: *std.Build.Module,
     config_mod: *std.Build.Module,
+    error_messages_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
 ) GeneratedParserModule {
@@ -41,6 +42,7 @@ pub fn addGeneratedParserModule(
         .imports = &.{
             .{ .name = "procedures", .module = procedures_mod },
             .{ .name = "config", .module = config_mod },
+            .{ .name = "error_messages", .module = error_messages_mod },
             .{ .name = "parser", .module = parser_mod },
             .{ .name = "runtime_test_options", .module = runtime_test_options.createModule() },
         },
@@ -50,6 +52,7 @@ pub fn addGeneratedParserModule(
     procedures_mod.addImport("ll_generator", ll_generator_mod);
     procedures_mod.addImport("lr_generator", lr_generator_mod);
     config_mod.addImport("galley", runtime_mod);
+    error_messages_mod.addImport("galley", runtime_mod);
     parser_mod.addImport("galley", runtime_mod);
 
     return .{
@@ -59,6 +62,7 @@ pub fn addGeneratedParserModule(
 }
 
 pub const GalleyCli = struct {
+    generator_cli_mod: *std.Build.Module,
     generator_cli_exe: *std.Build.Step.Compile,
     install_generator_cli: *std.Build.Step.InstallArtifact,
     generate_parser_file_exe: ?*std.Build.Step.Compile = null,
@@ -77,6 +81,7 @@ pub const LanguageParser = struct {
     galley_parser_mod: *std.Build.Module,
     procedures_mod: *std.Build.Module,
     config_mod: *std.Build.Module,
+    error_messages_mod: *std.Build.Module,
     parser_mod: *std.Build.Module,
     galley_cli_mod: *std.Build.Module,
     exe: *std.Build.Step.Compile,
@@ -117,6 +122,11 @@ pub fn addGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
+    const galley_grammar_error_messages_mod = b.addModule("galley_grammar_ll_error_messages", .{
+        .root_source_file = b.path("languages/galley/ll_error_messages.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const galley_grammar = addGeneratedParserModule(
         b,
         target,
@@ -126,6 +136,7 @@ pub fn addGeneratorModules(
         b.path("languages/galley/_ll-parser.zig"),
         galley_grammar_procedures_mod,
         galley_grammar_config_mod,
+        galley_grammar_error_messages_mod,
         ll_generator_mod,
         lr_generator_mod,
     );
@@ -202,6 +213,7 @@ pub fn addGalleyCli(
     }
 
     return .{
+        .generator_cli_mod = generator_cli_mod,
         .generator_cli_exe = generator_cli_exe,
         .install_generator_cli = install_generator_cli,
         .generate_parser_file_exe = generate_parser_file_exe,
@@ -281,12 +293,24 @@ pub fn addLanguageParserFromFile(
     );
     defer b.allocator.free(config_path);
 
+    const error_messages_file_name = try errorMessagesFileName(b.allocator, parser_type);
+    defer b.allocator.free(error_messages_file_name);
+    const error_messages_path = try std.fs.path.join(
+        b.allocator,
+        &.{ languages_path, entry_path, error_messages_file_name },
+    );
+    defer b.allocator.free(error_messages_path);
+
     const procedures_mod = b.addModule("procedures", .{
         .root_source_file = b.path(procedures_path),
         .target = target,
     });
     const config_mod = b.addModule("config", .{
         .root_source_file = b.path(config_path),
+        .target = target,
+    });
+    const error_messages_mod = b.addModule("error_messages", .{
+        .root_source_file = b.path(error_messages_path),
         .target = target,
     });
     const parser_name = try parserName(b.allocator, parser_type, entry_path);
@@ -304,6 +328,7 @@ pub fn addLanguageParserFromFile(
         parser_file,
         procedures_mod,
         config_mod,
+        error_messages_mod,
         generator.ll_generator_mod,
         generator.lr_generator_mod,
     );
@@ -357,6 +382,7 @@ pub fn addLanguageParserFromFile(
         .galley_parser_mod = galley_parser_mod,
         .procedures_mod = procedures_mod,
         .config_mod = config_mod,
+        .error_messages_mod = error_messages_mod,
         .parser_mod = parser_mod,
         .galley_cli_mod = galley_cli_mod,
         .exe = exe,
@@ -447,4 +473,8 @@ pub fn addDelegatedTestStep(
 
 fn parserFileName(allocator: std.mem.Allocator, parser_type: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "_{s}-parser.zig", .{parser_type});
+}
+
+pub fn errorMessagesFileName(allocator: std.mem.Allocator, parser_type: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}_error_messages.zig", .{parser_type});
 }

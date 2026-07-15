@@ -33,8 +33,8 @@ pub fn build(b: *std.Build) !void {{
         .target = target,
     }});
 
-    const ll_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig");
-    const lr_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig");
+    const ll_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig", "ll_error_messages.zig");
+    const lr_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig", "lr_error_messages.zig");
     const preferred_mod = ll_mod orelse lr_mod;
     if (preferred_mod) |parser_mod| {{
         addTests(b, target, optimize, parser_mod);
@@ -51,6 +51,7 @@ fn addParser(
     lr_generator_mod: *std.Build.Module,
     parser_type: []const u8,
     parser_path: []const u8,
+    error_messages_path: []const u8,
 ) !?*std.Build.Module {{
     b.build_root.handle.access(b.graph.io, parser_path, .{{}}) catch |err| switch (err) {{
         error.FileNotFound => return null,
@@ -61,8 +62,14 @@ fn addParser(
         .root_source_file = b.path(parser_path),
         .target = target,
     }});
+    const error_messages_mod = b.addModule("error_messages", .{{
+        .root_source_file = b.path(error_messages_path),
+        .target = target,
+    }});
 
     const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
+    const runtime_test_options = b.addOptions();
+    runtime_test_options.addOption(bool, "include", false);
     const galley_mod = b.addModule(exe_name, .{{
         .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/runtime/api.zig" }},
         .target = target,
@@ -70,7 +77,9 @@ fn addParser(
         .imports = &.{{
             .{{ .name = "procedures", .module = procedures_mod }},
             .{{ .name = "config", .module = config_mod }},
+            .{{ .name = "error_messages", .module = error_messages_mod }},
             .{{ .name = "parser", .module = parser_mod }},
+            .{{ .name = "runtime_test_options", .module = runtime_test_options.createModule() }},
         }},
     }});
     galley_mod.addImport("galley", galley_mod);
@@ -78,6 +87,7 @@ fn addParser(
     procedures_mod.addImport("ll_generator", ll_generator_mod);
     procedures_mod.addImport("lr_generator", lr_generator_mod);
     config_mod.addImport("galley", galley_mod);
+    error_messages_mod.addImport("galley", galley_mod);
     parser_mod.addImport("galley", galley_mod);
 
     const exe_mod = b.createModule(.{{
