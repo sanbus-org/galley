@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         .clap_mod = clap.module("clap"),
         .generator = generator,
+        .generator_cli_mod = galley_cli.generator_cli_mod,
         .generate_parser_file_exe = galley_cli.generate_parser_file_exe.?,
         .ll_galley_exe = ll_galley.exe,
         .test_filters = test_filters,
@@ -33,6 +34,7 @@ pub const Options = struct {
     optimize: std.builtin.OptimizeMode,
     clap_mod: *std.Build.Module,
     generator: common.GeneratorModules,
+    generator_cli_mod: *std.Build.Module,
     generate_parser_file_exe: *std.Build.Step.Compile,
     ll_galley_exe: *std.Build.Step.Compile,
     test_filters: []const []const u8,
@@ -78,6 +80,15 @@ pub fn add(b: *std.Build, options: Options) !void {
         const run_generator_tests = b.addRunArtifact(generator_tests);
         test_step.dependOn(&run_generator_tests.step);
         trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_tests.step);
+
+        const generator_cli_tests = b.addTest(.{
+            .name = "generator-cli-tests",
+            .root_module = options.generator_cli_mod,
+            .filters = selection.names,
+        });
+        const run_generator_cli_tests = b.addRunArtifact(generator_cli_tests);
+        test_step.dependOn(&run_generator_cli_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_cli_tests.step);
     }
 
     if (selection.includes(.runtime)) {
@@ -88,6 +99,11 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const runtime_test_config_mod = b.createModule(.{
             .root_source_file = b.path("languages/galley/config.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const runtime_test_error_messages_mod = b.createModule(.{
+            .root_source_file = b.path("languages/galley/ll_error_messages.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -105,6 +121,7 @@ pub fn add(b: *std.Build, options: Options) !void {
             .imports = &.{
                 .{ .name = "procedures", .module = runtime_test_procedures_mod },
                 .{ .name = "config", .module = runtime_test_config_mod },
+                .{ .name = "error_messages", .module = runtime_test_error_messages_mod },
                 .{ .name = "parser", .module = runtime_test_parser_mod },
                 .{ .name = "runtime_test_options", .module = runtime_test_options.createModule() },
             },
@@ -114,6 +131,7 @@ pub fn add(b: *std.Build, options: Options) !void {
         runtime_test_procedures_mod.addImport("ll_generator", generator.ll_generator_mod);
         runtime_test_procedures_mod.addImport("lr_generator", generator.lr_generator_mod);
         runtime_test_config_mod.addImport("galley", runtime_test_mod);
+        runtime_test_error_messages_mod.addImport("galley", runtime_test_mod);
         runtime_test_parser_mod.addImport("galley", runtime_test_mod);
         const runtime_tests = b.addTest(.{
             .name = "runtime-tests",
@@ -313,6 +331,11 @@ fn addGalleyBootstrapParser(
         .target = target,
         .optimize = optimize,
     });
+    const error_messages_mod = b.addModule("galley-bootstrap-parity-lr-error-messages", .{
+        .root_source_file = b.path("languages/galley/lr_error_messages.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const generated_parser = common.addGeneratedParserModule(
         b,
         target,
@@ -322,6 +345,7 @@ fn addGalleyBootstrapParser(
         parser_source,
         procedures_mod,
         config_mod,
+        error_messages_mod,
         generator.ll_generator_mod,
         generator.lr_generator_mod,
     );

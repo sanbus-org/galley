@@ -184,6 +184,8 @@ fn addCase(
     generate_parser.stdio = .inherit;
     const procedures_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "procedures.zig" });
     const config_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "config.zig" });
+    const error_messages_file_name = try common.errorMessagesFileName(b.allocator, parser_type);
+    const error_messages_path = try std.fs.path.join(b.allocator, &.{ "languages", language, error_messages_file_name });
 
     const procedures_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }), .{
         .root_source_file = b.path(procedures_path),
@@ -192,6 +194,11 @@ fn addCase(
     });
     const config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-config" }), .{
         .root_source_file = b.path(config_path),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-error-messages" }), .{
+        .root_source_file = b.path(error_messages_path),
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -204,6 +211,7 @@ fn addCase(
         generated_parser_path,
         procedures_mod,
         config_mod,
+        error_messages_mod,
         options.generator_modules.ll_generator_mod,
         options.generator_modules.lr_generator_mod,
     );

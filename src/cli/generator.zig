@@ -8,6 +8,7 @@ const CliOptions = struct {
     parser_type: ?generator.ParserType = null,
     language_dir: ?[]const u8 = null,
     generator_options: generator.Options = .{},
+    fill_error_messages: bool = false,
 };
 
 const GenerationResult = struct {
@@ -15,6 +16,8 @@ const GenerationResult = struct {
     generated_lr: bool = false,
     created_procedures: bool = false,
     created_config: bool = false,
+    created_ll_error_messages: bool = false,
+    created_lr_error_messages: bool = false,
     created_build_zig: bool = false,
     created_main_zig: bool = false,
     created_tests_dir: bool = false,
@@ -68,6 +71,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.startsWith(u8, arg, "--input-size=")) {
             const value = arg["--input-size=".len..];
             result.generator_options.input_size = std.fmt.parseInt(u16, value, 10) catch fatal("error: invalid --input-size: {s}\n", .{value});
+        } else if (std.mem.eql(u8, arg, "--fill-error-messages")) {
+            result.fill_error_messages = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             fatal("error: unknown argument: {s}\n", .{arg});
         } else if (result.language_dir == null) {
@@ -101,6 +106,7 @@ fn printUsage(init: std.process.Init) !void {
         \\      --ast-for-terminals    Enables AST nodes for terminals.
         \\      --no-ast-for-terminals Disables AST nodes for terminals.
         \\      --input-size <BITS>    Number of bits required to fit input size.
+        \\      --fill-error-messages  Append missing default syntax error hooks.
         \\
     );
     try stdout.flush();
@@ -127,11 +133,13 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
             .ll => {
                 if (!has_ll) fatal("error: ll.grm not found in {s}\n", .{language_dir});
                 try generateParser(init, language_dir, .ll, options.generator_options);
+                result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
                 result.generated_ll = true;
             },
             .lr => {
                 if (!has_lr) fatal("error: lr.grm not found in {s}\n", .{language_dir});
                 try generateParser(init, language_dir, .lr, options.generator_options);
+                result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
                 result.generated_lr = true;
             },
         }
@@ -139,10 +147,12 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
         if (!has_ll and !has_lr) fatal("error: no ll.grm or lr.grm found in {s}\n", .{language_dir});
         if (has_ll) {
             try generateParser(init, language_dir, .ll, options.generator_options);
+            result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
             result.generated_ll = true;
         }
         if (has_lr) {
             try generateParser(init, language_dir, .lr, options.generator_options);
+            result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
             result.generated_lr = true;
         }
     }
@@ -188,6 +198,242 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
     var file_writer = output.writer(init.io, &file_buffer);
     try generator.emitParserFromSource(init.arena.allocator(), source, &file_writer.interface, parser_type, options);
     try file_writer.interface.flush();
+}
+
+fn ensureErrorMessages(
+    init: std.process.Init,
+    language_dir: []const u8,
+    parser_type: generator.ParserType,
+    options: generator.Options,
+    fill: bool,
+) !bool {
+    const basename = errorMessagesFileName(parser_type);
+    if (!fill) {
+        return try createFileIfMissing(init, language_dir, basename, emptyErrorMessagesSource(parser_type));
+    }
+
+    const grammar_name = switch (parser_type) {
+        .ll => "ll.grm",
+        .lr => "lr.grm",
+    };
+    const grammar_path = try std.fs.path.join(init.gpa, &.{ language_dir, grammar_name });
+    defer init.gpa.free(grammar_path);
+    const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_input_size));
+    defer init.gpa.free(source);
+
+    const filled_source = try generator.generateErrorMessagesAlloc(init.arena.allocator(), source, parser_type, options);
+
+    const path = try std.fs.path.join(init.gpa, &.{ language_dir, basename });
+    defer init.gpa.free(path);
+
+    var created_file = std.Io.Dir.cwd().createFile(init.io, path, .{ .exclusive = true }) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            try appendMissingErrorMessages(init, path, filled_source, parser_type);
+            return false;
+        },
+        else => |e| return e,
+    };
+    defer created_file.close(init.io);
+    try created_file.writeStreamingAll(init.io, filled_source);
+    return true;
+}
+
+fn appendMissingErrorMessages(init: std.process.Init, path: []const u8, filled_source: []const u8, parser_type: generator.ParserType) !void {
+    const existing = try std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(max_input_size));
+    defer init.gpa.free(existing);
+
+    const merge = try mergeErrorMessages(init.arena.allocator(), existing, filled_source, parser_type);
+
+    for (merge.obsolete_names) |existing_name| {
+        std.debug.print("warning: obsolete public error message hook in {s}: {s}\n", .{ path, existing_name });
+    }
+
+    if (!merge.appended_any) return;
+
+    var file = try std.Io.Dir.cwd().createFile(init.io, path, .{ .truncate = true });
+    defer file.close(init.io);
+    try file.writeStreamingAll(init.io, merge.source);
+}
+
+const ErrorMessageMerge = struct {
+    source: []const u8,
+    obsolete_names: []const []const u8,
+    appended_any: bool,
+};
+
+fn mergeErrorMessages(allocator: std.mem.Allocator, existing: []const u8, filled_source: []const u8, parser_type: generator.ParserType) !ErrorMessageMerge {
+    const existing_names = try publicSyntaxErrorFunctionNames(allocator, existing);
+    const generated_names = try publicSyntaxErrorFunctionNames(allocator, filled_source);
+
+    var obsolete_names: std.ArrayList([]const u8) = .empty;
+    for (existing_names) |existing_name| {
+        if (!isValidSyntaxErrorHook(existing_name, generated_names, parser_type)) {
+            try obsolete_names.append(allocator, existing_name);
+        }
+    }
+
+    var combined: std.ArrayList(u8) = .empty;
+    try combined.appendSlice(allocator, existing);
+    var appended_any = false;
+    for (generated_names) |generated_name| {
+        if (containsString(existing_names, generated_name)) continue;
+        if (!appended_any and combined.items.len > 0 and combined.items[combined.items.len - 1] != '\n') {
+            try combined.append(allocator, '\n');
+        }
+        if (!appended_any) {
+            try combined.appendSlice(allocator, "\n// Added by `galley --fill-error-messages`.\n\n");
+        }
+        const block = functionBlock(filled_source, generated_name) orelse continue;
+        try combined.appendSlice(allocator, block);
+        if (combined.items.len > 0 and combined.items[combined.items.len - 1] != '\n') {
+            try combined.append(allocator, '\n');
+        }
+        appended_any = true;
+    }
+
+    return .{
+        .source = combined.items,
+        .obsolete_names = try obsolete_names.toOwnedSlice(allocator),
+        .appended_any = appended_any,
+    };
+}
+
+fn publicSyntaxErrorFunctionNames(allocator: std.mem.Allocator, source: []const u8) ![]const []const u8 {
+    var names: std.ArrayList([]const u8) = .empty;
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, source, offset, "pub fn ")) |index| {
+        const name_start = index + "pub fn ".len;
+        var name_end = name_start;
+        while (name_end < source.len and isIdentifierByte(source[name_end])) : (name_end += 1) {}
+        offset = name_end;
+        const name = source[name_start..name_end];
+        if (std.mem.startsWith(u8, name, "syntax_error_")) {
+            try names.append(allocator, name);
+        }
+    }
+    return try names.toOwnedSlice(allocator);
+}
+
+fn functionBlock(source: []const u8, name: []const u8) ?[]const u8 {
+    const start = findPublicFunction(source, name) orelse return null;
+    const search_start = @min(source.len, start + 1);
+    const end = std.mem.indexOfPos(u8, source, search_start, "\npub fn ") orelse source.len;
+    return source[start..end];
+}
+
+fn findPublicFunction(source: []const u8, name: []const u8) ?usize {
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, source, offset, "pub fn ")) |index| {
+        const name_start = index + "pub fn ".len;
+        var name_end = name_start;
+        while (name_end < source.len and isIdentifierByte(source[name_end])) : (name_end += 1) {}
+        if (std.mem.eql(u8, source[name_start..name_end], name)) return index;
+        offset = name_end;
+    }
+    return null;
+}
+
+fn containsString(items: []const []const u8, needle: []const u8) bool {
+    for (items) |item| {
+        if (std.mem.eql(u8, item, needle)) return true;
+    }
+    return false;
+}
+
+fn isValidSyntaxErrorHook(name: []const u8, generated_names: []const []const u8, parser_type: generator.ParserType) bool {
+    if (containsString(generated_names, name)) return true;
+    return switch (parser_type) {
+        .ll => isValidLlSyntaxErrorFallback(name, generated_names),
+        .lr => false,
+    };
+}
+
+fn isValidLlSyntaxErrorFallback(name: []const u8, generated_names: []const []const u8) bool {
+    if (std.mem.eql(u8, name, "syntax_error") or std.mem.eql(u8, name, "syntax_error_ll")) return true;
+    if (!std.mem.startsWith(u8, name, "syntax_error_ll_")) return false;
+    if (std.mem.indexOf(u8, name, "__expected_") != null) return false;
+
+    for (generated_names) |generated_name| {
+        const expected_index = std.mem.indexOf(u8, generated_name, "__expected_") orelse continue;
+        if (std.mem.eql(u8, name, generated_name[0..expected_index])) return true;
+    }
+    return false;
+}
+
+fn isIdentifierByte(byte: u8) bool {
+    return std.ascii.isAlphanumeric(byte) or byte == '_';
+}
+
+fn expectContains(haystack: []const u8, needle: []const u8) !void {
+    if (std.mem.indexOf(u8, haystack, needle) == null) {
+        std.debug.print("missing expected text:\n{s}\n", .{needle});
+        return error.MissingExpectedText;
+    }
+}
+
+test "mergeErrorMessages accepts LL fallback hooks and appends missing exact hooks" {
+    const existing =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_ll_ItemsTail(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return "custom";
+        \\}
+        \\
+        \\pub fn syntax_error_ll_Item__expected_terminal_a(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return "already customized";
+        \\}
+        \\
+    ;
+    const filled =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+        \\}
+        \\
+        \\pub fn syntax_error_ll_Item__expected_terminal_a(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+        \\}
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const merge = try mergeErrorMessages(arena.allocator(), existing, filled, .ll);
+    try std.testing.expectEqual(@as(usize, 0), merge.obsolete_names.len);
+    try std.testing.expect(merge.appended_any);
+    try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail(args: root.SyntaxErrorMessageArgs)");
+    try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs)");
+    try expectContains(merge.source, "pub fn syntax_error_ll_Item__expected_terminal_a(args: root.SyntaxErrorMessageArgs)");
+}
+
+test "mergeErrorMessages reports obsolete syntax error hooks" {
+    const existing =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_ll_ItemsTail_7(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return "stale";
+        \\}
+        \\
+    ;
+    const filled =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+        \\}
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const merge = try mergeErrorMessages(arena.allocator(), existing, filled, .ll);
+    try std.testing.expectEqual(@as(usize, 1), merge.obsolete_names.len);
+    try std.testing.expectEqualStrings("syntax_error_ll_ItemsTail_7", merge.obsolete_names[0]);
+    try std.testing.expect(merge.appended_any);
+    try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs)");
 }
 
 fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
@@ -247,6 +493,8 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
     const created_count: usize =
         @as(usize, @intFromBool(result.created_procedures)) +
         @as(usize, @intFromBool(result.created_config)) +
+        @as(usize, @intFromBool(result.created_ll_error_messages)) +
+        @as(usize, @intFromBool(result.created_lr_error_messages)) +
         @as(usize, @intFromBool(result.created_build_zig)) +
         @as(usize, @intFromBool(result.created_main_zig)) +
         @as(usize, @intFromBool(result.created_tests_dir)) +
@@ -291,6 +539,10 @@ const defaultProceduresSource = @embedFile("templates/procedures.zig");
 
 const defaultConfigSource = @embedFile("templates/config.zig");
 
+const defaultLlErrorMessagesSource = @embedFile("templates/ll_error_messages.zig");
+
+const defaultLrErrorMessagesSource = @embedFile("templates/lr_error_messages.zig");
+
 const defaultSampleSource = "Write a sample code here";
 
 const standaloneMainSource = @embedFile("templates/main.zig");
@@ -303,6 +555,20 @@ fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
         @embedFile("templates/build.zig.template"),
         .{build_options.galley_root},
     );
+}
+
+fn errorMessagesFileName(parser_type: generator.ParserType) []const u8 {
+    return switch (parser_type) {
+        .ll => "ll_error_messages.zig",
+        .lr => "lr_error_messages.zig",
+    };
+}
+
+fn emptyErrorMessagesSource(parser_type: generator.ParserType) []const u8 {
+    return switch (parser_type) {
+        .ll => defaultLlErrorMessagesSource,
+        .lr => defaultLrErrorMessagesSource,
+    };
 }
 
 fn fatal(comptime format: []const u8, args: anytype) noreturn {

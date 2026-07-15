@@ -107,7 +107,8 @@ Generating source is only the first half of the pipeline. A generated parser dep
 - Galley's parser runtime;
 - the generated `_ll-parser.zig` or `_lr-parser.zig` file;
 - `config.zig` for language-specific runtime options; and
-- `procedures.zig` for reduction hooks and AST payloads.
+- `procedures.zig` for reduction hooks and AST payloads;
+- `ll_error_messages.zig` or `lr_error_messages.zig` for optional syntax-error message hooks.
 
 The easiest way to assemble these pieces is to run the Galley CLI on a language directory outside the Galley repository.
 
@@ -131,6 +132,7 @@ my-language/
 ├── _ll-parser.zig
 ├── build.zig
 ├── config.zig
+├── ll_error_messages.zig
 ├── ll.grm
 ├── main.zig
 ├── procedures.zig
@@ -140,7 +142,27 @@ my-language/
     └── parser_test.zig
 ```
 
-Support files are never overwritten. Regenerating updates the selected parser file while preserving your configuration, procedures, application code, samples, and tests.
+Support files are never overwritten by normal generation. Regenerating updates the selected parser file while preserving your configuration, procedures, error-message hooks, application code, samples, and tests. Generated parser files are underscore-prefixed (`_ll-parser.zig`, `_lr-parser.zig`) to signal that Galley owns and overwrites them; user-edited support files are not underscore-prefixed.
+
+To scaffold all default syntax-error hooks for the current grammar, run:
+
+```sh
+./zig-out/bin/galley --parser-type ll --fill-error-messages ../my-language
+```
+
+This appends missing `pub fn syntax_error_*` hooks to `ll_error_messages.zig` or `lr_error_messages.zig`. Existing public hooks are preserved. Public hooks no longer produced by the current grammar are reported as obsolete; non-public helper functions are ignored.
+
+LL hook names are semantic instead of numbered. A specific hook is named from the parser symbol and what that branch expected, for example `syntax_error_ll_Value__expected_String_or_Number`. If the specific LL hook is not present, the generated parser checks broader hooks at comptime in this order: `syntax_error_ll_Value`, `syntax_error_ll`, `syntax_error`, then Galley's default renderer.
+
+Each hook receives the current diagnostic and returns the text to print:
+
+```zig
+const root = @import("galley");
+
+pub fn syntax_error_ll_Value__expected_String_or_Number(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+```
 
 Replace the placeholder in `samples/code-01` with valid input for the grammar, then build and test the parser project:
 

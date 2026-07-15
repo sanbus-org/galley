@@ -5,6 +5,7 @@ pub const Options = common.Options;
 const SymbolKind = common.SymbolKind;
 const Symbol = common.Symbol;
 const Rule = common.Rule;
+const ErrorMessageSpec = common.ErrorMessageSpec;
 const bytesToInt = common.bytesToInt;
 const emitEscapedForComment = common.emitEscapedForComment;
 const emitFormatToken = common.emitFormatToken;
@@ -45,6 +46,8 @@ const Generator = struct {
     variables: std.ArrayList(usize) = .empty,
     rules: std.ArrayList(Rule) = .empty,
     states: std.ArrayList(State) = .empty,
+    error_message_specs: std.ArrayList(ErrorMessageSpec) = .empty,
+    syntax_error_site_index: usize = 0,
     augmented_start: usize = 0,
     eof: usize = 0,
 
@@ -298,6 +301,7 @@ const Generator = struct {
             \\const root = @import("galley");
             \\const config = root.config;
             \\const procedures = root.procedures;
+            \\const error_messages = root.error_messages;
             \\const data_structures = root.data_structures;
             \\const string_utilities = root.string_utilities;
             \\
@@ -491,7 +495,7 @@ const Generator = struct {
         }
 
         if (entries.items.len == 0) {
-            try self.emitStateSyntaxError(writer, state_index, &.{}, "    ");
+            try self.emitStateSyntaxError(writer, state_index, &.{}, "    ", "state");
         } else {
             try self.emitActionSwitch(writer, state, entries.items, state_index, 0, "    ");
             try writer.writeByte('\n');
@@ -507,7 +511,7 @@ const Generator = struct {
             \\
         );
         if (state.gotos.items.len == 0) {
-            try self.emitStateSyntaxError(writer, state_index, &.{}, "        ");
+            try self.emitStateSyntaxError(writer, state_index, &.{}, "        ", "goto");
         } else {
             try writer.writeAll("        result = switch (result.variable) {\n");
             for (state.gotos.items) |goto| {
@@ -733,6 +737,7 @@ const Generator = struct {
     }
 
     fn emitSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8) !void {
+        const error_function_name = try self.nextSyntaxErrorFunctionName(state_index, "action");
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
@@ -749,15 +754,17 @@ const Generator = struct {
         try writer.print(
             \\ }});
             \\{s}    if (!builtin.is_test) {{
-            \\{s}        const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
-            \\{s}        std.debug.print("{{s}}", .{{diagnostic_message}});
+        , .{indent});
+        try self.emitSyntaxErrorMessagePrint(writer, error_function_name, try indented(self.allocator, indent, 8));
+        try writer.print(
             \\{s}    }}
             \\{s}    return root.ParseError.SyntaxError;
             \\{s}}},
-        , .{ indent, indent, indent, indent, indent, indent });
+        , .{ indent, indent, indent });
     }
 
-    fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8) !void {
+    fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8, kind: []const u8) !void {
+        const error_function_name = try self.nextSyntaxErrorFunctionName(state_index, kind);
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
@@ -773,12 +780,51 @@ const Generator = struct {
         try writer.print(
             \\ }});
             \\{s}if (!builtin.is_test) {{
-            \\{s}    const diagnostic_message = root.renderParseDiagnostic(context.runtime().arena_allocator, context.runtime().last_diagnostic.?, .ansi) catch "";
-            \\{s}    std.debug.print("{{s}}", .{{diagnostic_message}});
+        , .{indent});
+        try self.emitSyntaxErrorMessagePrint(writer, error_function_name, try indented(self.allocator, indent, 4));
+        try writer.print(
             \\{s}}}
             \\{s}return root.ParseError.SyntaxError;
             \\
-        , .{ indent, indent, indent, indent, indent });
+        , .{ indent, indent });
+    }
+
+    fn nextSyntaxErrorFunctionName(self: *Generator, state_index: usize, kind: []const u8) ![]const u8 {
+        const stem = try std.fmt.allocPrint(self.allocator, "state_{d}_{s}", .{ state_index, kind });
+        const name = try common.syntaxErrorFunctionName(self.allocator, "lr_", stem, self.syntax_error_site_index);
+        self.syntax_error_site_index += 1;
+        try self.error_message_specs.append(self.allocator, .{ .name = name });
+        return name;
+    }
+
+    fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, function_name: []const u8, indent: []const u8) !void {
+        _ = self;
+        try writer.print(
+            \\{s}const diagnostic = context.runtime().last_diagnostic.?;
+            \\{s}const diagnostic_message = if (comptime @hasDecl(error_messages, "{s}"))
+            \\{s}    @field(error_messages, "{s}")(.{{
+            \\{s}        .allocator = context.runtime().arena_allocator,
+            \\{s}        .context = context,
+            \\{s}        .diagnostic = diagnostic,
+            \\{s}        .style = .ansi,
+            \\{s}    }}) catch ""
+            \\{s}else
+            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            \\{s}std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\
+        , .{
+            indent,
+            indent, function_name,
+            indent, function_name,
+            indent,
+            indent,
+            indent,
+            indent,
+            indent,
+            indent,
+            indent,
+            indent,
+        });
     }
 
     fn emitRuleSymbolsForDebug(self: *Generator, writer: *std.Io.Writer, rule: Rule) !void {
@@ -891,6 +937,17 @@ pub fn emitParserWithOptions(allocator: std.mem.Allocator, grammar: anytype, wri
     var generator = Generator.init(allocator, options);
     try generator.fromGrammar(grammar);
     try generator.emit(writer);
+}
+
+pub fn emitErrorMessagesWithOptions(allocator: std.mem.Allocator, grammar: anytype, writer: *std.Io.Writer, options: Options) !void {
+    var generator = Generator.init(allocator, options);
+    try generator.fromGrammar(grammar);
+
+    var generated_parser: std.Io.Writer.Allocating = .init(allocator);
+    defer generated_parser.deinit();
+    try generator.emit(&generated_parser.writer);
+
+    try common.emitErrorMessageFile(writer, "LR", generator.error_message_specs.items);
 }
 
 fn appendItemUnique(items: *std.ArrayList(Item), allocator: std.mem.Allocator, item: Item) !void {
