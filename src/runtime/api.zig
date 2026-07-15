@@ -4,6 +4,7 @@ const runtime_test_options = @import("runtime_test_options");
 
 pub const procedures = @import("procedures");
 pub const config = @import("config");
+pub const error_messages = @import("error_messages");
 pub const parser = @import("parser");
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
@@ -44,6 +45,13 @@ pub const ParseOptions = struct {
     language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
     verbosity: usize = 0,
+};
+
+pub const SyntaxErrorMessageArgs = struct {
+    allocator: std.mem.Allocator,
+    context: *data_structures.Context,
+    diagnostic: ParseDiagnostic,
+    style: DiagnosticStyle,
 };
 
 pub const ParseResult = struct {
@@ -269,3 +277,27 @@ pub const Session = struct {
         return try parser.parseWithResult(context_value);
     }
 };
+
+test "galley LL grammar error hook returns custom guidance" {
+    var context: data_structures.Context = undefined;
+    const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .line = 51,
+        .column = 1,
+        .unexpected_token = "F",
+        .expected_tokens = &.{ "\x00", "\n", "#", "|" },
+        .context = .{ .while_parsing = "RightHandSidesTail" },
+    } };
+
+    const message = try error_messages.syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail(.{
+        .allocator = std.testing.allocator,
+        .context = &context,
+        .diagnostic = diagnostic,
+        .style = .plain,
+    });
+    defer std.testing.allocator.free(message);
+
+    try std.testing.expect(std.mem.indexOf(u8, message, "Expected another production line, a comment line, or a blank line before the next rule.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Production lines start with `|`; comment lines start with `#`.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Unexpected token: \"F\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Unexpected token \"F\" while parsing RightHandSidesTail") == null);
+}
