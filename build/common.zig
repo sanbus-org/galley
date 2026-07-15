@@ -416,6 +416,35 @@ pub fn addApiBenchmark(
     }
 }
 
+pub fn addDelegatedTestStep(
+    b: *std.Build,
+    name: []const u8,
+    description: []const u8,
+    delegated_step_name: []const u8,
+    test_filters: []const []const u8,
+) void {
+    const step = b.step(name, description);
+    const run_tests = b.addSystemCommand(&.{
+        b.graph.zig_exe,
+        "build",
+        "--build-file",
+        b.pathFromRoot("build-tests.zig"),
+        delegated_step_name,
+    });
+    run_tests.stdio = .inherit;
+    run_tests.addArg("--summary");
+    run_tests.addArg("all");
+    for (test_filters) |filter| {
+        const option = std.fmt.allocPrint(b.allocator, "-Dtest-filter={s}", .{filter}) catch @panic("OOM");
+        run_tests.addArg(option);
+    }
+    if (b.args) |args| {
+        run_tests.addArg("--");
+        run_tests.addArgs(args);
+    }
+    step.dependOn(&run_tests.step);
+}
+
 fn parserFileName(allocator: std.mem.Allocator, parser_type: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "_{s}-parser.zig", .{parser_type});
 }
