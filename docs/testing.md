@@ -39,7 +39,7 @@ Bare filters such as `-Dtest-filter=ll-sanbus` are invalid. Use `case:ll-sanbus`
 | `suite:matrix` | All generated-parser matrix phases |
 | `suite:matrix-compile` | Parser generation and production CLI compilation |
 | `suite:matrix-api` | Generated-parser Zig API tests against language samples |
-| `suite:matrix-error` | Diagnostic and recovery tests for 16-bit JSON and Sanbus variants |
+| `suite:matrix-error` | Diagnostic and recovery tests for 16-bit JSON, augmented-JSON, and Sanbus variants |
 | `suite:matrix-cli` | Generated parser CLI validation against language samples |
 | `suite:galley-parity` | LL-versus-LR Galley bootstrap output comparison |
 
@@ -77,7 +77,7 @@ Typed filters apply directly to these dedicated steps and follow the same valida
 Zig test cases and build checks are reported separately:
 
 - API tests run five Zig test functions for every eligible variant/sample combination.
-- Error tests run five short diagnostic and session-recovery tests for every 16-bit JSON or Sanbus variant.
+- Error tests run nine diagnostic, multi-error recovery, limit, recovery-window, validation, and reusable-session tests for every 16-bit JSON, augmented-JSON, or Sanbus variant.
 - CLI validation runs each eligible sample through the generated executable once.
 - Generation and production compilation validate that each selected parser configuration can be generated and built; they are build steps, not additional Zig test cases.
 

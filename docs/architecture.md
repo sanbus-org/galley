@@ -5,6 +5,7 @@
 - [Overview](#overview)
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
+- [LL Syntax-Error Recovery](#ll-syntax-error-recovery)
 - [Dynamic Stack-Overflow Recovery](#dynamic-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -31,6 +32,18 @@ Galley eliminates the separate lexer pass entirely. Character matching and struc
 In both generated LL recursive-descent and LR recursive-ascent parsers, Galley leverages the native CPU execution call stack as the grammar parsing stack.
 
 Instead of dynamically allocating stack frame objects or pushing/popping state IDs in an array loop, grammar transitions compile directly into native machine function calls (`call` and `ret` instructions). This allows modern CPUs to fully utilize their hardware return address stacks (RAS) and branch prediction units, resulting in near-zero overhead state transitions.
+
+---
+
+## LL Syntax-Error Recovery
+
+An LL syntax mismatch transfers control to a generated cold handler. The handler prints the first diagnostic at an input position, searches ahead for the failing state's recovery candidates, and returns a neutral parser value. The parent then continues through its ordinary generated code, naturally exposing later grammar states as recovery points. No parallel parser stack, recovery interpreter, or generated continuation graph is maintained.
+
+Syntax mismatches are not represented as Zig errors. Void parsers return normally and AST parsers return the invalid-node sentinel; Zig errors remain reserved for real failures such as allocation, I/O, and procedure errors. A session-local input-position marker suppresses repeated diagnostics while recovery is unresolved. Finding a candidate, consuming input, or inserting an expected symbol at end-of-input completes recovery and permits a later mismatch to be reported separately.
+
+Normal child calls retain the same `try parse_child(...)` shape as parsers without recovery. No recovery state is read or written on valid input. Void-returning LL variables reach their cold handlers through guaranteed tail calls; AST and terminal handlers are kept out of line. Recovery scanning and lookahead allocation therefore happen only after a syntax mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run while reductions containing neutral children complete, so a partial AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
+
+The parser stops after 10 syntax errors by default. Runtime callers can set `ParseOptions.max_errors` and `ParseOptions.recovery_window`; generated parser executables expose the same settings as `--max-errors` and `--recovery-window`.
 
 ---
 

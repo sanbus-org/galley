@@ -289,6 +289,26 @@ pub const rules = &[_]data_structures.Rule{
     data_structures.Rule{ .header = 27, .right_hand_side = &[_]u16{ 0, 47 }, .right_hand_side_index = "0" }, // _AugmentedStart
 };
 
+fn llRecoveryOffset(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {
+    const lookahead = try context.recoveryLookahead();
+    if (candidates.len == 0) {
+        if (lookahead[0] == 0) context.finishSyntaxRecovery();
+        return null;
+    }
+    const upper = @min(context.recoveryWindow(), lookahead.len);
+    var offset = start;
+    while (offset < upper) : (offset += 1) {
+        for (candidates) |candidate| {
+            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {
+                context.finishSyntaxRecovery();
+                return offset;
+            }
+        }
+        if (lookahead[offset] == 0) break;
+    }
+    if (lookahead[0] == 0) context.finishSyntaxRecovery();
+    return null;
+}
 pub const rule_procedures = rule_procedures: {
     var arr: [54]?*const data_structures.Procedure = .{null} ** 54;
 
@@ -433,41 +453,8 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="Start" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Start__expected_Rules"))
-                    @field(error_messages, "syntax_error_ll_Start__expected_Rules")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_Start"))
-                    @field(error_messages, "syntax_error_ll_Start")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_0(context);
         },
     }
     return node_address;
@@ -541,41 +528,8 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="Rules" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules__expected_Rule"))
-                    @field(error_messages, "syntax_error_ll_Rules__expected_Rule")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules"))
-                    @field(error_messages, "syntax_error_ll_Rules")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_1(context);
         },
     }
     return node_address;
@@ -656,41 +610,8 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="Rule" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol"))
-                    @field(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule"))
-                    @field(error_messages, "syntax_error_ll_Rule")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_2(context);
         },
     }
     return node_address;
@@ -934,41 +855,8 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RulesTail" }, &[_][]const u8{ "\x00", "\n" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail"))
-                    @field(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail"))
-                    @field(error_messages, "syntax_error_ll_RulesTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_3(context);
         },
     }
     return node_address;
@@ -1037,41 +925,8 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="NewLines" }, &[_][]const u8{ "\n" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line"))
-                    @field(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines"))
-                    @field(error_messages, "syntax_error_ll_NewLines")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_4(context);
         },
     }
     return node_address;
@@ -1084,41 +939,8 @@ inline fn parse_generative_terminal_new_line(context: *data_structures.Context) 
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="new_line" }, &[_][]const u8{ "\n" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_new_line")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_5(context);
         },
     }
 }
@@ -1513,41 +1335,8 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="NewLinesTail" }, &[_][]const u8{ "\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35"))
-                    @field(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail"))
-                    @field(error_messages, "syntax_error_ll_NewLinesTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_6(context);
         },
     }
     return node_address;
@@ -1560,41 +1349,8 @@ inline fn parse_terminal__x35(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="#" }, &[_][]const u8{ "#" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35"))
-                    @field(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35"))
-                    @field(error_messages, "syntax_error_ll_terminal__x35")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_7(context);
         },
     }
 }
@@ -1724,41 +1480,8 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="AnyContent" }, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34"))
-                    @field(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent"))
-                    @field(error_messages, "syntax_error_ll_AnyContent")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_8(context);
         },
     }
     return node_address;
@@ -1883,41 +1606,8 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="VariableSymbol" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__"))
-                    @field(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol"))
-                    @field(error_messages, "syntax_error_ll_VariableSymbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_9(context);
         },
     }
     return node_address;
@@ -2151,41 +1841,8 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="ProcedureTail" }, &[_][]const u8{ "\n", " ", "@" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ProcedureTail__expected_end_of_ProcedureTail_or_terminal__x64"))
-                    @field(error_messages, "syntax_error_ll_ProcedureTail__expected_end_of_ProcedureTail_or_terminal__x64")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_ProcedureTail"))
-                    @field(error_messages, "syntax_error_ll_ProcedureTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_10(context);
         },
     }
     return node_address;
@@ -2259,41 +1916,8 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RightHandSides" }, &[_][]const u8{ "#", "|" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine"))
-                    @field(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides"))
-                    @field(error_messages, "syntax_error_ll_RightHandSides")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_11(context);
         },
     }
     return node_address;
@@ -2427,41 +2051,8 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RightHandSideLine" }, &[_][]const u8{ "#", "|" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35"))
-                    @field(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine"))
-                    @field(error_messages, "syntax_error_ll_RightHandSideLine")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_12(context);
         },
     }
     return node_address;
@@ -2693,41 +2284,8 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RightHandSidesTail" }, &[_][]const u8{ "\x00", "\n", "#", "|" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail"))
-                    @field(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail"))
-                    @field(error_messages, "syntax_error_ll_RightHandSidesTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_13(context);
         },
     }
     return node_address;
@@ -2740,41 +2298,8 @@ inline fn parse_terminal__x124(context: *data_structures.Context) anyerror!void 
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="|" }, &[_][]const u8{ "|" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124"))
-                    @field(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124"))
-                    @field(error_messages, "syntax_error_ll_terminal__x124")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_14(context);
         },
     }
 }
@@ -2904,41 +2429,8 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RightHandSide" }, &[_][]const u8{ "\n", " " });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space"))
-                    @field(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide"))
-                    @field(error_messages, "syntax_error_ll_RightHandSide")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_15(context);
         },
     }
     return node_address;
@@ -2951,41 +2443,8 @@ inline fn parse_generative_terminal_space(context: *data_structures.Context) any
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="space" }, &[_][]const u8{ " " });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_space")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_16(context);
         },
     }
 }
@@ -3164,41 +2623,8 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="Symbol" }, &[_][]const u8{ "\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol"))
-                    @field(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol"))
-                    @field(error_messages, "syntax_error_ll_Symbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_17(context);
         },
     }
     return node_address;
@@ -3444,41 +2870,8 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="RightHandSideTail" }, &[_][]const u8{ "\n", " " });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space"))
-                    @field(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail"))
-                    @field(error_messages, "syntax_error_ll_RightHandSideTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_18(context);
         },
     }
     return node_address;
@@ -3606,41 +2999,8 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="TerminalSymbol" }, &[_][]const u8{ "\"", "'" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39"))
-                    @field(error_messages, "syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol"))
-                    @field(error_messages, "syntax_error_ll_TerminalSymbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_19(context);
         },
     }
     return node_address;
@@ -3714,41 +3074,8 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="GenerativeTerminalSymbol" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId"))
-                    @field(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol"))
-                    @field(error_messages, "syntax_error_ll_GenerativeTerminalSymbol")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_20(context);
         },
     }
     return node_address;
@@ -3817,41 +3144,8 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="UppercaseId" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter"))
-                    @field(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId"))
-                    @field(error_messages, "syntax_error_ll_UppercaseId")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_21(context);
         },
     }
     return node_address;
@@ -3864,41 +3158,8 @@ inline fn parse_terminal__(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="_" }, &[_][]const u8{ "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal____expected_terminal__"))
-                    @field(error_messages, "syntax_error_ll_terminal____expected_terminal__")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__"))
-                    @field(error_messages, "syntax_error_ll_terminal__")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_22(context);
         },
     }
 }
@@ -3910,41 +3171,8 @@ inline fn parse_terminal__x39(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="'" }, &[_][]const u8{ "'" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x39__expected_terminal__x39"))
-                    @field(error_messages, "syntax_error_ll_terminal__x39__expected_terminal__x39")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x39"))
-                    @field(error_messages, "syntax_error_ll_terminal__x39")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_23(context);
         },
     }
 }
@@ -4165,41 +3393,8 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="StringContent" }, &[_][]const u8{ "\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character"))
-                    @field(error_messages, "syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_StringContent"))
-                    @field(error_messages, "syntax_error_ll_StringContent")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_24(context);
         },
     }
     return node_address;
@@ -4212,41 +3407,8 @@ inline fn parse_terminal__x92x03(context: *data_structures.Context) anyerror!voi
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="\x03" }, &[_][]const u8{ "\x03" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x03__expected_terminal__x92x03"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x03__expected_terminal__x92x03")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x03"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x03")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_25(context);
         },
     }
 }
@@ -4258,41 +3420,8 @@ inline fn parse_terminal__x34(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="\"" }, &[_][]const u8{ "\"" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34"))
-                    @field(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34"))
-                    @field(error_messages, "syntax_error_ll_terminal__x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_26(context);
         },
     }
 }
@@ -4513,41 +3642,8 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="SimpleStringContent" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03"))
-                    @field(error_messages, "syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent"))
-                    @field(error_messages, "syntax_error_ll_SimpleStringContent")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_27(context);
         },
     }
     return node_address;
@@ -4616,41 +3712,8 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="LowercaseId" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter"))
-                    @field(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId"))
-                    @field(error_messages, "syntax_error_ll_LowercaseId")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_28(context);
         },
     }
     return node_address;
@@ -4884,41 +3947,8 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="GenerativeTerminalExceptions" }, &[_][]const u8{ "\n", " ", "@", "^" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94"))
-                    @field(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions"))
-                    @field(error_messages, "syntax_error_ll_GenerativeTerminalExceptions")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_29(context);
         },
     }
     return node_address;
@@ -4931,41 +3961,8 @@ inline fn parse_terminal__x94(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="^" }, &[_][]const u8{ "^" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94"))
-                    @field(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94"))
-                    @field(error_messages, "syntax_error_ll_terminal__x94")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_30(context);
         },
     }
 }
@@ -4977,41 +3974,8 @@ inline fn parse_terminal__x64(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="@" }, &[_][]const u8{ "@" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64"))
-                    @field(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64"))
-                    @field(error_messages, "syntax_error_ll_terminal__x64")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_31(context);
         },
     }
 }
@@ -5079,41 +4043,8 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="CamelCaseId" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter"))
-                    @field(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId"))
-                    @field(error_messages, "syntax_error_ll_CamelCaseId")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_32(context);
         },
     }
     return node_address;
@@ -5126,41 +4057,8 @@ inline fn parse_generative_terminal_character(context: *data_structures.Context)
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="character" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character__expected_generative_terminal_character"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character__expected_generative_terminal_character")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_33(context);
         },
     }
 }
@@ -5172,41 +4070,8 @@ inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="character^'\"\x03" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_34(context);
         },
     }
 }
@@ -5370,41 +4235,8 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="ControlCharacter" }, &[_][]const u8{ "\x01", "\x03", "\x04" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04"))
-                    @field(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter"))
-                    @field(error_messages, "syntax_error_ll_ControlCharacter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_35(context);
         },
     }
     return node_address;
@@ -5417,41 +4249,8 @@ inline fn parse_terminal__x92x01(context: *data_structures.Context) anyerror!voi
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="\x01" }, &[_][]const u8{ "\x01" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x01")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_36(context);
         },
     }
 }
@@ -5463,41 +4262,8 @@ inline fn parse_terminal__x92x04(context: *data_structures.Context) anyerror!voi
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="\x04" }, &[_][]const u8{ "\x04" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x04__expected_terminal__x92x04"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x04__expected_terminal__x92x04")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x04"))
-                    @field(error_messages, "syntax_error_ll_terminal__x92x04")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_37(context);
         },
     }
 }
@@ -5509,41 +4275,8 @@ inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_st
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="character^\"\n\"" }, &[_][]const u8{ "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_38(context);
         },
     }
 }
@@ -5934,41 +4667,8 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="AnyContentTail" }, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34"))
-                    @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail"))
-                    @field(error_messages, "syntax_error_ll_AnyContentTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_39(context);
         },
     }
     return node_address;
@@ -6510,41 +5210,8 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="IdTail" }, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
-                    @field(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail"))
-                    @field(error_messages, "syntax_error_ll_IdTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_40(context);
         },
     }
     return node_address;
@@ -6557,41 +5224,8 @@ inline fn parse_generative_terminal_letter(context: *data_structures.Context) an
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="letter" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_41(context);
         },
     }
 }
@@ -6603,41 +5237,8 @@ inline fn parse_generative_terminal_digit(context: *data_structures.Context) any
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="digit" }, &[_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_digit")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_42(context);
         },
     }
 }
@@ -6649,41 +5250,8 @@ inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.C
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="lowercase_letter" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_43(context);
         },
     }
 }
@@ -6695,41 +5263,8 @@ inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.C
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="uppercase_letter" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter"))
-                    @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_44(context);
         },
     }
 }
@@ -7110,41 +5645,8 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="CamelCaseIdTail" }, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
-                    @field(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail"))
-                    @field(error_messages, "syntax_error_ll_CamelCaseIdTail")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_45(context);
         },
     }
     return node_address;
@@ -7198,41 +5700,8 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
             }
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="_AugmentedStart" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
-                    @field(error_messages, "syntax_error_ll__AugmentedStart__expected_Start")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart"))
-                    @field(error_messages, "syntax_error_ll__AugmentedStart")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return @call(.always_tail, ll_syntax_error_46, .{context});
         },
     }
 }
@@ -7244,50 +5713,2253 @@ inline fn parse_special_EOF(context: *data_structures.Context) anyerror!void {
             context.releaseToken(1);
         },
         else => {
-            try context.recordSyntaxDiagnostic(.{ .while_parsing ="\x00" }, &[_][]const u8{ "\x00" });
-            if (!builtin.is_test) {                const diagnostic = context.runtime().last_diagnostic.?;
-                const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF"))
-                    @field(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF"))
-                    @field(error_messages, "syntax_error_ll_special_EOF")(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-                    error_messages.syntax_error_ll(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else if (comptime @hasDecl(error_messages, "syntax_error"))
-                    error_messages.syntax_error(.{
-                        .allocator = context.runtime().arena_allocator,
-                        .context = context,
-                        .diagnostic = diagnostic,
-                        .style = .ansi,
-                    }) catch ""
-                else
-                    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-                std.debug.print("{s}", .{diagnostic_message});
-            }
-            return root.ParseError.SyntaxError;
+            @branchHint(.unlikely);
+            return ll_syntax_error_47(context);
         },
     }
 }
 
+
+fn ll_syntax_error_0(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Start" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Start__expected_Rules"))
+                @field(error_messages, "syntax_error_ll_Start__expected_Rules")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_Start"))
+                @field(error_messages, "syntax_error_ll_Start")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_1(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rules" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules__expected_Rule"))
+                @field(error_messages, "syntax_error_ll_Rules__expected_Rule")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules"))
+                @field(error_messages, "syntax_error_ll_Rules")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_2(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rule" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol"))
+                @field(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule"))
+                @field(error_messages, "syntax_error_ll_Rule")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_3(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RulesTail" }, &[_][]const u8{"\x00", "\n"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail"))
+                @field(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail"))
+                @field(error_messages, "syntax_error_ll_RulesTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x00", "\n"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_4(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLines" }, &[_][]const u8{"\n"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line"))
+                @field(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines"))
+                @field(error_messages, "syntax_error_ll_NewLines")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_5(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "new_line" }, &[_][]const u8{"\n"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_new_line")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_6(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLinesTail" }, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35"))
+                @field(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail"))
+                @field(error_messages, "syntax_error_ll_NewLinesTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_7(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "#" }, &[_][]const u8{"#"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35"))
+                @field(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35"))
+                @field(error_messages, "syntax_error_ll_terminal__x35")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"#"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_8(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContent" }, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent"))
+                @field(error_messages, "syntax_error_ll_AnyContent")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_9(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "VariableSymbol" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__"))
+                @field(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol"))
+                @field(error_messages, "syntax_error_ll_VariableSymbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_10(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ProcedureTail" }, &[_][]const u8{"\n", " ", "@"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ProcedureTail__expected_end_of_ProcedureTail_or_terminal__x64"))
+                @field(error_messages, "syntax_error_ll_ProcedureTail__expected_end_of_ProcedureTail_or_terminal__x64")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_ProcedureTail"))
+                @field(error_messages, "syntax_error_ll_ProcedureTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "@"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_11(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSides" }, &[_][]const u8{"#", "|"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine"))
+                @field(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides"))
+                @field(error_messages, "syntax_error_ll_RightHandSides")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_12(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideLine" }, &[_][]const u8{"#", "|"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35"))
+                @field(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine"))
+                @field(error_messages, "syntax_error_ll_RightHandSideLine")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_13(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSidesTail" }, &[_][]const u8{"\x00", "\n", "#", "|"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail"))
+                @field(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail"))
+                @field(error_messages, "syntax_error_ll_RightHandSidesTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x00", "\n", "#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_14(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "|" }, &[_][]const u8{"|"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124"))
+                @field(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124"))
+                @field(error_messages, "syntax_error_ll_terminal__x124")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_15(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSide" }, &[_][]const u8{"\n", " "});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space"))
+                @field(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide"))
+                @field(error_messages, "syntax_error_ll_RightHandSide")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " "}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_16(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "space" }, &[_][]const u8{" "});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_space")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{" "}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_17(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Symbol" }, &[_][]const u8{"\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol"))
+                @field(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol"))
+                @field(error_messages, "syntax_error_ll_Symbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_18(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideTail" }, &[_][]const u8{"\n", " "});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space"))
+                @field(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail"))
+                @field(error_messages, "syntax_error_ll_RightHandSideTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " "}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_19(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalSymbol" }, &[_][]const u8{"\"", "'"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39"))
+                @field(error_messages, "syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol"))
+                @field(error_messages, "syntax_error_ll_TerminalSymbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\"", "'"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_20(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalSymbol" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId"))
+                @field(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol"))
+                @field(error_messages, "syntax_error_ll_GenerativeTerminalSymbol")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_21(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "UppercaseId" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter"))
+                @field(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId"))
+                @field(error_messages, "syntax_error_ll_UppercaseId")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_22(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "_" }, &[_][]const u8{"_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal____expected_terminal__"))
+                @field(error_messages, "syntax_error_ll_terminal____expected_terminal__")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__"))
+                @field(error_messages, "syntax_error_ll_terminal__")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_23(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "'" }, &[_][]const u8{"'"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x39__expected_terminal__x39"))
+                @field(error_messages, "syntax_error_ll_terminal__x39__expected_terminal__x39")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x39"))
+                @field(error_messages, "syntax_error_ll_terminal__x39")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"'"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_24(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "StringContent" }, &[_][]const u8{"\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character"))
+                @field(error_messages, "syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_StringContent"))
+                @field(error_messages, "syntax_error_ll_StringContent")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_25(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x03" }, &[_][]const u8{"\x03"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x03__expected_terminal__x92x03"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x03__expected_terminal__x92x03")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x03"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x03")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x03"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_26(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "\"" }, &[_][]const u8{"\""});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34"))
+                @field(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34"))
+                @field(error_messages, "syntax_error_ll_terminal__x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\""}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_27(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "SimpleStringContent" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03"))
+                @field(error_messages, "syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent"))
+                @field(error_messages, "syntax_error_ll_SimpleStringContent")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_28(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "LowercaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter"))
+                @field(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId"))
+                @field(error_messages, "syntax_error_ll_LowercaseId")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_29(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalExceptions" }, &[_][]const u8{"\n", " ", "@", "^"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94"))
+                @field(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions"))
+                @field(error_messages, "syntax_error_ll_GenerativeTerminalExceptions")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "@", "^"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_30(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "^" }, &[_][]const u8{"^"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94"))
+                @field(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94"))
+                @field(error_messages, "syntax_error_ll_terminal__x94")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"^"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_31(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "@" }, &[_][]const u8{"@"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64"))
+                @field(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64"))
+                @field(error_messages, "syntax_error_ll_terminal__x64")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"@"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_32(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter"))
+                @field(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId"))
+                @field(error_messages, "syntax_error_ll_CamelCaseId")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_33(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character__expected_generative_terminal_character"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character__expected_generative_terminal_character")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_34(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^'\"\x03" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_35(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{"\x01", "\x03", "\x04"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04"))
+                @field(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter"))
+                @field(error_messages, "syntax_error_ll_ControlCharacter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_36(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x01" }, &[_][]const u8{"\x01"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x01")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x01"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_37(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x04" }, &[_][]const u8{"\x04"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x04__expected_terminal__x92x04"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x04__expected_terminal__x92x04")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x04"))
+                @field(error_messages, "syntax_error_ll_terminal__x92x04")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x04"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_38(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_39(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContentTail" }, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail"))
+                @field(error_messages, "syntax_error_ll_AnyContentTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_40(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "IdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
+                @field(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail"))
+                @field(error_messages, "syntax_error_ll_IdTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_41(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_42(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_digit")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_43(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_44(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_45(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
+                @field(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail"))
+                @field(error_messages, "syntax_error_ll_CamelCaseIdTail")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+    return data_structures.ASTNode.invalid_pointer;
+}
+
+fn ll_syntax_error_46(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
+                @field(error_messages, "syntax_error_ll__AugmentedStart__expected_Start")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart"))
+                @field(error_messages, "syntax_error_ll__AugmentedStart")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
+
+fn ll_syntax_error_47(context: *data_structures.Context) anyerror!void {
+    @branchHint(.cold);
+    const report_syntax_error = context.beginSyntaxRecovery();
+    if (report_syntax_error) {
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x00" }, &[_][]const u8{"\x00"});
+        if (!builtin.is_test) {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF"))
+                @field(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF"))
+                @field(error_messages, "syntax_error_ll_special_EOF")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            std.debug.print("{s}", .{diagnostic_message});
+        }
+    }
+    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
+    if (try llRecoveryOffset(context, &[_][]const u8{"\x00"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+        context.skipRecoveryInput(recovery_offset);
+    }
+}
 pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
     _ = parse__AugmentedStart(context) catch |err| switch (err) {
         root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
         else => return err,
     };
+    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
 
     if (context.verbosityLevel() > 0) {
         std.log.info("The input file was parsed successfully!", .{});

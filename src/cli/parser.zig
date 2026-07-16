@@ -21,6 +21,8 @@ pub fn main(init: std.process.Init) !void {
         \\-w, --warmup-iterations <ITERATIONS>
         \\                                  Warmup iterations of the parse process.
         \\                                  Useful for benchmarking.
+        \\    --max-errors <MAX_ERRORS>     Maximum syntax errors to report before stopping.
+        \\    --recovery-window <BYTES>    Maximum input bytes considered by each LL recovery attempt.
         \\    --disable-stack-overflow-recovery
         \\                                  Disables the stack overflow recovery mechanism
         \\<FILE>
@@ -30,6 +32,8 @@ pub fn main(init: std.process.Init) !void {
     const parsers = comptime .{
         .VERBOSITY_LEVEL = clap.parsers.int(u8, 10),
         .ITERATIONS = clap.parsers.int(u32, 10),
+        .MAX_ERRORS = clap.parsers.int(usize, 10),
+        .BYTES = clap.parsers.int(usize, 10),
         .INPUT_SIZE = clap.parsers.int(u16, 10),
         .FILE = clap.parsers.string,
     };
@@ -58,6 +62,8 @@ pub fn main(init: std.process.Init) !void {
     const verbosity = if (res.args.verbosity) |verbosity| verbosity else 0;
     const iterations = if (res.args.iterations) |iterations| iterations else 1;
     const warmup_iterations = if (@field(res.args, "warmup-iterations")) |warmup_iterations| warmup_iterations else iterations / 10;
+    const max_errors = if (@field(res.args, "max-errors")) |max_errors| max_errors else 10;
+    const recovery_window = if (@field(res.args, "recovery-window")) |recovery_window| recovery_window else 500;
 
     const io = init.io;
 
@@ -74,6 +80,8 @@ pub fn main(init: std.process.Init) !void {
         .language_options = config.optionsFromArgs(res.args),
         .input_path = input_path,
         .verbosity = verbosity,
+        .max_errors = max_errors,
+        .recovery_window = recovery_window,
     });
     defer session.deinit();
 
