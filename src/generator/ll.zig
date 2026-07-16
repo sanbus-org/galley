@@ -25,6 +25,7 @@ const Generator = struct {
     syntax_error_handlers: std.ArrayList(SyntaxErrorHandlerSpec) = .empty,
     needs_ast_suppressed_parser: std.AutoHashMap(usize, void) = undefined,
     augmented_start: usize = 0,
+    has_occurrence_procedures: bool = false,
 
     const ParseEntry = struct {
         variable: usize,
@@ -49,8 +50,8 @@ const Generator = struct {
         };
     }
 
-    fn addSymbol(self: *Generator, id: []const u8, kind: SymbolKind, procedures_: []const []const u8) !usize {
-        return common.addSymbol(self.allocator, &self.symbols, &self.variables, id, kind, procedures_);
+    fn addSymbol(self: *Generator, id: []const u8, kind: SymbolKind) !usize {
+        return common.addSymbol(self.allocator, &self.symbols, &self.variables, id, kind);
     }
 
     fn fromGrammar(self: *Generator, grammar: anytype) !void {
@@ -58,7 +59,8 @@ const Generator = struct {
         defer rhs_counts.deinit();
 
         for (grammar.rules) |rule| {
-            const header = try self.addSymbol(rule.header, .variable, rule.procedures);
+            const header = try self.addSymbol(rule.header, .variable);
+            try common.appendProcedureNames(self.allocator, &self.symbols.items[header].procedures, rule.procedures);
             for (rule.right_hand_sides) |rhs| {
                 const rhs_index = rhs_counts.get(header) orelse 0;
                 try rhs_counts.put(header, rhs_index + 1);
@@ -67,27 +69,35 @@ const Generator = struct {
                     .header = header,
                     .rhs_index = try std.fmt.allocPrint(self.allocator, "{d}", .{rhs_index}),
                 };
+                try common.appendProcedureNames(self.allocator, &generated_rule.procedures, rhs.procedures);
                 for (rhs.symbols) |symbol| {
                     const kind: SymbolKind = switch (symbol.kind) {
                         .variable => .variable,
                         .terminal => .terminal,
                         .generative_terminal => .generative_terminal,
                     };
-                    try generated_rule.rhs.append(self.allocator, try self.addSymbol(symbol.id, kind, symbol.procedures));
+                    const symbol_index = try self.addSymbol(symbol.id, kind);
+                    try generated_rule.rhs.append(self.allocator, symbol_index);
+                    try generated_rule.rhs_procedures.append(self.allocator, try common.cloneProcedureNames(self.allocator, symbol.procedures));
+                    if (self.options.with_procedures and symbol.procedures.len != 0 and self.symbolReturnsNode(symbol_index, false)) {
+                        self.has_occurrence_procedures = true;
+                    }
                 }
                 try self.rules.append(self.allocator, generated_rule);
             }
         }
 
         const original_start = self.rules.items[0].header;
-        self.augmented_start = try self.addSymbol("_AugmentedStart", .variable, &.{});
-        const eof = try self.addSymbol("\x00", .end, &.{});
+        self.augmented_start = try self.addSymbol("_AugmentedStart", .variable);
+        const eof = try self.addSymbol("\x00", .end);
         var augmented_rule = Rule{ .header = self.augmented_start, .rhs_index = "0" };
         try augmented_rule.rhs.append(self.allocator, original_start);
+        try augmented_rule.rhs_procedures.append(self.allocator, .{});
         try augmented_rule.rhs.append(self.allocator, eof);
+        try augmented_rule.rhs_procedures.append(self.allocator, .{});
         try self.rules.append(self.allocator, augmented_rule);
 
-        const generative_terminal = try self.addSymbol("GenerativeTerminal", .variable, &.{});
+        const generative_terminal = try self.addSymbol("GenerativeTerminal", .variable);
         try self.rules.append(self.allocator, .{ .header = generative_terminal, .rhs_index = "0" });
 
         std.mem.sort(Rule, self.rules.items, self, ruleLessThan);
@@ -293,7 +303,11 @@ const Generator = struct {
         try self.emitSyntaxErrorHandlers(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
-            \\    _ = parse__AugmentedStart(context) catch |err| switch (err) {
+            \\    _ = parse__AugmentedStart(context
+        );
+        if (self.has_occurrence_procedures) try writer.writeAll(", null");
+        try writer.writeAll(
+            \\) catch |err| switch (err) {
             \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
             \\        else => return err,
             \\    };
@@ -354,6 +368,29 @@ const Generator = struct {
 
     fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {
         try writer.print(
+            \\const ProcedureSequenceNode = struct {{
+            \\    procedure: *const data_structures.Procedure,
+            \\    next: ?*const ProcedureSequenceNode,
+            \\}};
+            \\
+            \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
+            \\    if (procedure_names.len == 0) return null;
+            \\    const procedure_name = procedure_names[0];
+            \\    return &ProcedureSequenceNode{{
+            \\        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
+            \\        .next = makeProcedureSequence(procedure_names[1..]),
+            \\    }};
+            \\}}
+            \\
+            \\fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_structures.ProcedureArguments) !void {{
+            \\    var current = sequence;
+            \\    while (current) |entry| {{
+            \\        const procedure = @as(*data_structures.Procedure, @constCast(entry.procedure));
+            \\        try procedure(args);
+            \\        current = entry.next;
+            \\    }}
+            \\}}
+            \\
             \\pub const rule_procedures = rule_procedures: {{
             \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
             \\
@@ -395,23 +432,11 @@ const Generator = struct {
         try writer.print(
             \\}};
             \\
-            \\const ProcedureSequenceNode = struct {{
-            \\    procedure: *const data_structures.Procedure,
-            \\    next: ?*const ProcedureSequenceNode,
-            \\}};
-            \\
             \\pub const variable_procedures = variable_procedures: {{
             \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
             \\
             \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
-            \\        var last: ?*const ProcedureSequenceNode = null;
-            \\        for (procedure_names) |procedure_name| {{
-            \\            last = &ProcedureSequenceNode{{
-            \\                .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
-            \\                .next = last,
-            \\            }};
-            \\            arr[index] = last;
-            \\        }}
+            \\        arr[index] = makeProcedureSequence(procedure_names);
             \\    }}
             \\
             \\    break :variable_procedures arr;
@@ -421,6 +446,16 @@ const Generator = struct {
             \\
             \\
         , .{ self.variables.items.len, self.variables.items.len });
+    }
+
+    fn emitProcedureSequenceExpression(self: *Generator, writer: *std.Io.Writer, procedures_: []const []const u8) !void {
+        _ = self;
+        try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
+        for (procedures_, 0..) |procedure, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, procedure);
+        }
+        try writer.writeAll("})");
     }
 
     fn emitParserFunctions(self: *Generator, writer: *std.Io.Writer) !void {
@@ -482,7 +517,14 @@ const Generator = struct {
         try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try std.zig.stringEscape(self.symbols.items[variable].id, writer);
         try writer.print("\" with index {d}\n", .{variable});
-        try writer.print("fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (skip_ast_construction) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
+        try writer.print("fn parse_{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "" });
+        if (self.has_occurrence_procedures) {
+            try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+        }
+        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        if (self.has_occurrence_procedures and !returns_node) {
+            try writer.writeAll("    _ = occurrence_procedures;\n");
+        }
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
             const is_var = self.options.with_procedures and self.options.with_ast and !skip_ast_construction;
@@ -530,7 +572,11 @@ const Generator = struct {
 
     fn symbolReturnsNode(self: *Generator, symbol_index: usize, skip_ast_construction: bool) bool {
         const symbol = self.symbols.items[symbol_index];
-        return self.options.with_ast and !skip_ast_construction and ((symbol.kind == .variable and symbol.ast_enabled) or (symbol.kind != .variable and self.options.ast_for_terminals));
+        return self.options.with_ast and !skip_ast_construction and switch (symbol.kind) {
+            .variable => symbol.ast_enabled,
+            .terminal, .generative_terminal => self.options.ast_for_terminals,
+            .end => false,
+        };
     }
 
     fn hasParseEntries(self: *Generator, variable: usize) bool {
@@ -548,13 +594,19 @@ const Generator = struct {
         try self.emitSymbolRepr(writer, variable);
         try writer.print("\" at index {d} of its right hand side\n// Right hand side: -> ", .{self_index});
         try self.emitRuleSymbolsForDebug(writer, rule);
-        try writer.print("\nfn parse_{s}_{s}_{d}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{
+        try writer.print("\nfn parse_{s}_{s}_{d}{s}(context: *data_structures.Context", .{
             name,
             rule.rhs_index,
             self_index,
             if (skip_ast_construction) "_" else "",
-            if (returns_node) "data_structures.ASTNode.Pointer" else "void",
         });
+        if (self.has_occurrence_procedures) {
+            try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+        }
+        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        if (self.has_occurrence_procedures and !returns_node) {
+            try writer.writeAll("    _ = occurrence_procedures;\n");
+        }
 
         if (returns_node) {
             try writer.writeAll(
@@ -624,8 +676,13 @@ const Generator = struct {
         try writer.writeAll("            },\n            else => break,\n        }\n    }\n");
 
         if (returns_node) {
+            try writer.print("    const exit_node = try parse_{s}(context", .{name});
+            if (self.has_occurrence_procedures) {
+                try writer.writeAll(", if (node_address == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
+                try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[self_index].items.items);
+            }
             try writer.print(
-                \\    const exit_node = try parse_{s}(context);
+                \\);
                 \\    if (exit_node != data_structures.ASTNode.invalid_pointer) {{
                 \\        if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\            node_address = exit_node;
@@ -635,7 +692,7 @@ const Generator = struct {
                 \\    }}
                 \\    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {{
                 \\        repeating_node = context.node_allocator.at(repeating_node_address);
-            , .{ name, self_index });
+            , .{self_index});
             try writer.writeByte('\n');
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
                 try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "repeating_node", "repeating_node_address", "        ", skip_ast_for_children);
@@ -644,7 +701,20 @@ const Generator = struct {
             try self.emitDebugReduction(writer, rule, variable, "        ");
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
-                try self.emitProcedureBlock(writer, rule_index, variable, "repeating_node_address", "        ", true);
+                if (self.has_occurrence_procedures) {
+                    try writer.writeAll("        const reduction_occurrence_procedures = if (repeating_node.parent == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
+                    try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[self_index].items.items);
+                    try writer.writeAll(";\n");
+                }
+                try self.emitProcedureBlock(
+                    writer,
+                    rule_index,
+                    variable,
+                    "repeating_node_address",
+                    if (self.has_occurrence_procedures) "reduction_occurrence_procedures" else "null",
+                    "        ",
+                    true,
+                );
                 try writer.writeByte('\n');
                 try writer.writeAll(
                     \\        if (args.node) |effective| {
@@ -667,7 +737,9 @@ const Generator = struct {
                 \\
             );
         } else {
-            try writer.print("    try parse_{s}{s}(context);\n", .{ name, if (self.options.with_ast) "_" else "" });
+            try writer.print("    try parse_{s}{s}(context", .{ name, if (self.options.with_ast) "_" else "" });
+            if (self.has_occurrence_procedures) try writer.writeAll(", null");
+            try writer.writeAll(");\n");
             if (rule.rhs.items.len > self_index + 1) {
                 try writer.writeAll("    for (0..counter) |_| {\n");
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
@@ -687,9 +759,18 @@ const Generator = struct {
         try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try self.emitSymbolRepr(writer, terminal_index);
         try writer.print("\" with index {d}\n", .{terminal_index});
-        try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (skip_ast_construction) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
+        try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "" });
+        if (self.has_occurrence_procedures) {
+            try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+        }
+        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        if (self.has_occurrence_procedures and !returns_node) {
+            try writer.writeAll("    _ = occurrence_procedures;\n");
+        }
         if (returns_node) {
-            try writer.writeAll("    const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n");
+            try writer.print("    {s} node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n", .{
+                if (self.options.with_procedures and self.options.with_ast) "var" else "const",
+            });
         }
 
         var entries = std.ArrayList(SwitchEntry).empty;
@@ -699,6 +780,16 @@ const Generator = struct {
         try self.emitRuleSwitch(writer, terminal_index, entries.items, 0, "    ", skip_ast_construction, false);
         try writer.writeByte('\n');
         if (returns_node) {
+            if (self.options.with_procedures and self.options.with_ast) {
+                try self.emitTerminalProcedureBlock(
+                    writer,
+                    terminal_index,
+                    "node_address",
+                    if (self.has_occurrence_procedures) "occurrence_procedures" else "null",
+                    "    ",
+                );
+                try writer.writeAll("    node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n\n");
+            }
             try writer.writeAll("    return node_address;\n");
         }
 
@@ -978,8 +1069,8 @@ const Generator = struct {
             .symbol_name = function_names.symbol,
             .skip_ast_construction = skip_ast_construction,
         });
-        const can_tail_call = !self.options.with_ast or
-            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction));
+        const can_tail_call = !self.has_occurrence_procedures and (!self.options.with_ast or
+            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
             try writer.print("{s}return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
         } else {
@@ -1144,71 +1235,20 @@ const Generator = struct {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
 
-        if (self.options.with_procedures and self.options.with_ast and !skip_ast_construction) {
-            const variable_index = self.variableIndex(parent_variable);
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = rules[{d}],
-                \\{s}    .node = {s},
-                \\{s}}};
-                \\{s}_ = &args;
-                \\{s}args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-                \\
-                \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
-                \\{s}    const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                \\{s}    try procedure(&args);
-                \\{s}}}
-                \\
-                \\{s}comptime var procedure_pointer_head = variable_procedures[{d}];
-                \\{s}inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {{
-                \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                \\{s}    try procedure(&args);
-                \\{s}    procedure_pointer_head = procedure_pointer_head_.next;
-                \\{s}}}
-                \\
-                \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
-                \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                \\{s}    try procedure(&args);
-                \\{s}}}
-                \\
-                \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
-                \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                \\{s}    try procedure(&args);
-                \\{s}}}
-                \\
-            , .{
-                indent, indent,          indent, rule_index, indent, if (parent_returns_node) "node_address" else "null", indent,
-                indent, indent,          indent, rule_index, indent, indent,                                              indent,
-                indent, variable_index,  indent, indent,     indent, indent,                                              indent,
-                indent, parent_variable, indent, indent,     indent, indent,                                              indent,
-                indent, indent,
-            });
-            if (parent_returns_node) {
-                try writer.writeByte('\n');
-                try writer.print(
-                    \\{s}if (comptime builtin.mode == .Debug) {{
-                    \\{s}    if (context.verbosityLevel() > 2) {{
-                    \\{s}        std.debug.print("Procedure outcome for 
-                , .{ indent, indent, indent });
-                try emitFormatToken(writer, self.symbols.items[parent_variable].id);
-                try writer.print(
-                    \\: {{f}}\n", .{{
-                    \\{s}            string_utilities.fmtASTNode(args.node, context),
-                    \\{s}        }});
-                    \\{s}    }}
-                    \\{s}}}
-                    \\
-                , .{ indent, indent, indent, indent });
-            }
-            if (parent_returns_node) {
-                try writer.print(
-                    \\{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
-                , .{indent});
-            }
+        if (self.options.with_procedures and self.options.with_ast and parent_returns_node) {
+            try self.emitProcedureBlock(
+                writer,
+                rule_index,
+                parent_variable,
+                "node_address",
+                if (self.has_occurrence_procedures) "occurrence_procedures" else "null",
+                indent,
+                true,
+            );
+            try writer.print("{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n", .{indent});
         }
 
-        if (self.options.with_procedures and self.options.with_ast and !skip_ast_construction) try writer.writeByte('\n');
+        if (self.options.with_procedures and self.options.with_ast and parent_returns_node) try writer.writeByte('\n');
         try self.emitDebugReduction(writer, rule, parent_variable, indent);
     }
 
@@ -1224,26 +1264,44 @@ const Generator = struct {
             name;
         if (parent != null) {
             if (child_returns_node) {
+                try writer.print("{s}{{\n{s}    const child_node = try parse_{s}(context", .{ indent, indent, call_name });
+                try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                 try writer.print(
-                    \\{s}{{
-                    \\{s}    const child_node = try parse_{s}(context);
+                    \\);
                     \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
                     \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                     \\{s}    }}
                     \\{s}}}
                     \\
-                , .{ indent, indent, call_name, indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
+                , .{ indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
-                try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_skips_ast_construction) "_" else "", child_index });
+                try writer.print("{s}try parse_{s}{s}(context", .{ indent, call_name, if (child_skips_ast_construction) "_" else "" });
+                try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
+                try writer.print("); // child {d}\n", .{child_index});
             }
         } else if (child_returns_node) {
-            try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
+            try writer.print("{s}_ = try parse_{s}(context", .{ indent, call_name });
+            try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
+            try writer.print("); // child {d}\n", .{child_index});
         } else {
-            try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_skips_ast_construction) "_" else "", child_index });
+            try writer.print("{s}try parse_{s}{s}(context", .{ indent, call_name, if (child_skips_ast_construction) "_" else "" });
+            try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
+            try writer.print("); // child {d}\n", .{child_index});
         }
     }
 
-    fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, node_expr: []const u8, indent: []const u8, include_outcome: bool) !void {
+    fn emitChildOccurrenceArgument(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_returns_node: bool) !void {
+        if (!self.has_occurrence_procedures) return;
+        try writer.writeAll(", ");
+        if (child_returns_node) {
+            try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[child_index].items.items);
+        } else {
+            try writer.writeAll("null");
+        }
+    }
+
+    fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, node_expr: []const u8, occurrence_expr: []const u8, indent: []const u8, include_outcome: bool) !void {
+        const rule = self.rules.items[rule_index];
         const variable_index = self.variableIndex(parent_variable);
         try writer.print(
             \\{s}var args = data_structures.ProcedureArguments{{
@@ -1254,34 +1312,35 @@ const Generator = struct {
             \\{s}_ = &args;
             \\{s}args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
             \\
+        , .{
+            indent, indent, indent, rule_index, indent, node_expr, indent, indent, indent,
+        });
+        if (self.has_occurrence_procedures) {
+            try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
+        }
+        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try self.emitProcedureSequenceExpression(writer, rule.procedures.items);
+        try writer.writeAll(", &args);\n");
+        try writer.print(
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
-            \\{s}    const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             \\{s}    try procedure(&args);
             \\{s}}}
-            \\
-            \\{s}comptime var procedure_pointer_head = variable_procedures[{d}];
-            \\{s}inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            \\{s}    try procedure(&args);
-            \\{s}    procedure_pointer_head = procedure_pointer_head_.next;
-            \\{s}}}
-            \\
+            \\{s}try runProcedureSequence(variable_procedures[{d}], &args);
             \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
             \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             \\{s}    try procedure(&args);
             \\{s}}}
-            \\
             \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
             \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             \\{s}    try procedure(&args);
             \\{s}}}
             \\
         , .{
-            indent, indent,          indent, rule_index, indent, node_expr, indent,
-            indent, indent,          indent, rule_index, indent, indent,    indent,
-            indent, variable_index,  indent, indent,     indent, indent,    indent,
-            indent, parent_variable, indent, indent,     indent, indent,    indent,
-            indent, indent,
+            indent, rule_index,     indent, indent,          indent,
+            indent, variable_index, indent, parent_variable, indent,
+            indent, indent,         indent, indent,          indent,
+            indent,
         });
         if (include_outcome) {
             try writer.print(
@@ -1300,6 +1359,33 @@ const Generator = struct {
                 \\
             , .{ indent, indent, indent, indent });
         }
+    }
+
+    fn emitTerminalProcedureBlock(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, node_expr: []const u8, occurrence_expr: []const u8, indent: []const u8) !void {
+        try writer.print(
+            \\{s}var args = data_structures.ProcedureArguments{{
+            \\{s}    .context = context,
+            \\{s}    .rule = null,
+            \\{s}    .node = {s},
+            \\{s}}};
+        , .{ indent, indent, indent, indent, node_expr, indent });
+        if (self.has_occurrence_procedures) {
+            try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
+        }
+        try writer.print(
+            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\
+        , .{
+            indent, terminal_index, indent, indent, indent,
+            indent, indent,         indent, indent,
+        });
     }
 
     fn emitDebugRuleExpansion(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, indent: []const u8) !void {

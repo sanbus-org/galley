@@ -156,6 +156,72 @@ test generateParserAlloc {
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
 }
 
+test "LR rejects indistinguishable variable and terminal occurrence hooks" {
+    const variable_source =
+        \\Start
+        \\| Choice
+        \\
+        \\Choice
+        \\| Target@selected "x" "1"
+        \\| Target "x" "2"
+        \\
+        \\Target
+        \\| "t"
+        \\
+    ;
+    const terminal_source =
+        \\Start
+        \\| Choice
+        \\
+        \\Choice
+        \\| "t"@selected "x"
+        \\| "t" "y"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(
+        error.AmbiguousProcedureHooks,
+        generateParserAlloc(arena.allocator(), variable_source, .lr, .{}),
+    );
+    try std.testing.expectError(
+        error.AmbiguousProcedureHooks,
+        generateParserAlloc(arena.allocator(), terminal_source, .lr, .{ .ast_for_terminals = true }),
+    );
+}
+
+test "LR accepts indistinguishable occurrences with identical hook chains" {
+    const variable_source =
+        \\Start
+        \\| Choice
+        \\
+        \\Choice
+        \\| Target@selected "x" "1"
+        \\| Target@selected "x" "2"
+        \\
+        \\Target
+        \\| "t"
+        \\
+    ;
+    const terminal_source =
+        \\Start
+        \\| Choice
+        \\
+        \\Choice
+        \\| "t"@selected "x"
+        \\| "t"@selected "y"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    _ = try generateParserAlloc(arena.allocator(), variable_source, .lr, .{});
+    _ = try generateParserAlloc(arena.allocator(), terminal_source, .lr, .{ .ast_for_terminals = true });
+}
+
 fn expectContains(haystack: []const u8, needle: []const u8) !usize {
     const index = std.mem.indexOf(u8, haystack, needle) orelse {
         std.debug.print("missing expected text:\n{s}\n", .{needle});

@@ -21,9 +21,15 @@ pub const Symbol = struct {
     procedures: std.ArrayList([]const u8) = .empty,
 };
 
+pub const ProcedureNames = struct {
+    items: std.ArrayList([]const u8) = .empty,
+};
+
 pub const Rule = struct {
     header: usize,
     rhs: std.ArrayList(usize) = .empty,
+    rhs_procedures: std.ArrayList(ProcedureNames) = .empty,
+    procedures: std.ArrayList([]const u8) = .empty,
     rhs_index: []const u8,
 };
 
@@ -33,7 +39,6 @@ pub fn addSymbol(
     variables: *std.ArrayList(usize),
     id: []const u8,
     kind: SymbolKind,
-    procedures_: []const []const u8,
 ) !usize {
     for (symbols.items, 0..) |symbol, index| {
         if (std.mem.eql(u8, symbol.id, id)) return index;
@@ -44,7 +49,6 @@ pub fn addSymbol(
         .kind = kind,
         .ast_enabled = !(kind == .variable and id.len > 0 and id[0] == '_'),
     };
-    for (procedures_) |procedure| try symbol.procedures.append(allocator, try allocator.dupe(u8, procedure));
     if (kind == .terminal or kind == .end) {
         try symbol.terminals.append(allocator, symbol.id);
     } else if (kind == .generative_terminal) {
@@ -55,6 +59,16 @@ pub fn addSymbol(
     try symbols.append(allocator, symbol);
     if (kind == .variable) try variables.append(allocator, index);
     return index;
+}
+
+pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList([]const u8), names: []const []const u8) !void {
+    for (names) |name| try target.append(allocator, try allocator.dupe(u8, name));
+}
+
+pub fn cloneProcedureNames(allocator: std.mem.Allocator, names: []const []const u8) !ProcedureNames {
+    var result = ProcedureNames{};
+    try appendProcedureNames(allocator, &result.items, names);
+    return result;
 }
 
 pub fn ruleLessThan(symbols: []const Symbol, lhs: Rule, rhs: Rule) bool {

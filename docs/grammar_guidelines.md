@@ -67,15 +67,15 @@ Terminals in rules represent either exact character literals or pre-defined gene
   - `operator`: Matches operator symbols (`+`, `*`, `/`, `&`, `|`, `>`, `>=`, `<`, `<=`, `=`)
   - `new_line`: Matches `\n`
   - `space`: Matches space `' '`
-  - `block_start`: Matches control character `\x01` (representing the start of a block when indentation syntax is enabled for the parser, see [Reduction Procedures](procedures.md#indentation-syntax) for details)
-  - `block_end`: Matches control character `\x02` (representing the end of a block when indentation syntax is enabled for the parser, see [Reduction Procedures](procedures.md#indentation-syntax) for details)
+  - `block_start`: Matches control character `\x01` (representing the start of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#language-configuration) for details)
+  - `block_end`: Matches control character `\x02` (representing the end of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#language-configuration) for details)
 - **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^'"\x03`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class.
 
 ---
 
 ## 4. Procedure Hooks (`@procedure_name`)
 
-You can register custom semantic logic to run automatically during parsing by appending a procedure name with `@`. There are four kinds of explicit grammar hooks:
+Galley provides three explicit hook placements, registered by appending a procedure name with `@`, and a fourth family of automatic reduction hooks:
 
 1. **LHS Variable Hook:** Attaches to the left-hand-side variable definition, executing whenever this variable is reduced anywhere:
 
@@ -88,21 +88,33 @@ You can register custom semantic logic to run automatically during parsing by ap
 2. **RHS Symbol Hook:** Attaches to a right-hand-side symbol (either a variable, or a terminal symbol if `--ast-for-terminals` is active), executing only when matched in that position:
 
    ```
-   ArrayMembers
-   | Value ArrayMembersTail@replaceWithChildren "]"
+   Parent
+   | Value Child@validateChild "]"
 
    Number
-   | digit@my_digit_hook _PositiveIntegerNumberTail
+   | digit@recordDigit _PositiveIntegerNumberTail
    ```
 
-3. **Production Hook:** Attaches to a complete right-hand-side production, placed immediately after the pipe (`|`), executing when the production is reduced:
+3. **Production Hook:** Attaches to the left-hand-side variable for a specific right-hand-side production. It is placed immediately after the pipe (`|`) and executes on the resulting left-hand-side node only when that particular production is reduced:
 
    ```
-   FloatTail@dropSelf
-   |@dropSelf "." PositiveIntegerNumber
+   FloatTail
+   |@normalizeFraction "." PositiveIntegerNumber
    |
    ```
 
+4. **Automatic Reduction Hooks:** Exporting conventionally named public procedures from `procedures.zig` binds them without grammar annotations:
+
+   - `reduction_<SymbolName>_<RhsIndex>` runs only for the zero-based production index of that symbol. Indexing follows source order and continues across repeated declarations of the same LHS.
+   - `reduction_<SymbolName>` runs whenever that symbol produces an AST node.
+   - `reduction` runs for every eligible variable reduction and AST-enabled terminal match.
+
+Multiple procedures can be chained on any explicit hook target (for example, `Number@hook1@hook2`). Chaining runs the procedures from left to right; it is not a separate hook kind.
+
+For each variable reduction, hooks run in this order: RHS occurrence hooks, production hooks, `reduction_<SymbolName>_<RhsIndex>`, LHS hooks, `reduction_<SymbolName>`, then the general `reduction` hook. Each explicit chain runs left to right, and each phase receives the node produced by the preceding phase.
+
+For an AST-enabled terminal, the occurrence chain runs first, followed by `reduction_<SymbolName>` and then `reduction`. Terminal hooks receive `args.rule = null`. LR generation reports `error.AmbiguousProcedureHooks` if the parser cannot distinguish occurrences with different chains at the match or reduction point.
+
 ---
 
-For detailed information on implicit hooks (`reduction`, `reduction_<SymbolName>`), compiler AST requirements, and how to write hook functions in Zig, see the [Reduction Procedures User Guide](procedures.md).
+For detailed information on automatic hooks, nested reduction ordering, compiler AST requirements, and how to write hook functions in Zig, see the [Reduction Procedures User Guide](procedures.md).

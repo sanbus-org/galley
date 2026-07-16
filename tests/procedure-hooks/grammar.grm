@@ -1,0 +1,52 @@
+Start
+| "l" LhsTarget "m" LhsTarget
+| "s" RhsTarget@rhsHook "t" RhsTarget
+| "u" RhsTarget
+|@productionHook "p" ProductionTarget
+| "q" ProductionTarget
+| ChainTarget
+| "g" GeneralLeaf
+| "v" AutoTarget
+| Ordered@rhsFirst@rhsSecond
+| Recursive
+| _Hidden
+| "d" DropTarget@dropOccurrence
+| "j"@terminalFirst@terminalSecond
+| "i" IndexedTarget
+
+LhsTarget@lhsHook
+| "a"
+
+RhsTarget
+| "x"
+
+ProductionTarget
+| "y"
+
+ChainTarget@chainFirst@chainSecond
+| "c"
+
+GeneralLeaf
+| "z"
+
+AutoTarget
+| "w"
+
+Ordered@lhsFirst@lhsSecond
+|@productionFirst@productionSecond "o"
+
+Recursive
+| "r" Recursive@recursiveOccurrence
+| "e"
+
+_Hidden@hiddenHook
+| "h"
+
+DropTarget@afterDropLhs
+|@afterDropProduction "n"
+
+IndexedTarget
+| "0"
+
+IndexedTarget
+| "1"
