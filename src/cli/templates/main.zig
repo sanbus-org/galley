@@ -5,6 +5,8 @@ const Options = struct {
     iterations: u32 = 1,
     warmup_iterations: ?u32 = null,
     verbosity: usize = 0,
+    max_errors: usize = 10,
+    recovery_window: usize = 500,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -21,7 +23,11 @@ pub fn main(init: std.process.Init) !void {
     var walker = try samples_dir.walk(init.gpa);
     defer walker.deinit();
 
-    var session = try parser.Session.init(init.io, init.gpa, .{ .verbosity = options.verbosity });
+    var session = try parser.Session.init(init.io, init.gpa, .{
+        .verbosity = options.verbosity,
+        .max_errors = options.max_errors,
+        .recovery_window = options.recovery_window,
+    });
     defer session.deinit();
 
     var parsed_count: usize = 0;
@@ -111,12 +117,24 @@ fn parseArgs(init: std.process.Init) !Options {
             options.verbosity = try std.fmt.parseInt(usize, value, 10);
         } else if (std.mem.startsWith(u8, arg, "--verbosity=")) {
             options.verbosity = try std.fmt.parseInt(usize, arg["--verbosity=".len..], 10);
+        } else if (std.mem.eql(u8, arg, "--max-errors")) {
+            const value = args.next() orelse return error.MissingMaxErrors;
+            options.max_errors = try std.fmt.parseInt(usize, value, 10);
+        } else if (std.mem.startsWith(u8, arg, "--max-errors=")) {
+            options.max_errors = try std.fmt.parseInt(usize, arg["--max-errors=".len..], 10);
+        } else if (std.mem.eql(u8, arg, "--recovery-window")) {
+            const value = args.next() orelse return error.MissingRecoveryWindow;
+            options.recovery_window = try std.fmt.parseInt(usize, value, 10);
+        } else if (std.mem.startsWith(u8, arg, "--recovery-window=")) {
+            options.recovery_window = try std.fmt.parseInt(usize, arg["--recovery-window=".len..], 10);
         } else {
             return error.UnknownArgument;
         }
     }
 
     if (options.iterations == 0) return error.InvalidIterations;
+    if (options.max_errors == 0) return error.InvalidMaxErrors;
+    if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
     return options;
 }
 
@@ -132,6 +150,8 @@ fn printUsage(init: std.process.Init) !void {
         \\  -r, --iterations <ITERATIONS>      Repeat each sample parse.
         \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
         \\  -v, --verbosity <LEVEL>            Debug verbosity level.
+        \\      --max-errors <COUNT>           Maximum syntax errors to report (default: 10).
+        \\      --recovery-window <BYTES>      LL recovery lookahead per attempt (default: 500).
         \\
     );
     try stdout.flush();

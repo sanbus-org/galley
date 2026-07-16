@@ -22,6 +22,7 @@ const Generator = struct {
     rules: std.ArrayList(Rule) = .empty,
     parse_table: std.ArrayList(ParseEntry) = .empty,
     error_message_specs: std.ArrayList(ErrorMessageSpec) = .empty,
+    syntax_error_handlers: std.ArrayList(SyntaxErrorHandlerSpec) = .empty,
     needs_non_ast_parser: std.AutoHashMap(usize, void) = undefined,
     augmented_start: usize = 0,
 
@@ -29,6 +30,15 @@ const Generator = struct {
         variable: usize,
         terminal: usize,
         rule: usize,
+    };
+
+    const SyntaxErrorHandlerSpec = struct {
+        name: []const u8,
+        symbol_index: usize,
+        expected_tokens: []const []const u8,
+        exact_name: []const u8,
+        symbol_name: []const u8,
+        non_ast: bool,
     };
 
     fn init(allocator: std.mem.Allocator, options: Options) Generator {
@@ -276,15 +286,18 @@ const Generator = struct {
             try writer.writeByte('\n');
         }
         try writer.writeAll("};\n\n");
+        try self.emitRecoverySupport(writer);
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
         try self.emitNonAstParsers(writer);
+        try self.emitSyntaxErrorHandlers(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
             \\    _ = parse__AugmentedStart(context) catch |err| switch (err) {
             \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
             \\        else => return err,
             \\    };
+            \\    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
             \\
             \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
@@ -307,6 +320,33 @@ const Generator = struct {
             \\
             \\pub fn parse(context: *data_structures.Context) !void {
             \\    _ = try parseWithResult(context);
+            \\}
+            \\
+        );
+    }
+
+    fn emitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
+        _ = self;
+        try writer.writeAll(
+            \\fn llRecoveryOffset(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {
+            \\    const lookahead = try context.recoveryLookahead();
+            \\    if (candidates.len == 0) {
+            \\        if (lookahead[0] == 0) context.finishSyntaxRecovery();
+            \\        return null;
+            \\    }
+            \\    const upper = @min(context.recoveryWindow(), lookahead.len);
+            \\    var offset = start;
+            \\    while (offset < upper) : (offset += 1) {
+            \\        for (candidates) |candidate| {
+            \\            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {
+            \\                context.finishSyntaxRecovery();
+            \\                return offset;
+            \\            }
+            \\        }
+            \\        if (lookahead[offset] == 0) break;
+            \\    }
+            \\    if (lookahead[0] == 0) context.finishSyntaxRecovery();
+            \\    return null;
             \\}
             \\
         );
@@ -463,13 +503,8 @@ const Generator = struct {
             const error_function_names = try self.syntaxErrorFunctionNames(variable, &.{});
             try writer.writeAll("    switch (context.head(u8, 0)) {\n");
             try writer.writeAll("        else => {\n");
-            try writer.writeAll("            try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
-            try emitStringLiteral(writer, self.symbols.items[variable].id);
-            try writer.writeAll(" }, &[_][]const u8{});\n");
-            try writer.writeAll("            if (!builtin.is_test) {\n");
-            try self.emitSyntaxErrorMessagePrint(writer, error_function_names.exact, error_function_names.symbol, "                ");
-            try writer.writeAll("            }\n");
-            try writer.writeAll("            return root.ParseError.SyntaxError;\n");
+            try writer.writeAll("            @branchHint(.unlikely);\n");
+            try self.emitSyntaxErrorCall(writer, variable, &.{}, error_function_names, non_ast, "            ");
             try writer.writeAll("        },\n");
             try writer.writeAll("    }\n");
         } else {
@@ -603,7 +638,7 @@ const Generator = struct {
             , .{ name, self_index });
             try writer.writeByte('\n');
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "repeating_node" else null, if (returns_node) "repeating_node_address" else null, "        ", prefix_non_ast);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "repeating_node", "repeating_node_address", "        ", prefix_non_ast);
             }
             try writer.writeByte('\n');
             try self.emitDebugReduction(writer, rule, variable, "        ");
@@ -692,6 +727,58 @@ const Generator = struct {
             if (std.mem.eql(u8, item, value)) return;
         }
         try items.append(allocator, value);
+    }
+
+    fn recoveryTerminalStringsForSequence(self: *Generator, sequence: []const usize, follow_variable: ?usize) !std.ArrayList([]const u8) {
+        var result = std.ArrayList([]const u8).empty;
+        var sequence_is_nullable = true;
+        for (sequence) |symbol_index| {
+            const symbol = self.symbols.items[symbol_index];
+            if (symbol.kind == .variable) {
+                var first_set = std.AutoHashMap(usize, usize).init(self.allocator);
+                defer first_set.deinit();
+                try self.firsts(symbol_index, &first_set, null);
+                var iterator = first_set.iterator();
+                while (iterator.next()) |entry| {
+                    for (self.symbols.items[entry.key_ptr.*].terminals.items) |terminal| {
+                        try appendUniqueString(&result, self.allocator, terminal);
+                    }
+                }
+                if (self.nullableRule(symbol_index) != null) continue;
+            } else {
+                for (symbol.terminals.items) |terminal| {
+                    try appendUniqueString(&result, self.allocator, terminal);
+                }
+            }
+            sequence_is_nullable = false;
+            break;
+        }
+
+        if (sequence_is_nullable) {
+            if (follow_variable) |variable| {
+                var follow_set = std.AutoHashMap(usize, usize).init(self.allocator);
+                defer follow_set.deinit();
+                try self.follows(variable, &follow_set, null);
+                var iterator = follow_set.iterator();
+                while (iterator.next()) |entry| {
+                    for (self.symbols.items[entry.key_ptr.*].terminals.items) |terminal| {
+                        try appendUniqueString(&result, self.allocator, terminal);
+                    }
+                }
+            }
+        }
+        std.mem.sort([]const u8, result.items, {}, stringLessThan);
+        return result;
+    }
+
+    fn emitRecoveryCandidates(self: *Generator, writer: *std.Io.Writer, candidates: []const []const u8) !void {
+        _ = self;
+        try writer.writeAll("&[_][]const u8{");
+        for (candidates, 0..) |candidate, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, candidate);
+        }
+        try writer.writeAll("}");
     }
 
     fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
@@ -867,27 +954,72 @@ const Generator = struct {
         }
         std.mem.sort([]const u8, expected_heads.items, {}, headLessThan);
         const error_function_names = try self.syntaxErrorFunctionNames(symbol_index, groups);
-        try writer.print(
-            \\{s}    else => {{
-            \\{s}        try context.recordSyntaxDiagnostic(.{{ .while_parsing =
-        , .{ indent, indent });
-        try emitStringLiteral(writer, self.symbols.items[symbol_index].id);
-        try writer.writeAll(" }, &[_][]const u8{ ");
-        for (expected_heads.items, 0..) |head, index| {
-            if (index != 0) try writer.writeAll(", ");
-            try emitStringLiteral(writer, head);
+        try writer.print("{s}    else => {{\n", .{indent});
+        try writer.print("{s}        @branchHint(.unlikely);\n", .{indent});
+        try self.emitSyntaxErrorCall(writer, symbol_index, expected_heads.items, error_function_names, non_ast, try indented(self.allocator, indent, 8));
+        try writer.print("{s}    }},\n", .{indent});
+    }
+
+    fn emitSyntaxErrorCall(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        symbol_index: usize,
+        expected_tokens: []const []const u8,
+        function_names: SyntaxErrorFunctionNames,
+        non_ast: bool,
+        indent: []const u8,
+    ) !void {
+        const handler_name = try std.fmt.allocPrint(self.allocator, "ll_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
+        try self.syntax_error_handlers.append(self.allocator, .{
+            .name = handler_name,
+            .symbol_index = symbol_index,
+            .expected_tokens = try self.allocator.dupe([]const u8, expected_tokens),
+            .exact_name = function_names.exact,
+            .symbol_name = function_names.symbol,
+            .non_ast = non_ast,
+        });
+        const can_tail_call = !self.options.with_ast or
+            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, non_ast));
+        if (can_tail_call) {
+            try writer.print("{s}return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
+        } else {
+            try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
         }
-        try writer.print(
-            \\ }});
-            \\{s}        if (!builtin.is_test) {{
-        , .{indent});
-        try self.emitSyntaxErrorMessagePrint(writer, error_function_names.exact, error_function_names.symbol, try indented(self.allocator, indent, 12));
-        try writer.print(
-            \\{s}        }}
-            \\{s}        return root.ParseError.SyntaxError;
-            \\{s}    }},
-            \\
-        , .{ indent, indent, indent });
+    }
+
+    fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
+        for (self.syntax_error_handlers.items) |spec| {
+            const symbol = self.symbols.items[spec.symbol_index];
+            const returns_node = self.symbolReturnsNode(spec.symbol_index, spec.non_ast);
+            const candidates = try self.recoveryTerminalStringsForSequence(&.{spec.symbol_index}, if (symbol.kind == .variable) spec.symbol_index else null);
+
+            try writer.print("\nfn {s}(context: *data_structures.Context) anyerror!{s} {{\n", .{
+                spec.name,
+                if (returns_node) "data_structures.ASTNode.Pointer" else "void",
+            });
+            try writer.writeAll("    @branchHint(.cold);\n");
+            try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
+            try writer.writeAll("    if (report_syntax_error) {\n");
+            try writer.writeAll("        try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
+            try emitStringLiteral(writer, symbol.id);
+            try writer.writeAll(" }, ");
+            try self.emitRecoveryCandidates(writer, spec.expected_tokens);
+            try writer.writeAll(");\n");
+            try writer.writeAll("        if (!builtin.is_test) {\n");
+            try self.emitSyntaxErrorMessagePrint(writer, spec.exact_name, spec.symbol_name, "            ");
+            try writer.writeAll("        }\n");
+            try writer.writeAll("    }\n");
+            try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
+            try writer.writeAll("    if (try llRecoveryOffset(context, ");
+            try self.emitRecoveryCandidates(writer, candidates.items);
+            try writer.writeAll(", if (report_syntax_error) 1 else 0)) |recovery_offset| {\n");
+            try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
+            try writer.writeAll("    }\n");
+            if (returns_node) {
+                try writer.writeAll("    return data_structures.ASTNode.invalid_pointer;\n");
+            }
+            try writer.writeAll("}\n");
+        }
     }
 
     const SyntaxErrorFunctionNames = struct {
@@ -987,37 +1119,30 @@ const Generator = struct {
     fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, non_ast);
-
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
         if (rule.rhs.items.len != 0) {
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
-                const name = try self.parserName(symbol_index);
-                const child = self.symbols.items[symbol_index];
-                const child_non_ast = self.options.with_ast and (non_ast or (child.kind == .variable and !child.ast_enabled));
-                if (child_non_ast) try self.markNeedsNonAst(symbol_index);
-                const child_returns_node = self.symbolReturnsNode(symbol_index, child_non_ast);
-                const call_name = if (symbol_index == parent_variable)
-                    try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
-                else
-                    name;
-                if (parent_returns_node and child_returns_node) {
-                    try writer.print(
-                        \\{s}{{
-                        \\{s}    const child_node = try parse_{s}(context);
-                        \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
-                        \\{s}        context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
-                        \\{s}    }}
-                        \\{s}}}
-                        \\
-                    , .{ indent, indent, call_name, indent, indent, child_index, indent, indent });
-                } else if (child_returns_node) {
-                    try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
-                } else {
-                    try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
-                }
+                try self.emitChildParseLine(
+                    writer,
+                    symbol_index,
+                    parent_variable,
+                    rule,
+                    child_index,
+                    if (parent_returns_node) "node_address" else null,
+                    if (parent_returns_node) "node_address" else null,
+                    indent,
+                    non_ast,
+                );
             }
         }
+
+        try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, non_ast);
+    }
+
+    fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
+        const rule = self.rules.items[rule_index];
+        const parent_returns_node = self.symbolReturnsNode(parent_variable, non_ast);
 
         if (self.options.with_procedures and self.options.with_ast and !non_ast) {
             const variable_index = self.variableIndex(parent_variable);

@@ -216,6 +216,27 @@ const first = try session.parseBytes("first input", "first");
 const second = try session.parseBytes("second input", "second");
 ```
 
+LL sessions recover after syntax errors so one parse can report several diagnostics. Configure the limit and per-attempt search distance when creating the session:
+
+```zig
+var session = try parser.Session.init(io, allocator, .{
+    .max_errors = 10,
+    .recovery_window = 500,
+});
+defer session.deinit();
+
+if (session.parseBytes(input, "input")) |_| {
+    // Parsed without syntax errors.
+} else |err| switch (err) {
+    parser.ParseError.SyntaxError => {
+        std.debug.print("reported {d} syntax errors\n", .{session.syntaxErrorCount()});
+    },
+    else => return err,
+}
+```
+
+`max_errors = 1` restores fail-fast behavior. A parse that recovered still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one. Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee.
+
 Each call resets the session's transient parsing state while retaining reusable allocations. Other input APIs are available for specialized callers:
 
 - `session.parseFile(file, input_path)` parses from a `std.Io.File`.

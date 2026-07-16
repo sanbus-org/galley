@@ -225,6 +225,8 @@ fn addCase(
             galley_parser_mod,
             inputs.valid,
             inputs.malformed,
+            inputs.multiple_errors,
+            inputs.small_window_error_count,
             inputs.diagnostic_line,
             inputs.diagnostic_column,
             inputs.unexpected_token_prefix,
@@ -400,7 +402,16 @@ fn addValidationInput(
     if (!options.selection.includes(.matrix_cli)) return;
 
     const run_cmd = b.addRunArtifact(exe);
-    run_cmd.addArgs(&.{ "--verbosity", "0", "--iterations", "1" });
+    run_cmd.addArgs(&.{
+        "--verbosity",
+        "0",
+        "--iterations",
+        "1",
+        "--max-errors",
+        "3",
+        "--recovery-window",
+        "64",
+    });
 
     if (std.mem.endsWith(u8, input_path, ".grm")) {
         const cache_dir = try std.fs.path.join(b.allocator, &.{ ".zig-cache", "matrix-validation", case_name });
@@ -462,6 +473,8 @@ fn addGeneratedParserApiTest(
 const ErrorInputs = struct {
     valid: []const u8,
     malformed: []const u8,
+    multiple_errors: []const u8,
+    small_window_error_count: usize,
     diagnostic_line: u32,
     diagnostic_column: u32,
     unexpected_token_prefix: []const u8,
@@ -473,16 +486,32 @@ fn errorInputs(language: []const u8) ?ErrorInputs {
         return .{
             .valid = "{}",
             .malformed = "{",
+            .multiple_errors = "[true  !, false  ?, null]",
+            .small_window_error_count = 1,
             .diagnostic_line = 1,
             .diagnostic_column = 2,
             .unexpected_token_prefix = "\x00",
             .expected_token = "}",
         };
     }
+    if (std.mem.eql(u8, language, "json-augmented")) {
+        return .{
+            .valid = "null",
+            .malformed = "*null",
+            .multiple_errors = "**null",
+            .small_window_error_count = 2,
+            .diagnostic_line = 1,
+            .diagnostic_column = 6,
+            .unexpected_token_prefix = "\x00",
+            .expected_token = ")",
+        };
+    }
     if (std.mem.eql(u8, language, "sanbus")) {
         return .{
             .valid = "Item:\n  - value: str\n",
             .malformed = "Item:\n  - value! str\n",
+            .multiple_errors = "Item:\n  - first! str\n  - second! str\n",
+            .small_window_error_count = 1,
             .diagnostic_line = 2,
             .diagnostic_column = 10,
             .unexpected_token_prefix = "!",
@@ -499,6 +528,8 @@ fn addGeneratedParserErrorTest(
     galley_parser_mod: *std.Build.Module,
     valid_input: []const u8,
     malformed_input: []const u8,
+    multiple_errors_input: []const u8,
+    small_window_error_count: usize,
     diagnostic_line: u32,
     diagnostic_column: u32,
     unexpected_token_prefix: []const u8,
@@ -508,6 +539,8 @@ fn addGeneratedParserErrorTest(
     const test_options = b.addOptions();
     test_options.addOption([]const u8, "valid_input", valid_input);
     test_options.addOption([]const u8, "malformed_input", malformed_input);
+    test_options.addOption([]const u8, "multiple_errors_input", multiple_errors_input);
+    test_options.addOption(usize, "small_window_error_count", small_window_error_count);
     test_options.addOption(u32, "diagnostic_line", diagnostic_line);
     test_options.addOption(u32, "diagnostic_column", diagnostic_column);
     test_options.addOption([]const u8, "unexpected_token_prefix", unexpected_token_prefix);

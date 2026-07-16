@@ -172,6 +172,13 @@ fn expectContainsAfter(haystack: []const u8, needle: []const u8, start: usize) !
     return index;
 }
 
+fn generatedFunction(output: []const u8, declaration: []const u8) ![]const u8 {
+    const start = try expectContains(output, declaration);
+    const end = std.mem.indexOfPos(u8, output, start, "\n}\n") orelse
+        return error.GeneratedFunctionEndMissing;
+    return output[start .. end + "\n}\n".len];
+}
+
 const semantic_hook_grammar =
     \\Start
     \\| Items
@@ -209,4 +216,48 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
     const parser_level = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_ll\")", symbol);
     const global = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
     _ = try expectContainsAfter(output, "root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi)", global);
+}
+
+test "generateParserAlloc emits position-based LL recovery" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_ast = false, .with_procedures = false });
+
+    _ = try expectContains(output, "fn llRecoveryOffset(");
+    _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
+    _ = try expectContains(output, "try parse_Item(context)");
+    _ = try expectContains(output, "return @call(.always_tail, ll_syntax_error_");
+    _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
+    _ = try expectContains(output, "context.finishSyntaxRecovery();");
+    _ = try expectContains(output, "if (report_syntax_error) 1 else 0");
+    _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    _ = try expectContains(output, "llRecoveryOffset(context, &[_][]const u8{\"a\"}, if (report_syntax_error) 1 else 0)");
+}
+
+test "LL syntax error tail calls follow generated parser ABI" {
+    const source =
+        \\Start
+        \\| "a"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const no_ast_output = try generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = false,
+        .with_procedures = false,
+    });
+    const no_ast_terminal = try generatedFunction(no_ast_output, "inline fn parse_terminal_a(");
+    _ = try expectContains(no_ast_terminal, "return @call(.always_tail, ll_syntax_error_");
+
+    const terminal_ast_output = try generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = true,
+        .with_procedures = false,
+        .ast_for_terminals = true,
+    });
+    const terminal_ast_parser = try generatedFunction(terminal_ast_output, "inline fn parse_terminal_a(");
+    try std.testing.expect(std.mem.indexOf(u8, terminal_ast_parser, "@call(.always_tail") == null);
+    _ = try expectContains(terminal_ast_parser, "return ll_syntax_error_");
 }
