@@ -11,13 +11,13 @@ Value
 | "false" _OptionalBlank
 
 Object
-| "{" _OptionalBlank ObjectMembers@replaceWithChildren
+| "{" _OptionalBlank ObjectMembers
 
-ObjectMembers
-| ObjectMember ObjectMembersTail@replaceWithChildren "}"
+ObjectMembers@replaceWithChildren
+| ObjectMember ObjectMembersTail "}"
 | "}"
 
-ObjectMembersTail
+ObjectMembersTail@replaceWithChildren
 | "," _OptionalBlank ObjectMember ObjectMembersTail
 |
 
@@ -25,13 +25,13 @@ ObjectMember
 | String _OptionalBlank ":" _OptionalBlank Value
 
 Array
-| "[" _OptionalBlank ArrayMembers@replaceWithChildren
+| "[" _OptionalBlank ArrayMembers
 
-ArrayMembers
-| Value ArrayMembersTail@replaceWithChildren "]"
+ArrayMembers@replaceWithChildren
+| Value ArrayMembersTail "]"
 | "]"
 
-ArrayMembersTail
+ArrayMembersTail@replaceWithChildren
 | "," _OptionalBlank Value ArrayMembersTail
 |
 

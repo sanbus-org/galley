@@ -2,9 +2,9 @@ Start
 | Value
 
 Value
-| Object OptionalBlank@dropChildren
+| Object OptionalBlank
 | Array OptionalBlank
-| _Number@dropChildren OptionalBlank
+| _Number OptionalBlank
 | String OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
@@ -32,17 +32,17 @@ ObjectMember
 | String OptionalBlank ":" OptionalBlank Value
 
 Array
-| "[" OptionalBlank ArrayMembers@replaceWithChildren
+| "[" OptionalBlank ArrayMembers
 
-ArrayMembers
-| Value _ArrayMembersTail@replaceWithChildren "]"
+ArrayMembers@replaceWithChildren
+| Value _ArrayMembersTail "]"
 | "]"
 
 _ArrayMembersTail
 | "," OptionalBlank Value _ArrayMembersTail
 |
 
-OptionalBlank
+OptionalBlank@dropChildren
 | space _OptionalBlankTail
 | new_line _OptionalBlankTail
 | block_start _OptionalBlankTail
@@ -57,29 +57,29 @@ _OptionalBlankTail
 |
 
 String
-| '" _StringContent@dropChildren '"
+| '" _StringContent '"
 
 _StringContent
 | character^'" _StringContent
 |
 
 _Number
-| IntegerNumber@dropChildren FloatTail@dropChildren
+| IntegerNumber FloatTail
 
-IntegerNumber
-| PositiveIntegerNumber@dropChildren
-| NegativeIntegerNumber@dropChildren
+IntegerNumber@dropChildren
+| PositiveIntegerNumber
+| NegativeIntegerNumber
 
-PositiveIntegerNumber
+PositiveIntegerNumber@dropChildren
 | digit _PositiveIntegerNumberTail
 
 _PositiveIntegerNumberTail
 | digit _PositiveIntegerNumberTail
 |
 
-NegativeIntegerNumber
+NegativeIntegerNumber@dropChildren
 | "-" PositiveIntegerNumber
 
-FloatTail@dropSelf
+FloatTail@dropChildren@dropSelf
 | "." PositiveIntegerNumber
 |

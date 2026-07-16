@@ -34,14 +34,14 @@ The standard RFC 8259 JSON implementation used for JSON benchmarking. It support
 A full RFC 8259 JSON grammar with additional non-terminals for a richer AST shape. It parses the same language as `languages/json`, but preserves more intermediate structure and therefore has lower benchmark throughput.
 
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-- **Hooks:** Implements `@dropChildren`, `@dropSelf`, and `@replaceWithChildren` in `procedures.zig` to shape AST generation.
+- **Hooks:** Uses LHS `@replaceWithChildren` annotations and automatic reduction hooks to shape the AST and collect payload counts.
 
 ### JSON Augmented (`languages/json-augmented`)
 
 An extended JSON variant designed to test extreme recursion depths and stress-test the parser's stack overflow recovery mechanisms. It introduces special grouping syntax (`*(...)` and `(...)`) that allows deeply nested structures without exceeding memory limits.
 
-- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-- **Hooks:** Demonstrates advanced reduction hooking and stack management.
+- **Parser Engines:** `ll.grm` is provided.
+- **Hooks:** Uses LHS cleanup hooks plus automatic symbol and general reduction hooks to shape the AST and collect payload counts.
 
 ### Lisp (`languages/lisp`)
 

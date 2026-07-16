@@ -19,9 +19,9 @@ EnumBody
 | block_start EnumItems block_end
 
 EnumItems
-| EnumItemRow EnumItemsTail@dropIfEmpty
+| EnumItemRow EnumItemsTail
 
-EnumItemsTail
+EnumItemsTail@dropIfEmpty
 | new_line EnumItemRow EnumItemsTail
 |
 
@@ -29,24 +29,24 @@ EnumItemRow
 | "-" space UppercaseId
 
 ActionBody
-| block_start Fields block_end ActionBodyTail@dropIfEmpty
+| block_start Fields block_end ActionBodyTail
 | "\n---" WrappedLogicBody
 
-ActionBodyTail
+ActionBodyTail@dropIfEmpty
 | "---" WrappedLogicBody
 |
 
 Fields
-| FieldRow FieldsTail@dropIfEmpty
+| FieldRow FieldsTail
 
-FieldsTail
+FieldsTail@dropIfEmpty
 | new_line FieldRow FieldsTail
 |
 
 FieldRow
-| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue@dropIfEmpty@replaceWithChildren
+| "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue
 
-OptionalFieldDefaultValue
+OptionalFieldDefaultValue@dropIfEmpty@replaceWithChildren
 | OptionalBlank "=" OptionalBlank Expression
 |
 
@@ -88,33 +88,33 @@ WrappedLogicBody
 | block_start LogicBody block_end
 
 LogicBody
-| Expression LogicBodyTail@dropIfEmpty
+| Expression LogicBodyTail
 
-LogicBodyTail
+LogicBodyTail@dropIfEmpty
 | new_line LogicBody
 |
 
 Expression
-| OperandAndNumber OptionalBlank ExpressionTail@dropIfEmpty
+| OperandAndNumber OptionalBlank ExpressionTail
 | ActionOutcomeEntry
 
-ExpressionTail
+ExpressionTail@dropIfEmpty
 | Operator OptionalBlank Expression
 |
 
 OperandAndNumber
 | WrappedLogicBody
 | Number
-| Operand OperandTail@dropIfEmpty
+| Operand OperandTail
 
 Operand
-| LowercaseId OperandLowercaseIdTail@replaceWithChildren
+| LowercaseId OperandLowercaseIdTail
 | UppercaseId OperandUppercaseIdTail
 | UnderscoreId
 | String
 | List
 
-OperandTail
+OperandTail@dropIfEmpty
 | "[" ListGetTail
 |
 
@@ -128,7 +128,7 @@ ListGetExpressionTail
 | "..]"
 | ".." Expression "]"
 
-OperandLowercaseIdTail
+OperandLowercaseIdTail@replaceWithChildren
 | "." Id
 | "(" Parameters ")"
 | "()"

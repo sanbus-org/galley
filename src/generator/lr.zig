@@ -17,6 +17,12 @@ const Item = struct {
     rule: usize,
     head: usize,
     lookahead: usize,
+    occurrence: ?Occurrence = null,
+};
+
+const Occurrence = struct {
+    rule: usize,
+    position: usize,
 };
 
 const ActionKind = enum { shift, reduce, accept };
@@ -26,6 +32,7 @@ const Action = struct {
     kind: ActionKind,
     state: usize = 0,
     rule: usize = 0,
+    occurrence: ?Occurrence = null,
 };
 
 const GotoEntry = struct {
@@ -58,36 +65,47 @@ const Generator = struct {
         };
     }
 
-    fn addSymbol(self: *Generator, id: []const u8, kind: SymbolKind, procedures_: []const []const u8) !usize {
-        return common.addSymbol(self.allocator, &self.symbols, &self.variables, id, kind, procedures_);
+    fn addSymbol(self: *Generator, id: []const u8, kind: SymbolKind) !usize {
+        return common.addSymbol(self.allocator, &self.symbols, &self.variables, id, kind);
     }
 
     fn fromGrammar(self: *Generator, grammar: anytype) !void {
+        var rhs_counts = std.AutoHashMap(usize, usize).init(self.allocator);
+        defer rhs_counts.deinit();
+
         for (grammar.rules) |rule| {
-            const header = try self.addSymbol(rule.header, .variable, rule.procedures);
-            for (rule.right_hand_sides, 0..) |rhs, rhs_index| {
+            const header = try self.addSymbol(rule.header, .variable);
+            try common.appendProcedureNames(self.allocator, &self.symbols.items[header].procedures, rule.procedures);
+            for (rule.right_hand_sides) |rhs| {
+                const rhs_index = rhs_counts.get(header) orelse 0;
+                try rhs_counts.put(header, rhs_index + 1);
+
                 var generated_rule = Rule{
                     .header = header,
                     .rhs_index = try std.fmt.allocPrint(self.allocator, "{d}", .{rhs_index}),
                 };
+                try common.appendProcedureNames(self.allocator, &generated_rule.procedures, rhs.procedures);
                 for (rhs.symbols) |symbol| {
                     const kind: SymbolKind = switch (symbol.kind) {
                         .variable => .variable,
                         .terminal => .terminal,
                         .generative_terminal => .generative_terminal,
                     };
-                    try generated_rule.rhs.append(self.allocator, try self.addSymbol(symbol.id, kind, symbol.procedures));
+                    try generated_rule.rhs.append(self.allocator, try self.addSymbol(symbol.id, kind));
+                    try generated_rule.rhs_procedures.append(self.allocator, try common.cloneProcedureNames(self.allocator, symbol.procedures));
                 }
                 try self.rules.append(self.allocator, generated_rule);
             }
         }
 
         const original_start = self.rules.items[0].header;
-        self.augmented_start = try self.addSymbol("_AugmentedStart", .variable, &.{});
-        self.eof = try self.addSymbol("\x00", .end, &.{});
+        self.augmented_start = try self.addSymbol("_AugmentedStart", .variable);
+        self.eof = try self.addSymbol("\x00", .end);
         var augmented_rule = Rule{ .header = self.augmented_start, .rhs_index = "0" };
         try augmented_rule.rhs.append(self.allocator, original_start);
+        try augmented_rule.rhs_procedures.append(self.allocator, .{});
         try augmented_rule.rhs.append(self.allocator, self.eof);
+        try augmented_rule.rhs_procedures.append(self.allocator, .{});
         try self.rules.append(self.allocator, augmented_rule);
 
         std.mem.sort(Rule, self.rules.items, self, ruleLessThan);
@@ -137,10 +155,20 @@ const Generator = struct {
                     if (self.symbols.items[head_symbol].kind != .variable) {
                         const target = (try self.gotoState(state.*, head_symbol));
                         const target_index = self.stateIndex(target) orelse return error.MissingShiftState;
-                        try self.addAction(state, .{ .terminal = head_symbol, .kind = .shift, .state = target_index });
+                        try self.addAction(state, .{
+                            .terminal = head_symbol,
+                            .kind = .shift,
+                            .state = target_index,
+                            .occurrence = self.occurrenceFor(item.rule, item.head),
+                        });
                     }
                 } else {
-                    try self.addAction(state, .{ .terminal = item.lookahead, .kind = .reduce, .rule = item.rule });
+                    try self.addAction(state, .{
+                        .terminal = item.lookahead,
+                        .kind = .reduce,
+                        .rule = item.rule,
+                        .occurrence = item.occurrence,
+                    });
                 }
             }
 
@@ -162,7 +190,10 @@ const Generator = struct {
                 existing.* = if (existing.kind == .accept) existing.* else action;
                 return;
             }
-            if (existing.kind == action.kind and existing.state == action.state and existing.rule == action.rule) return;
+            if (existing.kind == action.kind and existing.state == action.state and existing.rule == action.rule) {
+                if (self.occurrencesEquivalent(existing.occurrence, action.occurrence)) return;
+                return error.AmbiguousProcedureHooks;
+            }
             return error.AmbiguousGrammar;
         }
         try state.actions.append(self.allocator, action);
@@ -190,6 +221,7 @@ const Generator = struct {
                         .rule = rule_index,
                         .head = 0,
                         .lookahead = lookahead.*,
+                        .occurrence = self.occurrenceFor(item.rule, item.head),
                     });
                 }
             }
@@ -274,6 +306,7 @@ const Generator = struct {
                 .rule = item.rule,
                 .head = item.head + 1,
                 .lookahead = item.lookahead,
+                .occurrence = item.occurrence,
             });
         }
         if (next.items.items.len > 0) try self.closeState(&next);
@@ -292,6 +325,32 @@ const Generator = struct {
             if (rule.header == header) return index;
         }
         return null;
+    }
+
+    fn occurrenceFor(self: *Generator, rule_index: usize, position: usize) ?Occurrence {
+        if (!self.options.with_ast or !self.options.with_procedures) return null;
+        const rule = self.rules.items[rule_index];
+        if (position >= rule.rhs.items.len) return null;
+        if (rule.rhs_procedures.items[position].items.items.len == 0) return null;
+
+        const symbol = self.symbols.items[rule.rhs.items[position]];
+        const has_node = switch (symbol.kind) {
+            .variable => symbol.ast_enabled,
+            .terminal, .generative_terminal => self.options.ast_for_terminals,
+            .end => false,
+        };
+        return if (has_node) .{ .rule = rule_index, .position = position } else null;
+    }
+
+    fn occurrencesEquivalent(self: *Generator, lhs: ?Occurrence, rhs: ?Occurrence) bool {
+        if (lhs == null or rhs == null) return lhs == null and rhs == null;
+        const lhs_names = self.rules.items[lhs.?.rule].rhs_procedures.items[lhs.?.position].items.items;
+        const rhs_names = self.rules.items[rhs.?.rule].rhs_procedures.items[rhs.?.position].items.items;
+        if (lhs_names.len != rhs_names.len) return false;
+        for (lhs_names, rhs_names) |lhs_name, rhs_name| {
+            if (!std.mem.eql(u8, lhs_name, rhs_name)) return false;
+        }
+        return true;
     }
 
     fn emit(self: *Generator, writer: *std.Io.Writer) !void {
@@ -331,7 +390,12 @@ const Generator = struct {
             \\    is_accept: bool,
             \\};
             \\
-            \\const SemanticStack = std.ArrayList(data_structures.ASTNode.Pointer);
+            \\const SemanticValue = struct {
+            \\    start_pos: data_structures.Context.Size,
+            \\    node: data_structures.ASTNode.Pointer = data_structures.ASTNode.invalid_pointer,
+            \\};
+            \\
+            \\const SemanticStack = std.ArrayList(SemanticValue);
             \\
         );
 
@@ -354,7 +418,10 @@ const Generator = struct {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
             \\
-            \\    const ast_root = if (comptime is_ast_enabled) stack.items[stack.items.len - 1] else null;
+            \\    const ast_root = if (comptime is_ast_enabled) root: {
+            \\        const node = stack.items[stack.items.len - 1].node;
+            \\        break :root if (node != data_structures.ASTNode.invalid_pointer) node else null;
+            \\    } else null;
             \\    return .{
             \\        .parsed_bytes = context.pos() - if (comptime config.indentation_syntax) 1 else 0,
             \\        .line = context.line,
@@ -410,6 +477,29 @@ const Generator = struct {
 
     fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {
         try writer.print(
+            \\const ProcedureSequenceNode = struct {{
+            \\    procedure: *const data_structures.Procedure,
+            \\    next: ?*const ProcedureSequenceNode,
+            \\}};
+            \\
+            \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
+            \\    if (procedure_names.len == 0) return null;
+            \\    const procedure_name = procedure_names[0];
+            \\    return &ProcedureSequenceNode{{
+            \\        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
+            \\        .next = makeProcedureSequence(procedure_names[1..]),
+            \\    }};
+            \\}}
+            \\
+            \\fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_structures.ProcedureArguments) !void {{
+            \\    var current = sequence;
+            \\    while (current) |entry| {{
+            \\        const procedure = @as(*data_structures.Procedure, @constCast(entry.procedure));
+            \\        try procedure(args);
+            \\        current = entry.next;
+            \\    }}
+            \\}}
+            \\
             \\pub const rule_procedures = rule_procedures: {{
             \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
             \\
@@ -451,23 +541,11 @@ const Generator = struct {
         try writer.print(
             \\}};
             \\
-            \\const ProcedureSequenceNode = struct {{
-            \\    procedure: *const data_structures.Procedure,
-            \\    next: ?*const ProcedureSequenceNode,
-            \\}};
-            \\
             \\pub const variable_procedures = variable_procedures: {{
             \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
             \\
             \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
-            \\        var last: ?*const ProcedureSequenceNode = null;
-            \\        for (procedure_names) |procedure_name| {{
-            \\            last = &ProcedureSequenceNode{{
-            \\                .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
-            \\                .next = last,
-            \\            }};
-            \\            arr[index] = last;
-            \\        }}
+            \\        arr[index] = makeProcedureSequence(procedure_names);
             \\    }}
             \\
             \\    break :variable_procedures arr;
@@ -477,6 +555,16 @@ const Generator = struct {
             \\
             \\
         , .{ self.variables.items.len, self.variables.items.len });
+    }
+
+    fn emitProcedureSequenceExpression(self: *Generator, writer: *std.Io.Writer, procedures_: []const []const u8) !void {
+        _ = self;
+        try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
+        for (procedures_, 0..) |procedure, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, procedure);
+        }
+        try writer.writeAll("})");
     }
 
     fn emitStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
@@ -589,20 +677,25 @@ const Generator = struct {
             , .{ indent, indent, indent, indent, indent, indent }),
             .shift => {
                 if (self.options.with_ast) {
-                    const symbol = self.symbols.items[action.terminal];
+                    try writer.print("{s}const start_pos = context.pos();\n", .{indent});
                     if (self.options.ast_for_terminals) {
                         try writer.print(
-                            \\{s}const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);
+                            \\{s}{s} node_address = context.node_allocator.create(start_pos, data_structures.ASTNode.invalid_variable);
                             \\{s}context.node_allocator.at(node_address).text_length = {d};
-                            \\{s}try stack.append(context.runtime().arena_allocator, node_address);
                             \\
-                        , .{ indent, indent, length, indent });
+                        , .{ indent, if (self.options.with_procedures) "var" else "const", indent, length });
                     } else {
-                        try writer.print("{s}try stack.append(context.runtime().arena_allocator, context.pos());\n", .{indent});
+                        try writer.print("{s}const node_address = data_structures.ASTNode.invalid_pointer;\n", .{indent});
                     }
-                    _ = symbol;
                 }
                 try writer.print("{s}context.releaseToken({d});\n", .{ indent, length });
+                if (self.options.with_ast and self.options.with_procedures and self.options.ast_for_terminals) {
+                    try self.emitTerminalProcedureBlock(writer, action.terminal, action.occurrence, "node_address", indent);
+                    try writer.print("{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n", .{indent});
+                }
+                if (self.options.with_ast) {
+                    try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos, .node = node_address }});\n", .{indent});
+                }
                 try writer.print(
                     \\{s}if (comptime builtin.mode == .Debug) {{
                     \\{s}    if (context.verbosityLevel() > 1) {{
@@ -617,11 +710,11 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, indent, action.state });
             },
-            .reduce => try self.emitReduceAction(writer, action.rule, indent),
+            .reduce => try self.emitReduceAction(writer, action.rule, action.occurrence, indent),
         }
     }
 
-    fn emitReduceAction(self: *Generator, writer: *std.Io.Writer, rule_index: usize, indent: []const u8) !void {
+    fn emitReduceAction(self: *Generator, writer: *std.Io.Writer, rule_index: usize, occurrence: ?Occurrence, indent: []const u8) !void {
         const rule = self.rules.items[rule_index];
         const variable_index = self.variableIndex(rule.header);
         const rhs_len = rule.rhs.items.len;
@@ -645,12 +738,7 @@ const Generator = struct {
             }
 
             if (rhs_len > 0) {
-                const first = rule.rhs.items[0];
-                if (self.symbolReturnsStackNode(first)) {
-                    try writer.print("{s}const start_pos = context.node_allocator.at(child_1).text_start;\n", .{indent});
-                } else {
-                    try writer.print("{s}const start_pos = child_1;\n", .{indent});
-                }
+                try writer.print("{s}const start_pos = child_1.start_pos;\n", .{indent});
             } else {
                 try writer.print("{s}const start_pos = context.pos();\n", .{indent});
             }
@@ -659,20 +747,21 @@ const Generator = struct {
                 try writer.print("{s}const parent_address = context.node_allocator.create(start_pos, {d});\n", .{ indent, variable_index });
                 for (rule.rhs.items, 0..) |sym, child_index| {
                     if (self.symbolReturnsStackNode(sym)) {
-                        try writer.print("{s}context.node_allocator.at(parent_address).immediateInsertChild(parent_address, child_{d}, context.node_allocator); // child {d}\n", .{ indent, child_index + 1, child_index });
+                        try writer.print(
+                            \\{s}if (child_{d}.node != data_structures.ASTNode.invalid_pointer) {{
+                            \\{s}    context.node_allocator.at(parent_address).immediateAppendChildren(parent_address, child_{d}.node, context.node_allocator); // child {d}
+                            \\{s}}}
+                            \\
+                        , .{ indent, child_index + 1, indent, child_index + 1, child_index, indent });
                     }
                 }
                 if (self.options.with_procedures) {
-                    try self.emitProcedureBlock(writer, rule_index, rule.header, "parent_address", indent);
+                    try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_address", indent);
                 }
                 const stack_value = if (self.options.with_procedures) "args.node orelse data_structures.ASTNode.invalid_pointer" else "parent_address";
-                try writer.print("{s}try stack.append(context.runtime().arena_allocator, {s});\n", .{ indent, stack_value });
+                try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
             } else {
-                if (self.options.with_procedures) {
-                    try self.emitProcedureBlock(writer, rule_index, rule.header, "data_structures.ASTNode.invalid_pointer", indent);
-                }
-                const stack_value = if (self.options.with_procedures) "args.node orelse start_pos" else "start_pos";
-                try writer.print("{s}try stack.append(context.runtime().arena_allocator, {s});\n", .{ indent, stack_value });
+                try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos }});\n", .{indent});
             }
         }
 
@@ -685,7 +774,8 @@ const Generator = struct {
         });
     }
 
-    fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, node_expr: []const u8, indent: []const u8) !void {
+    fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, occurrence: ?Occurrence, node_expr: []const u8, indent: []const u8) !void {
+        const rule = self.rules.items[rule_index];
         const variable_index = self.variableIndex(parent_variable);
         try writer.print(
             \\{s}var args = data_structures.ProcedureArguments{{
@@ -693,16 +783,21 @@ const Generator = struct {
             \\{s}    .rule = rules[{d}],
             \\{s}    .node = {s},
             \\{s}}};
+        , .{
+            indent, indent, indent, rule_index, indent, node_expr, indent,
+        });
+        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try self.emitOccurrenceExpression(writer, occurrence);
+        try writer.writeAll(", &args);\n");
+        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try self.emitProcedureSequenceExpression(writer, rule.procedures.items);
+        try writer.writeAll(", &args);\n");
+        try writer.print(
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
             \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             \\{s}    try procedure(&args);
             \\{s}}}
-            \\{s}comptime var procedure_pointer_head = variable_procedures[{d}];
-            \\{s}inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            \\{s}    try procedure(&args);
-            \\{s}    procedure_pointer_head = procedure_pointer_head_.next;
-            \\{s}}}
+            \\{s}try runProcedureSequence(variable_procedures[{d}], &args);
             \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
             \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             \\{s}    try procedure(&args);
@@ -713,11 +808,49 @@ const Generator = struct {
             \\{s}}}
             \\
         , .{
-            indent, indent,     indent, rule_index, indent, node_expr, indent,
-            indent, rule_index, indent, indent,     indent, indent,    variable_index,
-            indent, indent,     indent, indent,     indent, indent,    parent_variable,
-            indent, indent,     indent, indent,     indent, indent,    indent,
+            indent, rule_index,     indent, indent,          indent,
+            indent, variable_index, indent, parent_variable, indent,
+            indent, indent,         indent, indent,          indent,
+            indent,
         });
+    }
+
+    fn emitTerminalProcedureBlock(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, occurrence: ?Occurrence, node_expr: []const u8, indent: []const u8) !void {
+        try writer.print(
+            \\{s}var args = data_structures.ProcedureArguments{{
+            \\{s}    .context = context,
+            \\{s}    .rule = null,
+            \\{s}    .node = {s},
+            \\{s}}};
+        , .{ indent, indent, indent, indent, node_expr, indent });
+        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try self.emitOccurrenceExpression(writer, occurrence);
+        try writer.writeAll(", &args);\n");
+        try writer.print(
+            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\
+        , .{
+            indent, terminal_index, indent, indent, indent,
+            indent, indent,         indent, indent,
+        });
+    }
+
+    fn emitOccurrenceExpression(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence) !void {
+        if (occurrence) |value| {
+            try self.emitProcedureSequenceExpression(
+                writer,
+                self.rules.items[value.rule].rhs_procedures.items[value.position].items.items,
+            );
+        } else {
+            try writer.writeAll("null");
+        }
     }
 
     fn emitDebugReduction(self: *Generator, writer: *std.Io.Writer, rule: Rule, indent: []const u8) !void {
@@ -814,8 +947,10 @@ const Generator = struct {
             \\
         , .{
             indent,
-            indent, function_name,
-            indent, function_name,
+            indent,
+            function_name,
+            indent,
+            function_name,
             indent,
             indent,
             indent,
@@ -843,7 +978,11 @@ const Generator = struct {
 
     fn symbolReturnsStackNode(self: *Generator, symbol_index: usize) bool {
         const symbol = self.symbols.items[symbol_index];
-        return (symbol.kind == .variable and symbol.ast_enabled) or (symbol.kind != .variable and self.options.ast_for_terminals);
+        return switch (symbol.kind) {
+            .variable => symbol.ast_enabled,
+            .terminal, .generative_terminal => self.options.ast_for_terminals,
+            .end => false,
+        };
     }
 
     fn stateUsesStack(self: *Generator, state: State) bool {
@@ -958,14 +1097,18 @@ fn appendItemUnique(items: *std.ArrayList(Item), allocator: std.mem.Allocator, i
 }
 
 fn itemEqual(lhs: Item, rhs: Item) bool {
-    return lhs.variable == rhs.variable and lhs.rule == rhs.rule and lhs.head == rhs.head and lhs.lookahead == rhs.lookahead;
+    return lhs.variable == rhs.variable and lhs.rule == rhs.rule and lhs.head == rhs.head and lhs.lookahead == rhs.lookahead and std.meta.eql(lhs.occurrence, rhs.occurrence);
 }
 
 fn itemLessThan(_: void, lhs: Item, rhs: Item) bool {
     if (lhs.variable != rhs.variable) return lhs.variable < rhs.variable;
     if (lhs.rule != rhs.rule) return lhs.rule < rhs.rule;
     if (lhs.head != rhs.head) return lhs.head < rhs.head;
-    return lhs.lookahead < rhs.lookahead;
+    if (lhs.lookahead != rhs.lookahead) return lhs.lookahead < rhs.lookahead;
+    if (lhs.occurrence == null) return rhs.occurrence != null;
+    if (rhs.occurrence == null) return false;
+    if (lhs.occurrence.?.rule != rhs.occurrence.?.rule) return lhs.occurrence.?.rule < rhs.occurrence.?.rule;
+    return lhs.occurrence.?.position < rhs.occurrence.?.position;
 }
 
 fn itemsEqual(lhs: []const Item, rhs: []const Item) bool {

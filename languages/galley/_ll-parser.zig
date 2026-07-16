@@ -309,6 +309,29 @@ fn llRecoveryOffset(context: *data_structures.Context, candidates: []const []con
     if (lookahead[0] == 0) context.finishSyntaxRecovery();
     return null;
 }
+const ProcedureSequenceNode = struct {
+    procedure: *const data_structures.Procedure,
+    next: ?*const ProcedureSequenceNode,
+};
+
+fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {
+    if (procedure_names.len == 0) return null;
+    const procedure_name = procedure_names[0];
+    return &ProcedureSequenceNode{
+        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
+        .next = makeProcedureSequence(procedure_names[1..]),
+    };
+}
+
+fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_structures.ProcedureArguments) !void {
+    var current = sequence;
+    while (current) |entry| {
+        const procedure = @as(*data_structures.Procedure, @constCast(entry.procedure));
+        try procedure(args);
+        current = entry.next;
+    }
+}
+
 pub const rule_procedures = rule_procedures: {
     var arr: [54]?*const data_structures.Procedure = .{null} ** 54;
 
@@ -367,23 +390,11 @@ const variable_procedure_names = &[_][]const []const u8{
     &[_][]const u8{},
 };
 
-const ProcedureSequenceNode = struct {
-    procedure: *const data_structures.Procedure,
-    next: ?*const ProcedureSequenceNode,
-};
-
 pub const variable_procedures = variable_procedures: {
     var arr: [29]?*const ProcedureSequenceNode = .{null} ** 29;
 
     for (variable_procedure_names, 0..) |procedure_names, index| {
-        var last: ?*const ProcedureSequenceNode = null;
-        for (procedure_names) |procedure_name| {
-            last = &ProcedureSequenceNode{
-                .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
-                .next = last,
-            };
-            arr[index] = last;
-        }
+        arr[index] = makeProcedureSequence(procedure_names);
     }
 
     break :variable_procedures arr;
@@ -415,24 +426,16 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[42]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[0];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[0], &args);
             if (comptime symbol_procedures[0]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -446,6 +449,7 @@ fn parse_Start(context: *data_structures.Context) anyerror!data_structures.ASTNo
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
@@ -490,24 +494,16 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[37]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[1];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[1], &args);
             if (comptime symbol_procedures[1]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -521,6 +517,7 @@ fn parse_Rules(context: *data_structures.Context) anyerror!data_structures.ASTNo
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Rule, RulesTail\n", .{});
@@ -572,24 +569,16 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[36]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[2];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[2], &args);
             if (comptime symbol_procedures[2]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -603,6 +592,7 @@ fn parse_Rule(context: *data_structures.Context) anyerror!data_structures.ASTNod
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, ProcedureTail, 'new_line', RightHandSides\n", .{});
@@ -685,24 +675,16 @@ fn parse_RulesTail_0_2(context: *data_structures.Context) anyerror!data_structur
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[39]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[3];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[3], &args);
         if (comptime symbol_procedures[3]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -749,24 +731,16 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[38]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[3];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[3], &args);
             if (comptime symbol_procedures[3]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -780,6 +754,7 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
@@ -817,24 +792,16 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[39]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[3];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[3], &args);
             if (comptime symbol_procedures[3]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -848,6 +815,7 @@ fn parse_RulesTail(context: *data_structures.Context) anyerror!data_structures.A
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLines, Rule, RulesTail\n", .{});
@@ -887,24 +855,16 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[21]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[4];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[4], &args);
             if (comptime symbol_procedures[4]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -918,6 +878,7 @@ fn parse_NewLines(context: *data_structures.Context) anyerror!data_structures.AS
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLines <~ 'new_line', NewLinesTail\n", .{});
@@ -1002,24 +963,16 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context) anyerror!data_struc
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[23]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[5];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[5], &args);
         if (comptime symbol_procedures[6]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -1112,24 +1065,16 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context) anyerror!data_struc
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[24]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[5];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[5], &args);
         if (comptime symbol_procedures[6]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -1183,24 +1128,16 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[23]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[5];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[5], &args);
             if (comptime symbol_procedures[6]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1214,6 +1151,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ 'new_line', NewLinesTail\n", .{});
@@ -1247,24 +1185,16 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[24]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[5];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[5], &args);
             if (comptime symbol_procedures[6]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1278,6 +1208,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ '#', AnyContent, 'new_line', NewLinesTail\n", .{});
@@ -1297,24 +1228,16 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[22]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[5];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[5], &args);
             if (comptime symbol_procedures[6]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1328,6 +1251,7 @@ fn parse_NewLinesTail(context: *data_structures.Context) anyerror!data_structure
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ \n", .{});
@@ -1385,24 +1309,16 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[0]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[6];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[6], &args);
             if (comptime symbol_procedures[8]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1416,6 +1332,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContentTail\n", .{});
@@ -1442,24 +1359,16 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[1]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[6];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[6], &args);
             if (comptime symbol_procedures[8]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1473,6 +1382,7 @@ fn parse_AnyContent(context: *data_structures.Context) anyerror!data_structures.
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\n\"', AnyContentTail\n", .{});
@@ -1511,24 +1421,16 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[51]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[7];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[7], &args);
             if (comptime symbol_procedures[9]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1542,6 +1444,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
@@ -1568,24 +1471,16 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[52]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[7];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[7], &args);
             if (comptime symbol_procedures[9]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1599,6 +1494,7 @@ fn parse_VariableSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
@@ -1676,24 +1572,16 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context) anyerror!data_stru
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[26]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[8];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[8], &args);
         if (comptime symbol_procedures[10]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -1740,24 +1628,16 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[25]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[8];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[8], &args);
             if (comptime symbol_procedures[10]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1771,6 +1651,7 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ProcedureTail <~ \n", .{});
@@ -1803,24 +1684,16 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[26]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[8];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[8], &args);
             if (comptime symbol_procedures[10]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1834,6 +1707,7 @@ fn parse_ProcedureTail(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
@@ -1878,24 +1752,16 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[33]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[9];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[9], &args);
             if (comptime symbol_procedures[11]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1909,6 +1775,7 @@ fn parse_RightHandSides(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSidesTail\n", .{});
@@ -1949,24 +1816,16 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[29]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[10];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[10], &args);
             if (comptime symbol_procedures[12]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -1980,6 +1839,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '#', AnyContent, 'new_line'\n", .{});
@@ -2013,24 +1873,16 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[30]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[10];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[10], &args);
             if (comptime symbol_procedures[12]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2044,6 +1896,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', ProcedureTail, RightHandSide, 'new_line'\n", .{});
@@ -2120,24 +1973,16 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context) anyerror!data
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[35]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[11];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[11], &args);
         if (comptime symbol_procedures[13]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -2184,24 +2029,16 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[34]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[11];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[11], &args);
             if (comptime symbol_procedures[13]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2215,6 +2052,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSidesTail <~ \n", .{});
@@ -2246,24 +2084,16 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[35]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[11];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[11], &args);
             if (comptime symbol_procedures[13]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2277,6 +2107,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context) anyerror!data_str
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSidesTail <~ RightHandSideLine, RightHandSidesTail\n", .{});
@@ -2322,24 +2153,16 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[27]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[12];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[12], &args);
             if (comptime symbol_procedures[15]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2353,6 +2176,7 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
@@ -2391,24 +2215,16 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[28]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[12];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[12], &args);
             if (comptime symbol_procedures[15]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2422,6 +2238,7 @@ fn parse_RightHandSide(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, ProcedureTail, RightHandSideTail\n", .{});
@@ -2473,24 +2290,16 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[46]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[13];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[13], &args);
             if (comptime symbol_procedures[17]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2504,6 +2313,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
@@ -2529,24 +2339,16 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[45]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[13];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[13], &args);
             if (comptime symbol_procedures[17]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2560,6 +2362,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
@@ -2585,24 +2388,16 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[47]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[13];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[13], &args);
             if (comptime symbol_procedures[17]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2616,6 +2411,7 @@ fn parse_Symbol(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
@@ -2699,24 +2495,16 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context) anyerror!data_
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[32]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[14];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[14], &args);
         if (comptime symbol_procedures[18]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -2763,24 +2551,16 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[31]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[14];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[14], &args);
             if (comptime symbol_procedures[18]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2794,6 +2574,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideTail <~ \n", .{});
@@ -2832,24 +2613,16 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[32]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[14];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[14], &args);
             if (comptime symbol_procedures[18]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2863,6 +2636,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context) anyerror!data_stru
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideTail <~ 'space', Symbol, ProcedureTail, RightHandSideTail\n", .{});
@@ -2903,24 +2677,16 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[49]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[15];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[15], &args);
             if (comptime symbol_procedures[19]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2934,6 +2700,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
@@ -2961,24 +2728,16 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[48]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[15];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[15], &args);
             if (comptime symbol_procedures[19]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -2992,6 +2751,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ ''', StringContent, '\\x03'\n", .{});
@@ -3036,24 +2796,16 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[15]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[16];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[16], &args);
             if (comptime symbol_procedures[20]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3067,6 +2819,7 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context) anyerror!da
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
@@ -3106,24 +2859,16 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[50]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[17];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[17], &args);
             if (comptime symbol_procedures[21]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3137,6 +2882,7 @@ fn parse_UppercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
@@ -3234,24 +2980,16 @@ fn parse_StringContent_0_1(context: *data_structures.Context) anyerror!data_stru
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[44]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[18];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[18], &args);
         if (comptime symbol_procedures[24]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -3298,24 +3036,16 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[43]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[18];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[18], &args);
             if (comptime symbol_procedures[24]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3329,6 +3059,7 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: StringContent <~ \n", .{});
@@ -3355,24 +3086,16 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[44]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[18];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[18], &args);
             if (comptime symbol_procedures[24]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3386,6 +3109,7 @@ fn parse_StringContent(context: *data_structures.Context) anyerror!data_structur
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: StringContent <~ 'character', StringContent\n", .{});
@@ -3483,24 +3207,16 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context) anyerror!dat
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[41]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[19];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[19], &args);
         if (comptime symbol_procedures[27]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -3554,24 +3270,16 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[41]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[19];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[19], &args);
             if (comptime symbol_procedures[27]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3585,6 +3293,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^'\"\\x03', SimpleStringContent\n", .{});
@@ -3604,24 +3313,16 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[40]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[19];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[19], &args);
             if (comptime symbol_procedures[27]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3635,6 +3336,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context) anyerror!data_st
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
@@ -3674,24 +3376,16 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[20]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[20];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[20], &args);
             if (comptime symbol_procedures[28]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3705,6 +3399,7 @@ fn parse_LowercaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
@@ -3782,24 +3477,16 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context) any
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[14]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[21];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[21], &args);
         if (comptime symbol_procedures[29]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -3846,24 +3533,16 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[13]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[21];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[21], &args);
             if (comptime symbol_procedures[29]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3877,6 +3556,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
@@ -3909,24 +3589,16 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[14]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[21];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[21], &args);
             if (comptime symbol_procedures[29]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -3940,6 +3612,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context) anyerro
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
@@ -4005,24 +3678,16 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[5]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[22];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[22], &args);
             if (comptime symbol_procedures[32]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4036,6 +3701,7 @@ fn parse_CamelCaseId(context: *data_structures.Context) anyerror!data_structures
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
@@ -4095,24 +3761,16 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[10]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[23];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[23], &args);
             if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4126,6 +3784,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
@@ -4146,24 +3805,16 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[9]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[23];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[23], &args);
             if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4177,6 +3828,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x03'\n", .{});
@@ -4197,24 +3849,16 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[11]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[23];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[23], &args);
             if (comptime symbol_procedures[35]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4228,6 +3872,7 @@ fn parse_ControlCharacter(context: *data_structures.Context) anyerror!data_struc
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x04'\n", .{});
@@ -4343,24 +3988,16 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context) anyerror!data_str
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[3]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[24];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[24], &args);
         if (comptime symbol_procedures[39]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -4446,24 +4083,16 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context) anyerror!data_str
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[4]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[24];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[24], &args);
         if (comptime symbol_procedures[39]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -4522,24 +4151,16 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[3]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[24];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[24], &args);
             if (comptime symbol_procedures[39]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4553,6 +4174,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ ControlCharacter, AnyContentTail\n", .{});
@@ -4579,24 +4201,16 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[4]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[24];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[24], &args);
             if (comptime symbol_procedures[39]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4610,6 +4224,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
@@ -4629,24 +4244,16 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[2]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[24];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[24], &args);
             if (comptime symbol_procedures[39]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -4660,6 +4267,7 @@ fn parse_AnyContentTail(context: *data_structures.Context) anyerror!data_structu
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ \n", .{});
@@ -4731,24 +4339,16 @@ fn parse_IdTail_2_1(context: *data_structures.Context) anyerror!data_structures.
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[17]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[25];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[25], &args);
         if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -4834,24 +4434,16 @@ fn parse_IdTail_0_1(context: *data_structures.Context) anyerror!data_structures.
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[18]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[25];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[25], &args);
         if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -4937,24 +4529,16 @@ fn parse_IdTail_1_1(context: *data_structures.Context) anyerror!data_structures.
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[19]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[25];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[25], &args);
         if (comptime symbol_procedures[40]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -5001,24 +4585,16 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[16]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[25];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[25], &args);
             if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5032,6 +4608,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
@@ -5058,24 +4635,16 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[19]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[25];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[25], &args);
             if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5089,6 +4658,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
@@ -5115,24 +4685,16 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[18]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[25];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[25], &args);
             if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5146,6 +4708,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
@@ -5172,24 +4735,16 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[17]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[25];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[25], &args);
             if (comptime symbol_procedures[40]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5203,6 +4758,7 @@ fn parse_IdTail(context: *data_structures.Context) anyerror!data_structures.ASTN
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
@@ -5326,24 +4882,16 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context) anyerror!data_st
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[7]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[26];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[26], &args);
         if (comptime symbol_procedures[45]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -5429,24 +4977,16 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context) anyerror!data_st
         };
         _ = &args;
         args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+        try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
         if (comptime rule_procedures[8]) |procedure_pointer| {
-            const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
-        comptime var procedure_pointer_head = variable_procedures[26];
-        inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-            const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-            try procedure(&args);
-            procedure_pointer_head = procedure_pointer_head_.next;
-        }
-
+        try runProcedureSequence(variable_procedures[26], &args);
         if (comptime symbol_procedures[45]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
-
         if (comptime reduction_procedure) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
@@ -5493,24 +5033,16 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[6]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[26];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[26], &args);
             if (comptime symbol_procedures[45]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5524,6 +5056,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
@@ -5550,24 +5083,16 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[8]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[26];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[26], &args);
             if (comptime symbol_procedures[45]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5581,6 +5106,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
@@ -5607,24 +5133,16 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
             };
             _ = &args;
             args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
+            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
             if (comptime rule_procedures[7]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
-            comptime var procedure_pointer_head = variable_procedures[26];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
+            try runProcedureSequence(variable_procedures[26], &args);
             if (comptime symbol_procedures[45]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
-
             if (comptime reduction_procedure) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
@@ -5638,6 +5156,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context) anyerror!data_struct
                 }
             }
             node_address = args.node orelse data_structures.ASTNode.invalid_pointer;
+
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
@@ -5663,36 +5182,6 @@ fn parse__AugmentedStart(context: *data_structures.Context) anyerror!void {
             }
             _ = try parse_Start(context); // child 0
             try parse_special_EOF(context); // child 1
-            var args = data_structures.ProcedureArguments{
-                .context = context,
-                .rule = rules[53],
-                .node = null,
-            };
-            _ = &args;
-            args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-
-            if (comptime rule_procedures[53]) |procedure_pointer| {
-                const procedure = comptime @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-
-            comptime var procedure_pointer_head = variable_procedures[27];
-            inline while (comptime procedure_pointer_head) |procedure_pointer_head_| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer_head_.procedure));
-                try procedure(&args);
-                procedure_pointer_head = procedure_pointer_head_.next;
-            }
-
-            if (comptime symbol_procedures[46]) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-
-            if (comptime reduction_procedure) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
@@ -5719,12 +5208,11 @@ inline fn parse_special_EOF(context: *data_structures.Context) anyerror!void {
     }
 }
 
-
 fn ll_syntax_error_0(context: *data_structures.Context) anyerror!data_structures.ASTNode.Pointer {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Start" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Start" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Start__expected_Rules"))
@@ -5761,7 +5249,7 @@ fn ll_syntax_error_0(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -5771,7 +5259,7 @@ fn ll_syntax_error_1(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rules" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rules" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules__expected_Rule"))
@@ -5808,7 +5296,7 @@ fn ll_syntax_error_1(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -5818,7 +5306,7 @@ fn ll_syntax_error_2(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rule" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rule" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol"))
@@ -5855,7 +5343,7 @@ fn ll_syntax_error_2(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -5865,7 +5353,7 @@ fn ll_syntax_error_3(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RulesTail" }, &[_][]const u8{"\x00", "\n"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RulesTail" }, &[_][]const u8{ "\x00", "\n" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail"))
@@ -5902,7 +5390,7 @@ fn ll_syntax_error_3(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x00", "\n"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x00", "\n" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6005,7 +5493,7 @@ fn ll_syntax_error_6(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLinesTail" }, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLinesTail" }, &[_][]const u8{ "\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35"))
@@ -6042,7 +5530,7 @@ fn ll_syntax_error_6(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6098,7 +5586,7 @@ fn ll_syntax_error_8(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContent" }, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContent" }, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34"))
@@ -6135,7 +5623,7 @@ fn ll_syntax_error_8(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6145,7 +5633,7 @@ fn ll_syntax_error_9(context: *data_structures.Context) anyerror!data_structures
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "VariableSymbol" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "VariableSymbol" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__"))
@@ -6182,7 +5670,7 @@ fn ll_syntax_error_9(context: *data_structures.Context) anyerror!data_structures
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6192,7 +5680,7 @@ fn ll_syntax_error_10(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ProcedureTail" }, &[_][]const u8{"\n", " ", "@"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ProcedureTail" }, &[_][]const u8{ "\n", " ", "@" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ProcedureTail__expected_end_of_ProcedureTail_or_terminal__x64"))
@@ -6229,7 +5717,7 @@ fn ll_syntax_error_10(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "@"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " ", "@" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6239,7 +5727,7 @@ fn ll_syntax_error_11(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSides" }, &[_][]const u8{"#", "|"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSides" }, &[_][]const u8{ "#", "|" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine"))
@@ -6276,7 +5764,7 @@ fn ll_syntax_error_11(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "#", "|" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6286,7 +5774,7 @@ fn ll_syntax_error_12(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideLine" }, &[_][]const u8{"#", "|"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideLine" }, &[_][]const u8{ "#", "|" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35"))
@@ -6323,7 +5811,7 @@ fn ll_syntax_error_12(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "#", "|" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6333,7 +5821,7 @@ fn ll_syntax_error_13(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSidesTail" }, &[_][]const u8{"\x00", "\n", "#", "|"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSidesTail" }, &[_][]const u8{ "\x00", "\n", "#", "|" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail"))
@@ -6370,7 +5858,7 @@ fn ll_syntax_error_13(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x00", "\n", "#", "|"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x00", "\n", "#", "|" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6426,7 +5914,7 @@ fn ll_syntax_error_15(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSide" }, &[_][]const u8{"\n", " "});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSide" }, &[_][]const u8{ "\n", " " });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space"))
@@ -6463,7 +5951,7 @@ fn ll_syntax_error_15(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " "}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " " }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6519,7 +6007,7 @@ fn ll_syntax_error_17(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Symbol" }, &[_][]const u8{"\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "Symbol" }, &[_][]const u8{ "\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol"))
@@ -6556,7 +6044,7 @@ fn ll_syntax_error_17(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\"", "'", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6566,7 +6054,7 @@ fn ll_syntax_error_18(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideTail" }, &[_][]const u8{"\n", " "});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideTail" }, &[_][]const u8{ "\n", " " });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space"))
@@ -6603,7 +6091,7 @@ fn ll_syntax_error_18(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " "}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " " }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6613,7 +6101,7 @@ fn ll_syntax_error_19(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalSymbol" }, &[_][]const u8{"\"", "'"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalSymbol" }, &[_][]const u8{ "\"", "'" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39"))
@@ -6650,7 +6138,7 @@ fn ll_syntax_error_19(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\"", "'"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\"", "'" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6660,7 +6148,7 @@ fn ll_syntax_error_20(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalSymbol" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalSymbol" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId"))
@@ -6697,7 +6185,7 @@ fn ll_syntax_error_20(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6707,7 +6195,7 @@ fn ll_syntax_error_21(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "UppercaseId" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "UppercaseId" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter"))
@@ -6744,7 +6232,7 @@ fn ll_syntax_error_21(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6846,7 +6334,7 @@ fn ll_syntax_error_24(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "StringContent" }, &[_][]const u8{"\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "StringContent" }, &[_][]const u8{ "\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character"))
@@ -6883,7 +6371,7 @@ fn ll_syntax_error_24(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x03", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -6985,7 +6473,7 @@ fn ll_syntax_error_27(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "SimpleStringContent" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "SimpleStringContent" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03"))
@@ -7022,7 +6510,7 @@ fn ll_syntax_error_27(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7032,7 +6520,7 @@ fn ll_syntax_error_28(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "LowercaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "LowercaseId" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter"))
@@ -7069,7 +6557,7 @@ fn ll_syntax_error_28(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7079,7 +6567,7 @@ fn ll_syntax_error_29(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalExceptions" }, &[_][]const u8{"\n", " ", "@", "^"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalExceptions" }, &[_][]const u8{ "\n", " ", "@", "^" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94"))
@@ -7116,7 +6604,7 @@ fn ll_syntax_error_29(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "@", "^"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " ", "@", "^" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7218,7 +6706,7 @@ fn ll_syntax_error_32(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseId" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter"))
@@ -7255,7 +6743,7 @@ fn ll_syntax_error_32(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7265,7 +6753,7 @@ fn ll_syntax_error_33(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character__expected_generative_terminal_character"))
@@ -7302,7 +6790,7 @@ fn ll_syntax_error_33(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7311,7 +6799,7 @@ fn ll_syntax_error_34(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^'\"\x03" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^'\"\x03" }, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03"))
@@ -7348,7 +6836,7 @@ fn ll_syntax_error_34(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7357,7 +6845,7 @@ fn ll_syntax_error_35(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{"\x01", "\x03", "\x04"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{ "\x01", "\x03", "\x04" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04"))
@@ -7394,7 +6882,7 @@ fn ll_syntax_error_35(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x01", "\x03", "\x04" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7496,7 +6984,7 @@ fn ll_syntax_error_38(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{ "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34"))
@@ -7533,7 +7021,7 @@ fn ll_syntax_error_38(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7542,7 +7030,7 @@ fn ll_syntax_error_39(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContentTail" }, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContentTail" }, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34"))
@@ -7579,7 +7067,7 @@ fn ll_syntax_error_39(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\x01", "\x03", "\x04", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7589,7 +7077,7 @@ fn ll_syntax_error_40(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "IdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "IdTail" }, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
@@ -7626,7 +7114,7 @@ fn ll_syntax_error_40(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7636,7 +7124,7 @@ fn ll_syntax_error_41(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
@@ -7673,7 +7161,7 @@ fn ll_syntax_error_41(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7682,7 +7170,7 @@ fn ll_syntax_error_42(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
@@ -7719,7 +7207,7 @@ fn ll_syntax_error_42(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7728,7 +7216,7 @@ fn ll_syntax_error_43(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
@@ -7765,7 +7253,7 @@ fn ll_syntax_error_43(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7774,7 +7262,7 @@ fn ll_syntax_error_44(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
@@ -7811,7 +7299,7 @@ fn ll_syntax_error_44(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
@@ -7820,7 +7308,7 @@ fn ll_syntax_error_45(context: *data_structures.Context) anyerror!data_structure
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
@@ -7857,7 +7345,7 @@ fn ll_syntax_error_45(context: *data_structures.Context) anyerror!data_structure
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
     return data_structures.ASTNode.invalid_pointer;
@@ -7867,7 +7355,7 @@ fn ll_syntax_error_46(context: *data_structures.Context) anyerror!void {
     @branchHint(.cold);
     const report_syntax_error = context.beginSyntaxRecovery();
     if (report_syntax_error) {
-        try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+        try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" });
         if (!builtin.is_test) {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
@@ -7904,7 +7392,7 @@ fn ll_syntax_error_46(context: *data_structures.Context) anyerror!void {
         }
     }
     if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;
-    if (try llRecoveryOffset(context, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"}, if (report_syntax_error) 1 else 0)) |recovery_offset| {
+    if (try llRecoveryOffset(context, &[_][]const u8{ "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_" }, if (report_syntax_error) 1 else 0)) |recovery_offset| {
         context.skipRecoveryInput(recovery_offset);
     }
 }
