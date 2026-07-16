@@ -45,6 +45,8 @@ pub const ParseOptions = struct {
     language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
     verbosity: usize = 0,
+    max_errors: usize = 10,
+    recovery_window: usize = 500,
 };
 
 pub const SyntaxErrorMessageArgs = struct {
@@ -167,6 +169,9 @@ pub const Session = struct {
     verbosity: if (builtin.mode == .Debug) usize else void,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
+        if (options.max_errors == 0) return error.InvalidMaxErrors;
+        if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+
         var arena = std.heap.ArenaAllocator.init(allocator);
         errdefer arena.deinit();
 
@@ -190,6 +195,8 @@ pub const Session = struct {
                 .input_path = options.input_path,
                 .language_options = options.language_options,
                 .arena_allocator = arena.allocator(),
+                .max_errors = options.max_errors,
+                .recovery_window = options.recovery_window,
             },
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
@@ -252,6 +259,10 @@ pub const Session = struct {
         return self.runtime_context.last_diagnostic;
     }
 
+    pub fn syntaxErrorCount(self: *const Session) usize {
+        return self.runtime_context.syntax_error_count;
+    }
+
     pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
         self.runtime_context.input_path = input_path;
         self.runtime_context.arena_allocator = self.arena.allocator();
@@ -270,6 +281,8 @@ pub const Session = struct {
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.last_diagnostic = null;
+        self.runtime_context.syntax_error_count = 0;
+        self.runtime_context.syntax_recovery_position = null;
         data_structures.context.activateRuntimeContext(&self.runtime_context);
         defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 

@@ -24,6 +24,10 @@ pub const RuntimeContext = struct {
     language_options: root.config.Options = .{},
     arena_allocator: std.mem.Allocator,
     last_diagnostic: ?root.ParseDiagnostic = null,
+    max_errors: usize = 10,
+    recovery_window: usize = 500,
+    syntax_error_count: usize = 0,
+    syntax_recovery_position: ?usize = null,
 };
 
 var active_runtime_context: ?*RuntimeContext = null;
@@ -116,6 +120,94 @@ pub const Context = struct {
                 .context = diagnostic_context,
             },
         };
+        self.runtime().syntax_error_count += 1;
+    }
+
+    pub inline fn syntaxErrorLimitReached(self: *const Self) bool {
+        return self.runtimeConst().syntax_error_count >= self.runtimeConst().max_errors;
+    }
+
+    pub inline fn hasSyntaxErrors(self: *const Self) bool {
+        return self.runtimeConst().syntax_error_count != 0;
+    }
+
+    pub inline fn recoveryWindow(self: *const Self) usize {
+        return self.runtimeConst().recovery_window;
+    }
+
+    pub inline fn beginSyntaxRecovery(self: *Self) bool {
+        const runtime_context = self.runtime();
+        const position: usize = self.pos();
+        if (runtime_context.syntax_recovery_position == position) return false;
+        runtime_context.syntax_recovery_position = position;
+        return true;
+    }
+
+    pub inline fn finishSyntaxRecovery(self: *Self) void {
+        self.runtime().syntax_recovery_position = null;
+    }
+
+    pub fn skipRecoveryInput(self: *Self, amount: usize) void {
+        for (0..amount) |_| {
+            _ = self.head(u8, 0);
+            self.releaseToken(1);
+        }
+    }
+
+    pub fn recoveryLookahead(self: *Self) ![]const u8 {
+        const required = @min(
+            self.runtime().recovery_window +| root.parser.longest_terminal_length,
+            std.math.maxInt(Size),
+        );
+
+        if (comptime !root.config.indentation_syntax) {
+            const start: usize = self.token.head - self.token.len;
+            const available = self.token.buffer[start..];
+            const sentinel = std.mem.indexOfScalar(u8, available, 0) orelse available.len - 1;
+            return available[0..@min(available.len, @min(required, sentinel + 1))];
+        }
+
+        var output = std.ArrayList(u8).empty;
+        try output.ensureTotalCapacity(self.runtime().arena_allocator, required);
+        try output.appendSlice(self.runtime().arena_allocator, self.token.items());
+        if (std.mem.indexOfScalar(u8, output.items, 0) != null) return output.items;
+
+        var seek = self.seek;
+        var current_indent = self.current_indent;
+        var indent_width = self.indent_width;
+        while (output.items.len < required) {
+            while (self.chunk_buffer[seek] == '\n') {
+                seek += 1;
+                var line_spaces: u16 = 0;
+                while (self.chunk_buffer[seek] == ' ') {
+                    seek += 1;
+                    line_spaces += 1;
+                }
+
+                if (indent_width == 0) {
+                    indent_width = line_spaces;
+                } else if (line_spaces % indent_width != 0) {
+                    break;
+                }
+                const new_indent = if (indent_width == 0) 0 else line_spaces / indent_width;
+                if (new_indent == current_indent) {
+                    try output.append(self.runtime().arena_allocator, '\n');
+                } else if (new_indent > current_indent) {
+                    try output.appendNTimes(self.runtime().arena_allocator, '\x01', new_indent - current_indent);
+                } else {
+                    try output.appendNTimes(self.runtime().arena_allocator, '\x02', current_indent - new_indent);
+                }
+                current_indent = new_indent;
+                if (output.items.len >= required) break;
+            }
+            if (output.items.len >= required) break;
+
+            const byte = self.chunk_buffer[seek];
+            try output.append(self.runtime().arena_allocator, byte);
+            if (byte == 0) break;
+            seek += 1;
+        }
+        return output.items;
     }
 
     pub fn releaseToken(self: *@This(), length: Size) void {
