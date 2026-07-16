@@ -45,7 +45,7 @@ The parser generator statically configures the Abstract Syntax Tree (AST) node c
 
 - **PascalCase Validation:** All variable names must be written in PascalCase. The generator validates this at compile-time.
 - **AST-Enabled Variables:** Variables starting with a Capital letter (e.g. `Value`, `ObjectMembers`) allocate an AST node when matched.
-- **Non-AST Helper Variables:** Variables starting with an underscore (e.g. `_StringContent`, `_OptionalBlank`) are helper rules. The generator completely skips allocating AST nodes for them, optimizing runtime parsing performance and memory footprint.
+- **AST-Suppressed Helper Variables:** Variables starting with an underscore (e.g. `_StringContent`, `_OptionalBlank`) are helper rules. The generator completely skips allocating AST nodes for them, optimizing runtime parsing performance and memory footprint.
 
 ---
 

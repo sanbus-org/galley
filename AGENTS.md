@@ -15,3 +15,7 @@
 - Avoid running the full `zig build test` matrix unless the change broadly affects all generated parsers.
 - Prefer typed filters for focused validation, for example `zig build test -Dtest-filter=case:ll-sanbus`, `zig build test -Dtest-filter=suite:runtime`, or `zig build test -Dtest-filter=suite:runtime -Dtest-filter=name:dropIfEmpty`.
 - Available suites are `build`, `generator`, `runtime`, `matrix`, `matrix-compile`, `matrix-api`, `matrix-error`, `matrix-cli`, and `galley-parity`. Repeat filters to OR values within one type; `suite:`, `case:`, and `name:` types combine with AND semantics.
+
+## Investigation Discipline
+
+- Stop after the first contradictory result and report uncertainty.

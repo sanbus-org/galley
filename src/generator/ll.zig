@@ -23,7 +23,7 @@ const Generator = struct {
     parse_table: std.ArrayList(ParseEntry) = .empty,
     error_message_specs: std.ArrayList(ErrorMessageSpec) = .empty,
     syntax_error_handlers: std.ArrayList(SyntaxErrorHandlerSpec) = .empty,
-    needs_non_ast_parser: std.AutoHashMap(usize, void) = undefined,
+    needs_ast_suppressed_parser: std.AutoHashMap(usize, void) = undefined,
     augmented_start: usize = 0,
 
     const ParseEntry = struct {
@@ -38,14 +38,14 @@ const Generator = struct {
         expected_tokens: []const []const u8,
         exact_name: []const u8,
         symbol_name: []const u8,
-        non_ast: bool,
+        skip_ast_construction: bool,
     };
 
     fn init(allocator: std.mem.Allocator, options: Options) Generator {
         return .{
             .allocator = allocator,
             .options = options,
-            .needs_non_ast_parser = std.AutoHashMap(usize, void).init(allocator),
+            .needs_ast_suppressed_parser = std.AutoHashMap(usize, void).init(allocator),
         };
     }
 
@@ -289,7 +289,7 @@ const Generator = struct {
         try self.emitRecoverySupport(writer);
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
-        try self.emitNonAstParsers(writer);
+        try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
@@ -435,11 +435,11 @@ const Generator = struct {
         }
     }
 
-    fn emitNonAstParsers(self: *Generator, writer: *std.Io.Writer) !void {
+    fn emitAstSuppressedParsers(self: *Generator, writer: *std.Io.Writer) !void {
         var generated = std.AutoHashMap(usize, void).init(self.allocator);
-        while (generated.count() < self.needs_non_ast_parser.count()) {
+        while (generated.count() < self.needs_ast_suppressed_parser.count()) {
             for (0..self.symbols.items.len) |symbol_index| {
-                if (!self.needs_non_ast_parser.contains(symbol_index)) continue;
+                if (!self.needs_ast_suppressed_parser.contains(symbol_index)) continue;
                 if (generated.contains(symbol_index)) continue;
                 try generated.put(symbol_index, {});
 
@@ -456,9 +456,9 @@ const Generator = struct {
         if (generated.count() > 0) try writer.writeByte('\n');
     }
 
-    fn markNeedsNonAst(self: *Generator, symbol_index: usize) !void {
-        if (self.needs_non_ast_parser.contains(symbol_index)) return;
-        try self.needs_non_ast_parser.put(symbol_index, {});
+    fn markNeedsAstSuppressedParser(self: *Generator, symbol_index: usize) !void {
+        if (self.needs_ast_suppressed_parser.contains(symbol_index)) return;
+        try self.needs_ast_suppressed_parser.put(symbol_index, {});
     }
 
     fn parserName(self: *Generator, symbol_index: usize) ![]const u8 {
@@ -475,17 +475,17 @@ const Generator = struct {
         return safeIdentifier(self.allocator, text);
     }
 
-    fn emitVariableParser(self: *Generator, writer: *std.Io.Writer, variable: usize, non_ast: bool) !void {
-        try self.emitSelfRepeatingParsers(writer, variable, non_ast);
+    fn emitVariableParser(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
+        try self.emitSelfRepeatingParsers(writer, variable, skip_ast_construction);
         const name = try self.parserName(variable);
-        const returns_node = self.symbolReturnsNode(variable, non_ast);
-        try writer.print("// {s}Parser for Symbol \"", .{if (non_ast) "Non-AST " else ""});
+        const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
+        try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try std.zig.stringEscape(self.symbols.items[variable].id, writer);
         try writer.print("\" with index {d}\n", .{variable});
-        try writer.print("fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (non_ast) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
+        try writer.print("fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (skip_ast_construction) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
-            const is_var = self.options.with_procedures and self.options.with_ast and !non_ast;
+            const is_var = self.options.with_procedures and self.options.with_ast and !skip_ast_construction;
             try writer.print("    {s} node_address = context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
         }
 
@@ -504,11 +504,11 @@ const Generator = struct {
             try writer.writeAll("    switch (context.head(u8, 0)) {\n");
             try writer.writeAll("        else => {\n");
             try writer.writeAll("            @branchHint(.unlikely);\n");
-            try self.emitSyntaxErrorCall(writer, variable, &.{}, error_function_names, non_ast, "            ");
+            try self.emitSyntaxErrorCall(writer, variable, &.{}, error_function_names, skip_ast_construction, "            ");
             try writer.writeAll("        },\n");
             try writer.writeAll("    }\n");
         } else {
-            try self.emitRuleSwitch(writer, variable, entries.items, 0, "    ", non_ast, false);
+            try self.emitRuleSwitch(writer, variable, entries.items, 0, "    ", skip_ast_construction, false);
             try writer.writeByte('\n');
         }
         if (returns_node) {
@@ -517,20 +517,20 @@ const Generator = struct {
         try writer.writeAll("}\n");
     }
 
-    fn emitSelfRepeatingParsers(self: *Generator, writer: *std.Io.Writer, variable: usize, non_ast: bool) !void {
+    fn emitSelfRepeatingParsers(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
                 if (symbol_index != variable) continue;
-                try self.emitSelfRepeatingParser(writer, variable, rule_index, child_index, non_ast);
+                try self.emitSelfRepeatingParser(writer, variable, rule_index, child_index, skip_ast_construction);
                 try writer.writeByte('\n');
             }
         }
     }
 
-    fn symbolReturnsNode(self: *Generator, symbol_index: usize, non_ast: bool) bool {
+    fn symbolReturnsNode(self: *Generator, symbol_index: usize, skip_ast_construction: bool) bool {
         const symbol = self.symbols.items[symbol_index];
-        return self.options.with_ast and !non_ast and ((symbol.kind == .variable and symbol.ast_enabled) or (symbol.kind != .variable and self.options.ast_for_terminals));
+        return self.options.with_ast and !skip_ast_construction and ((symbol.kind == .variable and symbol.ast_enabled) or (symbol.kind != .variable and self.options.ast_for_terminals));
     }
 
     fn hasParseEntries(self: *Generator, variable: usize) bool {
@@ -540,11 +540,11 @@ const Generator = struct {
         return false;
     }
 
-    fn emitSelfRepeatingParser(self: *Generator, writer: *std.Io.Writer, variable: usize, rule_index: usize, self_index: usize, non_ast: bool) !void {
+    fn emitSelfRepeatingParser(self: *Generator, writer: *std.Io.Writer, variable: usize, rule_index: usize, self_index: usize, skip_ast_construction: bool) !void {
         const rule = self.rules.items[rule_index];
         const name = try self.parserName(variable);
-        const returns_node = self.symbolReturnsNode(variable, non_ast);
-        try writer.print("// {s}Self-Repeating Parser for Symbol \"", .{if (non_ast) "Non-AST " else ""});
+        const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
+        try writer.print("// {s}Self-Repeating Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try self.emitSymbolRepr(writer, variable);
         try writer.print("\" at index {d} of its right hand side\n// Right hand side: -> ", .{self_index});
         try self.emitRuleSymbolsForDebug(writer, rule);
@@ -552,7 +552,7 @@ const Generator = struct {
             name,
             rule.rhs_index,
             self_index,
-            if (non_ast) "_" else "",
+            if (skip_ast_construction) "_" else "",
             if (returns_node) "data_structures.ASTNode.Pointer" else "void",
         });
 
@@ -614,9 +614,9 @@ const Generator = struct {
             , .{ self.variableIndex(variable), self_index });
         }
 
-        const prefix_non_ast = self.options.with_ast and (non_ast or !self.symbols.items[variable].ast_enabled);
+        const skip_ast_for_children = self.options.with_ast and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
         for (rule.rhs.items[0..self_index], 0..) |symbol_index, child_index| {
-            try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "repeating_node" else null, if (returns_node) "repeating_node_address" else null, "                ", prefix_non_ast);
+            try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "repeating_node" else null, if (returns_node) "repeating_node_address" else null, "                ", skip_ast_for_children);
         }
         if (!returns_node and rule.rhs.items.len > self_index + 1) {
             try writer.writeAll("                counter += 1;\n");
@@ -638,7 +638,7 @@ const Generator = struct {
             , .{ name, self_index });
             try writer.writeByte('\n');
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "repeating_node", "repeating_node_address", "        ", prefix_non_ast);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "repeating_node", "repeating_node_address", "        ", skip_ast_for_children);
             }
             try writer.writeByte('\n');
             try self.emitDebugReduction(writer, rule, variable, "        ");
@@ -671,7 +671,7 @@ const Generator = struct {
             if (rule.rhs.items.len > self_index + 1) {
                 try writer.writeAll("    for (0..counter) |_| {\n");
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", prefix_non_ast);
+                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children);
                 }
                 try writer.writeAll("    }\n");
             }
@@ -680,14 +680,14 @@ const Generator = struct {
         try writer.writeAll("}\n");
     }
 
-    fn emitTerminalParser(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, non_ast: bool) !void {
+    fn emitTerminalParser(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, skip_ast_construction: bool) !void {
         const symbol = self.symbols.items[terminal_index];
         const name = try self.parserName(terminal_index);
-        const returns_node = self.symbolReturnsNode(terminal_index, non_ast);
-        try writer.print("// {s}Parser for Symbol \"", .{if (non_ast) "Non-AST " else ""});
+        const returns_node = self.symbolReturnsNode(terminal_index, skip_ast_construction);
+        try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try self.emitSymbolRepr(writer, terminal_index);
         try writer.print("\" with index {d}\n", .{terminal_index});
-        try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (non_ast) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
+        try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context) anyerror!{s} {{\n", .{ name, if (skip_ast_construction) "_" else "", if (returns_node) "data_structures.ASTNode.Pointer" else "void" });
         if (returns_node) {
             try writer.writeAll("    const node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n");
         }
@@ -696,7 +696,7 @@ const Generator = struct {
         for (symbol.terminals.items) |terminal| {
             try appendSwitchEntry(&entries, self.allocator, terminal, 0);
         }
-        try self.emitRuleSwitch(writer, terminal_index, entries.items, 0, "    ", non_ast, false);
+        try self.emitRuleSwitch(writer, terminal_index, entries.items, 0, "    ", skip_ast_construction, false);
         try writer.writeByte('\n');
         if (returns_node) {
             try writer.writeAll("    return node_address;\n");
@@ -878,7 +878,7 @@ const Generator = struct {
         return groups;
     }
 
-    fn emitRuleSwitch(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, entries: []const SwitchEntry, prefix_length: usize, indent: []const u8, non_ast: bool, is_self_repeating: bool) !void {
+    fn emitRuleSwitch(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, entries: []const SwitchEntry, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
         var empty_rule: ?usize = null;
         var non_empty_count: usize = 0;
         for (entries) |entry| {
@@ -890,7 +890,7 @@ const Generator = struct {
         }
         if (non_empty_count == 0) {
             if (empty_rule) |rule_index| {
-                try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, non_ast);
+                try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, skip_ast_construction);
                 return;
             }
         }
@@ -914,33 +914,33 @@ const Generator = struct {
             try writer.writeByte('\n');
 
             if (group.payload.items.len == 1 and group.payload.items[0].terminal.len == 0) {
-                try self.emitSwitchLeaf(writer, symbol_index, group.payload.items[0].rule, prefix_length + step_length, indent, non_ast);
+                try self.emitSwitchLeaf(writer, symbol_index, group.payload.items[0].rule, prefix_length + step_length, indent, skip_ast_construction);
             } else {
                 var child_indent = std.ArrayList(u8).empty;
                 try child_indent.appendSlice(self.allocator, indent);
                 try child_indent.appendSlice(self.allocator, "        ");
-                try self.emitRuleSwitch(writer, symbol_index, group.payload.items, prefix_length + step_length, child_indent.items, non_ast, is_self_repeating);
+                try self.emitRuleSwitch(writer, symbol_index, group.payload.items, prefix_length + step_length, child_indent.items, skip_ast_construction, is_self_repeating);
                 try writer.writeByte('\n');
             }
             try writer.print("{s}    }},\n", .{indent});
         }
-        try self.emitSwitchElse(writer, symbol_index, groups.items, empty_rule, prefix_length, indent, non_ast, is_self_repeating);
+        try self.emitSwitchElse(writer, symbol_index, groups.items, empty_rule, prefix_length, indent, skip_ast_construction, is_self_repeating);
         try writer.print("{s}}}", .{indent});
     }
 
-    fn emitSwitchLeaf(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, rule_index: usize, length: usize, indent: []const u8, non_ast: bool) !void {
+    fn emitSwitchLeaf(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, rule_index: usize, length: usize, indent: []const u8, skip_ast_construction: bool) !void {
         const symbol = self.symbols.items[symbol_index];
         if (symbol.kind == .variable) {
-            try self.emitRuleBody(writer, rule_index, symbol_index, try indented(self.allocator, indent, 8), non_ast);
+            try self.emitRuleBody(writer, rule_index, symbol_index, try indented(self.allocator, indent, 8), skip_ast_construction);
         } else {
             try writer.print("{s}        context.releaseToken({d});\n", .{ indent, length });
         }
     }
 
-    fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, groups: []const SwitchGroup, empty_rule: ?usize, prefix_length: usize, indent: []const u8, non_ast: bool, is_self_repeating: bool) !void {
+    fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, groups: []const SwitchGroup, empty_rule: ?usize, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
         if (empty_rule) |rule_index| {
             try writer.print("{s}    else => {{ // ''\n", .{indent});
-            try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, non_ast);
+            try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, skip_ast_construction);
             try writer.print("{s}    }},\n", .{indent});
             return;
         }
@@ -956,7 +956,7 @@ const Generator = struct {
         const error_function_names = try self.syntaxErrorFunctionNames(symbol_index, groups);
         try writer.print("{s}    else => {{\n", .{indent});
         try writer.print("{s}        @branchHint(.unlikely);\n", .{indent});
-        try self.emitSyntaxErrorCall(writer, symbol_index, expected_heads.items, error_function_names, non_ast, try indented(self.allocator, indent, 8));
+        try self.emitSyntaxErrorCall(writer, symbol_index, expected_heads.items, error_function_names, skip_ast_construction, try indented(self.allocator, indent, 8));
         try writer.print("{s}    }},\n", .{indent});
     }
 
@@ -966,7 +966,7 @@ const Generator = struct {
         symbol_index: usize,
         expected_tokens: []const []const u8,
         function_names: SyntaxErrorFunctionNames,
-        non_ast: bool,
+        skip_ast_construction: bool,
         indent: []const u8,
     ) !void {
         const handler_name = try std.fmt.allocPrint(self.allocator, "ll_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
@@ -976,10 +976,10 @@ const Generator = struct {
             .expected_tokens = try self.allocator.dupe([]const u8, expected_tokens),
             .exact_name = function_names.exact,
             .symbol_name = function_names.symbol,
-            .non_ast = non_ast,
+            .skip_ast_construction = skip_ast_construction,
         });
         const can_tail_call = !self.options.with_ast or
-            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, non_ast));
+            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction));
         if (can_tail_call) {
             try writer.print("{s}return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
         } else {
@@ -990,7 +990,7 @@ const Generator = struct {
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
         for (self.syntax_error_handlers.items) |spec| {
             const symbol = self.symbols.items[spec.symbol_index];
-            const returns_node = self.symbolReturnsNode(spec.symbol_index, spec.non_ast);
+            const returns_node = self.symbolReturnsNode(spec.symbol_index, spec.skip_ast_construction);
             const candidates = try self.recoveryTerminalStringsForSequence(&.{spec.symbol_index}, if (symbol.kind == .variable) spec.symbol_index else null);
 
             try writer.print("\nfn {s}(context: *data_structures.Context) anyerror!{s} {{\n", .{
@@ -1116,9 +1116,9 @@ const Generator = struct {
         }
     }
 
-    fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
+    fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
         const rule = self.rules.items[rule_index];
-        const parent_returns_node = self.symbolReturnsNode(parent_variable, non_ast);
+        const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
         if (rule.rhs.items.len != 0) {
@@ -1132,19 +1132,19 @@ const Generator = struct {
                     if (parent_returns_node) "node_address" else null,
                     if (parent_returns_node) "node_address" else null,
                     indent,
-                    non_ast,
+                    skip_ast_construction,
                 );
             }
         }
 
-        try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, non_ast);
+        try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction);
     }
 
-    fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, non_ast: bool) !void {
+    fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
         const rule = self.rules.items[rule_index];
-        const parent_returns_node = self.symbolReturnsNode(parent_variable, non_ast);
+        const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
 
-        if (self.options.with_procedures and self.options.with_ast and !non_ast) {
+        if (self.options.with_procedures and self.options.with_ast and !skip_ast_construction) {
             const variable_index = self.variableIndex(parent_variable);
             try writer.print(
                 \\{s}var args = data_structures.ProcedureArguments{{
@@ -1208,16 +1208,16 @@ const Generator = struct {
             }
         }
 
-        if (self.options.with_procedures and self.options.with_ast and !non_ast) try writer.writeByte('\n');
+        if (self.options.with_procedures and self.options.with_ast and !skip_ast_construction) try writer.writeByte('\n');
         try self.emitDebugReduction(writer, rule, parent_variable, indent);
     }
 
-    fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, non_ast: bool) !void {
+    fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool) !void {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
-        const child_non_ast = self.options.with_ast and (non_ast or (child.kind == .variable and !child.ast_enabled));
-        if (child_non_ast) try self.markNeedsNonAst(symbol_index);
-        const child_returns_node = self.symbolReturnsNode(symbol_index, child_non_ast);
+        const child_skips_ast_construction = self.options.with_ast and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
+        if (child_skips_ast_construction) try self.markNeedsAstSuppressedParser(symbol_index);
+        const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         const call_name = if (symbol_index == parent_variable)
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
@@ -1234,12 +1234,12 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, call_name, indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
-                try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
+                try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_skips_ast_construction) "_" else "", child_index });
             }
         } else if (child_returns_node) {
             try writer.print("{s}_ = try parse_{s}(context); // child {d}\n", .{ indent, call_name, child_index });
         } else {
-            try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_non_ast) "_" else "", child_index });
+            try writer.print("{s}try parse_{s}{s}(context); // child {d}\n", .{ indent, call_name, if (child_skips_ast_construction) "_" else "", child_index });
         }
     }
 
