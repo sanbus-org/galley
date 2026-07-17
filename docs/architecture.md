@@ -5,7 +5,7 @@
 - [Overview](#overview)
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
-- [LL Syntax-Error Recovery](#ll-syntax-error-recovery)
+- [Syntax-Error Recovery](#syntax-error-recovery)
 - [Dynamic Stack-Overflow Recovery](#dynamic-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -35,15 +35,17 @@ Instead of dynamically allocating stack frame objects or pushing/popping state I
 
 ---
 
-## LL Syntax-Error Recovery
+## Syntax-Error Recovery
 
-An LL syntax mismatch transfers control to a generated cold handler. The handler prints the first diagnostic at an input position, searches ahead for the failing state's recovery candidates, and returns a neutral parser value. The parent then continues through its ordinary generated code, naturally exposing later grammar states as recovery points. No parallel parser stack, recovery interpreter, or generated continuation graph is maintained.
+An LL syntax mismatch transfers control to a generated cold handler. The handler prints the first diagnostic at an input position, searches ahead for the failing symbol's recovery candidates, and returns a neutral parser value. The parent then continues through its ordinary generated code, naturally exposing later grammar states as recovery points.
 
-Syntax mismatches are not represented as Zig errors. Void parsers return normally and AST parsers return the invalid-node sentinel; Zig errors remain reserved for real failures such as allocation, I/O, and procedure errors. A session-local input-position marker suppresses repeated diagnostics while recovery is unresolved. Finding a candidate, consuming input, or inserting an expected symbol at end-of-input completes recovery and permits a later mismatch to be reported separately.
+An LR mismatch uses the same bounded lookahead and position-based diagnostic suppression, with recovery candidates derived from the complete terminals accepted by the current LR state. Finding a candidate skips the invalid input and retries the state. If the state cannot resynchronize, an internal result unwinds one native LR frame and, when AST construction is enabled, its semantic value; the caller recognizes it and retries in its existing frame. This continues until the nearest viable state resumes or the initial state is exhausted. Unrecoverable end-of-input stops at the original diagnostic instead of inventing a terminal.
 
-Normal child calls retain the same `try parse_child(...)` shape as parsers without recovery. No recovery state is read or written on valid input. Void-returning LL variables reach their cold handlers through guaranteed tail calls; AST and terminal handlers are kept out of line. Recovery scanning and lookahead allocation therefore happen only after a syntax mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run while reductions containing neutral children complete, so a partial AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
+Syntax mismatches do not use Zig errors for internal control flow. LL void parsers return normally and AST parsers return the invalid-node sentinel; LR state functions return an internal recovery result when a frame must unwind. Public Zig errors remain reserved for the final syntax result and real failures such as allocation, I/O, and procedure errors. A session-local input-position marker suppresses repeated diagnostics while recovery is unresolved. Resynchronizing at a candidate completes recovery and permits a later mismatch to be reported separately; LL can also neutral-complete a missing symbol at end-of-input.
 
-The parser stops after 10 syntax errors by default. Runtime callers can set `ParseOptions.max_errors` and `ParseOptions.recovery_window`; generated parser executables expose the same settings as `--max-errors` and `--recovery-window`.
+Normal LL child calls retain the same `try parse_child(...)` shape. LR state calls inspect the returned recovery flag, and each state has a labeled retry loop rather than a second parser stack. Neither parser reads session recovery state during normal shifts or reductions. Recovery scanning and lookahead allocation happen only after a syntax mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run on partial or later-discarded trees, so an AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
+
+Both parser types stop after 10 syntax errors by default. Runtime callers can set `ParseOptions.max_errors` and `ParseOptions.recovery_window`; generated parser executables expose the same settings as `--max-errors` and `--recovery-window`.
 
 ---
 

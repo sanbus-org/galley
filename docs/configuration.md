@@ -64,8 +64,8 @@ zig build -Doptimize=ReleaseFast ll-json
 | `--verbosity` | `-v` | `<0-2>` | Verbosity level. `0` prints benchmark speed; `1` prints parsed AST structure and metrics; `2` outputs detailed execution traces. | `0` |
 | `--iterations` | `-r` | `<INT>` | Number of times to repeat parsing the file. Highly useful for getting stable throughput averages during benchmarking. | `1` |
 | `--warmup-iterations` | `-w` | `<INT>` | Number of warmup parse passes before recording benchmark timers to ensure CPU cache saturation. | `0` |
-| `--max-errors` | None | `<INT>` | Maximum LL syntax errors to print before stopping. Use `1` for fail-fast parsing. Must be greater than zero. | `10` |
-| `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each LL recovery attempt. Must be greater than zero. | `500` |
+| `--max-errors` | None | `<INT>` | Maximum syntax errors to print before stopping. Use `1` for fail-fast parsing. Must be greater than zero. | `10` |
+| `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each recovery attempt. Must be greater than zero. | `500` |
 | `--disable-stack-overflow-recovery` | None | Flag | Disables dynamic stack overflow recovery, falling back to static stack boundaries. | Enabled |
 | `<FILE>` | None | `<PATH>` | **Required.** Path to the source code file to parse. | None |
 
@@ -96,7 +96,7 @@ zig build ll-json
 ./zig-out/bin/ll-json -v 1 languages/json/samples/code-01.json
 ```
 
-### Report More Than One LL Syntax Error
+### Report More Than One Syntax Error
 ```sh
 zig build ll-json
 ./zig-out/bin/ll-json --max-errors 10 --recovery-window 500 malformed.json

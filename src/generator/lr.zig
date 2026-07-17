@@ -54,9 +54,24 @@ const Generator = struct {
     rules: std.ArrayList(Rule) = .empty,
     states: std.ArrayList(State) = .empty,
     error_message_specs: std.ArrayList(ErrorMessageSpec) = .empty,
+    syntax_error_handlers: std.ArrayList(SyntaxErrorHandlerSpec) = .empty,
     syntax_error_site_index: usize = 0,
     augmented_start: usize = 0,
     eof: usize = 0,
+
+    const SyntaxErrorHandlerSpec = struct {
+        name: []const u8,
+        state_index: usize,
+        expected_tokens: []const []const u8,
+        error_function_name: []const u8,
+        recoverable: bool,
+    };
+
+    const SyntaxErrorSite = enum {
+        action,
+        state,
+        goto,
+    };
 
     fn init(allocator: std.mem.Allocator, options: Options) Generator {
         return .{
@@ -381,6 +396,7 @@ const Generator = struct {
             self.longestTerminalLength(),
         });
         try self.emitGrammarTables(writer);
+        try common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
 
         try writer.writeAll(
@@ -388,6 +404,7 @@ const Generator = struct {
             \\    variable: u16,
             \\    pops_remaining: u16,
             \\    is_accept: bool,
+            \\    is_recovery: bool,
             \\};
             \\
             \\const SemanticValue = struct {
@@ -403,6 +420,8 @@ const Generator = struct {
             try self.emitStateFunction(writer, state, index);
             try writer.writeByte('\n');
         }
+        try self.emitStateRecoveryCandidateTables(writer);
+        try self.emitSyntaxErrorHandlers(writer);
 
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
@@ -410,9 +429,10 @@ const Generator = struct {
             \\    defer stack.deinit(context.runtime().arena_allocator);
             \\
             \\    const result = try state_0(context, &stack);
-            \\    if (!result.is_accept) {
+            \\    if (result.is_recovery or !result.is_accept) {
             \\        return root.ParseError.SyntaxError;
             \\    }
+            \\    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
             \\
             \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
@@ -569,10 +589,8 @@ const Generator = struct {
 
     fn emitStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
         try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack) anyerror!ReduceResult {{\n", .{ state_index, state_index });
-        try writer.writeAll("    var result: ReduceResult = undefined;\n");
-        if (!self.stateUsesStack(state)) {
-            try writer.writeAll("    _ = stack;\n");
-        }
+        try writer.writeAll("    state_recovery: while (true) {\n");
+        try writer.writeAll("        var result: ReduceResult = undefined;\n");
 
         var entries = std.ArrayList(SwitchEntry).empty;
         for (state.actions.items, 0..) |action, action_index| {
@@ -583,31 +601,32 @@ const Generator = struct {
         }
 
         if (entries.items.len == 0) {
-            try self.emitStateSyntaxError(writer, state_index, &.{}, "    ", "state");
+            try self.emitStateSyntaxError(writer, state_index, &.{}, "        ", .state);
         } else {
-            try self.emitActionSwitch(writer, state, entries.items, state_index, 0, "    ");
+            try self.emitActionSwitch(writer, state, entries.items, state_index, 0, "        ");
             try writer.writeByte('\n');
         }
 
         try writer.writeAll(
-            \\    while (true) {
-            \\        if (result.is_accept) return result;
-            \\        if (result.pops_remaining > 0) {
-            \\            result.pops_remaining -= 1;
-            \\            return result;
-            \\        }
+            \\        while (true) {
+            \\            if (result.is_accept) return result;
+            \\            if (result.pops_remaining > 0) {
+            \\                result.pops_remaining -= 1;
+            \\                return result;
+            \\            }
             \\
         );
         if (state.gotos.items.len == 0) {
-            try self.emitStateSyntaxError(writer, state_index, &.{}, "        ", "goto");
+            try self.emitStateSyntaxError(writer, state_index, &.{}, "            ", .goto);
         } else {
-            try writer.writeAll("        result = switch (result.variable) {\n");
+            try writer.writeAll("            result = switch (result.variable) {\n");
             for (state.gotos.items) |goto| {
-                try writer.print("            {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
+                try writer.print("                {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
             }
-            try writer.writeAll("            else => unreachable,\n        };\n");
+            try writer.writeAll("                else => unreachable,\n            };\n");
+            try writer.writeAll("            if (result.is_recovery) continue :state_recovery;\n");
         }
-        try writer.writeAll("    }\n}\n");
+        try writer.writeAll("        }\n    }\n}\n");
     }
 
     const SwitchEntry = struct {
@@ -672,7 +691,7 @@ const Generator = struct {
                 \\{s}        std.debug.print("Accept!\n", .{{}});
                 \\{s}    }}
                 \\{s}}}
-                \\{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = true }};
+                \\{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = true, .is_recovery = false }};
                 \\
             , .{ indent, indent, indent, indent, indent, indent }),
             .shift => {
@@ -707,8 +726,9 @@ const Generator = struct {
                     \\{s}    }}
                     \\{s}}}
                     \\{s}result = try state_{d}(context, stack);
+                    \\{s}if (result.is_recovery) continue :state_recovery;
                     \\
-                , .{ indent, indent, indent, action.state });
+                , .{ indent, indent, indent, action.state, indent });
             },
             .reduce => try self.emitReduceAction(writer, action.rule, action.occurrence, indent),
         }
@@ -766,7 +786,7 @@ const Generator = struct {
         }
 
         try self.emitDebugReduction(writer, rule, indent);
-        try writer.print("{s}{s} ReduceResult{{ .variable = {d}, .pops_remaining = {d}, .is_accept = false }};\n", .{
+        try writer.print("{s}{s} ReduceResult{{ .variable = {d}, .pops_remaining = {d}, .is_accept = false, .is_recovery = false }};\n", .{
             indent,
             if (rhs_len > 0) "return" else "result =",
             variable_index,
@@ -870,60 +890,115 @@ const Generator = struct {
     }
 
     fn emitSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8) !void {
-        const error_function_name = try self.nextSyntaxErrorFunctionName(state_index, "action");
+        const error_function_name = try self.nextSyntaxErrorFunctionName(state_index, .action);
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected.items, {}, headLessThan);
-        try writer.print(
-            \\{s}else => {{
-            \\{s}    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{
-        , .{ indent, indent, state_index });
-        for (expected.items, 0..) |head, index| {
-            if (index != 0) try writer.writeAll(", ");
-            try emitStringLiteral(writer, head);
-        }
-        try writer.print(
-            \\ }});
-            \\{s}    if (!builtin.is_test) {{
-        , .{indent});
-        try self.emitSyntaxErrorMessagePrint(writer, error_function_name, try indented(self.allocator, indent, 8));
-        try writer.print(
-            \\{s}    }}
-            \\{s}    return root.ParseError.SyntaxError;
-            \\{s}}},
-        , .{ indent, indent, indent });
+        try writer.print("{s}else => {{\n", .{indent});
+        try self.emitSyntaxErrorCall(writer, state_index, expected.items, error_function_name, true, try indented(self.allocator, indent, 4));
+        try writer.print("{s}}},\n", .{indent});
     }
 
-    fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8, kind: []const u8) !void {
+    fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, state_index: usize, groups: []const SwitchGroup, indent: []const u8, kind: SyntaxErrorSite) !void {
         const error_function_name = try self.nextSyntaxErrorFunctionName(state_index, kind);
         var expected = std.ArrayList([]const u8).empty;
         for (groups) |group| {
             for (group.heads.items) |head| try expected.append(self.allocator, head);
         }
         std.mem.sort([]const u8, expected.items, {}, headLessThan);
-        try writer.print(
-            \\{s}try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{
-        , .{ indent, state_index });
-        for (expected.items, 0..) |head, index| {
-            if (index != 0) try writer.writeAll(", ");
-            try emitStringLiteral(writer, head);
-        }
-        try writer.print(
-            \\ }});
-            \\{s}if (!builtin.is_test) {{
-        , .{indent});
-        try self.emitSyntaxErrorMessagePrint(writer, error_function_name, try indented(self.allocator, indent, 4));
-        try writer.print(
-            \\{s}}}
-            \\{s}return root.ParseError.SyntaxError;
-            \\
-        , .{ indent, indent });
+        try self.emitSyntaxErrorCall(writer, state_index, expected.items, error_function_name, kind != .goto, indent);
     }
 
-    fn nextSyntaxErrorFunctionName(self: *Generator, state_index: usize, kind: []const u8) ![]const u8 {
-        const stem = try std.fmt.allocPrint(self.allocator, "state_{d}_{s}", .{ state_index, kind });
+    fn emitSyntaxErrorCall(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        state_index: usize,
+        expected_tokens: []const []const u8,
+        error_function_name: []const u8,
+        recoverable: bool,
+        indent: []const u8,
+    ) !void {
+        const handler_name = try std.fmt.allocPrint(self.allocator, "lr_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
+        try self.syntax_error_handlers.append(self.allocator, .{
+            .name = handler_name,
+            .state_index = state_index,
+            .expected_tokens = try self.allocator.dupe([]const u8, expected_tokens),
+            .error_function_name = error_function_name,
+            .recoverable = recoverable,
+        });
+        try writer.print("{s}if (try {s}(context, stack)) continue :state_recovery;\n", .{ indent, handler_name });
+        try writer.print("{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = false, .is_recovery = true }};\n", .{indent});
+    }
+
+    fn emitStateRecoveryCandidateTables(self: *Generator, writer: *std.Io.Writer) !void {
+        for (self.states.items, 0..) |state, state_index| {
+            const candidates = try self.recoveryTerminalStringsForState(state);
+            try writer.print("const lr_recovery_candidates_{d} = &[_][]const u8{{", .{state_index});
+            try self.emitStringSliceItems(writer, candidates.items);
+            try writer.writeAll("};\n");
+        }
+        try writer.writeByte('\n');
+    }
+
+    fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
+        for (self.syntax_error_handlers.items) |spec| {
+            try writer.print("fn {s}(context: *data_structures.Context, stack: *SemanticStack) anyerror!bool {{\n", .{spec.name});
+            try writer.writeAll("    @branchHint(.cold);\n");
+            if (!spec.recoverable or !self.options.with_ast or spec.state_index == 0) try writer.writeAll("    _ = stack;\n");
+            try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
+            try writer.writeAll("    if (report_syntax_error) {\n");
+            try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+            try self.emitStringSliceItems(writer, spec.expected_tokens);
+            try writer.writeAll("});\n");
+            try writer.writeAll("        if (!builtin.is_test) {\n");
+            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "            ");
+            try writer.writeAll("        }\n");
+            try writer.writeAll("    }\n");
+            try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
+            if (spec.recoverable) {
+                try writer.print("    if (try lrRecoveryOffset(context, lr_recovery_candidates_{d}, if (report_syntax_error) 1 else 0)) |recovery_offset| {{\n", .{spec.state_index});
+                try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
+                try writer.writeAll("        return true;\n");
+                try writer.writeAll("    }\n");
+                try writer.writeAll("    if (context.head(u8, 0) == 0) return root.ParseError.SyntaxError;\n");
+                if (self.options.with_ast and spec.state_index != 0) {
+                    try writer.writeAll("    _ = stack.pop() orelse unreachable;\n");
+                }
+                try writer.writeAll("    return false;\n");
+            } else {
+                try writer.writeAll("    return root.ParseError.SyntaxError;\n");
+            }
+            try writer.writeAll("}\n\n");
+        }
+    }
+
+    fn recoveryTerminalStringsForState(self: *Generator, state: State) !std.ArrayList([]const u8) {
+        var result = std.ArrayList([]const u8).empty;
+        for (state.actions.items) |action| {
+            for (self.symbols.items[action.terminal].terminals.items) |terminal| {
+                for (result.items) |existing| {
+                    if (std.mem.eql(u8, existing, terminal)) break;
+                } else {
+                    try result.append(self.allocator, terminal);
+                }
+            }
+        }
+        std.mem.sort([]const u8, result.items, {}, headLessThan);
+        return result;
+    }
+
+    fn emitStringSliceItems(self: *Generator, writer: *std.Io.Writer, items: []const []const u8) !void {
+        _ = self;
+        for (items, 0..) |item, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try emitStringLiteral(writer, item);
+        }
+    }
+
+    fn nextSyntaxErrorFunctionName(self: *Generator, state_index: usize, kind: SyntaxErrorSite) ![]const u8 {
+        const stem = try std.fmt.allocPrint(self.allocator, "state_{d}_{s}", .{ state_index, @tagName(kind) });
         const name = try common.syntaxErrorFunctionName(self.allocator, "lr_", stem, self.syntax_error_site_index);
         self.syntax_error_site_index += 1;
         try self.error_message_specs.append(self.allocator, .{ .name = name });
@@ -983,18 +1058,6 @@ const Generator = struct {
             .terminal, .generative_terminal => self.options.ast_for_terminals,
             .end => false,
         };
-    }
-
-    fn stateUsesStack(self: *Generator, state: State) bool {
-        if (state.gotos.items.len > 0) return true;
-        for (state.actions.items) |action| {
-            switch (action.kind) {
-                .shift => return true,
-                .reduce => if (self.options.with_ast) return true,
-                .accept => {},
-            }
-        }
-        return false;
     }
 
     fn variableIndex(self: *Generator, symbol_index: usize) usize {

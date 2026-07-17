@@ -22,7 +22,7 @@ pub fn main(init: std.process.Init) !void {
         \\                                  Warmup iterations of the parse process.
         \\                                  Useful for benchmarking.
         \\    --max-errors <MAX_ERRORS>     Maximum syntax errors to report before stopping.
-        \\    --recovery-window <BYTES>    Maximum input bytes considered by each LL recovery attempt.
+        \\    --recovery-window <BYTES>    Maximum input bytes considered by each recovery attempt.
         \\    --disable-stack-overflow-recovery
         \\                                  Disables the stack overflow recovery mechanism
         \\<FILE>

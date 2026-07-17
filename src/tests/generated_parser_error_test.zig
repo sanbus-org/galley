@@ -122,9 +122,7 @@ test "generated_parser_error reusable file session recovers" {
     try std.testing.expectEqual(@as(usize, 0), session.syntaxErrorCount());
 }
 
-test "generated_parser_error LL reports multiple syntax errors" {
-    if (comptime parser.parser.parser_type != .ll) return error.SkipZigTest;
-
+test "generated_parser_error reports multiple syntax errors" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
@@ -132,9 +130,7 @@ test "generated_parser_error LL reports multiple syntax errors" {
     try std.testing.expect(session.syntaxErrorCount() >= 2);
 }
 
-test "generated_parser_error LL max errors restores fail fast" {
-    if (comptime parser.parser.parser_type != .ll) return error.SkipZigTest;
-
+test "generated_parser_error max errors restores fail fast" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
@@ -142,9 +138,7 @@ test "generated_parser_error LL max errors restores fail fast" {
     try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
 }
 
-test "generated_parser_error LL recovery window limits resynchronization" {
-    if (comptime parser.parser.parser_type != .ll) return error.SkipZigTest;
-
+test "generated_parser_error recovery window limits resynchronization" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .recovery_window = 1 });
     defer session.deinit();
 
