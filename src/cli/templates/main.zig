@@ -118,14 +118,18 @@ fn parseArgs(init: std.process.Init) !Options {
         } else if (std.mem.startsWith(u8, arg, "--verbosity=")) {
             options.verbosity = try std.fmt.parseInt(usize, arg["--verbosity=".len..], 10);
         } else if (std.mem.eql(u8, arg, "--max-errors")) {
+            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
             const value = args.next() orelse return error.MissingMaxErrors;
             options.max_errors = try std.fmt.parseInt(usize, value, 10);
         } else if (std.mem.startsWith(u8, arg, "--max-errors=")) {
+            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
             options.max_errors = try std.fmt.parseInt(usize, arg["--max-errors=".len..], 10);
         } else if (std.mem.eql(u8, arg, "--recovery-window")) {
+            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
             const value = args.next() orelse return error.MissingRecoveryWindow;
             options.recovery_window = try std.fmt.parseInt(usize, value, 10);
         } else if (std.mem.startsWith(u8, arg, "--recovery-window=")) {
+            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
             options.recovery_window = try std.fmt.parseInt(usize, arg["--recovery-window=".len..], 10);
         } else {
             return error.UnknownArgument;
@@ -133,8 +137,10 @@ fn parseArgs(init: std.process.Init) !Options {
     }
 
     if (options.iterations == 0) return error.InvalidIterations;
-    if (options.max_errors == 0) return error.InvalidMaxErrors;
-    if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+    if (comptime parser.parser.is_error_recovery_enabled) {
+        if (options.max_errors == 0) return error.InvalidMaxErrors;
+        if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+    }
     return options;
 }
 
@@ -150,9 +156,13 @@ fn printUsage(init: std.process.Init) !void {
         \\  -r, --iterations <ITERATIONS>      Repeat each sample parse.
         \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
         \\  -v, --verbosity <LEVEL>            Debug verbosity level.
-        \\      --max-errors <COUNT>           Maximum syntax errors to report (default: 10).
-        \\      --recovery-window <BYTES>      Syntax recovery lookahead per attempt (default: 500).
-        \\
     );
+    if (comptime parser.parser.is_error_recovery_enabled) {
+        try stdout.writeAll(
+            \\      --max-errors <COUNT>           Maximum syntax errors to report (default: 10).
+            \\      --recovery-window <BYTES>      Syntax recovery lookahead per attempt (default: 500).
+        );
+    }
+    try stdout.writeByte('\n');
     try stdout.flush();
 }

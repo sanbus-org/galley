@@ -250,6 +250,7 @@ const Generator = struct {
             \\pub const parser_type = data_structures.ParserType.ll;
             \\pub const is_ast_enabled = {};
             \\pub const are_procedures_enabled = {};
+            \\pub const is_error_recovery_enabled = {};
             \\pub const input_size_cap = u{d};
             \\pub const longest_terminal_length = {d};
             \\
@@ -257,6 +258,7 @@ const Generator = struct {
         , .{
             self.options.with_ast,
             self.options.with_procedures,
+            self.options.with_error_recovery,
             self.options.input_size,
             self.longestTerminalLength(),
         });
@@ -296,11 +298,11 @@ const Generator = struct {
             try writer.writeByte('\n');
         }
         try writer.writeAll("};\n\n");
-        try self.emitRecoverySupport(writer);
+        if (self.options.with_error_recovery) try self.emitRecoverySupport(writer);
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
-        try self.emitSyntaxErrorHandlers(writer);
+        if (self.options.with_error_recovery) try self.emitSyntaxErrorHandlers(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
             \\    _ = parse__AugmentedStart(context
@@ -311,7 +313,11 @@ const Generator = struct {
             \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
             \\        else => return err,
             \\    };
-            \\    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
+        );
+        if (self.options.with_error_recovery) {
+            try writer.writeAll("    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;\n");
+        }
+        try writer.writeAll(
             \\
             \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
@@ -1038,6 +1044,20 @@ const Generator = struct {
         skip_ast_construction: bool,
         indent: []const u8,
     ) !void {
+        if (!self.options.with_error_recovery) {
+            const symbol = self.symbols.items[symbol_index];
+            try writer.print("{s}try context.recordSyntaxDiagnostic(.{{ .while_parsing = ", .{indent});
+            try emitStringLiteral(writer, symbol.id);
+            try writer.writeAll(" }, ");
+            try self.emitRecoveryCandidates(writer, expected_tokens);
+            try writer.writeAll(");\n");
+            try writer.print("{s}if (!builtin.is_test) {{\n", .{indent});
+            try self.emitSyntaxErrorMessagePrint(writer, function_names.exact, function_names.symbol, try indented(self.allocator, indent, 4));
+            try writer.print("{s}}}\n", .{indent});
+            try writer.print("{s}return root.ParseError.SyntaxError;\n", .{indent});
+            return;
+        }
+
         const handler_name = try std.fmt.allocPrint(self.allocator, "ll_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
         try self.syntax_error_handlers.append(self.allocator, .{
             .name = handler_name,
@@ -1050,10 +1070,11 @@ const Generator = struct {
         const can_tail_call = !self.has_occurrence_procedures and (!self.options.with_ast or
             (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
-            try writer.print("{s}return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
-        } else {
-            try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
+            try writer.print("{s}if (comptime builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64) {{\n", .{indent});
+            try writer.print("{s}    return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
+            try writer.print("{s}}}\n", .{indent});
         }
+        try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
     }
 
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {

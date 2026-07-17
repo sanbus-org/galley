@@ -68,6 +68,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.with_procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.generator_options.with_procedures = false;
+        } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
+            result.generator_options.with_error_recovery = true;
+        } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
+            result.generator_options.with_error_recovery = false;
         } else if (std.mem.eql(u8, arg, "--ast-for-terminals")) {
             result.generator_options.ast_for_terminals = true;
         } else if (std.mem.eql(u8, arg, "--no-ast-for-terminals")) {
@@ -104,6 +108,8 @@ fn printUsage(init: std.process.Init) !void {
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
+        \\      --with-error-recovery  Enables syntax-error recovery.
+        \\      --no-error-recovery    Disables syntax-error recovery.
         \\      --ast-for-terminals    Enables AST nodes for terminals.
         \\      --no-ast-for-terminals Disables AST nodes for terminals.
         \\      --input-size <BITS>    Number of bits required to fit input size.
