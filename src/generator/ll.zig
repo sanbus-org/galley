@@ -341,29 +341,7 @@ const Generator = struct {
 
     fn emitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
-        try writer.writeAll(
-            \\fn llRecoveryOffset(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {
-            \\    const lookahead = try context.recoveryLookahead();
-            \\    if (candidates.len == 0) {
-            \\        if (lookahead[0] == 0) context.finishSyntaxRecovery();
-            \\        return null;
-            \\    }
-            \\    const upper = @min(context.recoveryWindow(), lookahead.len);
-            \\    var offset = start;
-            \\    while (offset < upper) : (offset += 1) {
-            \\        for (candidates) |candidate| {
-            \\            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {
-            \\                context.finishSyntaxRecovery();
-            \\                return offset;
-            \\            }
-            \\        }
-            \\        if (lookahead[offset] == 0) break;
-            \\    }
-            \\    if (lookahead[0] == 0) context.finishSyntaxRecovery();
-            \\    return null;
-            \\}
-            \\
-        );
+        try common.emitRecoveryOffsetFunction(writer, "llRecoveryOffset");
     }
 
     fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {

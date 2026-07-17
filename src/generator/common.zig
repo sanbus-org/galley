@@ -168,6 +168,32 @@ pub fn indented(allocator: std.mem.Allocator, indent: []const u8, extra: usize) 
     return result.toOwnedSlice(allocator);
 }
 
+pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const u8) !void {
+    try writer.print(
+        \\fn {s}(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {{
+        \\    const lookahead = try context.recoveryLookahead();
+        \\    if (candidates.len == 0) {{
+        \\        if (lookahead[0] == 0) context.finishSyntaxRecovery();
+        \\        return null;
+        \\    }}
+        \\    const upper = @min(context.recoveryWindow(), lookahead.len);
+        \\    var offset = start;
+        \\    while (offset < upper) : (offset += 1) {{
+        \\        for (candidates) |candidate| {{
+        \\            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {{
+        \\                context.finishSyntaxRecovery();
+        \\                return offset;
+        \\            }}
+        \\        }}
+        \\        if (lookahead[offset] == 0) break;
+        \\    }}
+        \\    if (lookahead[0] == 0) context.finishSyntaxRecovery();
+        \\    return null;
+        \\}}
+        \\
+    , .{function_name});
+}
+
 pub fn syntaxErrorFunctionName(
     allocator: std.mem.Allocator,
     comptime prefix: []const u8,
