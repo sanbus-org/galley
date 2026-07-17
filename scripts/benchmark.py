@@ -67,6 +67,19 @@ def benchmark_target(base_target, route):
     return base_target
 
 
+def benchmark_build_cmd(target, optimize, parser_type, language):
+    return [
+        "zig",
+        "build",
+        "--build-file",
+        "build-tests.zig",
+        f"-Doptimize={optimize}",
+        "-Dtest-filter=suite:matrix-compile",
+        f"-Dtest-filter=case:{parser_type.lower()}-{language}",
+        target,
+    ]
+
+
 def benchmark_run_args(route, input_file, iterations):
     args = [input_file]
     if route == "cli":
@@ -608,14 +621,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 draw_card_in_row(placeholder, col_idx, width=args.width, spacing=2)
 
             # Compile in ReleaseFast mode first
-            build_cmd = [
-                "zig",
-                "build",
-                "--build-file",
-                "build-tests.zig",
-                "-Doptimize=ReleaseFast",
-                target,
-            ]
+            build_cmd = benchmark_build_cmd(target, "ReleaseFast", p_type, name)
             try:
                 subprocess.run(
                     build_cmd,
@@ -625,14 +631,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     check=True,
                 )
             except subprocess.CalledProcessError:
-                debug_cmd = [
-                    "zig",
-                    "build",
-                    "--build-file",
-                    "build-tests.zig",
-                    "-Doptimize=Debug",
-                    target,
-                ]
+                debug_cmd = benchmark_build_cmd(target, "Debug", p_type, name)
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
                     sys.stdout.flush()
@@ -765,14 +764,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
 
             except subprocess.CalledProcessError as run_err:
                 # If execution fails, compile and run in Debug mode to get detailed stack traces
-                debug_build_cmd = [
-                    "zig",
-                    "build",
-                    "--build-file",
-                    "build-tests.zig",
-                    "-Doptimize=Debug",
-                    target,
-                ]
+                debug_build_cmd = benchmark_build_cmd(target, "Debug", p_type, name)
                 subprocess.run(
                     debug_build_cmd,
                     stdout=subprocess.PIPE,
