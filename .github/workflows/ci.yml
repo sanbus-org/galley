@@ -11,7 +11,7 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ contains(github.server_url, 'github') && 'blacksmith-32vcpu-ubuntu-2404' || 'codeberg-medium' }}
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     timeout-minutes: 120
     steps:
       - name: Checkout repository
@@ -30,4 +30,4 @@ jobs:
         run: zig build test-package-consumer --summary all
 
       - name: Run parser test suite
-        run: zig build test --summary all --test-timeout 30m
+        run: zig build -j1 test --summary all --test-timeout 30m
