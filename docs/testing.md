@@ -77,7 +77,7 @@ Typed filters apply directly to these dedicated steps and follow the same valida
 Zig test cases and build checks are reported separately:
 
 - API tests run five Zig test functions for every eligible variant/sample combination.
-- Error tests run nine diagnostic, multi-error recovery, limit, recovery-window, validation, and reusable-session tests for every 16-bit JSON, augmented-JSON, or Sanbus variant.
+- Error tests run nine diagnostic, multi-error recovery, limit, recovery-window, validation, and reusable-session tests for every 16-bit JSON, augmented-JSON, or Sanbus variant, covering both parser types wherever the language provides them.
 - CLI validation runs each eligible sample through the generated executable once.
 - Generation and production compilation validate that each selected parser configuration can be generated and built; they are build steps, not additional Zig test cases.
 

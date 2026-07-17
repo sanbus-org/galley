@@ -301,6 +301,25 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "llRecoveryOffset(context, &[_][]const u8{\"a\"}, if (report_syntax_error) 1 else 0)");
 }
 
+test "generateParserAlloc emits position-based LR recovery" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
+
+    _ = try expectContains(output, "fn lrRecoveryOffset(");
+    _ = try expectContains(output, "state_recovery: while (true)");
+    _ = try expectContains(output, "if (result.is_recovery) continue :state_recovery;");
+    _ = try expectContains(output, ".is_recovery = true");
+    _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
+    _ = try expectContains(output, "lrRecoveryOffset(context, lr_recovery_candidates_");
+    _ = try expectContains(output, "if (report_syntax_error) 1 else 0");
+    _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
+    _ = try expectContains(output, "_ = stack.pop() orelse unreachable;");
+    _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    _ = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_lr_state_");
+}
+
 test "LL syntax error tail calls follow generated parser ABI" {
     const source =
         \\Start

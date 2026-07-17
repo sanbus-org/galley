@@ -151,7 +151,7 @@ fn printUsage(init: std.process.Init) !void {
         \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
         \\  -v, --verbosity <LEVEL>            Debug verbosity level.
         \\      --max-errors <COUNT>           Maximum syntax errors to report (default: 10).
-        \\      --recovery-window <BYTES>      LL recovery lookahead per attempt (default: 500).
+        \\      --recovery-window <BYTES>      Syntax recovery lookahead per attempt (default: 500).
         \\
     );
     try stdout.flush();

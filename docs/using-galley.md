@@ -216,7 +216,7 @@ const first = try session.parseBytes("first input", "first");
 const second = try session.parseBytes("second input", "second");
 ```
 
-LL sessions recover after syntax errors so one parse can report several diagnostics. Configure the limit and per-attempt search distance when creating the session:
+LL and LR sessions recover after syntax errors so one parse can report several diagnostics. Configure the limit and per-attempt search distance when creating the session:
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{
