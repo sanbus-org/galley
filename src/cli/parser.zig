@@ -8,6 +8,12 @@ const config = galley.config;
 const parser = galley.parser;
 const string_utilities = galley.string_utilities;
 
+const syntax_recovery_params = if (parser.is_error_recovery_enabled)
+    \\    --max-errors <MAX_ERRORS>     Maximum syntax errors to report before stopping.
+    \\    --recovery-window <BYTES>    Maximum input bytes considered by each recovery attempt.
+else
+    "";
+
 fn printHelp() void {
     std.debug.print("\nusage: parser_builder [program_path]\n", .{});
     std.process.exit(1);
@@ -21,8 +27,9 @@ pub fn main(init: std.process.Init) !void {
         \\-w, --warmup-iterations <ITERATIONS>
         \\                                  Warmup iterations of the parse process.
         \\                                  Useful for benchmarking.
-        \\    --max-errors <MAX_ERRORS>     Maximum syntax errors to report before stopping.
-        \\    --recovery-window <BYTES>    Maximum input bytes considered by each recovery attempt.
+        \\
+    ++ syntax_recovery_params ++
+        \\
         \\    --disable-stack-overflow-recovery
         \\                                  Disables the stack overflow recovery mechanism
         \\<FILE>
@@ -62,8 +69,14 @@ pub fn main(init: std.process.Init) !void {
     const verbosity = if (res.args.verbosity) |verbosity| verbosity else 0;
     const iterations = if (res.args.iterations) |iterations| iterations else 1;
     const warmup_iterations = if (@field(res.args, "warmup-iterations")) |warmup_iterations| warmup_iterations else iterations / 10;
-    const max_errors = if (@field(res.args, "max-errors")) |max_errors| max_errors else 10;
-    const recovery_window = if (@field(res.args, "recovery-window")) |recovery_window| recovery_window else 500;
+    const max_errors = if (comptime parser.is_error_recovery_enabled)
+        if (@field(res.args, "max-errors")) |max_errors| max_errors else 10
+    else
+        10;
+    const recovery_window = if (comptime parser.is_error_recovery_enabled)
+        if (@field(res.args, "recovery-window")) |recovery_window| recovery_window else 500
+    else
+        500;
 
     const io = init.io;
 

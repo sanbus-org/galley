@@ -79,6 +79,7 @@ Pass `.lr` to generate an LR parser. The final argument controls code-generation
 const options = generator.Options{
     .with_ast = true,
     .with_procedures = true,
+    .with_error_recovery = false,
     .ast_for_terminals = false,
     .input_size = 16,
 };
@@ -216,7 +217,13 @@ const first = try session.parseBytes("first input", "first");
 const second = try session.parseBytes("second input", "second");
 ```
 
-LL and LR sessions recover after syntax errors so one parse can report several diagnostics. Configure the limit and per-attempt search distance when creating the session:
+LL and LR parsers report the first syntax error and stop by default. Enable recovery while generating the parser to report multiple diagnostics:
+
+```sh
+galley --with-error-recovery <LANGUAGE_DIR>
+```
+
+API generators enable the same behavior with `.with_error_recovery = true`. Recovery-enabled parsers use `max_errors` and `recovery_window` at runtime:
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{
@@ -235,7 +242,7 @@ if (session.parseBytes(input, "input")) |_| {
 }
 ```
 
-`max_errors = 1` restores fail-fast behavior. A parse that recovered still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one. Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee.
+Fail-fast parsers populate `lastDiagnostic()` and report a syntax-error count of one. A recovery-enabled parse that encounters errors still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one. Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee.
 
 Each call resets the session's transient parsing state while retaining reusable allocations. Other input APIs are available for specialized callers:
 

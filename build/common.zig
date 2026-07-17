@@ -457,6 +457,9 @@ pub fn addDelegatedTestStep(
         b.pathFromRoot("build-tests.zig"),
         delegated_step_name,
     });
+    if (b.graph.max_jobs) |max_jobs| {
+        run_tests.addArg(b.fmt("-j{d}", .{max_jobs}));
+    }
     run_tests.stdio = .inherit;
     run_tests.addArg("--summary");
     run_tests.addArg("all");
