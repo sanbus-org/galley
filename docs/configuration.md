@@ -30,6 +30,7 @@ zig build
 | `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
 | `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. Disabling AST construction maximizes raw syntax validation speed. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
+| `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables reporting multiple syntax errors through generated recovery code. | `--no-error-recovery` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
@@ -64,8 +65,8 @@ zig build -Doptimize=ReleaseFast ll-json
 | `--verbosity` | `-v` | `<0-2>` | Verbosity level. `0` prints benchmark speed; `1` prints parsed AST structure and metrics; `2` outputs detailed execution traces. | `0` |
 | `--iterations` | `-r` | `<INT>` | Number of times to repeat parsing the file. Highly useful for getting stable throughput averages during benchmarking. | `1` |
 | `--warmup-iterations` | `-w` | `<INT>` | Number of warmup parse passes before recording benchmark timers to ensure CPU cache saturation. | `0` |
-| `--max-errors` | None | `<INT>` | Maximum syntax errors to print before stopping. Use `1` for fail-fast parsing. Must be greater than zero. | `10` |
-| `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each recovery attempt. Must be greater than zero. | `500` |
+| `--max-errors` | None | `<INT>` | Maximum syntax errors to print before stopping. Available only when the parser was generated with error recovery. | `10` |
+| `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each recovery attempt. Available only when the parser was generated with error recovery. | `500` |
 | `--disable-stack-overflow-recovery` | None | Flag | Disables dynamic stack overflow recovery, falling back to static stack boundaries. | Enabled |
 | `<FILE>` | None | `<PATH>` | **Required.** Path to the source code file to parse. | None |
 
@@ -98,6 +99,7 @@ zig build ll-json
 
 ### Report More Than One Syntax Error
 ```sh
+./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json
 zig build ll-json
 ./zig-out/bin/ll-json --max-errors 10 --recovery-window 500 malformed.json
 ```

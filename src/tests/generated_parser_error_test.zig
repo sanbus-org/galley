@@ -10,6 +10,7 @@ const diagnostic_line = test_options.diagnostic_line;
 const diagnostic_column = test_options.diagnostic_column;
 const unexpected_token_prefix = test_options.unexpected_token_prefix;
 const expected_token = test_options.expected_token;
+const error_recovery_enabled = test_options.error_recovery_enabled;
 
 fn allocSentinel(input: []const u8) ![:0]u8 {
     const sentinel = try std.testing.allocator.allocSentinel(u8, input.len, 0);
@@ -54,6 +55,10 @@ fn expectSyntaxDiagnostic(session: *const parser.Session) !void {
     try expectContains(rendered, "Unexpected token");
     try expectContains(rendered, "Expected tokens:");
     try expectContains(rendered, expected_token);
+}
+
+test "generated_parser_error recovery capability" {
+    try std.testing.expectEqual(error_recovery_enabled, parser.parser.is_error_recovery_enabled);
 }
 
 test "generated_parser_error parse bytes" {
@@ -127,7 +132,11 @@ test "generated_parser_error reports multiple syntax errors" {
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
-    try std.testing.expect(session.syntaxErrorCount() >= 2);
+    if (error_recovery_enabled) {
+        try std.testing.expect(session.syntaxErrorCount() >= 2);
+    } else {
+        try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
+    }
 }
 
 test "generated_parser_error max errors restores fail fast" {
@@ -139,6 +148,8 @@ test "generated_parser_error max errors restores fail fast" {
 }
 
 test "generated_parser_error recovery window limits resynchronization" {
+    if (!error_recovery_enabled) return error.SkipZigTest;
+
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .recovery_window = 1 });
     defer session.deinit();
 

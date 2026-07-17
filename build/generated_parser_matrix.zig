@@ -82,6 +82,11 @@ const matrix_variants = [_]MatrixVariant{
     },
 };
 
+fn testsErrorRecovery(variant: MatrixVariant) bool {
+    return std.mem.eql(u8, variant.name, "no-ast-procedures-size16") or
+        std.mem.eql(u8, variant.name, "ast-procedures-no-terminal-ast-size16");
+}
+
 const ParserTypeSpec = struct {
     name: []const u8,
     grammar_name: []const u8,
@@ -231,11 +236,102 @@ fn addCase(
             inputs.diagnostic_column,
             inputs.unexpected_token_prefix,
             inputs.expected_token,
+            false,
             options.selection.names,
         );
         matrix_step.dependOn(&run_parser_error_tests.step);
         trackFilteredTestRun(b, options, &run_parser_error_tests.step);
         work.errors += 1;
+
+        if (testsErrorRecovery(variant)) {
+            const recovery_case_name = try std.mem.concat(b.allocator, u8, &.{ case_name, "-error-recovery" });
+            const recovery_parser_basename = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, ".zig" });
+            const generate_recovery_parser = b.addRunArtifact(options.generate_parser_file_exe);
+            generate_recovery_parser.addArg("--grammar");
+            generate_recovery_parser.addFileArg(b.path(grammar_path));
+            generate_recovery_parser.addArg("--parser-type");
+            generate_recovery_parser.addArg(parser_type);
+            generate_recovery_parser.addArg("--label");
+            generate_recovery_parser.addArg(try std.mem.concat(b.allocator, u8, &.{ parser_type, "/", language, "/", variant.name, "/error-recovery" }));
+            generate_recovery_parser.addArg("--output");
+            const recovery_parser_path = generate_recovery_parser.addOutputFileArg(recovery_parser_basename);
+            generate_recovery_parser.addArgs(variant.args);
+            generate_recovery_parser.addArg("--with-error-recovery");
+            generate_recovery_parser.stdio = .inherit;
+
+            const recovery_procedures_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }), .{
+                .root_source_file = b.path(procedures_path),
+                .target = options.target,
+                .optimize = options.optimize,
+            });
+            const recovery_config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-config" }), .{
+                .root_source_file = b.path(config_path),
+                .target = options.target,
+                .optimize = options.optimize,
+            });
+            const recovery_error_messages_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-error-messages" }), .{
+                .root_source_file = b.path(error_messages_path),
+                .target = options.target,
+                .optimize = options.optimize,
+            });
+
+            const recovery_parser = common.addGeneratedParserModule(
+                b,
+                options.target,
+                options.optimize,
+                recovery_case_name,
+                try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-parser" }),
+                recovery_parser_path,
+                recovery_procedures_mod,
+                recovery_config_mod,
+                recovery_error_messages_mod,
+                options.generator_modules.ll_generator_mod,
+                options.generator_modules.lr_generator_mod,
+            );
+            const run_recovery_error_tests = addGeneratedParserErrorTest(
+                b,
+                options.target,
+                options.optimize,
+                recovery_parser.runtime_mod,
+                inputs.valid,
+                inputs.malformed,
+                inputs.multiple_errors,
+                inputs.small_window_error_count,
+                inputs.diagnostic_line,
+                inputs.diagnostic_column,
+                inputs.unexpected_token_prefix,
+                inputs.expected_token,
+                true,
+                options.selection.names,
+            );
+            matrix_step.dependOn(&run_recovery_error_tests.step);
+            trackFilteredTestRun(b, options, &run_recovery_error_tests.step);
+            work.errors += 1;
+
+            if (std.mem.eql(u8, language, "json") and std.mem.eql(u8, variant.name, "no-ast-procedures-size16")) {
+                const recovery_cli_options = b.addOptions();
+                recovery_cli_options.addOption([]const u8, "api_benchmark_step", "run-api-bench-generated-parser-matrix");
+                const recovery_cli_mod = b.createModule(.{
+                    .root_source_file = b.path("src/cli/parser.zig"),
+                    .target = options.target,
+                    .optimize = options.optimize,
+                    .link_libc = true,
+                    .imports = &.{
+                        .{ .name = "clap", .module = options.clap_mod },
+                        .{ .name = "build_options", .module = recovery_cli_options.createModule() },
+                        .{ .name = "galley", .module = recovery_parser.runtime_mod },
+                    },
+                });
+                const recovery_cli = b.addExecutable(.{
+                    .name = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-cli" }),
+                    .root_module = recovery_cli_mod,
+                });
+                const run_recovery_cli = b.addRunArtifact(recovery_cli);
+                run_recovery_cli.addArgs(&.{ "--max-errors", "2", "--recovery-window", "64", "--help" });
+                matrix_step.dependOn(&run_recovery_cli.step);
+                work.errors += 1;
+            }
+        }
     };
 
     const parser_cli_options = b.addOptions();
@@ -407,10 +503,6 @@ fn addValidationInput(
         "0",
         "--iterations",
         "1",
-        "--max-errors",
-        "3",
-        "--recovery-window",
-        "64",
     });
 
     if (std.mem.endsWith(u8, input_path, ".grm")) {
@@ -534,6 +626,7 @@ fn addGeneratedParserErrorTest(
     diagnostic_column: u32,
     unexpected_token_prefix: []const u8,
     expected_token: []const u8,
+    error_recovery_enabled: bool,
     filters: []const []const u8,
 ) *std.Build.Step.Run {
     const test_options = b.addOptions();
@@ -545,6 +638,7 @@ fn addGeneratedParserErrorTest(
     test_options.addOption(u32, "diagnostic_column", diagnostic_column);
     test_options.addOption([]const u8, "unexpected_token_prefix", unexpected_token_prefix);
     test_options.addOption([]const u8, "expected_token", expected_token);
+    test_options.addOption(bool, "error_recovery_enabled", error_recovery_enabled);
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/generated_parser_error_test.zig"),
         .target = target,

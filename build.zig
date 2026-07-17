@@ -23,6 +23,9 @@ pub fn build(b: *std.Build) !void {
         "--build-file",
         b.pathFromRoot("tests/package-consumer/build.zig"),
     });
+    if (b.graph.max_jobs) |max_jobs| {
+        package_consumer.addArg(b.fmt("-j{d}", .{max_jobs}));
+    }
     package_consumer_step.dependOn(&package_consumer.step);
 
     const test_filters = b.option([]const []const u8, "test-filter", "Select tests by suite:, case:, and name:") orelse &.{};
