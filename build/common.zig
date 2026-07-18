@@ -474,6 +474,11 @@ pub fn addDelegatedTestStep(
     step.dependOn(&run_tests.step);
 }
 
+pub fn expectSilentSuccess(run: *std.Build.Step.Run) void {
+    run.expectStdOutEqual("");
+    run.expectStdErrEqual("");
+}
+
 fn parserFileName(allocator: std.mem.Allocator, parser_type: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "_{s}-parser.zig", .{parser_type});
 }

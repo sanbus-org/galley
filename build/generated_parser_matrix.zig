@@ -174,6 +174,7 @@ fn addCase(
 ) !void {
     const work_before = work.total();
     const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type, "-", language, "-", variant.name });
+    const case_label = b.fmt("{s}/{s}/{s}", .{ parser_type, language, variant.name });
     const parser_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, ".zig" });
 
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
@@ -182,7 +183,7 @@ fn addCase(
     generate_parser.addArg("--parser-type");
     generate_parser.addArg(parser_type);
     generate_parser.addArg("--label");
-    generate_parser.addArg(try std.mem.concat(b.allocator, u8, &.{ parser_type, "/", language, "/", variant.name }));
+    generate_parser.addArg(case_label);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(parser_basename);
     generate_parser.addArgs(variant.args);
@@ -228,6 +229,8 @@ fn addCase(
             options.target,
             options.optimize,
             galley_parser_mod,
+            case_name,
+            case_label,
             inputs.valid,
             inputs.malformed,
             inputs.multiple_errors,
@@ -245,6 +248,7 @@ fn addCase(
 
         if (testsErrorRecovery(variant)) {
             const recovery_case_name = try std.mem.concat(b.allocator, u8, &.{ case_name, "-error-recovery" });
+            const recovery_case_label = b.fmt("{s}/error-recovery", .{case_label});
             const recovery_parser_basename = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, ".zig" });
             const generate_recovery_parser = b.addRunArtifact(options.generate_parser_file_exe);
             generate_recovery_parser.addArg("--grammar");
@@ -252,7 +256,7 @@ fn addCase(
             generate_recovery_parser.addArg("--parser-type");
             generate_recovery_parser.addArg(parser_type);
             generate_recovery_parser.addArg("--label");
-            generate_recovery_parser.addArg(try std.mem.concat(b.allocator, u8, &.{ parser_type, "/", language, "/", variant.name, "/error-recovery" }));
+            generate_recovery_parser.addArg(recovery_case_label);
             generate_recovery_parser.addArg("--output");
             const recovery_parser_path = generate_recovery_parser.addOutputFileArg(recovery_parser_basename);
             generate_recovery_parser.addArgs(variant.args);
@@ -293,6 +297,8 @@ fn addCase(
                 options.target,
                 options.optimize,
                 recovery_parser.runtime_mod,
+                recovery_case_name,
+                recovery_case_label,
                 inputs.valid,
                 inputs.malformed,
                 inputs.multiple_errors,
@@ -327,7 +333,11 @@ fn addCase(
                     .root_module = recovery_cli_mod,
                 });
                 const run_recovery_cli = b.addRunArtifact(recovery_cli);
+                run_recovery_cli.setName(b.fmt("test recovery CLI options {s}", .{recovery_case_label}));
                 run_recovery_cli.addArgs(&.{ "--max-errors", "2", "--recovery-window", "64", "--help" });
+                run_recovery_cli.expectStdOutMatch("--max-errors <MAX_ERRORS>");
+                run_recovery_cli.expectStdOutMatch("--recovery-window <BYTES>");
+                run_recovery_cli.expectStdErrEqual("");
                 matrix_step.dependOn(&run_recovery_cli.step);
                 work.errors += 1;
             }
@@ -391,6 +401,7 @@ fn addCase(
         exe,
         language,
         case_name,
+        case_label,
         variant.name,
         variant.args,
         variant.input_size,
@@ -413,6 +424,7 @@ fn addLanguageSamples(
     exe: *std.Build.Step.Compile,
     language: []const u8,
     case_name: []const u8,
+    case_label: []const u8,
     config_label: []const u8,
     variant_args: []const []const u8,
     input_size: u16,
@@ -444,6 +456,7 @@ fn addLanguageSamples(
                 galley_parser_mod,
                 exe,
                 case_name,
+                case_label,
                 config_label,
                 sample_path,
                 variant_args,
@@ -461,6 +474,7 @@ fn addValidationInput(
     galley_parser_mod: *std.Build.Module,
     exe: *std.Build.Step.Compile,
     case_name: []const u8,
+    case_label: []const u8,
     config_label: []const u8,
     input_path: []const u8,
     variant_args: []const []const u8,
@@ -484,6 +498,7 @@ fn addValidationInput(
             options.optimize,
             galley_parser_mod,
             case_name,
+            case_label,
             "matrix",
             config_label,
             input_path,
@@ -498,6 +513,8 @@ fn addValidationInput(
     if (!options.selection.includes(.matrix_cli)) return;
 
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.setName(b.fmt("test CLI {s} {s}", .{ case_label, std.fs.path.basename(input_path) }));
+    common.expectSilentSuccess(run_cmd);
     run_cmd.addArgs(&.{
         "--verbosity",
         "0",
@@ -511,9 +528,11 @@ fn addValidationInput(
 
         const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", cache_dir });
         mkdir.has_side_effects = true;
+        common.expectSilentSuccess(mkdir);
 
         const copy_input = b.addSystemCommand(&.{ "cp", input_path, cached_input });
         copy_input.has_side_effects = true;
+        common.expectSilentSuccess(copy_input);
         copy_input.step.dependOn(&mkdir.step);
 
         run_cmd.addArg(cached_input);
@@ -532,12 +551,14 @@ fn addGeneratedParserApiTest(
     optimize: std.builtin.OptimizeMode,
     galley_parser_mod: *std.Build.Module,
     case_name: []const u8,
+    case_label: []const u8,
     suite: []const u8,
     config_label: []const u8,
     sample_path: []const u8,
     sample_input: []const u8,
     filters: []const []const u8,
 ) *std.Build.Step.Run {
+    const sample_name = std.fs.path.basename(sample_path);
     const parser_api_test_options = b.addOptions();
     parser_api_test_options.addOption([]const u8, "case_name", case_name);
     parser_api_test_options.addOption([]const u8, "suite", suite);
@@ -554,10 +575,12 @@ fn addGeneratedParserApiTest(
         },
     });
     const parser_api_tests = b.addTest(.{
+        .name = b.fmt("{s}-api-{s}", .{ case_name, sample_name }),
         .root_module = parser_api_test_mod,
         .filters = filters,
     });
     const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
+    run_parser_api_tests.setName(b.fmt("test API {s} {s}", .{ case_label, sample_name }));
     run_parser_api_tests.addFileInput(b.path(sample_path));
     return run_parser_api_tests;
 }
@@ -618,6 +641,8 @@ fn addGeneratedParserErrorTest(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     galley_parser_mod: *std.Build.Module,
+    case_name: []const u8,
+    case_label: []const u8,
     valid_input: []const u8,
     malformed_input: []const u8,
     multiple_errors_input: []const u8,
@@ -648,7 +673,14 @@ fn addGeneratedParserErrorTest(
             .{ .name = "test_options", .module = test_options.createModule() },
         },
     });
-    return b.addRunArtifact(b.addTest(.{ .root_module = test_mod, .filters = filters }));
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-error-tests", .{case_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    const run_tests = b.addRunArtifact(tests);
+    run_tests.setName(b.fmt("test errors {s}", .{case_label}));
+    return run_tests;
 }
 
 const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
