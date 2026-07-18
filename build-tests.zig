@@ -464,30 +464,44 @@ fn addGalleyBootstrapParityCase(
     const lr_output = try std.fs.path.join(b.allocator, &.{ lr_dir, output_name });
 
     const setup = b.addSystemCommand(&.{ "mkdir", "-p", ll_dir, lr_dir });
+    setup.setName(b.fmt("prepare parity {s}", .{name}));
     setup.has_side_effects = true;
+    common.expectSilentSuccess(setup);
 
     const copy_ll_input = b.addSystemCommand(&.{ "cp", grammar_path, ll_input });
+    copy_ll_input.setName(b.fmt("prepare parity LL input {s}", .{name}));
     copy_ll_input.has_side_effects = true;
+    common.expectSilentSuccess(copy_ll_input);
     copy_ll_input.step.dependOn(&setup.step);
 
     const copy_lr_input = b.addSystemCommand(&.{ "cp", grammar_path, lr_input });
+    copy_lr_input.setName(b.fmt("prepare parity LR input {s}", .{name}));
     copy_lr_input.has_side_effects = true;
+    common.expectSilentSuccess(copy_lr_input);
     copy_lr_input.step.dependOn(&setup.step);
 
     const run_ll_galley = b.addRunArtifact(ll_galley_exe);
+    run_ll_galley.setName(b.fmt("generate parity LL output {s}", .{name}));
     run_ll_galley.has_side_effects = true;
+    run_ll_galley.expectStdOutMatch("Galley generated 1 parser");
+    run_ll_galley.expectStdErrEqual("");
     run_ll_galley.addArg(ll_input);
     run_ll_galley.addArgs(options);
     run_ll_galley.step.dependOn(&copy_ll_input.step);
 
     const run_lr_galley = b.addRunArtifact(lr_galley_exe);
+    run_lr_galley.setName(b.fmt("generate parity LR output {s}", .{name}));
     run_lr_galley.has_side_effects = true;
+    run_lr_galley.expectStdOutMatch("Galley generated 1 parser");
+    run_lr_galley.expectStdErrEqual("");
     run_lr_galley.addArg(lr_input);
     run_lr_galley.addArgs(options);
     run_lr_galley.step.dependOn(&copy_lr_input.step);
 
     const compare_outputs = b.addSystemCommand(&.{ "diff", "-u", ll_output, lr_output });
+    compare_outputs.setName(b.fmt("test parity {s}", .{name}));
     compare_outputs.has_side_effects = true;
+    common.expectSilentSuccess(compare_outputs);
     compare_outputs.step.dependOn(&run_ll_galley.step);
     compare_outputs.step.dependOn(&run_lr_galley.step);
     parity_step.dependOn(&compare_outputs.step);
