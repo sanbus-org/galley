@@ -1,0 +1,58 @@
+Start@capture
+| "o" Occurrence
+| "b" Before
+| "p" Production
+| "l" Lhs
+| "m" Multi
+| "y" Tie
+| "r" Outer
+| "f" Fail
+| "t" Two
+| "s" Speculative
+| "d" Distinct
+| "c" Recursive
+
+Occurrence
+| "a" Damaged!";"^@mark "z"
+
+Before
+| "a" Damaged!^"}" "}"
+
+Production
+|!";"^@mark "a" Damaged
+
+Lhs!";"^@mark
+| "a" Damaged
+
+Multi
+| "a" Damaged!^";"!^";;"!^"," ";;"
+
+Tie
+| "a" Damaged!^";"!";"^ ";"
+
+Outer
+| "a" Inner!";"^
+
+Inner
+| "i" Damaged!^"]"
+
+Fail
+| "a" Damaged
+
+Two
+| "a" Damaged!";"^ "b" Damaged!";"^
+
+Speculative
+|!";"^ "a" "x"
+| "a" "y"
+
+Distinct
+| "a" Damaged!";"^
+| "b" Damaged!","^
+
+Recursive
+| "a" Recursive!";"^
+| "z"
+
+Damaged
+| "x"

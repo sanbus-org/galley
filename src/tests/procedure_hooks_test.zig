@@ -202,7 +202,7 @@ test "procedure-hooks terminal phases run local to global" {
     try std.testing.expectEqual(expected.len, matched);
 }
 
-test "procedure-hooks production indices continue across repeated LHS declarations" {
+test "procedure-hooks production indices follow alternatives under one LHS header" {
     procedures.resetTrace();
     try parse("i0");
     try expectHookTargets(.automatic_repeated_production, &.{});

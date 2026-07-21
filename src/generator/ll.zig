@@ -26,6 +26,8 @@ const Generator = struct {
     needs_ast_suppressed_parser: std.AutoHashMap(usize, void) = undefined,
     augmented_start: usize = 0,
     has_occurrence_procedures: bool = false,
+    has_recovery_annotations: bool = false,
+    uses_explicit_recovery: bool = false,
 
     const ParseEntry = struct {
         variable: usize,
@@ -55,12 +57,15 @@ const Generator = struct {
     }
 
     fn fromGrammar(self: *Generator, grammar: anytype) !void {
+        try common.validateGrammar(grammar);
+        self.has_recovery_annotations = common.grammarHasRecoveryPoints(grammar);
+        self.uses_explicit_recovery = self.options.with_error_recovery and self.has_recovery_annotations;
         var rhs_counts = std.AutoHashMap(usize, usize).init(self.allocator);
         defer rhs_counts.deinit();
 
         for (grammar.rules) |rule| {
             const header = try self.addSymbol(rule.header, .variable);
-            try common.appendProcedureNames(self.allocator, &self.symbols.items[header].procedures, rule.procedures);
+            try common.appendAnnotations(self.allocator, &self.symbols.items[header].annotations, rule.annotations);
             for (rule.right_hand_sides) |rhs| {
                 const rhs_index = rhs_counts.get(header) orelse 0;
                 try rhs_counts.put(header, rhs_index + 1);
@@ -69,7 +74,7 @@ const Generator = struct {
                     .header = header,
                     .rhs_index = try std.fmt.allocPrint(self.allocator, "{d}", .{rhs_index}),
                 };
-                try common.appendProcedureNames(self.allocator, &generated_rule.procedures, rhs.procedures);
+                try common.appendAnnotations(self.allocator, &generated_rule.annotations, rhs.annotations);
                 for (rhs.symbols) |symbol| {
                     const kind: SymbolKind = switch (symbol.kind) {
                         .variable => .variable,
@@ -78,8 +83,8 @@ const Generator = struct {
                     };
                     const symbol_index = try self.addSymbol(symbol.id, kind);
                     try generated_rule.rhs.append(self.allocator, symbol_index);
-                    try generated_rule.rhs_procedures.append(self.allocator, try common.cloneProcedureNames(self.allocator, symbol.procedures));
-                    if (self.options.with_procedures and symbol.procedures.len != 0 and self.symbolReturnsNode(symbol_index, false)) {
+                    try generated_rule.rhs_annotations.append(self.allocator, try common.cloneAnnotations(self.allocator, symbol.annotations));
+                    if (self.options.with_procedures and symbol.annotations.procedures.len != 0 and self.symbolReturnsNode(symbol_index, false)) {
                         self.has_occurrence_procedures = true;
                     }
                 }
@@ -92,9 +97,9 @@ const Generator = struct {
         const eof = try self.addSymbol("\x00", .end);
         var augmented_rule = Rule{ .header = self.augmented_start, .rhs_index = "0" };
         try augmented_rule.rhs.append(self.allocator, original_start);
-        try augmented_rule.rhs_procedures.append(self.allocator, .{});
+        try augmented_rule.rhs_annotations.append(self.allocator, .{});
         try augmented_rule.rhs.append(self.allocator, eof);
-        try augmented_rule.rhs_procedures.append(self.allocator, .{});
+        try augmented_rule.rhs_annotations.append(self.allocator, .{});
         try self.rules.append(self.allocator, augmented_rule);
 
         const generative_terminal = try self.addSymbol("GenerativeTerminal", .variable);
@@ -248,9 +253,11 @@ const Generator = struct {
         try writer.print(
             \\
             \\pub const parser_type = data_structures.ParserType.ll;
+            \\pub const ErrorRecoveryMode = enum {{ disabled, automatic, explicit }};
             \\pub const is_ast_enabled = {};
             \\pub const are_procedures_enabled = {};
             \\pub const is_error_recovery_enabled = {};
+            \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
             \\pub const input_size_cap = u{d};
             \\pub const longest_terminal_length = {d};
             \\
@@ -259,6 +266,7 @@ const Generator = struct {
             self.options.with_ast,
             self.options.with_procedures,
             self.options.with_error_recovery,
+            if (!self.options.with_error_recovery) "disabled" else if (self.uses_explicit_recovery) "explicit" else "automatic",
             self.options.input_size,
             self.longestTerminalLength(),
         });
@@ -298,22 +306,44 @@ const Generator = struct {
             try writer.writeByte('\n');
         }
         try writer.writeAll("};\n\n");
-        if (self.options.with_error_recovery) try self.emitRecoverySupport(writer);
+        if (self.options.with_error_recovery) {
+            if (self.uses_explicit_recovery) {
+                try self.emitExplicitRecoverySupport(writer);
+            } else {
+                try self.emitRecoverySupport(writer);
+            }
+        }
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
-        if (self.options.with_error_recovery) try self.emitSyntaxErrorHandlers(writer);
+        if (self.options.with_error_recovery) {
+            try self.emitSyntaxErrorHandlers(writer);
+            if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
+        }
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
             \\    _ = parse__AugmentedStart(context
         );
         if (self.has_occurrence_procedures) try writer.writeAll(", null");
-        try writer.writeAll(
-            \\) catch |err| switch (err) {
-            \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
-            \\        else => return err,
-            \\    };
-        );
+        if (self.uses_explicit_recovery) try writer.writeAll(", null");
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(
+                \\) catch |err| switch (err) {
+                \\        root.ParseError.SyntaxError, error.ExplicitSyntaxRecovery => {
+                \\            try llFlushSyntaxDiagnostic(context);
+                \\            return root.ParseError.SyntaxError;
+                \\        },
+                \\        else => return err,
+                \\    };
+            );
+        } else {
+            try writer.writeAll(
+                \\) catch |err| switch (err) {
+                \\        root.ParseError.SyntaxError => return root.ParseError.SyntaxError,
+                \\        else => return err,
+                \\    };
+            );
+        }
         if (self.options.with_error_recovery) {
             try writer.writeAll("    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;\n");
         }
@@ -348,6 +378,106 @@ const Generator = struct {
     fn emitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
         try common.emitRecoveryOffsetFunction(writer, "llRecoveryOffset");
+    }
+
+    fn emitExplicitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll(
+            \\const ExplicitRecoveryScope = struct {
+            \\    id: usize,
+            \\    target: root.SyntaxRecoveryTarget,
+            \\    points: []const root.SyntaxRecoveryPoint,
+            \\};
+            \\
+            \\fn llTryExplicitScope(context: *data_structures.Context, scope: *const ExplicitRecoveryScope) !bool {
+            \\    if (!try context.tryExplicitRecovery(scope.id, scope.target, scope.points)) return false;
+            \\    try llFlushSyntaxDiagnostic(context);
+            \\    return true;
+            \\}
+            \\
+        );
+
+        for (self.variables.items) |variable| {
+            if (!self.hasParseEntries(variable)) continue;
+            try writer.print("fn llTryRecoverySelection_{d}(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {{\n", .{variable});
+            try writer.writeAll("    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;\n");
+            if (self.symbols.items[variable].annotations.recovery_points.items.len != 0) {
+                try writer.writeAll("    if (try llTryExplicitScope(context, ");
+                try self.emitLhsRecoveryScope(writer, variable);
+                try writer.writeAll(")) return true;\n");
+            }
+            try writer.writeAll("    return false;\n}\n\n");
+        }
+
+        for (self.rules.items, 0..) |rule, rule_index| {
+            if (self.symbols.items[rule.header].kind != .variable or !self.hasParseEntries(rule.header)) continue;
+            try writer.print("fn llTryRecoveryRule_{d}(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {{\n", .{rule_index});
+            try writer.writeAll("    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;\n");
+            if (rule.annotations.recovery_points.items.len != 0) {
+                try writer.writeAll("    if (try llTryExplicitScope(context, ");
+                try self.emitProductionRecoveryScope(writer, rule, rule_index);
+                try writer.writeAll(")) return true;\n");
+            }
+            if (self.symbols.items[rule.header].annotations.recovery_points.items.len != 0) {
+                try writer.writeAll("    if (try llTryExplicitScope(context, ");
+                try self.emitLhsRecoveryScope(writer, rule.header);
+                try writer.writeAll(")) return true;\n");
+            }
+            try writer.writeAll("    return false;\n}\n\n");
+        }
+    }
+
+    fn emitExplicitSyntaxDiagnosticFlusher(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll("fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {\n");
+        try writer.writeAll("    const site = context.pendingSyntaxErrorSite() orelse return;\n");
+        try writer.writeAll("    context.clearPendingSyntaxErrorSite();\n");
+        try writer.writeAll("    switch (site) {\n");
+        for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
+            try writer.print("        {d} => {{\n", .{site_index});
+            try self.emitSyntaxErrorMessagePrint(writer, spec.exact_name, spec.symbol_name, "            ");
+            try writer.writeAll("        },\n");
+        }
+        try writer.writeAll("        else => unreachable,\n    }\n}\n\n");
+    }
+
+    fn emitRecoveryPoints(self: *Generator, writer: *std.Io.Writer, points: []const common.RecoveryPoint) !void {
+        _ = self;
+        try writer.writeAll("&[_]root.SyntaxRecoveryPoint{");
+        for (points, 0..) |point, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.writeAll(".{ .terminal = ");
+            try emitStringLiteral(writer, point.terminal);
+            try writer.print(", .@\"resume\" = .{s} }}", .{@tagName(point.@"resume")});
+        }
+        try writer.writeByte('}');
+    }
+
+    fn emitLhsRecoveryScope(self: *Generator, writer: *std.Io.Writer, variable: usize) !void {
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .lhs_variable = ", .{variable});
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(" }, .points = ");
+        try self.emitRecoveryPoints(writer, self.symbols.items[variable].annotations.recovery_points.items);
+        try writer.writeAll(" }");
+    }
+
+    fn emitProductionRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, rule_index: usize) !void {
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .production = .{{ .variable = ", .{self.symbols.items.len + rule_index});
+        try emitStringLiteral(writer, self.symbols.items[rule.header].id);
+        try writer.print(", .rhs_index = {s} }} }}, .points = ", .{rule.rhs_index});
+        try self.emitRecoveryPoints(writer, rule.annotations.recovery_points.items);
+        try writer.writeAll(" }");
+    }
+
+    fn emitOccurrenceRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize) !void {
+        const rule_index = self.ruleIndex(rule);
+        const variable = rule.rhs.items[child_index];
+        const target_id = common.recoveryOccurrenceTargetId(self.symbols.items.len, self.rules.items, rule_index, child_index);
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .occurrence = .{{ .parent_variable = ", .{target_id});
+        try emitStringLiteral(writer, self.symbols.items[rule.header].id);
+        try writer.print(", .rhs_index = {s}, .symbol_index = {d}, .variable = ", .{ rule.rhs_index, child_index });
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(" } }, .points = ");
+        try self.emitRecoveryPoints(writer, rule.rhs_annotations.items[child_index].recovery_points.items);
+        try writer.writeAll(" }");
     }
 
     fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {
@@ -407,7 +537,7 @@ const Generator = struct {
         for (self.variables.items) |symbol_index| {
             const symbol = self.symbols.items[symbol_index];
             try writer.writeAll("    &[_][]const u8{");
-            for (symbol.procedures.items, 0..) |procedure, i| {
+            for (symbol.annotations.procedures.items, 0..) |procedure, i| {
                 if (i != 0) try writer.writeAll(", ");
                 try emitStringLiteral(writer, procedure);
             }
@@ -505,6 +635,9 @@ const Generator = struct {
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
         }
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+        }
         try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
         if (self.has_occurrence_procedures and !returns_node) {
             try writer.writeAll("    _ = occurrence_procedures;\n");
@@ -587,6 +720,9 @@ const Generator = struct {
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
         }
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+        }
         try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
         if (self.has_occurrence_procedures and !returns_node) {
             try writer.writeAll("    _ = occurrence_procedures;\n");
@@ -660,13 +796,22 @@ const Generator = struct {
         try writer.writeAll("            },\n            else => break,\n        }\n    }\n");
 
         if (returns_node) {
-            try writer.print("    const exit_node = try parse_{s}(context", .{name});
+            const explicit_recovery = self.uses_explicit_recovery;
+            try writer.print("    const exit_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
             if (self.has_occurrence_procedures) {
                 try writer.writeAll(", if (node_address == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
-                try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[self_index].items.items);
+                try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+            }
+            if (self.uses_explicit_recovery) {
+                try writer.writeAll(", occurrence_recovery");
+            }
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+            } else {
+                try writer.writeByte(')');
             }
             try writer.print(
-                \\);
+                \\;
                 \\    if (exit_node != data_structures.ASTNode.invalid_pointer) {{
                 \\        if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\            node_address = exit_node;
@@ -687,7 +832,7 @@ const Generator = struct {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {
                     try writer.writeAll("        const reduction_occurrence_procedures = if (repeating_node.parent == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
-                    try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[self_index].items.items);
+                    try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
                     try writer.writeAll(";\n");
                 }
                 try self.emitProcedureBlock(
@@ -721,9 +866,16 @@ const Generator = struct {
                 \\
             );
         } else {
-            try writer.print("    try parse_{s}{s}(context", .{ name, if (self.options.with_ast) "_" else "" });
+            const explicit_recovery = self.uses_explicit_recovery;
+            try writer.print("    {s}parse_{s}{s}(context", .{ if (explicit_recovery) "" else "try ", name, if (self.options.with_ast) "_" else "" });
             if (self.has_occurrence_procedures) try writer.writeAll(", null");
-            try writer.writeAll(");\n");
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+            } else {
+                try writer.writeByte(')');
+            }
+            try writer.writeAll(";\n");
             if (rule.rhs.items.len > self_index + 1) {
                 try writer.writeAll("    for (0..counter) |_| {\n");
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
@@ -746,6 +898,9 @@ const Generator = struct {
         try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "" });
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+        }
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
         }
         try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
         if (self.has_occurrence_procedures and !returns_node) {
@@ -1067,6 +1222,10 @@ const Generator = struct {
             .symbol_name = function_names.symbol,
             .skip_ast_construction = skip_ast_construction,
         });
+        if (self.uses_explicit_recovery) {
+            try writer.print("{s}return {s}(context, occurrence_recovery);\n", .{ indent, handler_name });
+            return;
+        }
         const can_tail_call = !self.has_occurrence_procedures and (!self.options.with_ast or
             (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
@@ -1078,16 +1237,38 @@ const Generator = struct {
     }
 
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
-        for (self.syntax_error_handlers.items) |spec| {
+        for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
             const symbol = self.symbols.items[spec.symbol_index];
             const returns_node = self.symbolReturnsNode(spec.symbol_index, spec.skip_ast_construction);
             const candidates = try self.recoveryTerminalStringsForSequence(&.{spec.symbol_index}, if (symbol.kind == .variable) spec.symbol_index else null);
 
-            try writer.print("\nfn {s}(context: *data_structures.Context) anyerror!{s} {{\n", .{
-                spec.name,
+            try writer.print("\nfn {s}(context: *data_structures.Context", .{spec.name});
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+            try writer.print(") anyerror!{s} {{\n", .{
                 if (returns_node) "data_structures.ASTNode.Pointer" else "void",
             });
             try writer.writeAll("    @branchHint(.cold);\n");
+            if (self.uses_explicit_recovery) {
+                try writer.writeAll("    try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
+                try emitStringLiteral(writer, symbol.id);
+                try writer.writeAll(" }, ");
+                try self.emitRecoveryCandidates(writer, spec.expected_tokens);
+                try writer.writeAll(");\n");
+                try writer.print("    context.setPendingSyntaxErrorSite({d});\n", .{site_index});
+                if (symbol.kind == .variable) {
+                    try writer.print("    if (try llTryRecoverySelection_{d}(context, occurrence_recovery)) {{\n", .{spec.symbol_index});
+                    if (returns_node) {
+                        try writer.writeAll("        return data_structures.ASTNode.invalid_pointer;\n");
+                    } else {
+                        try writer.writeAll("        return;\n");
+                    }
+                    try writer.writeAll("    }\n");
+                } else {
+                    try writer.writeAll("    _ = occurrence_recovery;\n");
+                }
+                try writer.writeAll("    return error.ExplicitSyntaxRecovery;\n}\n");
+                continue;
+            }
             try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
             try writer.writeAll("    if (report_syntax_error) {\n");
             try writer.writeAll("        try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
@@ -1176,7 +1357,7 @@ const Generator = struct {
         try writer.print(
             \\{s}else
             \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            \\{s}std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}if (!builtin.is_test) std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
         , .{ indent, indent, indent });
     }
@@ -1254,6 +1435,7 @@ const Generator = struct {
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool) !void {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
+        const explicit_recovery = self.uses_explicit_recovery;
         const child_skips_ast_construction = self.options.with_ast and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
         if (child_skips_ast_construction) try self.markNeedsAstSuppressedParser(symbol_index);
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
@@ -1263,10 +1445,15 @@ const Generator = struct {
             name;
         if (parent != null) {
             if (child_returns_node) {
-                try writer.print("{s}{{\n{s}    const child_node = try parse_{s}(context", .{ indent, indent, call_name });
+                try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
+                if (explicit_recovery) {
+                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                } else {
+                    try writer.writeByte(')');
+                }
                 try writer.print(
-                    \\);
+                    \\;
                     \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
                     \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                     \\{s}    }}
@@ -1274,28 +1461,69 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
-                try writer.print("{s}try parse_{s}{s}(context", .{ indent, call_name, if (child_skips_ast_construction) "_" else "" });
+                try writer.print("{s}{s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
-                try writer.print("); // child {d}\n", .{child_index});
+                if (explicit_recovery) {
+                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                } else {
+                    try writer.writeByte(')');
+                }
+                try writer.print("; // child {d}\n", .{child_index});
             }
         } else if (child_returns_node) {
-            try writer.print("{s}_ = try parse_{s}(context", .{ indent, call_name });
+            try writer.print("{s}_ = {s}parse_{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
-            try writer.print("); // child {d}\n", .{child_index});
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+            } else {
+                try writer.writeByte(')');
+            }
+            try writer.print("; // child {d}\n", .{child_index});
         } else {
-            try writer.print("{s}try parse_{s}{s}(context", .{ indent, call_name, if (child_skips_ast_construction) "_" else "" });
+            try writer.print("{s}{s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
-            try writer.print("); // child {d}\n", .{child_index});
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+            } else {
+                try writer.writeByte(')');
+            }
+            try writer.print("; // child {d}\n", .{child_index});
         }
     }
 
-    fn emitChildOccurrenceArgument(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_returns_node: bool) !void {
-        if (!self.has_occurrence_procedures) return;
-        try writer.writeAll(", ");
-        if (child_returns_node) {
-            try self.emitProcedureSequenceExpression(writer, rule.rhs_procedures.items[child_index].items.items);
+    fn emitExplicitRuleCatch(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, skip_ast_construction: bool, indent: []const u8) !void {
+        const rule_index = self.ruleIndex(rule);
+        try writer.writeAll(") catch |err| switch (err) {\n");
+        try writer.print("{s}        error.ExplicitSyntaxRecovery => {{\n", .{indent});
+        try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, occurrence_recovery)) {{\n", .{ indent, rule_index });
+        if (self.symbolReturnsNode(parent_variable, skip_ast_construction)) {
+            try writer.print("{s}                return data_structures.ASTNode.invalid_pointer;\n", .{indent});
         } else {
-            try writer.writeAll("null");
+            try writer.print("{s}                return;\n", .{indent});
+        }
+        try writer.print("{s}            }}\n{s}            return err;\n{s}        }},\n", .{ indent, indent, indent });
+        try writer.print("{s}        else => return err,\n{s}    }}", .{ indent, indent });
+    }
+
+    fn emitChildOccurrenceArgument(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_returns_node: bool) !void {
+        if (self.has_occurrence_procedures) {
+            try writer.writeAll(", ");
+            if (child_returns_node) {
+                try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[child_index].procedures.items);
+            } else {
+                try writer.writeAll("null");
+            }
+        }
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(", ");
+            const symbol_index = rule.rhs.items[child_index];
+            if (self.symbols.items[symbol_index].kind == .variable and
+                rule.rhs_annotations.items[child_index].recovery_points.items.len != 0)
+            {
+                try self.emitOccurrenceRecoveryScope(writer, rule, child_index);
+            } else {
+                try writer.writeAll("null");
+            }
         }
     }
 
@@ -1318,7 +1546,7 @@ const Generator = struct {
             try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
         }
         try writer.print("{s}try runProcedureSequence(", .{indent});
-        try self.emitProcedureSequenceExpression(writer, rule.procedures.items);
+        try self.emitProcedureSequenceExpression(writer, rule.annotations.procedures.items);
         try writer.writeAll(", &args);\n");
         try writer.print(
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
@@ -1468,8 +1696,17 @@ const Generator = struct {
         try self.parse_table.append(self.allocator, entry);
     }
 
+    fn ruleIndex(self: *Generator, needle: Rule) usize {
+        for (self.rules.items, 0..) |rule, index| {
+            if (rule.header == needle.header and std.mem.eql(u8, rule.rhs_index, needle.rhs_index)) return index;
+        }
+        unreachable;
+    }
+
     fn longestTerminalLength(self: *Generator) usize {
-        return common.longestTerminalLength(self.symbols.items);
+        const grammar_longest = common.longestTerminalLength(self.symbols.items);
+        if (!self.uses_explicit_recovery) return grammar_longest;
+        return @max(grammar_longest, common.longestRecoveryTerminalLength(self.symbols.items, self.rules.items));
     }
 };
 
@@ -1480,6 +1717,9 @@ pub fn emitParser(allocator: std.mem.Allocator, grammar: anytype, writer: *std.I
 pub fn emitParserWithOptions(allocator: std.mem.Allocator, grammar: anytype, writer: *std.Io.Writer, options: Options) !void {
     var generator = Generator.init(allocator, options);
     try generator.fromGrammar(grammar);
+    if (generator.has_recovery_annotations and !options.with_error_recovery) {
+        std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
+    }
     try generator.emit(writer);
 }
 

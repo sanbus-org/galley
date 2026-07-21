@@ -54,6 +54,12 @@ pub fn add(b: *std.Build, options: Options) !void {
     var matrix_filtered_test_run_steps: std.ArrayList(*std.Build.Step) = .empty;
 
     const test_step = b.step("test", "Run all tests (build + generator + runtime + matrix + parity)");
+    const recovery_comparison = try addGalleyRecoveryComparison(b, options, selection.names);
+    const recovery_comparison_step = b.step(
+        "compare-galley-recovery",
+        "Show automatic and explicit recovery on the same malformed Galley grammar",
+    );
+    recovery_comparison_step.dependOn(&recovery_comparison.run_demo.step);
 
     if (selection.includes(.build)) {
         const build_test_mod = b.createModule(.{
@@ -72,6 +78,11 @@ pub fn add(b: *std.Build, options: Options) !void {
     }
 
     if (selection.includes(.generator)) {
+        for (recovery_comparison.run_tests) |run_tests| {
+            test_step.dependOn(&run_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tests.step);
+        }
+
         const generator_tests = b.addTest(.{
             .name = "generator-tests",
             .root_module = generator.galley_generator_mod,
@@ -94,6 +105,14 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_procedure_hook_tests = try addProcedureHookTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_procedure_hook_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_procedure_hook_tests.step);
+
+            const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_explicit_recovery_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_explicit_recovery_tests.step);
+
+            const run_galley_recovery_tests = try addGalleyRecoveryTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_galley_recovery_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_galley_recovery_tests.step);
         }
     }
 
@@ -179,6 +198,7 @@ pub fn add(b: *std.Build, options: Options) !void {
         generate_lr_galley_parser.addFileArg(b.path("languages/galley/lr.grm"));
         generate_lr_galley_parser.addArg("--parser-type");
         generate_lr_galley_parser.addArg("lr");
+        generate_lr_galley_parser.addArg("--with-error-recovery");
         generate_lr_galley_parser.addArg("--label");
         generate_lr_galley_parser.addArg("lr/galley/bootstrap-parity");
         generate_lr_galley_parser.addArg("--output");
@@ -206,6 +226,134 @@ pub fn add(b: *std.Build, options: Options) !void {
     if (selection.names.len != 0) {
         addTestFilterGuard(b, test_step, filtered_test_run_steps.items);
     }
+}
+
+const GalleyRecoveryComparison = struct {
+    run_tests: [2]*std.Build.Step.Run,
+    run_demo: *std.Build.Step.Run,
+};
+
+fn addGalleyRecoveryComparison(
+    b: *std.Build,
+    options: Options,
+    filters: []const []const u8,
+) !GalleyRecoveryComparison {
+    const automatic_parser_path = addGalleyRecoveryComparisonGeneration(b, options, "automatic", true);
+    const explicit_parser_path = addGalleyRecoveryComparisonGeneration(b, options, "explicit", false);
+    const automatic_parser = addGalleyRecoveryComparisonParser(b, options, "automatic", automatic_parser_path);
+    const explicit_parser = addGalleyRecoveryComparisonParser(b, options, "explicit", explicit_parser_path);
+
+    const automatic_artifacts = addGalleyRecoveryComparisonArtifacts(b, options, "automatic", false, automatic_parser, filters);
+    const explicit_artifacts = addGalleyRecoveryComparisonArtifacts(b, options, "explicit", true, explicit_parser, filters);
+    explicit_artifacts.run_demo.step.dependOn(&automatic_artifacts.run_demo.step);
+
+    return .{
+        .run_tests = .{ automatic_artifacts.run_tests, explicit_artifacts.run_tests },
+        .run_demo = explicit_artifacts.run_demo,
+    };
+}
+
+const GalleyRecoveryComparisonArtifacts = struct {
+    run_tests: *std.Build.Step.Run,
+    run_demo: *std.Build.Step.Run,
+};
+
+fn addGalleyRecoveryComparisonArtifacts(
+    b: *std.Build,
+    options: Options,
+    mode: []const u8,
+    is_explicit: bool,
+    generated_parser: common.GeneratedParserModule,
+    filters: []const []const u8,
+) GalleyRecoveryComparisonArtifacts {
+    const comparison_options = b.addOptions();
+    comparison_options.addOption([]const u8, "heading", if (is_explicit) "Explicit" else "Automatic");
+    comparison_options.addOption([]const u8, "label", mode);
+    comparison_options.addOption(bool, "is_explicit", is_explicit);
+    const comparison_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/galley_recovery_comparison.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "parser-under-test", .module = generated_parser.runtime_mod },
+            .{ .name = "comparison-options", .module = comparison_options.createModule() },
+        },
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("galley-recovery-comparison-{s}-tests", .{mode}),
+        .root_module = comparison_mod,
+        .filters = filters,
+    });
+    const demo = b.addExecutable(.{
+        .name = b.fmt("compare-galley-recovery-{s}", .{mode}),
+        .root_module = comparison_mod,
+    });
+    const run_demo = b.addRunArtifact(demo);
+    run_demo.stdio = .inherit;
+    return .{
+        .run_tests = b.addRunArtifact(tests),
+        .run_demo = run_demo,
+    };
+}
+
+fn addGalleyRecoveryComparisonGeneration(
+    b: *std.Build,
+    options: Options,
+    mode: []const u8,
+    strip_recovery_annotations: bool,
+) std.Build.LazyPath {
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("languages/galley/ll.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg("ll");
+    generate_parser.addArg("--output");
+    const output = generate_parser.addOutputFileArg(b.fmt("galley-recovery-comparison-{s}.zig", .{mode}));
+    generate_parser.addArgs(&.{
+        "--no-ast",
+        "--no-procedures",
+        "--with-error-recovery",
+        "--input-size",
+        "16",
+    });
+    if (strip_recovery_annotations) generate_parser.addArg("--strip-recovery-annotations");
+    return output;
+}
+
+fn addGalleyRecoveryComparisonParser(
+    b: *std.Build,
+    options: Options,
+    mode: []const u8,
+    parser_path: std.Build.LazyPath,
+) common.GeneratedParserModule {
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("languages/galley/ll_error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    return common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        b.fmt("galley-recovery-comparison-{s}", .{mode}),
+        b.fmt("galley-recovery-comparison-{s}-source", .{mode}),
+        parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.ll_generator_mod,
+        options.generator.lr_generator_mod,
+    );
 }
 
 fn addProcedureHookTests(
@@ -271,6 +419,142 @@ fn addProcedureHookTests(
     });
     const tests = b.addTest(.{
         .name = try std.fmt.allocPrint(b.allocator, "procedure-hooks-{s}-tests", .{parser_type}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addExplicitRecoveryTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const generated_name = try std.fmt.allocPrint(b.allocator, "explicit-recovery-{s}-parser.zig", .{parser_type});
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path(try std.fmt.allocPrint(
+        b.allocator,
+        "tests/explicit-recovery/{s}.grm",
+        .{parser_type},
+    )));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(try std.fmt.allocPrint(b.allocator, "{s}/explicit-recovery/tests", .{parser_type}));
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(generated_name);
+    generate_parser.addArgs(&.{
+        "--with-ast",
+        "--with-procedures",
+        "--with-error-recovery",
+        "--input-size",
+        "16",
+    });
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const parser_name = try std.fmt.allocPrint(b.allocator, "explicit-recovery-{s}", .{parser_type});
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        try std.fmt.allocPrint(b.allocator, "{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.ll_generator_mod,
+        options.generator.lr_generator_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/explicit_recovery_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = try std.fmt.allocPrint(b.allocator, "explicit-recovery-{s}-tests", .{parser_type}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addGalleyRecoveryTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path(b.fmt("languages/galley/{s}.grm", .{parser_type})));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--output");
+    const parser_path = generate_parser.addOutputFileArg(b.fmt("galley-recovery-{s}-parser.zig", .{parser_type}));
+    generate_parser.addArgs(&.{
+        "--no-ast",
+        "--no-procedures",
+        "--with-error-recovery",
+        "--input-size",
+        "16",
+    });
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("languages/galley/{s}_error_messages.zig", .{parser_type})),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        b.fmt("galley-recovery-{s}", .{parser_type}),
+        b.fmt("galley-recovery-{s}-source", .{parser_type}),
+        parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.ll_generator_mod,
+        options.generator.lr_generator_mod,
+    );
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/galley_recovery_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("galley-recovery-{s}-tests", .{parser_type}),
         .root_module = test_mod,
         .filters = filters,
     });
@@ -483,8 +767,7 @@ fn addGalleyBootstrapParityCase(
     const run_ll_galley = b.addRunArtifact(ll_galley_exe);
     run_ll_galley.setName(b.fmt("generate parity LL output {s}", .{name}));
     run_ll_galley.has_side_effects = true;
-    run_ll_galley.expectStdOutMatch("Galley generated 1 parser");
-    run_ll_galley.expectStdErrEqual("");
+    common.expectSilentSuccess(run_ll_galley);
     run_ll_galley.addArg(ll_input);
     run_ll_galley.addArgs(options);
     run_ll_galley.step.dependOn(&copy_ll_input.step);
@@ -492,8 +775,7 @@ fn addGalleyBootstrapParityCase(
     const run_lr_galley = b.addRunArtifact(lr_galley_exe);
     run_lr_galley.setName(b.fmt("generate parity LR output {s}", .{name}));
     run_lr_galley.has_side_effects = true;
-    run_lr_galley.expectStdOutMatch("Galley generated 1 parser");
-    run_lr_galley.expectStdErrEqual("");
+    common.expectSilentSuccess(run_lr_galley);
     run_lr_galley.addArg(lr_input);
     run_lr_galley.addArgs(options);
     run_lr_galley.step.dependOn(&copy_lr_input.step);

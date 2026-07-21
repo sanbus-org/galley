@@ -44,6 +44,13 @@ pub fn build(b: *std.Build) !void {
         "test-galley-bootstrap-parity",
         test_filters,
     );
+    common.addDelegatedTestStep(
+        b,
+        "compare-galley-recovery",
+        "Show automatic and explicit recovery on the same malformed Galley grammar",
+        "compare-galley-recovery",
+        &.{},
+    );
 
     var dir = try b.build_root.handle.openDir(b.graph.io, common.languages_path, .{ .iterate = true });
     defer dir.close(b.graph.io);

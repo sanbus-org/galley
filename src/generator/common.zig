@@ -14,23 +14,31 @@ pub const ErrorMessageSpec = struct {
 
 pub const SymbolKind = enum { variable, terminal, generative_terminal, end };
 
+pub const RecoveryResume = enum { before, after };
+
+pub const RecoveryPoint = struct {
+    terminal: []const u8,
+    @"resume": RecoveryResume,
+};
+
+pub const Annotations = struct {
+    procedures: std.ArrayList([]const u8) = .empty,
+    recovery_points: std.ArrayList(RecoveryPoint) = .empty,
+};
+
 pub const Symbol = struct {
     id: []const u8,
     kind: SymbolKind,
     ast_enabled: bool = true,
     terminals: std.ArrayList([]const u8) = .empty,
-    procedures: std.ArrayList([]const u8) = .empty,
-};
-
-pub const ProcedureNames = struct {
-    items: std.ArrayList([]const u8) = .empty,
+    annotations: Annotations = .{},
 };
 
 pub const Rule = struct {
     header: usize,
     rhs: std.ArrayList(usize) = .empty,
-    rhs_procedures: std.ArrayList(ProcedureNames) = .empty,
-    procedures: std.ArrayList([]const u8) = .empty,
+    rhs_annotations: std.ArrayList(Annotations) = .empty,
+    annotations: Annotations = .{},
     rhs_index: []const u8,
 };
 
@@ -66,10 +74,68 @@ pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList
     for (names) |name| try target.append(allocator, try allocator.dupe(u8, name));
 }
 
-pub fn cloneProcedureNames(allocator: std.mem.Allocator, names: []const []const u8) !ProcedureNames {
-    var result = ProcedureNames{};
-    try appendProcedureNames(allocator, &result.items, names);
+pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotations {
+    var result = Annotations{};
+    try appendProcedureNames(allocator, &result.procedures, source.procedures);
+    for (source.recovery_points) |point| {
+        try result.recovery_points.append(allocator, .{
+            .terminal = try allocator.dupe(u8, point.terminal),
+            .@"resume" = switch (point.@"resume") {
+                .before => .before,
+                .after => .after,
+            },
+        });
+    }
     return result;
+}
+
+pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, source: anytype) !void {
+    try appendProcedureNames(allocator, &target.procedures, source.procedures);
+    for (source.recovery_points) |point| {
+        try target.recovery_points.append(allocator, .{
+            .terminal = try allocator.dupe(u8, point.terminal),
+            .@"resume" = switch (point.@"resume") {
+                .before => .before,
+                .after => .after,
+            },
+        });
+    }
+}
+
+pub fn validateGrammar(grammar: anytype) !void {
+    for (grammar.rules, 0..) |rule, rule_index| {
+        for (grammar.rules[0..rule_index]) |previous| {
+            if (std.mem.eql(u8, previous.header, rule.header)) return error.DuplicateRuleHeader;
+        }
+        try validateRecoveryPoints(rule.annotations.recovery_points);
+        for (rule.right_hand_sides) |rhs| {
+            try validateRecoveryPoints(rhs.annotations.recovery_points);
+            for (rhs.symbols) |symbol| {
+                try validateRecoveryPoints(symbol.annotations.recovery_points);
+                if (symbol.annotations.recovery_points.len != 0 and symbol.kind != .variable) return error.InvalidRecoveryTarget;
+            }
+        }
+    }
+}
+
+fn validateRecoveryPoints(points: anytype) !void {
+    for (points) |point| {
+        if (point.terminal.len == 0) return error.EmptyRecoveryTerminal;
+        if (std.mem.indexOfScalar(u8, point.terminal, 0) != null) return error.NulRecoveryTerminal;
+    }
+}
+
+pub fn grammarHasRecoveryPoints(grammar: anytype) bool {
+    for (grammar.rules) |rule| {
+        if (rule.annotations.recovery_points.len != 0) return true;
+        for (rule.right_hand_sides) |rhs| {
+            if (rhs.annotations.recovery_points.len != 0) return true;
+            for (rhs.symbols) |symbol| {
+                if (symbol.annotations.recovery_points.len != 0) return true;
+            }
+        }
+    }
+    return false;
 }
 
 pub fn ruleLessThan(symbols: []const Symbol, lhs: Rule, rhs: Rule) bool {
@@ -92,6 +158,41 @@ pub fn longestTerminalLength(symbols: []const Symbol) usize {
         for (symbol.terminals.items) |terminal| longest = @max(longest, terminal.len);
     }
     return longest;
+}
+
+pub fn longestRecoveryTerminalLength(symbols: []const Symbol, rules: []const Rule) usize {
+    var longest: usize = 0;
+    for (symbols) |symbol| {
+        for (symbol.annotations.recovery_points.items) |point| longest = @max(longest, point.terminal.len);
+    }
+    for (rules) |rule| {
+        for (rule.annotations.recovery_points.items) |point| longest = @max(longest, point.terminal.len);
+        for (rule.rhs_annotations.items) |annotations| {
+            for (annotations.recovery_points.items) |point| longest = @max(longest, point.terminal.len);
+        }
+    }
+    return longest;
+}
+
+pub fn recoveryOccurrenceTargetId(symbol_count: usize, rules: []const Rule, rule_index: usize, position: usize) usize {
+    var id = symbol_count + rules.len;
+    for (rules[0..rule_index]) |rule| id += rule.rhs.items.len;
+    return id + position;
+}
+
+test "recovery occurrence target ids use cumulative production lengths" {
+    var first = Rule{ .header = 0, .rhs_index = "0" };
+    defer first.rhs.deinit(std.testing.allocator);
+    for (0..10) |symbol| try first.rhs.append(std.testing.allocator, symbol);
+
+    var second = Rule{ .header = 1, .rhs_index = "0" };
+    defer second.rhs.deinit(std.testing.allocator);
+    try second.rhs.append(std.testing.allocator, 0);
+
+    const rules = [_]Rule{ first, second };
+    const base = 4 + rules.len;
+    try std.testing.expectEqual(base + 9, recoveryOccurrenceTargetId(4, &rules, 0, 9));
+    try std.testing.expectEqual(base + 10, recoveryOccurrenceTargetId(4, &rules, 1, 0));
 }
 
 pub fn emitStringLiteral(writer: *std.Io.Writer, bytes: []const u8) !void {

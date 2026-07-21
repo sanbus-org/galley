@@ -16,6 +16,12 @@
 - Prefer typed filters for focused validation, for example `zig build test -Dtest-filter=case:ll-sanbus`, `zig build test -Dtest-filter=suite:runtime`, or `zig build test -Dtest-filter=suite:runtime -Dtest-filter=name:dropIfEmpty`.
 - Available suites are `build`, `generator`, `runtime`, `matrix`, `matrix-compile`, `matrix-api`, `matrix-error`, `matrix-cli`, and `galley-parity`. Repeat filters to OR values within one type; `suite:`, `case:`, and `name:` types combine with AND semantics.
 
+## Grammar Implementation
+
+- Treat Galley's parsed AST as the authoritative representation of grammar source. When implementing grammar semantics, prefer variable identities, production identities, child relationships, and source positions from the AST over searching, splitting, or otherwise recognizing patterns in raw source text.
+- Raw text is appropriate only for leaf values that the grammar intentionally represents as text, such as identifier contents and decoded terminal bytes. Do not infer surrounding syntax, annotation placement, production shape, or semantic structure from those strings when the AST already expresses it.
+- Keep Galley's own grammar and bootstrap parser exemplary: Galley is both the product and its largest real-world demonstration, so new language features should be parsed and interpreted through normal generated-parser AST mechanisms rather than ad hoc source scanning.
+
 ## Investigation Discipline
 
 - Stop after the first contradictory result and report uncertainty.

@@ -106,7 +106,7 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 
 | Procedure Name | Execution Trigger |
 | :--- | :--- |
-| `reduction_<SymbolName>_<RhsIndex>` | Executes when the zero-based right-hand-side production `<RhsIndex>` of `<SymbolName>` is reduced (e.g. `reduction_Expr_0` runs only for the first `Expr` production). Indexing follows source order and continues across repeated declarations of the same LHS. |
+| `reduction_<SymbolName>_<RhsIndex>` | Executes when the zero-based right-hand-side production `<RhsIndex>` of `<SymbolName>` is reduced (e.g. `reduction_Expr_0` runs only for the first `Expr` production). Indices follow the consecutive `|` lines beneath the variable's unique LHS header. |
 | `reduction_<SymbolName>` | Executes whenever `<SymbolName>` produces an AST node, either by reducing a variable or matching an AST-enabled terminal. |
 | `reduction` | Executes as the general hook for every eligible variable reduction and AST-enabled terminal match. |
 

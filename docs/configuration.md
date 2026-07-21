@@ -30,7 +30,7 @@ zig build
 | `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
 | `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. Disabling AST construction maximizes raw syntax validation speed. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
-| `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables reporting multiple syntax errors through generated recovery code. | `--no-error-recovery` |
+| `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `!` annotations use explicit-only recovery. | `--no-error-recovery` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |

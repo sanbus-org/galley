@@ -16,8 +16,8 @@ NewLinesTail
 | "#" AnyContent new_line NewLinesTail
 |
 
-Rule
-| VariableSymbol ProcedureTail new_line RightHandSides
+Rule!^"\n\n"
+| VariableSymbol RecoveryTail ProcedureTail new_line RightHandSides
 
 RightHandSides
 | RightHandSideLine RightHandSidesTail
@@ -26,17 +26,17 @@ RightHandSidesTail
 | RightHandSideLine RightHandSidesTail
 |
 
-RightHandSideLine
-| "|" ProcedureTail RightHandSide new_line
+RightHandSideLine!"\n"^
+| "|" RecoveryTail ProcedureTail RightHandSide new_line
 | "#" AnyContent new_line
 # Some comment
 
 RightHandSide
-| space Symbol ProcedureTail RightHandSideTail
+| space Symbol!^"\n" RecoveryTail ProcedureTail RightHandSideTail
 |
 
 RightHandSideTail
-| space Symbol ProcedureTail RightHandSideTail
+| space Symbol!^"\n" RecoveryTail ProcedureTail RightHandSideTail
 |
 
 Symbol
@@ -62,6 +62,17 @@ GenerativeTerminalExceptions
 ProcedureTail
 | "@" CamelCaseId ProcedureTail
 |
+
+RecoveryTail
+| RecoveryPoint RecoveryTail
+|
+
+RecoveryPoint
+| "!" RecoveryPointBody
+
+RecoveryPointBody
+| "^" TerminalSymbol
+| TerminalSymbol "^"
 
 StringContent
 | character StringContent
