@@ -47,6 +47,4 @@ DropTarget@afterDropLhs
 
 IndexedTarget
 | "0"
-
-IndexedTarget
 | "1"

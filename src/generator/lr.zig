@@ -58,6 +58,8 @@ const Generator = struct {
     syntax_error_site_index: usize = 0,
     augmented_start: usize = 0,
     eof: usize = 0,
+    has_recovery_annotations: bool = false,
+    uses_explicit_recovery: bool = false,
 
     const SyntaxErrorHandlerSpec = struct {
         name: []const u8,
@@ -85,12 +87,15 @@ const Generator = struct {
     }
 
     fn fromGrammar(self: *Generator, grammar: anytype) !void {
+        try common.validateGrammar(grammar);
+        self.has_recovery_annotations = common.grammarHasRecoveryPoints(grammar);
+        self.uses_explicit_recovery = self.options.with_error_recovery and self.has_recovery_annotations;
         var rhs_counts = std.AutoHashMap(usize, usize).init(self.allocator);
         defer rhs_counts.deinit();
 
         for (grammar.rules) |rule| {
             const header = try self.addSymbol(rule.header, .variable);
-            try common.appendProcedureNames(self.allocator, &self.symbols.items[header].procedures, rule.procedures);
+            try common.appendAnnotations(self.allocator, &self.symbols.items[header].annotations, rule.annotations);
             for (rule.right_hand_sides) |rhs| {
                 const rhs_index = rhs_counts.get(header) orelse 0;
                 try rhs_counts.put(header, rhs_index + 1);
@@ -99,7 +104,7 @@ const Generator = struct {
                     .header = header,
                     .rhs_index = try std.fmt.allocPrint(self.allocator, "{d}", .{rhs_index}),
                 };
-                try common.appendProcedureNames(self.allocator, &generated_rule.procedures, rhs.procedures);
+                try common.appendAnnotations(self.allocator, &generated_rule.annotations, rhs.annotations);
                 for (rhs.symbols) |symbol| {
                     const kind: SymbolKind = switch (symbol.kind) {
                         .variable => .variable,
@@ -107,7 +112,7 @@ const Generator = struct {
                         .generative_terminal => .generative_terminal,
                     };
                     try generated_rule.rhs.append(self.allocator, try self.addSymbol(symbol.id, kind));
-                    try generated_rule.rhs_procedures.append(self.allocator, try common.cloneProcedureNames(self.allocator, symbol.procedures));
+                    try generated_rule.rhs_annotations.append(self.allocator, try common.cloneAnnotations(self.allocator, symbol.annotations));
                 }
                 try self.rules.append(self.allocator, generated_rule);
             }
@@ -118,9 +123,9 @@ const Generator = struct {
         self.eof = try self.addSymbol("\x00", .end);
         var augmented_rule = Rule{ .header = self.augmented_start, .rhs_index = "0" };
         try augmented_rule.rhs.append(self.allocator, original_start);
-        try augmented_rule.rhs_procedures.append(self.allocator, .{});
+        try augmented_rule.rhs_annotations.append(self.allocator, .{});
         try augmented_rule.rhs.append(self.allocator, self.eof);
-        try augmented_rule.rhs_procedures.append(self.allocator, .{});
+        try augmented_rule.rhs_annotations.append(self.allocator, .{});
         try self.rules.append(self.allocator, augmented_rule);
 
         std.mem.sort(Rule, self.rules.items, self, ruleLessThan);
@@ -174,7 +179,7 @@ const Generator = struct {
                             .terminal = head_symbol,
                             .kind = .shift,
                             .state = target_index,
-                            .occurrence = self.occurrenceFor(item.rule, item.head),
+                            .occurrence = self.procedureOccurrenceFor(item.rule, item.head),
                         });
                     }
                 } else {
@@ -236,7 +241,7 @@ const Generator = struct {
                         .rule = rule_index,
                         .head = 0,
                         .lookahead = lookahead.*,
-                        .occurrence = self.occurrenceFor(item.rule, item.head),
+                        .occurrence = self.procedureOccurrenceFor(item.rule, item.head),
                     });
                 }
             }
@@ -342,11 +347,12 @@ const Generator = struct {
         return null;
     }
 
-    fn occurrenceFor(self: *Generator, rule_index: usize, position: usize) ?Occurrence {
-        if (!self.options.with_ast or !self.options.with_procedures) return null;
+    fn procedureOccurrenceFor(self: *Generator, rule_index: usize, position: usize) ?Occurrence {
         const rule = self.rules.items[rule_index];
         if (position >= rule.rhs.items.len) return null;
-        if (rule.rhs_procedures.items[position].items.items.len == 0) return null;
+        const annotations = rule.rhs_annotations.items[position];
+        const needs_procedure_occurrence = self.options.with_ast and self.options.with_procedures and annotations.procedures.items.len != 0;
+        if (!needs_procedure_occurrence) return null;
 
         const symbol = self.symbols.items[rule.rhs.items[position]];
         const has_node = switch (symbol.kind) {
@@ -359,8 +365,8 @@ const Generator = struct {
 
     fn occurrencesEquivalent(self: *Generator, lhs: ?Occurrence, rhs: ?Occurrence) bool {
         if (lhs == null or rhs == null) return lhs == null and rhs == null;
-        const lhs_names = self.rules.items[lhs.?.rule].rhs_procedures.items[lhs.?.position].items.items;
-        const rhs_names = self.rules.items[rhs.?.rule].rhs_procedures.items[rhs.?.position].items.items;
+        const lhs_names = self.rules.items[lhs.?.rule].rhs_annotations.items[lhs.?.position].procedures.items;
+        const rhs_names = self.rules.items[rhs.?.rule].rhs_annotations.items[rhs.?.position].procedures.items;
         if (lhs_names.len != rhs_names.len) return false;
         for (lhs_names, rhs_names) |lhs_name, rhs_name| {
             if (!std.mem.eql(u8, lhs_name, rhs_name)) return false;
@@ -383,9 +389,11 @@ const Generator = struct {
         try writer.print(
             \\
             \\pub const parser_type = data_structures.ParserType.lr;
+            \\pub const ErrorRecoveryMode = enum {{ disabled, automatic, explicit }};
             \\pub const is_ast_enabled = {};
             \\pub const are_procedures_enabled = {};
             \\pub const is_error_recovery_enabled = {};
+            \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
             \\pub const input_size_cap = u{d};
             \\pub const longest_terminal_length = {d};
             \\
@@ -394,11 +402,12 @@ const Generator = struct {
             self.options.with_ast,
             self.options.with_procedures,
             self.options.with_error_recovery,
+            if (!self.options.with_error_recovery) "disabled" else if (self.uses_explicit_recovery) "explicit" else "automatic",
             self.options.input_size,
             self.longestTerminalLength(),
         });
         try self.emitGrammarTables(writer);
-        if (self.options.with_error_recovery) try common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
+        if (self.options.with_error_recovery and !self.uses_explicit_recovery) try common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
 
         try writer.writeAll(
@@ -419,14 +428,16 @@ const Generator = struct {
             \\const SemanticStack = std.ArrayList(SemanticValue);
             \\
         );
+        if (self.uses_explicit_recovery) try self.emitExplicitRecoverySupport(writer);
 
         for (self.states.items, 0..) |state, index| {
             try self.emitStateFunction(writer, state, index);
             try writer.writeByte('\n');
         }
         if (self.options.with_error_recovery) {
-            try self.emitStateRecoveryCandidateTables(writer);
+            if (!self.uses_explicit_recovery) try self.emitStateRecoveryCandidateTables(writer);
             try self.emitSyntaxErrorHandlers(writer);
+            if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
         }
 
         try writer.writeAll(
@@ -434,8 +445,15 @@ const Generator = struct {
             \\    var stack: SemanticStack = .empty;
             \\    defer stack.deinit(context.runtime().arena_allocator);
             \\
-            \\    const result = try state_0(context, &stack);
         );
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll(
+                \\    const recovery_root = LRRecoveryFrame{ .parent = null, .state = 0, .incoming_symbol = null };
+                \\    const result = try state_0(context, &stack, &recovery_root);
+            );
+        } else {
+            try writer.writeAll("    const result = try state_0(context, &stack);\n");
+        }
         if (self.options.with_error_recovery) {
             try writer.writeAll(
                 \\    if (result.is_recovery or !result.is_accept) {
@@ -571,7 +589,7 @@ const Generator = struct {
         for (self.variables.items) |symbol_index| {
             const symbol = self.symbols.items[symbol_index];
             try writer.writeAll("    &[_][]const u8{");
-            for (symbol.procedures.items, 0..) |procedure, i| {
+            for (symbol.annotations.procedures.items, 0..) |procedure, i| {
                 if (i != 0) try writer.writeAll(", ");
                 try emitStringLiteral(writer, procedure);
             }
@@ -654,8 +672,12 @@ const Generator = struct {
     }
 
     fn emitRecoveryStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
-        try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack) anyerror!ReduceResult {{\n", .{ state_index, state_index });
-        try writer.writeAll("    state_recovery: while (true) {\n");
+        try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack{s}) anyerror!ReduceResult {{\n", .{
+            state_index,
+            state_index,
+            if (self.uses_explicit_recovery) ", recovery_frame: *const LRRecoveryFrame" else "",
+        });
+        try writer.writeAll(if (self.uses_explicit_recovery) "    while (true) {\n" else "    state_recovery: while (true) {\n");
         try writer.writeAll("        var result: ReduceResult = undefined;\n");
 
         var entries = std.ArrayList(SwitchEntry).empty;
@@ -687,10 +709,17 @@ const Generator = struct {
         } else {
             try writer.writeAll("            result = switch (result.variable) {\n");
             for (state.gotos.items) |goto| {
-                try writer.print("                {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
+                if (self.uses_explicit_recovery) {
+                    try writer.print(
+                        "                {d} => next: {{ const next_recovery_frame = LRRecoveryFrame{{ .parent = recovery_frame, .state = {d}, .incoming_symbol = {d} }}; break :next try state_{d}(context, stack, &next_recovery_frame); }}, // {s}\n",
+                        .{ self.variableIndex(goto.variable), goto.state, goto.variable, goto.state, self.symbols.items[goto.variable].id },
+                    );
+                } else {
+                    try writer.print("                {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
+                }
             }
             try writer.writeAll("                else => unreachable,\n            };\n");
-            try writer.writeAll("            if (result.is_recovery) continue :state_recovery;\n");
+            if (!self.uses_explicit_recovery) try writer.writeAll("            if (result.is_recovery) continue :state_recovery;\n");
         }
         try writer.writeAll("        }\n    }\n}\n");
     }
@@ -793,10 +822,15 @@ const Generator = struct {
                     \\}});
                     \\{s}    }}
                     \\{s}}}
-                    \\{s}result = try state_{d}(context, stack);
                     \\
-                , .{ indent, indent, indent, action.state });
-                if (self.options.with_error_recovery) {
+                , .{ indent, indent });
+                if (self.uses_explicit_recovery) {
+                    try writer.print("{s}const next_recovery_frame = LRRecoveryFrame{{ .parent = recovery_frame, .state = {d}, .incoming_symbol = {d} }};\n", .{ indent, action.state, action.terminal });
+                    try writer.print("{s}result = try state_{d}(context, stack, &next_recovery_frame);\n", .{ indent, action.state });
+                } else {
+                    try writer.print("{s}result = try state_{d}(context, stack);\n", .{ indent, action.state });
+                }
+                if (self.options.with_error_recovery and !self.uses_explicit_recovery) {
                     try writer.print("{s}if (result.is_recovery) continue :state_recovery;\n", .{indent});
                 }
             },
@@ -881,7 +915,7 @@ const Generator = struct {
         try self.emitOccurrenceExpression(writer, occurrence);
         try writer.writeAll(", &args);\n");
         try writer.print("{s}try runProcedureSequence(", .{indent});
-        try self.emitProcedureSequenceExpression(writer, rule.procedures.items);
+        try self.emitProcedureSequenceExpression(writer, rule.annotations.procedures.items);
         try writer.writeAll(", &args);\n");
         try writer.print(
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
@@ -937,7 +971,7 @@ const Generator = struct {
         if (occurrence) |value| {
             try self.emitProcedureSequenceExpression(
                 writer,
-                self.rules.items[value.rule].rhs_procedures.items[value.position].items.items,
+                self.rules.items[value.rule].rhs_annotations.items[value.position].procedures.items,
             );
         } else {
             try writer.writeAll("null");
@@ -1010,6 +1044,13 @@ const Generator = struct {
             .error_function_name = error_function_name,
             .recoverable = recoverable,
         });
+        if (self.uses_explicit_recovery) {
+            try writer.print("{s}if (try {s}(context, stack, recovery_frame)) |explicit_recovery| {{\n", .{ indent, handler_name });
+            try writer.print("{s}    if (explicit_recovery.return_from_state) return explicit_recovery.result;\n", .{indent});
+            try writer.print("{s}    result = explicit_recovery.result;\n", .{indent});
+            try writer.print("{s}}} else return root.ParseError.SyntaxError;\n", .{indent});
+            return;
+        }
         try writer.print("{s}if (try {s}(context, stack)) continue :state_recovery;\n", .{ indent, handler_name });
         try writer.print("{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = false, .is_recovery = true }};\n", .{indent});
     }
@@ -1024,10 +1065,832 @@ const Generator = struct {
         try writer.writeByte('\n');
     }
 
+    fn emitExplicitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll(
+            \\const ExplicitRecoveryScope = struct {
+            \\    id: usize,
+            \\    target: root.SyntaxRecoveryTarget,
+            \\    points: []const root.SyntaxRecoveryPoint,
+            \\};
+            \\
+            \\const LRRecoveryOccurrence = struct {
+            \\    rule: usize,
+            \\    position: usize,
+            \\};
+            \\
+            \\const LRRecoveryItem = struct {
+            \\    rule: usize,
+            \\    head: usize,
+            \\    lookahead: usize,
+            \\    procedure_occurrence: ?LRRecoveryOccurrence,
+            \\};
+            \\
+            \\const LRRecoveryClosureEdge = struct {
+            \\    child: usize,
+            \\    parent: usize,
+            \\    occurrence: LRRecoveryOccurrence,
+            \\};
+            \\
+            \\const LRRecoveryFrame = struct {
+            \\    parent: ?*const LRRecoveryFrame,
+            \\    state: usize,
+            \\    incoming_symbol: ?usize,
+            \\};
+            \\
+            \\const LRRecoveryLineageNode = struct {
+            \\    end_index: usize,
+            \\    item: LRRecoveryItem,
+            \\    unwind_count: usize,
+            \\    first_edge: usize = 0,
+            \\    edge_count: usize = 0,
+            \\    is_exit: bool = false,
+            \\};
+            \\
+            \\const LRRecoveryLineageEdge = struct {
+            \\    outer: usize,
+            \\    occurrence: LRRecoveryOccurrence,
+            \\};
+            \\
+            \\const LRRecoveryLineageScopeKind = enum {
+            \\    occurrence,
+            \\    production,
+            \\    lhs,
+            \\};
+            \\
+            \\const LRRecoveryLineageCandidate = struct {
+            \\    kind: LRRecoveryLineageScopeKind,
+            \\    target: usize,
+            \\    position: usize = 0,
+            \\    scope: *const ExplicitRecoveryScope,
+            \\    variable: u16,
+            \\    unwind_count: usize,
+            \\    depth: usize = 0,
+            \\    source_order: usize,
+            \\};
+            \\
+            \\const LRRecoveryClosureCandidate = struct {
+            \\    occurrence: LRRecoveryOccurrence,
+            \\    depth: usize,
+            \\    source_order: usize,
+            \\};
+            \\
+            \\const LRLhsRecoveryScope = struct { variable: usize, scope: *const ExplicitRecoveryScope };
+            \\const LRProductionRecoveryScope = struct { rule: usize, scope: *const ExplicitRecoveryScope };
+            \\const LROccurrenceRecoveryScope = struct { occurrence: LRRecoveryOccurrence, scope: *const ExplicitRecoveryScope };
+            \\
+            \\const ExplicitRecoveryResult = struct {
+            \\    result: ReduceResult,
+            \\    return_from_state: bool,
+            \\};
+            \\
+            \\fn lrTryExplicitScope(
+            \\    context: *data_structures.Context,
+            \\    stack: *SemanticStack,
+            \\    scope: *const ExplicitRecoveryScope,
+            \\    variable: u16,
+            \\    unwind_count: usize,
+            \\) !?ExplicitRecoveryResult {
+            \\    if (!try context.tryExplicitRecovery(scope.id, scope.target, scope.points)) return null;
+        );
+        if (self.options.with_ast) {
+            try writer.writeAll(
+                \\    {
+                \\        var start_pos: data_structures.Context.Size = @intCast(context.pos());
+                \\        for (0..unwind_count) |_| {
+                \\            const discarded = stack.pop() orelse unreachable;
+                \\            start_pos = discarded.start_pos;
+                \\        }
+                \\        try stack.append(context.runtime().arena_allocator, .{ .start_pos = start_pos });
+                \\    }
+            );
+        } else {
+            try writer.writeAll("    _ = stack;\n");
+        }
+        try writer.writeAll(
+            \\    try lrFlushSyntaxDiagnostic(context);
+            \\    return .{
+            \\        .result = .{
+            \\            .variable = variable,
+            \\            .pops_remaining = @intCast(if (unwind_count == 0) 0 else unwind_count - 1),
+            \\            .is_accept = false,
+            \\            .is_recovery = false,
+            \\        },
+            \\        .return_from_state = unwind_count != 0,
+            \\    };
+            \\}
+            \\
+            \\fn lrRecoveryOccurrencesEqual(lhs: ?LRRecoveryOccurrence, rhs: ?LRRecoveryOccurrence) bool {
+            \\    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+            \\    return lhs.?.rule == rhs.?.rule and lhs.?.position == rhs.?.position;
+            \\}
+            \\
+            \\fn lrRecoveryItemsEqual(lhs: LRRecoveryItem, rhs: LRRecoveryItem) bool {
+            \\    return lhs.rule == rhs.rule and lhs.head == rhs.head and lhs.lookahead == rhs.lookahead and
+            \\        lrRecoveryOccurrencesEqual(lhs.procedure_occurrence, rhs.procedure_occurrence);
+            \\}
+            \\
+            \\fn lrRecoveryReductionsEqual(lhs: LRRecoveryItem, rhs: LRRecoveryItem) bool {
+            \\    return lhs.rule == rhs.rule and lhs.lookahead == rhs.lookahead and
+            \\        lrRecoveryOccurrencesEqual(lhs.procedure_occurrence, rhs.procedure_occurrence);
+            \\}
+            \\
+            \\fn lrRecoveryBaseIndex(frames: []const *const LRRecoveryFrame, end_index: usize, item: LRRecoveryItem) ?usize {
+            \\    if (end_index + item.head >= frames.len) return null;
+            \\    var offset: usize = 0;
+            \\    while (offset < item.head) : (offset += 1) {
+            \\        const expected = rules[item.rule].right_hand_side[item.head - 1 - offset];
+            \\        if (frames[end_index + offset].incoming_symbol != expected) return null;
+            \\    }
+            \\    return end_index + item.head;
+            \\}
+            \\
+            \\fn lrRecoveryLineageNodeIndex(
+            \\    nodes: []const LRRecoveryLineageNode,
+            \\    end_index: usize,
+            \\    item: LRRecoveryItem,
+            \\) ?usize {
+            \\    for (nodes, 0..) |node, node_index| {
+            \\        if (node.end_index == end_index and lrRecoveryItemsEqual(node.item, item)) return node_index;
+            \\    }
+            \\    return null;
+            \\}
+            \\
+            \\fn lrAppendRecoveryLineageNode(
+            \\    allocator: std.mem.Allocator,
+            \\    frames: []const *const LRRecoveryFrame,
+            \\    end_index: usize,
+            \\    item: LRRecoveryItem,
+            \\    nodes: *std.ArrayList(LRRecoveryLineageNode),
+            \\) !?usize {
+            \\    if (lrRecoveryLineageNodeIndex(nodes.items, end_index, item)) |node_index| return node_index;
+            \\    const unwind_count = lrRecoveryBaseIndex(frames, end_index, item) orelse return null;
+            \\    const node_index = nodes.items.len;
+            \\    try nodes.append(allocator, .{
+            \\        .end_index = end_index,
+            \\        .item = item,
+            \\        .unwind_count = unwind_count,
+            \\    });
+            \\    return node_index;
+            \\}
+            \\
+            \\fn lrBuildRecoveryLineage(
+            \\    allocator: std.mem.Allocator,
+            \\    frames: []const *const LRRecoveryFrame,
+            \\    nodes: *std.ArrayList(LRRecoveryLineageNode),
+            \\    edges: *std.ArrayList(LRRecoveryLineageEdge),
+            \\) !void {
+            \\    var inner: usize = 0;
+            \\    while (inner < nodes.items.len) : (inner += 1) {
+            \\        const node = nodes.items[inner];
+            \\        const state = frames[node.unwind_count].state;
+            \\        const first_edge = edges.items.len;
+            \\        for (lr_recovery_closure_edges[state]) |edge| {
+            \\            const child = lr_recovery_items[state][edge.child];
+            \\            if (!lrRecoveryReductionsEqual(node.item, child)) continue;
+            \\            const parent = lr_recovery_items[state][edge.parent];
+            \\            const outer = try lrAppendRecoveryLineageNode(allocator, frames, node.unwind_count, parent, nodes) orelse continue;
+            \\            try edges.append(allocator, .{ .outer = outer, .occurrence = edge.occurrence });
+            \\    }
+            \\        nodes.items[inner].first_edge = first_edge;
+            \\        nodes.items[inner].edge_count = edges.items.len - first_edge;
+            \\        nodes.items[inner].is_exit = edges.items.len == first_edge;
+            \\    }
+            \\}
+            \\
+            \\fn lrMarkRecoveryLineageProductive(
+            \\    allocator: std.mem.Allocator,
+            \\    nodes: []const LRRecoveryLineageNode,
+            \\    edges: []const LRRecoveryLineageEdge,
+            \\    productive: []bool,
+            \\) !void {
+            \\    @memset(productive, false);
+            \\    const inward = try allocator.alloc(std.ArrayList(usize), nodes.len);
+            \\    defer allocator.free(inward);
+            \\    for (inward) |*entries| entries.* = .empty;
+            \\    defer for (inward) |*entries| entries.deinit(allocator);
+            \\    var work: std.ArrayList(usize) = .empty;
+            \\    defer work.deinit(allocator);
+            \\    for (nodes, 0..) |node, inner| {
+            \\        for (edges[node.first_edge..][0..node.edge_count]) |edge| {
+            \\            try inward[edge.outer].append(allocator, inner);
+            \\        }
+            \\        if (!node.is_exit) continue;
+            \\        productive[inner] = true;
+            \\        try work.append(allocator, inner);
+            \\    }
+            \\    var cursor: usize = 0;
+            \\    while (cursor < work.items.len) : (cursor += 1) {
+            \\        for (inward[work.items[cursor]].items) |inner| {
+            \\            if (productive[inner]) continue;
+            \\            productive[inner] = true;
+            \\            try work.append(allocator, inner);
+            \\        }
+            \\    }
+            \\}
+            \\
+            \\fn lrRecoveryLineageCandidatesEqual(lhs: LRRecoveryLineageCandidate, rhs: LRRecoveryLineageCandidate) bool {
+            \\    return lhs.kind == rhs.kind and lhs.target == rhs.target and lhs.position == rhs.position and
+            \\        lhs.unwind_count == rhs.unwind_count;
+            \\}
+            \\
+            \\fn lrAppendRecoveryLineageCandidate(
+            \\    allocator: std.mem.Allocator,
+            \\    candidates: *std.ArrayList(LRRecoveryLineageCandidate),
+            \\    candidate: LRRecoveryLineageCandidate,
+            \\) !void {
+            \\    for (candidates.items) |existing| {
+            \\        if (lrRecoveryLineageCandidatesEqual(existing, candidate)) return;
+            \\    }
+            \\    try candidates.append(allocator, candidate);
+            \\}
+            \\
+            \\fn lrRecoveryLineageCandidateMatchesNode(
+            \\    candidate: LRRecoveryLineageCandidate,
+            \\    node: LRRecoveryLineageNode,
+            \\) bool {
+            \\    if (candidate.unwind_count != node.unwind_count) return false;
+            \\    return switch (candidate.kind) {
+            \\        .occurrence => false,
+            \\        .production => node.item.head != 0 and candidate.target == node.item.rule,
+            \\        .lhs => candidate.target == rules[node.item.rule].header,
+            \\    };
+            \\}
+            \\
+            \\fn lrRecoveryLineageCandidateMatchesEdge(
+            \\    candidate: LRRecoveryLineageCandidate,
+            \\    node: LRRecoveryLineageNode,
+            \\    edge: LRRecoveryLineageEdge,
+            \\) bool {
+            \\    return candidate.kind == .occurrence and candidate.unwind_count == node.unwind_count and
+            \\        candidate.target == edge.occurrence.rule and candidate.position == edge.occurrence.position;
+            \\}
+            \\
+            \\fn lrRecoveryLineageHasAvoidingPath(
+            \\    nodes: []const LRRecoveryLineageNode,
+            \\    edges: []const LRRecoveryLineageEdge,
+            \\    productive: []const bool,
+            \\    inner: usize,
+            \\    candidate: LRRecoveryLineageCandidate,
+            \\    visited: []bool,
+            \\) bool {
+            \\    if (visited[inner]) return false;
+            \\    visited[inner] = true;
+            \\    const node = nodes[inner];
+            \\    if (lrRecoveryLineageCandidateMatchesNode(candidate, node)) return false;
+            \\    if (node.is_exit) return true;
+            \\    for (edges[node.first_edge..][0..node.edge_count]) |edge| {
+            \\        if (!productive[edge.outer] or lrRecoveryLineageCandidateMatchesEdge(candidate, node, edge)) continue;
+            \\        if (lrRecoveryLineageHasAvoidingPath(nodes, edges, productive, edge.outer, candidate, visited)) return true;
+            \\    }
+            \\    return false;
+            \\}
+            \\
+            \\fn lrRecoveryLineageCandidateDepth(
+            \\    allocator: std.mem.Allocator,
+            \\    nodes: []const LRRecoveryLineageNode,
+            \\    edges: []const LRRecoveryLineageEdge,
+            \\    productive: []const bool,
+            \\    roots: []const usize,
+            \\    candidate: LRRecoveryLineageCandidate,
+            \\) !?usize {
+            \\    const distances = try allocator.alloc(usize, nodes.len);
+            \\    defer allocator.free(distances);
+            \\    @memset(distances, std.math.maxInt(usize));
+            \\    var work: std.ArrayList(usize) = .empty;
+            \\    defer work.deinit(allocator);
+            \\    for (roots) |root_index| {
+            \\        if (!productive[root_index] or distances[root_index] == 0) continue;
+            \\        distances[root_index] = 0;
+            \\        try work.append(allocator, root_index);
+            \\    }
+            \\    var minimum_depth: usize = std.math.maxInt(usize);
+            \\    var cursor: usize = 0;
+            \\    while (cursor < work.items.len) : (cursor += 1) {
+            \\        const inner = work.items[cursor];
+            \\        const node = nodes[inner];
+            \\        if (lrRecoveryLineageCandidateMatchesNode(candidate, node)) minimum_depth = @min(minimum_depth, distances[inner]);
+            \\        for (edges[node.first_edge..][0..node.edge_count]) |edge| {
+            \\            if (!productive[edge.outer]) continue;
+            \\            if (lrRecoveryLineageCandidateMatchesEdge(candidate, node, edge)) minimum_depth = @min(minimum_depth, distances[inner]);
+            \\            const outer_depth = distances[inner] + 1;
+            \\            if (distances[edge.outer] <= outer_depth) continue;
+            \\            distances[edge.outer] = outer_depth;
+            \\            try work.append(allocator, edge.outer);
+            \\        }
+            \\    }
+            \\    return if (minimum_depth == std.math.maxInt(usize)) null else minimum_depth;
+            \\}
+            \\
+            \\fn lrRecoveryLineageCandidateLessThan(_: void, lhs: LRRecoveryLineageCandidate, rhs: LRRecoveryLineageCandidate) bool {
+            \\    if (lhs.depth != rhs.depth) return lhs.depth < rhs.depth;
+            \\    if (lhs.kind != rhs.kind) return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
+            \\    return lhs.source_order < rhs.source_order;
+            \\}
+            \\
+            \\fn lrClosureMarkProductiveItems(
+            \\    allocator: std.mem.Allocator,
+            \\    state: usize,
+            \\    productive: []bool,
+            \\) !void {
+            \\    @memset(productive, false);
+            \\    var work: std.ArrayList(usize) = .empty;
+            \\    defer work.deinit(allocator);
+            \\    const edge_offsets = lr_recovery_closure_edge_offsets[state];
+            \\    for (productive, 0..) |*is_productive, item| {
+            \\        if (edge_offsets[item] != edge_offsets[item + 1]) continue;
+            \\        is_productive.* = true;
+            \\        try work.append(allocator, item);
+            \\    }
+            \\    const parent_offsets = lr_recovery_closure_parent_offsets[state];
+            \\    const parents = lr_recovery_closure_parents[state];
+            \\    var cursor: usize = 0;
+            \\    while (cursor < work.items.len) : (cursor += 1) {
+            \\        const child = work.items[cursor];
+            \\        for (parents[parent_offsets[child]..parent_offsets[child + 1]]) |parent| {
+            \\            if (productive[parent]) continue;
+            \\            productive[parent] = true;
+            \\            try work.append(allocator, parent);
+            \\        }
+            \\    }
+            \\}
+            \\
+            \\fn lrClosureHasProductivePathAvoidingOccurrence(
+            \\    state: usize,
+            \\    item: usize,
+            \\    occurrence: LRRecoveryOccurrence,
+            \\    visited: []bool,
+            \\) bool {
+            \\    if (visited[item]) return false;
+            \\    visited[item] = true;
+            \\    const edge_offsets = lr_recovery_closure_edge_offsets[state];
+            \\    const edges = lr_recovery_closure_edges[state];
+            \\    const outgoing = edges[edge_offsets[item]..edge_offsets[item + 1]];
+            \\    if (outgoing.len == 0) return true;
+            \\    for (outgoing) |edge| {
+            \\        if (lrRecoveryOccurrencesEqual(edge.occurrence, occurrence)) continue;
+            \\        if (lrClosureHasProductivePathAvoidingOccurrence(state, edge.child, occurrence, visited)) return true;
+            \\    }
+            \\    return false;
+            \\}
+            \\
+            \\fn lrClosureOccurrenceDepth(
+            \\    allocator: std.mem.Allocator,
+            \\    state: usize,
+            \\    frames: []const *const LRRecoveryFrame,
+            \\    productive: []const bool,
+            \\    occurrence: LRRecoveryOccurrence,
+            \\) !?usize {
+            \\    const items = lr_recovery_items[state];
+            \\    const distances = try allocator.alloc(usize, items.len);
+            \\    defer allocator.free(distances);
+            \\    @memset(distances, std.math.maxInt(usize));
+            \\    var work: std.ArrayList(usize) = .empty;
+            \\    defer work.deinit(allocator);
+            \\    for (lr_recovery_kernel_items[state]) |item| {
+            \\        if (!productive[item] or lrRecoveryBaseIndex(frames, 0, items[item]) == null or distances[item] == 0) continue;
+            \\        distances[item] = 0;
+            \\        try work.append(allocator, item);
+            \\    }
+            \\    const edge_offsets = lr_recovery_closure_edge_offsets[state];
+            \\    const edges = lr_recovery_closure_edges[state];
+            \\    var minimum_depth: usize = std.math.maxInt(usize);
+            \\    var cursor: usize = 0;
+            \\    while (cursor < work.items.len) : (cursor += 1) {
+            \\        const parent = work.items[cursor];
+            \\        const child_depth = distances[parent] + 1;
+            \\        for (edges[edge_offsets[parent]..edge_offsets[parent + 1]]) |edge| {
+            \\            if (!productive[edge.child]) continue;
+            \\            if (lrRecoveryOccurrencesEqual(edge.occurrence, occurrence)) minimum_depth = @min(minimum_depth, child_depth);
+            \\            if (distances[edge.child] <= child_depth) continue;
+            \\            distances[edge.child] = child_depth;
+            \\            try work.append(allocator, edge.child);
+            \\        }
+            \\    }
+            \\    return if (minimum_depth == std.math.maxInt(usize)) null else minimum_depth;
+            \\}
+            \\
+            \\fn lrRecoveryClosureCandidateLessThan(_: void, lhs: LRRecoveryClosureCandidate, rhs: LRRecoveryClosureCandidate) bool {
+            \\    if (lhs.depth != rhs.depth) return lhs.depth > rhs.depth;
+            \\    return lhs.source_order < rhs.source_order;
+            \\}
+            \\
+            \\fn lrLhsRecoveryScope(variable: usize) ?*const ExplicitRecoveryScope {
+            \\    for (lr_lhs_recovery_scopes) |entry| if (entry.variable == variable) return entry.scope;
+            \\    return null;
+            \\}
+            \\
+            \\fn lrProductionRecoveryScope(rule: usize) ?*const ExplicitRecoveryScope {
+            \\    for (lr_production_recovery_scopes) |entry| if (entry.rule == rule) return entry.scope;
+            \\    return null;
+            \\}
+            \\
+            \\fn lrOccurrenceRecoveryScope(occurrence: LRRecoveryOccurrence) ?*const ExplicitRecoveryScope {
+            \\    for (lr_occurrence_recovery_scopes) |entry| {
+            \\        if (entry.occurrence.rule == occurrence.rule and entry.occurrence.position == occurrence.position) return entry.scope;
+            \\    }
+            \\    return null;
+            \\}
+            \\
+            \\fn lrVariableForSymbol(symbol: usize) u16 {
+            \\    for (symbol_by_variable, 0..) |candidate, variable| {
+            \\        if (candidate == symbol) return @intCast(variable);
+            \\    }
+            \\    unreachable;
+            \\}
+            \\
+            \\fn lrTryExplicitRecovery(
+            \\    context: *data_structures.Context,
+            \\    stack: *SemanticStack,
+            \\    recovery_frame: *const LRRecoveryFrame,
+            \\) !?ExplicitRecoveryResult {
+            \\    const allocator = context.runtime().arena_allocator;
+            \\    var frames: std.ArrayList(*const LRRecoveryFrame) = .empty;
+            \\    defer frames.deinit(allocator);
+            \\    var cursor: ?*const LRRecoveryFrame = recovery_frame;
+            \\    while (cursor) |frame| {
+            \\        try frames.append(allocator, frame);
+            \\        cursor = frame.parent;
+            \\    }
+            \\
+            \\    const recovery_state = recovery_frame.state;
+            \\    const recovery_items = lr_recovery_items[recovery_state];
+            \\    var lineage_nodes: std.ArrayList(LRRecoveryLineageNode) = .empty;
+            \\    defer lineage_nodes.deinit(allocator);
+            \\    var lineage_edges: std.ArrayList(LRRecoveryLineageEdge) = .empty;
+            \\    defer lineage_edges.deinit(allocator);
+            \\    var lineage_roots: std.ArrayList(usize) = .empty;
+            \\    defer lineage_roots.deinit(allocator);
+            \\    for (lr_recovery_kernel_items[recovery_state]) |item| {
+            \\        const root_index = try lrAppendRecoveryLineageNode(
+            \\            allocator,
+            \\            frames.items,
+            \\            0,
+            \\            recovery_items[item],
+            \\            &lineage_nodes,
+            \\        ) orelse continue;
+            \\        try lineage_roots.append(allocator, root_index);
+            \\    }
+            \\    if (lineage_roots.items.len == 0) return null;
+            \\    try lrBuildRecoveryLineage(allocator, frames.items, &lineage_nodes, &lineage_edges);
+            \\    const lineage_productive = try allocator.alloc(bool, lineage_nodes.items.len);
+            \\    defer allocator.free(lineage_productive);
+            \\    try lrMarkRecoveryLineageProductive(allocator, lineage_nodes.items, lineage_edges.items, lineage_productive);
+            \\    var saw_productive_lineage = false;
+            \\    for (lineage_roots.items) |root_index| saw_productive_lineage = saw_productive_lineage or lineage_productive[root_index];
+            \\    if (!saw_productive_lineage) return null;
+            \\
+            \\    var closure_candidates: std.ArrayList(LRRecoveryClosureCandidate) = .empty;
+            \\    defer closure_candidates.deinit(allocator);
+            \\    const closure_productive = try allocator.alloc(bool, recovery_items.len);
+            \\    defer allocator.free(closure_productive);
+            \\    try lrClosureMarkProductiveItems(allocator, recovery_state, closure_productive);
+            \\    const closure_visits = try allocator.alloc(bool, recovery_items.len);
+            \\    defer allocator.free(closure_visits);
+            \\    for (lr_occurrence_recovery_scopes, 0..) |entry, source_order| {
+            \\        var common = true;
+            \\        var saw_productive_path = false;
+            \\        @memset(closure_visits, false);
+            \\        for (lr_recovery_kernel_items[recovery_state]) |item| {
+            \\            const root_index = lrRecoveryLineageNodeIndex(lineage_nodes.items, 0, recovery_items[item]) orelse continue;
+            \\            if (!lineage_productive[root_index] or !closure_productive[item]) continue;
+            \\            saw_productive_path = true;
+            \\            if (lrClosureHasProductivePathAvoidingOccurrence(
+            \\                recovery_state,
+            \\                item,
+            \\                entry.occurrence,
+            \\                closure_visits,
+            \\            )) {
+            \\                common = false;
+            \\                break;
+            \\            }
+            \\        }
+            \\        if (common and saw_productive_path) {
+            \\            const depth = try lrClosureOccurrenceDepth(
+            \\                allocator,
+            \\                recovery_state,
+            \\                frames.items,
+            \\                closure_productive,
+            \\                entry.occurrence,
+            \\            ) orelse {
+            \\                continue;
+            \\            };
+            \\            try closure_candidates.append(allocator, .{
+            \\                .occurrence = entry.occurrence,
+            \\                .depth = depth,
+            \\                .source_order = source_order,
+            \\            });
+            \\        }
+            \\    }
+            \\    std.mem.sort(LRRecoveryClosureCandidate, closure_candidates.items, {}, lrRecoveryClosureCandidateLessThan);
+            \\    for (closure_candidates.items) |candidate| {
+            \\        const scope = lrOccurrenceRecoveryScope(candidate.occurrence) orelse unreachable;
+            \\        const symbol = rules[candidate.occurrence.rule].right_hand_side[candidate.occurrence.position];
+            \\        if (try lrTryExplicitScope(context, stack, scope, lrVariableForSymbol(symbol), 0)) |recovery| return recovery;
+            \\    }
+            \\
+            \\    var lineage_candidates: std.ArrayList(LRRecoveryLineageCandidate) = .empty;
+            \\    defer lineage_candidates.deinit(allocator);
+            \\    var source_order: usize = 0;
+            \\    for (lineage_nodes.items, 0..) |node, inner| {
+            \\        if (!lineage_productive[inner]) continue;
+            \\        const variable = rules[node.item.rule].header;
+            \\        for (lineage_edges.items[node.first_edge..][0..node.edge_count]) |edge| {
+            \\            if (!lineage_productive[edge.outer]) continue;
+            \\            if (lrOccurrenceRecoveryScope(edge.occurrence)) |scope| {
+            \\                try lrAppendRecoveryLineageCandidate(allocator, &lineage_candidates, .{
+            \\                    .kind = .occurrence,
+            \\                    .target = edge.occurrence.rule,
+            \\                    .position = edge.occurrence.position,
+            \\                    .scope = scope,
+            \\                    .variable = variable,
+            \\                    .unwind_count = node.unwind_count,
+            \\                    .source_order = source_order,
+            \\                });
+            \\                source_order += 1;
+            \\            }
+            \\        }
+            \\        if (node.item.head != 0) {
+            \\            if (lrProductionRecoveryScope(node.item.rule)) |scope| {
+            \\                try lrAppendRecoveryLineageCandidate(allocator, &lineage_candidates, .{
+            \\                    .kind = .production,
+            \\                    .target = node.item.rule,
+            \\                    .scope = scope,
+            \\                    .variable = variable,
+            \\                    .unwind_count = node.unwind_count,
+            \\                    .source_order = source_order,
+            \\                });
+            \\                source_order += 1;
+            \\            }
+            \\        }
+            \\        if (lrLhsRecoveryScope(variable)) |scope| {
+            \\            try lrAppendRecoveryLineageCandidate(allocator, &lineage_candidates, .{
+            \\                .kind = .lhs,
+            \\                .target = variable,
+            \\                .scope = scope,
+            \\                .variable = variable,
+            \\                .unwind_count = node.unwind_count,
+            \\                .source_order = source_order,
+            \\            });
+            \\            source_order += 1;
+            \\        }
+            \\    }
+            \\
+            \\    var committed_candidates: std.ArrayList(LRRecoveryLineageCandidate) = .empty;
+            \\    defer committed_candidates.deinit(allocator);
+            \\    const lineage_visits = try allocator.alloc(bool, lineage_nodes.items.len);
+            \\    defer allocator.free(lineage_visits);
+            \\    for (lineage_candidates.items) |candidate| {
+            \\        @memset(lineage_visits, false);
+            \\        var has_avoiding_path = false;
+            \\        for (lineage_roots.items) |root_index| {
+            \\            if (!lineage_productive[root_index]) continue;
+            \\            if (lrRecoveryLineageHasAvoidingPath(
+            \\                lineage_nodes.items,
+            \\                lineage_edges.items,
+            \\                lineage_productive,
+            \\                root_index,
+            \\                candidate,
+            \\                lineage_visits,
+            \\            )) {
+            \\                has_avoiding_path = true;
+            \\                break;
+            \\            }
+            \\        }
+            \\        if (has_avoiding_path) continue;
+            \\        var committed = candidate;
+            \\        committed.depth = try lrRecoveryLineageCandidateDepth(
+            \\            allocator,
+            \\            lineage_nodes.items,
+            \\            lineage_edges.items,
+            \\            lineage_productive,
+            \\            lineage_roots.items,
+            \\            candidate,
+            \\        ) orelse continue;
+            \\        try committed_candidates.append(allocator, committed);
+            \\    }
+            \\    std.mem.sort(LRRecoveryLineageCandidate, committed_candidates.items, {}, lrRecoveryLineageCandidateLessThan);
+            \\    for (committed_candidates.items) |candidate| {
+            \\        if (try lrTryExplicitScope(
+            \\            context,
+            \\            stack,
+            \\            candidate.scope,
+            \\            candidate.variable,
+            \\            candidate.unwind_count,
+            \\        )) |recovery| return recovery;
+            \\    }
+            \\    return null;
+            \\}
+            \\
+        );
+        try self.emitExplicitRecoveryMetadata(writer);
+    }
+
+    fn emitExplicitRecoveryMetadata(self: *Generator, writer: *std.Io.Writer) !void {
+        const ClosureEdge = struct {
+            parent: usize,
+            child: usize,
+            occurrence: Occurrence,
+        };
+        for (self.states.items, 0..) |state, state_index| {
+            try writer.print("const lr_recovery_items_{d} = &[_]LRRecoveryItem{{\n", .{state_index});
+            for (state.items.items) |item| {
+                try writer.writeAll("    ");
+                try self.emitRecoveryItem(writer, item);
+                try writer.writeAll(",\n");
+            }
+            try writer.writeAll("};\n");
+
+            try writer.print("const lr_recovery_kernel_items_{d} = &[_]usize{{", .{state_index});
+            for (state.items.items, 0..) |item, item_index| {
+                if (item.head == 0 and item.variable != self.augmented_start) continue;
+                try writer.print(" {d},", .{item_index});
+            }
+            try writer.writeAll(" };\n");
+
+            var closure_edges: std.ArrayList(ClosureEdge) = .empty;
+            defer closure_edges.deinit(self.allocator);
+            for (state.items.items, 0..) |parent, parent_index| {
+                const parent_rule = self.rules.items[parent.rule];
+                if (parent.head >= parent_rule.rhs.items.len) continue;
+                const child_variable = parent_rule.rhs.items[parent.head];
+                if (self.symbols.items[child_variable].kind != .variable) continue;
+                var lookaheads = std.AutoHashMap(usize, void).init(self.allocator);
+                defer lookaheads.deinit();
+                try self.firstsAfterItem(parent, &lookaheads);
+                const procedure_occurrence = self.procedureOccurrenceFor(parent.rule, parent.head);
+                for (state.items.items, 0..) |child, child_index| {
+                    if (child.head != 0 or child.variable != child_variable or !lookaheads.contains(child.lookahead) or
+                        !std.meta.eql(child.occurrence, procedure_occurrence)) continue;
+                    try closure_edges.append(self.allocator, .{
+                        .parent = parent_index,
+                        .child = child_index,
+                        .occurrence = .{ .rule = parent.rule, .position = parent.head },
+                    });
+                }
+            }
+
+            try writer.print("const lr_recovery_closure_edges_{d} = &[_]LRRecoveryClosureEdge{{\n", .{state_index});
+            for (closure_edges.items) |edge| {
+                try writer.print(
+                    "    .{{ .child = {d}, .parent = {d}, .occurrence = .{{ .rule = {d}, .position = {d} }} }},\n",
+                    .{ edge.child, edge.parent, edge.occurrence.rule, edge.occurrence.position },
+                );
+            }
+            try writer.writeAll("};\n");
+
+            try writer.print("const lr_recovery_closure_edge_offsets_{d} = &[_]usize{{ 0,", .{state_index});
+            var edge_index: usize = 0;
+            for (state.items.items, 0..) |_, parent_index| {
+                while (edge_index < closure_edges.items.len and closure_edges.items[edge_index].parent == parent_index) edge_index += 1;
+                try writer.print(" {d},", .{edge_index});
+            }
+            try writer.writeAll(" };\n");
+
+            try writer.print("const lr_recovery_closure_parents_{d} = &[_]usize{{", .{state_index});
+            for (state.items.items, 0..) |_, child_index| {
+                for (closure_edges.items) |edge| {
+                    if (edge.child == child_index) try writer.print(" {d},", .{edge.parent});
+                }
+            }
+            try writer.writeAll(" };\n");
+            try writer.print("const lr_recovery_closure_parent_offsets_{d} = &[_]usize{{ 0,", .{state_index});
+            var parent_count: usize = 0;
+            for (state.items.items, 0..) |_, child_index| {
+                for (closure_edges.items) |edge| {
+                    if (edge.child == child_index) parent_count += 1;
+                }
+                try writer.print(" {d},", .{parent_count});
+            }
+            try writer.writeAll(" };\n");
+        }
+
+        try writer.writeAll("const lr_recovery_items = &[_][]const LRRecoveryItem{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_items_{d},\n", .{state_index});
+        try writer.writeAll("};\nconst lr_recovery_kernel_items = &[_][]const usize{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_kernel_items_{d},\n", .{state_index});
+        try writer.writeAll("};\nconst lr_recovery_closure_edges = &[_][]const LRRecoveryClosureEdge{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_closure_edges_{d},\n", .{state_index});
+        try writer.writeAll("};\nconst lr_recovery_closure_edge_offsets = &[_][]const usize{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_closure_edge_offsets_{d},\n", .{state_index});
+        try writer.writeAll("};\nconst lr_recovery_closure_parents = &[_][]const usize{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_closure_parents_{d},\n", .{state_index});
+        try writer.writeAll("};\nconst lr_recovery_closure_parent_offsets = &[_][]const usize{\n");
+        for (self.states.items, 0..) |_, state_index| try writer.print("    lr_recovery_closure_parent_offsets_{d},\n", .{state_index});
+        try writer.writeAll("};\n\nconst lr_lhs_recovery_scopes = &[_]LRLhsRecoveryScope{\n");
+        for (self.variables.items) |variable| {
+            if (self.symbols.items[variable].annotations.recovery_points.items.len == 0) continue;
+            try writer.print("    .{{ .variable = {d}, .scope = ", .{self.variableIndex(variable)});
+            try self.emitLhsRecoveryScope(writer, variable);
+            try writer.writeAll(" },\n");
+        }
+        try writer.writeAll("};\nconst lr_production_recovery_scopes = &[_]LRProductionRecoveryScope{\n");
+        for (self.rules.items, 0..) |rule, rule_index| {
+            if (rule.annotations.recovery_points.items.len == 0) continue;
+            try writer.print("    .{{ .rule = {d}, .scope = ", .{rule_index});
+            try self.emitProductionRecoveryScope(writer, rule, rule_index);
+            try writer.writeAll(" },\n");
+        }
+        try writer.writeAll("};\nconst lr_occurrence_recovery_scopes = &[_]LROccurrenceRecoveryScope{\n");
+        for (self.rules.items, 0..) |rule, rule_index| {
+            for (rule.rhs_annotations.items, 0..) |annotations, position| {
+                if (annotations.recovery_points.items.len == 0) continue;
+                const occurrence: Occurrence = .{ .rule = rule_index, .position = position };
+                try writer.print("    .{{ .occurrence = .{{ .rule = {d}, .position = {d} }}, .scope = ", .{ rule_index, position });
+                try self.emitOccurrenceRecoveryScope(writer, occurrence);
+                try writer.writeAll(" },\n");
+            }
+        }
+        try writer.writeAll("};\n\n");
+    }
+
+    fn emitRecoveryItem(self: *Generator, writer: *std.Io.Writer, item: Item) !void {
+        _ = self;
+        try writer.print(".{{ .rule = {d}, .head = {d}, .lookahead = {d}, .procedure_occurrence = ", .{ item.rule, item.head, item.lookahead });
+        if (item.occurrence) |occurrence| {
+            try writer.print(".{{ .rule = {d}, .position = {d} }}", .{ occurrence.rule, occurrence.position });
+        } else {
+            try writer.writeAll("null");
+        }
+        try writer.writeAll(" }");
+    }
+
+    fn emitExplicitSyntaxDiagnosticFlusher(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll("fn lrFlushSyntaxDiagnostic(context: *data_structures.Context) !void {\n");
+        try writer.print("    @setEvalBranchQuota({d});\n", .{@max(1000, self.syntax_error_handlers.items.len * 8)});
+        try writer.writeAll("    const site = context.pendingSyntaxErrorSite() orelse return;\n");
+        try writer.writeAll("    context.clearPendingSyntaxErrorSite();\n");
+        try writer.writeAll("    switch (site) {\n");
+        for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
+            try writer.print("        {d} => {{\n", .{site_index});
+            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "            ");
+            try writer.writeAll("        },\n");
+        }
+        try writer.writeAll("        else => unreachable,\n    }\n}\n\n");
+    }
+
+    fn emitRecoveryPoints(self: *Generator, writer: *std.Io.Writer, points: []const common.RecoveryPoint) !void {
+        _ = self;
+        try writer.writeAll("&[_]root.SyntaxRecoveryPoint{");
+        for (points, 0..) |point, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.writeAll(".{ .terminal = ");
+            try emitStringLiteral(writer, point.terminal);
+            try writer.print(", .@\"resume\" = .{s} }}", .{@tagName(point.@"resume")});
+        }
+        try writer.writeByte('}');
+    }
+
+    fn emitLhsRecoveryScope(self: *Generator, writer: *std.Io.Writer, variable: usize) !void {
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .lhs_variable = ", .{variable});
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(" }, .points = ");
+        try self.emitRecoveryPoints(writer, self.symbols.items[variable].annotations.recovery_points.items);
+        try writer.writeAll(" }");
+    }
+
+    fn emitProductionRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, rule_index: usize) !void {
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .production = .{{ .variable = ", .{self.symbols.items.len + rule_index});
+        try emitStringLiteral(writer, self.symbols.items[rule.header].id);
+        try writer.print(", .rhs_index = {s} }} }}, .points = ", .{rule.rhs_index});
+        try self.emitRecoveryPoints(writer, rule.annotations.recovery_points.items);
+        try writer.writeAll(" }");
+    }
+
+    fn emitOccurrenceRecoveryScope(self: *Generator, writer: *std.Io.Writer, occurrence: Occurrence) !void {
+        const rule = self.rules.items[occurrence.rule];
+        const variable = rule.rhs.items[occurrence.position];
+        const target_id = common.recoveryOccurrenceTargetId(self.symbols.items.len, self.rules.items, occurrence.rule, occurrence.position);
+        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .occurrence = .{{ .parent_variable = ", .{target_id});
+        try emitStringLiteral(writer, self.symbols.items[rule.header].id);
+        try writer.print(", .rhs_index = {s}, .symbol_index = {d}, .variable = ", .{ rule.rhs_index, occurrence.position });
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(" } }, .points = ");
+        try self.emitRecoveryPoints(writer, rule.rhs_annotations.items[occurrence.position].recovery_points.items);
+        try writer.writeAll(" }");
+    }
+
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
-        for (self.syntax_error_handlers.items) |spec| {
-            try writer.print("fn {s}(context: *data_structures.Context, stack: *SemanticStack) anyerror!bool {{\n", .{spec.name});
+        for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
+            try writer.print("fn {s}(context: *data_structures.Context, stack: *SemanticStack{s}) anyerror!{s} {{\n", .{
+                spec.name,
+                if (self.uses_explicit_recovery) ", recovery_frame: *const LRRecoveryFrame" else "",
+                if (self.uses_explicit_recovery) "?ExplicitRecoveryResult" else "bool",
+            });
             try writer.writeAll("    @branchHint(.cold);\n");
+            if (self.uses_explicit_recovery) {
+                try writer.print("    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+                try self.emitStringSliceItems(writer, spec.expected_tokens);
+                try writer.writeAll("});\n");
+                try writer.print("    context.setPendingSyntaxErrorSite({d});\n", .{site_index});
+                if (spec.recoverable) {
+                    try writer.writeAll("    if (try lrTryExplicitRecovery(context, stack, recovery_frame)) |recovery| return recovery;\n");
+                } else {
+                    try writer.writeAll("    _ = stack;\n    _ = recovery_frame;\n");
+                }
+                try writer.writeAll("    try lrFlushSyntaxDiagnostic(context);\n");
+                try writer.writeAll("    return null;\n}\n\n");
+                continue;
+            }
             if (!spec.recoverable or !self.options.with_ast or spec.state_index == 0) try writer.writeAll("    _ = stack;\n");
             try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
             try writer.writeAll("    if (report_syntax_error) {\n");
@@ -1100,7 +1963,7 @@ const Generator = struct {
             \\{s}    }}) catch ""
             \\{s}else
             \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            \\{s}std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}if (!builtin.is_test) std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
         , .{
             indent,
@@ -1162,7 +2025,9 @@ const Generator = struct {
     }
 
     fn longestTerminalLength(self: *Generator) usize {
-        return common.longestTerminalLength(self.symbols.items);
+        const grammar_longest = common.longestTerminalLength(self.symbols.items);
+        if (!self.uses_explicit_recovery) return grammar_longest;
+        return @max(grammar_longest, common.longestRecoveryTerminalLength(self.symbols.items, self.rules.items));
     }
 
     fn appendSwitchEntry(entries: *std.ArrayList(SwitchEntry), allocator: std.mem.Allocator, terminal: []const u8, action: usize) !void {
@@ -1232,6 +2097,9 @@ pub fn emitParser(allocator: std.mem.Allocator, grammar: anytype, writer: *std.I
 pub fn emitParserWithOptions(allocator: std.mem.Allocator, grammar: anytype, writer: *std.Io.Writer, options: Options) !void {
     var generator = Generator.init(allocator, options);
     try generator.fromGrammar(grammar);
+    if (generator.has_recovery_annotations and !options.with_error_recovery) {
+        std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
+    }
     try generator.emit(writer);
 }
 
@@ -1244,6 +2112,31 @@ pub fn emitErrorMessagesWithOptions(allocator: std.mem.Allocator, grammar: anyty
     try generator.emit(&generated_parser.writer);
 
     try common.emitErrorMessageFile(writer, "LR", generator.error_message_specs.items);
+}
+
+pub fn canonicalTopologyEqualForTesting(allocator: std.mem.Allocator, lhs_grammar: anytype, rhs_grammar: anytype, options: Options) !bool {
+    var lhs = Generator.init(allocator, options);
+    try lhs.fromGrammar(lhs_grammar);
+    var rhs = Generator.init(allocator, options);
+    try rhs.fromGrammar(rhs_grammar);
+    if (lhs.states.items.len != rhs.states.items.len) return false;
+    for (lhs.states.items, rhs.states.items) |lhs_state, rhs_state| {
+        if (!itemsEqual(lhs_state.items.items, rhs_state.items.items)) return false;
+        if (lhs_state.actions.items.len != rhs_state.actions.items.len or lhs_state.gotos.items.len != rhs_state.gotos.items.len) return false;
+        for (lhs_state.actions.items, rhs_state.actions.items) |lhs_action, rhs_action| {
+            if (!std.meta.eql(lhs_action, rhs_action)) return false;
+        }
+        for (lhs_state.gotos.items, rhs_state.gotos.items) |lhs_goto, rhs_goto| {
+            if (!std.meta.eql(lhs_goto, rhs_goto)) return false;
+        }
+    }
+    return true;
+}
+
+pub fn canonicalStateCountForTesting(allocator: std.mem.Allocator, grammar: anytype, options: Options) !usize {
+    var generator = Generator.init(allocator, options);
+    try generator.fromGrammar(grammar);
+    return generator.states.items.len;
 }
 
 fn appendItemUnique(items: *std.ArrayList(Item), allocator: std.mem.Allocator, item: Item) !void {
@@ -1262,10 +2155,14 @@ fn itemLessThan(_: void, lhs: Item, rhs: Item) bool {
     if (lhs.rule != rhs.rule) return lhs.rule < rhs.rule;
     if (lhs.head != rhs.head) return lhs.head < rhs.head;
     if (lhs.lookahead != rhs.lookahead) return lhs.lookahead < rhs.lookahead;
-    if (lhs.occurrence == null) return rhs.occurrence != null;
-    if (rhs.occurrence == null) return false;
-    if (lhs.occurrence.?.rule != rhs.occurrence.?.rule) return lhs.occurrence.?.rule < rhs.occurrence.?.rule;
-    return lhs.occurrence.?.position < rhs.occurrence.?.position;
+    return occurrenceLessThan(lhs.occurrence, rhs.occurrence);
+}
+
+fn occurrenceLessThan(lhs: ?Occurrence, rhs: ?Occurrence) bool {
+    if (lhs == null) return rhs != null;
+    if (rhs == null) return false;
+    if (lhs.?.rule != rhs.?.rule) return lhs.?.rule < rhs.?.rule;
+    return lhs.?.position < rhs.?.position;
 }
 
 fn itemsEqual(lhs: []const Item, rhs: []const Item) bool {

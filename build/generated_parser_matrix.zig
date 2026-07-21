@@ -633,6 +633,18 @@ fn errorInputs(language: []const u8) ?ErrorInputs {
             .expected_token = ":",
         };
     }
+    if (std.mem.eql(u8, language, "galley")) {
+        return .{
+            .valid = "Start\n| \"x\"\n",
+            .malformed = "Start\n| ?\n| \"x\"\n",
+            .multiple_errors = "Start\n| ?\n| ?\n| \"valid\"\n\nNext\n| \"still-valid\"\n",
+            .small_window_error_count = 1,
+            .diagnostic_line = 2,
+            .diagnostic_column = 3,
+            .unexpected_token_prefix = "?",
+            .expected_token = "\"",
+        };
+    }
     return null;
 }
 

@@ -28,6 +28,9 @@ pub const RuntimeContext = struct {
     recovery_window: usize = 500,
     syntax_error_count: usize = 0,
     syntax_recovery_position: ?usize = null,
+    explicit_recovery_position: ?usize = null,
+    explicit_recovery_target_id: ?usize = null,
+    pending_syntax_error_site: ?usize = null,
 };
 
 var active_runtime_context: ?*RuntimeContext = null;
@@ -145,6 +148,76 @@ pub const Context = struct {
 
     pub inline fn finishSyntaxRecovery(self: *Self) void {
         self.runtime().syntax_recovery_position = null;
+    }
+
+    pub fn tryExplicitRecovery(
+        self: *Self,
+        target_id: usize,
+        target: root.SyntaxRecoveryTarget,
+        points: []const root.SyntaxRecoveryPoint,
+    ) !bool {
+        if (self.syntaxErrorLimitReached() or points.len == 0) return false;
+
+        const runtime_context = self.runtime();
+        const position: usize = self.pos();
+        if (runtime_context.explicit_recovery_position == position and
+            runtime_context.explicit_recovery_target_id == target_id)
+        {
+            return false;
+        }
+
+        const lookahead = try self.recoveryLookahead();
+        if (lookahead.len == 0 or lookahead[0] == 0) return false;
+        const upper = @min(runtime_context.recovery_window, lookahead.len);
+        var winning_point: ?usize = null;
+        var winning_offset: usize = 0;
+        var offset: usize = 0;
+        while (offset < upper) : (offset += 1) {
+            if (lookahead[offset] == 0) break;
+            for (points, 0..) |point, point_index| {
+                if (point.terminal.len > lookahead.len - offset or
+                    !std.mem.eql(u8, lookahead[offset..][0..point.terminal.len], point.terminal))
+                {
+                    continue;
+                }
+                if (winning_point == null or point.terminal.len > points[winning_point.?].terminal.len) {
+                    winning_point = point_index;
+                    winning_offset = offset;
+                }
+            }
+            if (winning_point != null) break;
+        }
+
+        const point = if (winning_point) |index| points[index] else return false;
+        runtime_context.explicit_recovery_position = position;
+        runtime_context.explicit_recovery_target_id = target_id;
+        const skip_amount = winning_offset + if (point.@"resume" == .after) point.terminal.len else 0;
+        self.skipRecoveryInput(skip_amount);
+        try self.attachSyntaxRecovery(.{
+            .target = target,
+            .terminal = point.terminal,
+            .@"resume" = point.@"resume",
+        });
+        return true;
+    }
+
+    pub fn attachSyntaxRecovery(self: *Self, recovery: root.SyntaxRecovery) !void {
+        const diagnostic = &(self.runtime().last_diagnostic orelse return error.MissingSyntaxDiagnostic);
+        switch (diagnostic.*) {
+            .syntax => |*syntax| syntax.recovery = recovery,
+        }
+    }
+
+    pub inline fn setPendingSyntaxErrorSite(self: *Self, site: usize) void {
+        self.runtime().pending_syntax_error_site = site;
+    }
+
+    pub inline fn pendingSyntaxErrorSite(self: *const Self) ?usize {
+        return self.runtimeConst().pending_syntax_error_site;
+    }
+
+    pub inline fn clearPendingSyntaxErrorSite(self: *Self) void {
+        self.runtime().pending_syntax_error_site = null;
     }
 
     pub fn skipRecoveryInput(self: *Self, amount: usize) void {

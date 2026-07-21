@@ -13,20 +13,35 @@ pub const SymbolKind = enum {
     generative_terminal,
 };
 
+pub const RecoveryResume = enum {
+    before,
+    after,
+};
+
+pub const RecoveryPoint = struct {
+    terminal: []const u8,
+    @"resume": RecoveryResume,
+};
+
+pub const Annotations = struct {
+    procedures: []const []const u8 = &.{},
+    recovery_points: []const RecoveryPoint = &.{},
+};
+
 pub const SymbolRef = struct {
     id: []const u8,
     kind: SymbolKind,
-    procedures: []const []const u8,
+    annotations: Annotations = .{},
 };
 
 pub const RightHandSide = struct {
     symbols: []const SymbolRef,
-    procedures: []const []const u8,
+    annotations: Annotations = .{},
 };
 
 pub const Rule = struct {
     header: []const u8,
-    procedures: []const []const u8,
+    annotations: Annotations = .{},
     right_hand_sides: []const RightHandSide,
 };
 
@@ -43,11 +58,13 @@ var last_grammar: ?*Grammar = null;
 const MutableRightHandSide = struct {
     symbols: std.ArrayList(SymbolRef) = .empty,
     procedures: std.ArrayList([]const u8) = .empty,
+    recovery_points: std.ArrayList(RecoveryPoint) = .empty,
 };
 
 const MutableRule = struct {
     header: []const u8,
     procedures: std.ArrayList([]const u8) = .empty,
+    recovery_points: std.ArrayList(RecoveryPoint) = .empty,
     right_hand_sides: std.ArrayList(MutableRightHandSide) = .empty,
 };
 
@@ -133,6 +150,7 @@ pub const reduction_RulesTailTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
 pub const reduction_ProcedureTail_0 = flattenRightRecursiveTail;
+pub const reduction_RecoveryTail_0 = flattenRightRecursiveTail;
 pub const reduction_GenerativeTerminalExceptions_0 = flattenRightRecursiveTail;
 
 pub const reduction_Rules = normalizeList("RulesTail").function;
@@ -140,6 +158,7 @@ pub const reduction_RightHandSides = normalizeList("RightHandSidesTail").functio
 pub const reduction_RightHandSide = normalizeList("RightHandSideTail").function;
 pub const reduction_NonEmptyRightHandSide = normalizeList(null).function;
 pub const reduction_ProcedureTail = normalizeList(null).function;
+pub const reduction_RecoveryTail = normalizeList(null).function;
 pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
 
 fn grammarFromAst(context: *data_structures.Context, start_address: ASTNode.Pointer) !*Grammar {
@@ -151,7 +170,11 @@ fn grammarFromAst(context: *data_structures.Context, start_address: ASTNode.Poin
     while (child_address != ASTNode.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "Rule")) {
-            try mutable_rules.append(allocator, try mutableRuleFromAst(context, child_address));
+            const rule = try mutableRuleFromAst(context, child_address);
+            for (mutable_rules.items) |existing| {
+                if (std.mem.eql(u8, existing.header, rule.header)) return error.DuplicateRuleHeader;
+            }
+            try mutable_rules.append(allocator, rule);
         }
         child_address = next_address;
     }
@@ -167,13 +190,19 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
         for (mutable_rule.right_hand_sides.items, 0..) |*mutable_rhs, rhs_index| {
             immutable_right_hand_sides[rhs_index] = .{
                 .symbols = try mutable_rhs.symbols.toOwnedSlice(allocator),
-                .procedures = try mutable_rhs.procedures.toOwnedSlice(allocator),
+                .annotations = .{
+                    .procedures = try mutable_rhs.procedures.toOwnedSlice(allocator),
+                    .recovery_points = try mutable_rhs.recovery_points.toOwnedSlice(allocator),
+                },
             };
         }
 
         immutable_rules[rule_index] = .{
             .header = mutable_rule.header,
-            .procedures = try mutable_rule.procedures.toOwnedSlice(allocator),
+            .annotations = .{
+                .procedures = try mutable_rule.procedures.toOwnedSlice(allocator),
+                .recovery_points = try mutable_rule.recovery_points.toOwnedSlice(allocator),
+            },
             .right_hand_sides = immutable_right_hand_sides,
         };
     }
@@ -189,6 +218,9 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.P
     const right_hand_sides_address = firstChildNamed(context, rule_address, "RightHandSides") orelse return error.MissingRightHandSides;
 
     var rule = MutableRule{ .header = try allocator.dupe(u8, nodeText(context, header_address)) };
+    if (firstChildNamed(context, rule_address, "RecoveryTail")) |recovery_address| {
+        try appendRecoveryTail(context, &rule.recovery_points, recovery_address);
+    }
     if (firstChildNamed(context, rule_address, "ProcedureTail")) |procedures_address| {
         try appendProcedureTail(context, &rule.procedures, procedures_address);
     }
@@ -214,6 +246,9 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode
         firstChildNamed(context, line_address, "NonEmptyRightHandSide");
 
     var rhs = MutableRightHandSide{};
+    if (firstChildNamed(context, line_address, "RecoveryTail")) |recovery_address| {
+        try appendRecoveryTail(context, &rhs.recovery_points, recovery_address);
+    }
     try appendProcedureTail(context, &rhs.procedures, line_procedures_address);
     const symbols_parent_address = rhs_address orelse return rhs;
 
@@ -224,15 +259,21 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode
             continue;
         }
 
+        const recovery_tail_address = nextSiblingNamed(context, child_address, "RecoveryTail");
         const procedure_tail_address = nextSiblingNamed(context, child_address, "ProcedureTail") orelse return error.MissingSymbolProcedures;
-        try rhs.symbols.append(allocator, try symbolFromAst(context, child_address, procedure_tail_address));
+        try rhs.symbols.append(allocator, try symbolFromAst(context, child_address, recovery_tail_address, procedure_tail_address));
         child_address = context.node_allocator.at(procedure_tail_address).next;
     }
 
     return rhs;
 }
 
-fn symbolFromAst(context: *data_structures.Context, symbol_address: ASTNode.Pointer, procedure_tail_address: ASTNode.Pointer) !SymbolRef {
+fn symbolFromAst(
+    context: *data_structures.Context,
+    symbol_address: ASTNode.Pointer,
+    recovery_tail_address: ?ASTNode.Pointer,
+    procedure_tail_address: ASTNode.Pointer,
+) !SymbolRef {
     const allocator = context.runtime().arena_allocator;
     const concrete_address = firstChild(context, symbol_address) orelse return error.MissingSymbol;
     const raw_id = nodeText(context, concrete_address);
@@ -245,12 +286,38 @@ fn symbolFromAst(context: *data_structures.Context, symbol_address: ASTNode.Poin
 
     var procedures = std.ArrayList([]const u8).empty;
     try appendProcedureTail(context, &procedures, procedure_tail_address);
+    var recovery_points = std.ArrayList(RecoveryPoint).empty;
+    if (recovery_tail_address) |address| try appendRecoveryTail(context, &recovery_points, address);
+    if (recovery_points.items.len != 0 and kind != .variable) return error.InvalidRecoveryTarget;
 
     return .{
         .id = try decodeEscapes(allocator, raw_id),
         .kind = kind,
-        .procedures = try procedures.toOwnedSlice(allocator),
+        .annotations = .{
+            .procedures = try procedures.toOwnedSlice(allocator),
+            .recovery_points = try recovery_points.toOwnedSlice(allocator),
+        },
     };
+}
+
+fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: ASTNode.Pointer) !void {
+    const allocator = context.runtime().arena_allocator;
+    var child_address = context.node_allocator.at(recovery_tail_address).first_child;
+    while (child_address != ASTNode.invalid_pointer) {
+        const next_address = context.node_allocator.at(child_address).next;
+        if (nodeIs(context, child_address, "RecoveryPoint")) {
+            const body_address = firstDescendantNamed(context, child_address, "RecoveryPointBody") orelse return error.MissingRecoveryPointBody;
+            const terminal_address = firstDescendantNamed(context, child_address, "TerminalSymbol") orelse return error.MissingRecoveryTerminal;
+            const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
+            if (terminal.len == 0) return error.EmptyRecoveryTerminal;
+            if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulRecoveryTerminal;
+            const body_node = context.node_allocator.at(body_address);
+            const terminal_node = context.node_allocator.at(terminal_address);
+            const resume_side: RecoveryResume = if (body_node.text_start < terminal_node.text_start) .before else .after;
+            try target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
+        }
+        child_address = next_address;
+    }
 }
 
 fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList([]const u8), procedure_tail_address: ASTNode.Pointer) !void {
@@ -276,6 +343,17 @@ fn firstChildNamed(context: *data_structures.Context, node_address: ASTNode.Poin
     while (child_address != ASTNode.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, name)) return child_address;
+        child_address = next_address;
+    }
+    return null;
+}
+
+fn firstDescendantNamed(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) ?ASTNode.Pointer {
+    var child_address = context.node_allocator.at(node_address).first_child;
+    while (child_address != ASTNode.invalid_pointer) {
+        const next_address = context.node_allocator.at(child_address).next;
+        if (nodeIs(context, child_address, name)) return child_address;
+        if (firstDescendantNamed(context, child_address, name)) |found| return found;
         child_address = next_address;
     }
     return null;

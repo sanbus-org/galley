@@ -99,7 +99,7 @@ try generator.emitParserFromSource(
 );
 ```
 
-For tools that need to inspect or transform the grammar first, `parseGrammar` returns Galley's grammar model and `emitParser` generates code from that model.
+For tools that need to inspect or transform the grammar first, `parseGrammar` returns Galley's grammar model and `emitParser` generates code from that model. `Rule`, `RightHandSide`, and `SymbolRef` each expose an `annotations` field containing `procedures` and `recovery_points`; every `RecoveryPoint` contains exact terminal bytes and a `.before` or `.after` resume side. Programmatically constructed grammars use the same validation and recovery behavior as parsed grammar source.
 
 ## Create a Standalone Parser Project
 
@@ -223,7 +223,27 @@ LL and LR parsers report the first syntax error and stop by default. Enable reco
 galley --with-error-recovery <LANGUAGE_DIR>
 ```
 
-API generators enable the same behavior with `.with_error_recovery = true`. Recovery-enabled parsers use `max_errors` and `recovery_window` at runtime:
+API generators enable the same behavior with `.with_error_recovery = true`. Every generated parser exposes `ErrorRecoveryMode`, `error_recovery_mode`, and the compatibility boolean `is_error_recovery_enabled`. The mode is `.disabled` without generated recovery, `.automatic` when recovery is enabled for an unannotated grammar, and `.explicit` when recovery is enabled for a grammar containing `!` annotations.
+
+Explicit annotations can be attached to an LHS variable, a production immediately after `|`, or an RHS variable occurrence:
+
+```text
+Statement!^"}"!";"^@hook
+|!","^ Expression
+| Block Statement!^"}"
+```
+
+The caret selects the resume side: `!^"}"` preserves `}` and resumes before it, while `!";"^` consumes `;` and resumes after it. Multiple consecutive annotations are candidates on the same target and must precede `@` hooks. If a grammar contains any recovery annotation, recovery is explicit-only: a mismatch with no active annotated scope fails instead of falling back to automatic recovery. See the [grammar guidelines](grammar_guidelines.md#5-explicit-syntax-recovery-) for validation and scope-selection details.
+
+Galley's own LL and LR grammars use newline and blank-line annotations as the production example. From the repository root, compare their material effect against automatic recovery with:
+
+```sh
+zig build compare-galley-recovery
+```
+
+The command generates both parsers from the same LL grammar model, clears only the recovery annotations for the automatic baseline, and runs the same malformed grammar through both.
+
+Recovery-enabled parsers use `max_errors` and `recovery_window` at runtime:
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{
@@ -242,7 +262,11 @@ if (session.parseBytes(input, "input")) |_| {
 }
 ```
 
-Fail-fast parsers populate `lastDiagnostic()` and report a syntax-error count of one. A recovery-enabled parse that encounters errors still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one. Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee.
+Fail-fast parsers populate `lastDiagnostic()` and report a syntax-error count of one. A recovery-enabled parse that encounters errors still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one.
+
+`SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
+
+Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee. Explicit recovery skips hooks belonging to the damaged occurrence, selected production, and variable.
 
 Each call resets the session's transient parsing state while retaining reusable allocations. Other input APIs are available for specialized callers:
 

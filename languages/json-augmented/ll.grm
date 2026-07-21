@@ -9,8 +9,6 @@ Value
 | "null" OptionalBlank
 | "true" OptionalBlank
 | "false" OptionalBlank
-
-Value
 | AugmentedPrefix Value ")"
 
 AugmentedPrefix
