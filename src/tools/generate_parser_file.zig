@@ -8,6 +8,7 @@ const CliOptions = struct {
     output_path: ?[]const u8 = null,
     parser_type: ?generator.ParserType = null,
     label: ?[]const u8 = null,
+    strip_recovery_annotations: bool = false,
     generator_options: generator.Options = .{},
 };
 
@@ -27,8 +28,44 @@ pub fn main(init: std.process.Init) !void {
 
     var file_buffer: [8192]u8 = undefined;
     var file_writer = output.writer(init.io, &file_buffer);
-    try generator.emitParserFromSource(init.arena.allocator(), source, &file_writer.interface, parser_type, options.generator_options);
+    if (options.strip_recovery_annotations) {
+        const grammar = try generator.parseGrammar(init.arena.allocator(), source);
+        const automatic_grammar = try grammarWithoutRecoveryAnnotations(init.arena.allocator(), grammar);
+        try generator.emitParser(init.arena.allocator(), automatic_grammar, &file_writer.interface, parser_type, options.generator_options);
+    } else {
+        try generator.emitParserFromSource(init.arena.allocator(), source, &file_writer.interface, parser_type, options.generator_options);
+    }
     try file_writer.interface.flush();
+}
+
+fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const generator.Grammar) !*generator.Grammar {
+    const rules = try allocator.alloc(generator.Rule, source.rules.len);
+    for (source.rules, rules) |source_rule, *rule| {
+        const right_hand_sides = try allocator.alloc(generator.RightHandSide, source_rule.right_hand_sides.len);
+        for (source_rule.right_hand_sides, right_hand_sides) |source_rhs, *rhs| {
+            const symbols = try allocator.alloc(generator.SymbolRef, source_rhs.symbols.len);
+            for (source_rhs.symbols, symbols) |source_symbol, *symbol| {
+                symbol.* = .{
+                    .id = source_symbol.id,
+                    .kind = source_symbol.kind,
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures },
+                };
+            }
+            rhs.* = .{
+                .symbols = symbols,
+                .annotations = .{ .procedures = source_rhs.annotations.procedures },
+            };
+        }
+        rule.* = .{
+            .header = source_rule.header,
+            .annotations = .{ .procedures = source_rule.annotations.procedures },
+            .right_hand_sides = right_hand_sides,
+        };
+    }
+
+    const grammar = try allocator.create(generator.Grammar);
+    grammar.* = .{ .rules = rules };
+    return grammar;
 }
 
 fn parseArgs(init: std.process.Init) !CliOptions {
@@ -60,6 +97,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.label = args.next() orelse fatal("error: --label requires text\n", .{});
         } else if (std.mem.startsWith(u8, arg, "--label=")) {
             result.label = arg["--label=".len..];
+        } else if (std.mem.eql(u8, arg, "--strip-recovery-annotations")) {
+            result.strip_recovery_annotations = true;
         } else if (std.mem.eql(u8, arg, "--with-ast")) {
             result.generator_options.with_ast = true;
         } else if (std.mem.eql(u8, arg, "--no-ast")) {
@@ -104,6 +143,8 @@ fn printUsage(init: std.process.Init) !void {
         \\      --output <PATH>        Generated parser output path.
         \\      --parser-type ll|lr    Parser backend to generate.
         \\      --label <TEXT>         Progress label printed before generation.
+        \\      --strip-recovery-annotations
+        \\                             Test-only: clear recovery annotations before generation.
         \\      --with-ast             Enables AST construction.
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.

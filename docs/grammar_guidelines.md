@@ -6,6 +6,7 @@
 - [2. Variable Naming & AST Generation](#2-variable-naming--ast-generation)
 - [3. Terminal Symbols](#3-terminal-symbols)
 - [4. Procedure Hooks (`@procedure_name`)](#4-procedure-hooks-procedure_name)
+- [5. Explicit Syntax Recovery (`!`)](#5-explicit-syntax-recovery-)
 
 ---
 
@@ -17,6 +18,8 @@ This guide details the syntax, conventions, and compile-time annotations support
 
 - **Rule Structure:**
   Each grammar rule is defined by the LHS (Left-Hand Side) variable symbol on a single line, followed by its alternative productions.
+- **Unique Rule Headers:**
+  Each variable must have exactly one LHS header. Put all of its alternatives on consecutive `|` lines beneath that header; declaring the same LHS again is an error.
 - **Alternation:**
   Each alternative production must start with a pipe character `|` on a new line, followed by space-separated symbols:
 
@@ -105,7 +108,7 @@ Galley provides three explicit hook placements, registered by appending a proced
 
 4. **Automatic Reduction Hooks:** Exporting conventionally named public procedures from `procedures.zig` binds them without grammar annotations:
 
-   - `reduction_<SymbolName>_<RhsIndex>` runs only for the zero-based production index of that symbol. Indexing follows source order and continues across repeated declarations of the same LHS.
+   - `reduction_<SymbolName>_<RhsIndex>` runs only for the zero-based production index of that symbol. Indices follow the consecutive `|` lines beneath the variable's unique LHS header.
    - `reduction_<SymbolName>` runs whenever that symbol produces an AST node.
    - `reduction` runs for every eligible variable reduction and AST-enabled terminal match.
 
@@ -118,3 +121,25 @@ For an AST-enabled terminal, the occurrence chain runs first, followed by `reduc
 ---
 
 For detailed information on automatic hooks, nested reduction ordering, compiler AST requirements, and how to write hook functions in Zig, see the [Reduction Procedures User Guide](procedures.md).
+
+## 5. Explicit Syntax Recovery (`!`)
+
+Recovery annotations declare synchronization terminals on an LHS variable, a production, or an RHS variable occurrence:
+
+```text
+Statement!^"}"!";"^@hook
+|!","^ Expression
+| Block Statement!^"}"
+```
+
+- `!^"}"` resumes immediately before `}` and preserves the terminal for the surrounding parser state.
+- `!";"^` resumes immediately after `;` and consumes the terminal.
+- Consecutive annotations provide multiple candidates for one target. They must appear before any `@` hooks on that target.
+- Recovery terminals accept the same two quoted exact-terminal forms as normal grammar terminals. Empty terminals, NUL-containing terminals, and generative terminals are invalid.
+- An RHS recovery annotation may only attach to a variable occurrence, not a terminal occurrence.
+
+When error recovery generation is enabled and the grammar has no annotations, Galley uses automatic recovery. The presence of any recovery annotation selects explicit-only recovery for the generated parser; an error outside committed annotated scopes fails immediately without automatic fallback. When recovery generation is disabled, annotations remain in the grammar model but are inert, and generation emits one warning.
+
+After a mismatch, Galley tries committed scopes from the most specific to the most general: the active RHS occurrence, its selected production, its LHS variable, then enclosing reductions. Within one target it chooses the earliest candidate in the input, then the longest terminal, then source order. A successful recovery preserves the original mismatch diagnostic, adds structured recovery context, neutral-completes the damaged variable, and skips hooks belonging to the damaged occurrence, production, and variable.
+
+Galley's own [LL grammar](../languages/galley/ll.grm) and [LR grammar](../languages/galley/lr.grm) are maintained examples. They recover a damaged `Symbol` before its newline, discard a damaged `RightHandSideLine` after its newline, and fall back from a damaged `Rule` to the blank line before the next rule. Run `zig build compare-galley-recovery` to see the annotated LL grammar and an annotation-free clone parse the same malformed grammar in explicit and automatic modes.

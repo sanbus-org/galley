@@ -24,12 +24,43 @@ pub const SyntaxDiagnosticContext = union(enum) {
     state: usize,
 };
 
+pub const SyntaxRecoveryResume = enum {
+    before,
+    after,
+};
+
+pub const SyntaxRecoveryTarget = union(enum) {
+    lhs_variable: []const u8,
+    production: struct {
+        variable: []const u8,
+        rhs_index: usize,
+    },
+    occurrence: struct {
+        parent_variable: []const u8,
+        rhs_index: usize,
+        symbol_index: usize,
+        variable: []const u8,
+    },
+};
+
+pub const SyntaxRecovery = struct {
+    target: SyntaxRecoveryTarget,
+    terminal: []const u8,
+    @"resume": SyntaxRecoveryResume,
+};
+
+pub const SyntaxRecoveryPoint = struct {
+    terminal: []const u8,
+    @"resume": SyntaxRecoveryResume,
+};
+
 pub const SyntaxDiagnostic = struct {
     line: u32,
     column: u32,
     unexpected_token: []const u8,
     expected_tokens: []const []const u8,
     context: SyntaxDiagnosticContext = .none,
+    recovery: ?SyntaxRecovery = null,
 };
 
 pub const ParseDiagnostic = union(enum) {
@@ -105,6 +136,31 @@ fn writeExpectedTokens(writer: *std.Io.Writer, expected_tokens: []const []const 
     }
 }
 
+fn writeRecoveryTarget(writer: *std.Io.Writer, target: SyntaxRecoveryTarget) !void {
+    switch (target) {
+        .lhs_variable => |variable| try writer.print("LHS variable {f}", .{string_utilities.fmtString(variable)}),
+        .production => |production| try writer.print("production {f}[{d}]", .{
+            string_utilities.fmtString(production.variable),
+            production.rhs_index,
+        }),
+        .occurrence => |occurrence| try writer.print("occurrence {f} at {f}[{d}].{d}", .{
+            string_utilities.fmtString(occurrence.variable),
+            string_utilities.fmtString(occurrence.parent_variable),
+            occurrence.rhs_index,
+            occurrence.symbol_index,
+        }),
+    }
+}
+
+pub fn formatSyntaxRecovery(writer: *std.Io.Writer, recovery: SyntaxRecovery) !void {
+    try writer.writeAll("Recovery: ");
+    try writeRecoveryTarget(writer, recovery.target);
+    try writer.print(" resumed {s} \"{f}\".\n", .{
+        @tagName(recovery.@"resume"),
+        string_utilities.fmtString(recovery.terminal),
+    });
+}
+
 pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic, style: DiagnosticStyle) !void {
     switch (diagnostic) {
         .syntax => |syntax| {
@@ -125,6 +181,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     try writer.writeAll(".\nExpected tokens: '");
                     try writeExpectedTokens(writer, syntax.expected_tokens);
                     try writer.writeAll("'\n");
+                    if (syntax.recovery) |recovery| try formatSyntaxRecovery(writer, recovery);
                 },
                 .ansi => {
                     try writer.print(
@@ -144,6 +201,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     try writer.writeAll("\nExpected tokens: \x1b[32m'");
                     try writeExpectedTokens(writer, syntax.expected_tokens);
                     try writer.writeAll("'\x1b[0m\n");
+                    if (syntax.recovery) |recovery| try formatSyntaxRecovery(writer, recovery);
                 },
             }
         },
@@ -283,6 +341,9 @@ pub const Session = struct {
         self.runtime_context.last_diagnostic = null;
         self.runtime_context.syntax_error_count = 0;
         self.runtime_context.syntax_recovery_position = null;
+        self.runtime_context.explicit_recovery_position = null;
+        self.runtime_context.explicit_recovery_target_id = null;
+        self.runtime_context.pending_syntax_error_site = null;
         data_structures.context.activateRuntimeContext(&self.runtime_context);
         defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
@@ -299,6 +360,11 @@ test "galley LL grammar error hook returns custom guidance" {
         .unexpected_token = "F",
         .expected_tokens = &.{ "\x00", "\n", "#", "|" },
         .context = .{ .while_parsing = "RightHandSidesTail" },
+        .recovery = .{
+            .target = .{ .lhs_variable = "RightHandSideLine" },
+            .terminal = "\n",
+            .@"resume" = .after,
+        },
     } };
 
     const message = try error_messages.syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail(.{
@@ -312,5 +378,40 @@ test "galley LL grammar error hook returns custom guidance" {
     try std.testing.expect(std.mem.indexOf(u8, message, "Expected another production line, a comment line, or a blank line before the next rule.") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "Production lines start with `|`; comment lines start with `#`.") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "Unexpected token: \"F\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Recovery: LHS variable RightHandSideLine resumed after \"\\n\".") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "Unexpected token \"F\" while parsing RightHandSidesTail") == null);
+}
+
+test "tracked galley LL parser uses explicit recovery" {
+    try std.testing.expect(parser.is_error_recovery_enabled);
+    try std.testing.expectEqual(parser.ErrorRecoveryMode.explicit, parser.error_recovery_mode);
+}
+
+test "structured syntax recovery renders in plain and ANSI diagnostics" {
+    const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .line = 3,
+        .column = 7,
+        .unexpected_token = "?",
+        .expected_tokens = &.{"x"},
+        .context = .{ .while_parsing = "Child" },
+        .recovery = .{
+            .target = .{ .occurrence = .{
+                .parent_variable = "Parent",
+                .rhs_index = 2,
+                .symbol_index = 1,
+                .variable = "Child",
+            } },
+            .terminal = ";",
+            .@"resume" = .after,
+        },
+    } };
+
+    const plain = try renderParseDiagnostic(std.testing.allocator, diagnostic, .plain);
+    defer std.testing.allocator.free(plain);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "Unexpected token \"?\" while parsing Child.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "Recovery: occurrence Child at Parent[2].1 resumed after \";\".") != null);
+
+    const ansi = try renderParseDiagnostic(std.testing.allocator, diagnostic, .ansi);
+    defer std.testing.allocator.free(ansi);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "Recovery: occurrence Child at Parent[2].1 resumed after \";\".") != null);
 }

@@ -11,9 +11,10 @@ fn syntax(args: root.SyntaxErrorMessageArgs) Syntax {
 
 fn fmt(args: root.SyntaxErrorMessageArgs, comptime body: []const u8) ![]const u8 {
     const diagnostic = syntax(args);
-    return switch (args.style) {
-        .plain => try std.fmt.allocPrint(
-            args.allocator,
+    var output: std.Io.Writer.Allocating = .init(args.allocator);
+    errdefer output.deinit();
+    switch (args.style) {
+        .plain => try output.writer.print(
             "SyntaxError at {d}:{d}:\n" ++ body ++ "\nUnexpected token: \"{f}\"\n",
             .{
                 diagnostic.line,
@@ -21,8 +22,7 @@ fn fmt(args: root.SyntaxErrorMessageArgs, comptime body: []const u8) ![]const u8
                 root.string_utilities.fmtString(diagnostic.unexpected_token),
             },
         ),
-        .ansi => try std.fmt.allocPrint(
-            args.allocator,
+        .ansi => try output.writer.print(
             "\x1b[35mSyntaxError at {d}:{d}:\x1b[0m\n" ++ body ++ "\n\x1b[37mUnexpected token: \x1b[31m\"{f}\"\x1b[0m\n",
             .{
                 diagnostic.line,
@@ -30,7 +30,9 @@ fn fmt(args: root.SyntaxErrorMessageArgs, comptime body: []const u8) ![]const u8
                 root.string_utilities.fmtString(diagnostic.unexpected_token),
             },
         ),
-    };
+    }
+    if (diagnostic.recovery) |recovery| try root.formatSyntaxRecovery(&output.writer, recovery);
+    return output.toOwnedSlice();
 }
 
 fn expectedRule(args: root.SyntaxErrorMessageArgs) ![]const u8 {

@@ -10,6 +10,9 @@ pub const Rule = galley_grammar.procedures.Rule;
 pub const RightHandSide = galley_grammar.procedures.RightHandSide;
 pub const SymbolRef = galley_grammar.procedures.SymbolRef;
 pub const SymbolKind = galley_grammar.procedures.SymbolKind;
+pub const Annotations = galley_grammar.procedures.Annotations;
+pub const RecoveryPoint = galley_grammar.procedures.RecoveryPoint;
+pub const RecoveryResume = galley_grammar.procedures.RecoveryResume;
 pub const Options = common.Options;
 
 pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar {
@@ -31,17 +34,17 @@ fn cloneGrammar(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar 
                 cloned_symbol.* = .{
                     .id = try allocator.dupe(u8, source_symbol.id),
                     .kind = source_symbol.kind,
-                    .procedures = try cloneStringSlice(allocator, source_symbol.procedures),
+                    .annotations = try cloneAnnotations(allocator, source_symbol.annotations),
                 };
             }
             cloned_rhs.* = .{
                 .symbols = cloned_symbols,
-                .procedures = try cloneStringSlice(allocator, source_rhs.procedures),
+                .annotations = try cloneAnnotations(allocator, source_rhs.annotations),
             };
         }
         cloned_rule.* = .{
             .header = try allocator.dupe(u8, source_rule.header),
-            .procedures = try cloneStringSlice(allocator, source_rule.procedures),
+            .annotations = try cloneAnnotations(allocator, source_rule.annotations),
             .right_hand_sides = cloned_right_hand_sides,
         };
     }
@@ -51,12 +54,55 @@ fn cloneGrammar(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar 
     return cloned_grammar;
 }
 
+fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotations {
+    const recovery_points = try allocator.alloc(RecoveryPoint, source.recovery_points.len);
+    for (source.recovery_points, recovery_points) |point, *cloned| {
+        cloned.* = .{
+            .terminal = try allocator.dupe(u8, point.terminal),
+            .@"resume" = point.@"resume",
+        };
+    }
+    return .{
+        .procedures = try cloneStringSlice(allocator, source.procedures),
+        .recovery_points = recovery_points,
+    };
+}
+
 fn cloneStringSlice(allocator: std.mem.Allocator, source: []const []const u8) ![]const []const u8 {
     const cloned = try allocator.alloc([]const u8, source.len);
     for (source, cloned) |item, *cloned_item| {
         cloned_item.* = try allocator.dupe(u8, item);
     }
     return cloned;
+}
+
+fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar {
+    const rules = try allocator.alloc(Rule, source.rules.len);
+    for (source.rules, rules) |source_rule, *rule| {
+        const right_hand_sides = try allocator.alloc(RightHandSide, source_rule.right_hand_sides.len);
+        for (source_rule.right_hand_sides, right_hand_sides) |source_rhs, *rhs| {
+            const symbols = try allocator.alloc(SymbolRef, source_rhs.symbols.len);
+            for (source_rhs.symbols, symbols) |source_symbol, *symbol| {
+                symbol.* = .{
+                    .id = source_symbol.id,
+                    .kind = source_symbol.kind,
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures },
+                };
+            }
+            rhs.* = .{
+                .symbols = symbols,
+                .annotations = .{ .procedures = source_rhs.annotations.procedures },
+            };
+        }
+        rule.* = .{
+            .header = source_rule.header,
+            .annotations = .{ .procedures = source_rule.annotations.procedures },
+            .right_hand_sides = right_hand_sides,
+        };
+    }
+    const grammar = try allocator.create(Grammar);
+    grammar.* = .{ .rules = rules };
+    return grammar;
 }
 
 pub fn emitParser(
@@ -154,6 +200,133 @@ test generateParserAlloc {
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
     try std.testing.expect(std.mem.indexOf(u8, output, "pub fn parse") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
+}
+
+test "grammar model preserves unified recovery and procedure annotations" {
+    const source = "Start!^\"}\"!';\x03^@lhsHook\n" ++
+        "|!\",\"^@productionHook \"a\" Child!^']\x03@occurrenceHook\n" ++
+        "\n" ++
+        "Child\n" ++
+        "| \"x\"\n";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const grammar = try parseGrammar(arena.allocator(), source);
+    try std.testing.expectEqual(@as(usize, 2), grammar.rules.len);
+    const start = grammar.rules[0];
+    try std.testing.expectEqualStrings("lhsHook", start.annotations.procedures[0]);
+    try std.testing.expectEqual(@as(usize, 2), start.annotations.recovery_points.len);
+    try std.testing.expectEqualStrings("}", start.annotations.recovery_points[0].terminal);
+    try std.testing.expectEqual(RecoveryResume.before, start.annotations.recovery_points[0].@"resume");
+    try std.testing.expectEqualStrings(";", start.annotations.recovery_points[1].terminal);
+    try std.testing.expectEqual(RecoveryResume.after, start.annotations.recovery_points[1].@"resume");
+
+    const production = start.right_hand_sides[0];
+    try std.testing.expectEqualStrings("productionHook", production.annotations.procedures[0]);
+    try std.testing.expectEqualStrings(",", production.annotations.recovery_points[0].terminal);
+    try std.testing.expectEqual(RecoveryResume.after, production.annotations.recovery_points[0].@"resume");
+
+    const occurrence = production.symbols[1];
+    try std.testing.expectEqual(.variable, occurrence.kind);
+    try std.testing.expectEqualStrings("occurrenceHook", occurrence.annotations.procedures[0]);
+    try std.testing.expectEqualStrings("]", occurrence.annotations.recovery_points[0].terminal);
+    try std.testing.expectEqual(RecoveryResume.before, occurrence.annotations.recovery_points[0].@"resume");
+}
+
+test "recovery caret placement is structural when terminals contain carets" {
+    const source = "Start!^\"^\"!\"^\"^!^'^\x03!'\x5e\x03^\n" ++
+        "| \"x\"\n";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const grammar = try parseGrammar(arena.allocator(), source);
+    const points = grammar.rules[0].annotations.recovery_points;
+    try std.testing.expectEqual(@as(usize, 4), points.len);
+    for (points) |point| try std.testing.expectEqualStrings("^", point.terminal);
+    try std.testing.expectEqual(RecoveryResume.before, points[0].@"resume");
+    try std.testing.expectEqual(RecoveryResume.after, points[1].@"resume");
+    try std.testing.expectEqual(RecoveryResume.before, points[2].@"resume");
+    try std.testing.expectEqual(RecoveryResume.after, points[3].@"resume");
+}
+
+test "parsed grammar rejects duplicate headers and invalid recovery annotations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.DuplicateRuleHeader, parseGrammar(arena.allocator(),
+        \\Start
+        \\| "a"
+        \\
+        \\Start
+        \\| "b"
+        \\
+    ));
+    try std.testing.expectError(error.InvalidRecoveryTarget, parseGrammar(arena.allocator(),
+        \\Start
+        \\| "a"!^";"
+        \\
+    ));
+    try std.testing.expectError(error.EmptyRecoveryTerminal, parseGrammar(arena.allocator(),
+        \\Start!^""
+        \\| "a"
+        \\
+    ));
+    try std.testing.expectError(error.NulRecoveryTerminal, parseGrammar(arena.allocator(),
+        \\Start!^"\x00"
+        \\| "a"
+        \\
+    ));
+    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+        \\Start!^digit
+        \\| "a"
+        \\
+    ));
+    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+        \\Start!";"
+        \\| "a"
+        \\
+    ));
+    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+        \\Start@hook!^";"
+        \\| "a"
+        \\
+    ));
+}
+
+test "programmatic grammar validation rejects duplicate headers and terminal occurrence recovery" {
+    const recovery = [_]RecoveryPoint{.{ .terminal = ";", .@"resume" = .after }};
+    const terminal_symbols = [_]SymbolRef{.{
+        .id = "a",
+        .kind = .terminal,
+        .annotations = .{ .recovery_points = &recovery },
+    }};
+    const duplicate_rules = [_]Rule{
+        .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &.{} }} },
+        .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &.{} }} },
+    };
+    const invalid_rules = [_]Rule{.{
+        .header = "Start",
+        .right_hand_sides = &.{.{ .symbols = &terminal_symbols }},
+    }};
+
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expectError(error.DuplicateRuleHeader, emitParser(
+        std.testing.allocator,
+        &.{ .rules = &duplicate_rules },
+        &output.writer,
+        .ll,
+        .{},
+    ));
+    try std.testing.expectError(error.InvalidRecoveryTarget, emitParser(
+        std.testing.allocator,
+        &.{ .rules = &invalid_rules },
+        &output.writer,
+        .lr,
+        .{},
+    ));
 }
 
 test "LR rejects indistinguishable variable and terminal occurrence hooks" {
@@ -302,6 +475,7 @@ test "generateParserAlloc emits position-based LL recovery" {
     });
 
     _ = try expectContains(output, "pub const is_error_recovery_enabled = true;");
+    _ = try expectContains(output, "pub const error_recovery_mode: ErrorRecoveryMode = .automatic;");
     _ = try expectContains(output, "fn llRecoveryOffset(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
     _ = try expectContains(output, "try parse_Item(context)");
@@ -325,6 +499,7 @@ test "generateParserAlloc emits position-based LR recovery" {
     });
 
     _ = try expectContains(output, "pub const is_error_recovery_enabled = true;");
+    _ = try expectContains(output, "pub const error_recovery_mode: ErrorRecoveryMode = .automatic;");
     _ = try expectContains(output, "fn lrRecoveryOffset(");
     _ = try expectContains(output, "state_recovery: while (true)");
     _ = try expectContains(output, "if (result.is_recovery) continue :state_recovery;");
@@ -344,6 +519,7 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
 
     const ll_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
     _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = false;");
+    _ = try expectContains(ll_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
     _ = try expectContains(ll_output, "try context.recordSyntaxDiagnostic(");
     _ = try expectContains(ll_output, "return root.ParseError.SyntaxError;");
     try expectNotContains(ll_output, "llRecoveryOffset");
@@ -353,12 +529,108 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
 
     const lr_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
     _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = false;");
+    _ = try expectContains(lr_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
     _ = try expectContains(lr_output, "try context.recordSyntaxDiagnostic(");
     _ = try expectContains(lr_output, "return root.ParseError.SyntaxError;");
     try expectNotContains(lr_output, "lrRecoveryOffset");
     try expectNotContains(lr_output, "state_recovery:");
     try expectNotContains(lr_output, "lr_syntax_error_");
     try expectNotContains(lr_output, ".is_recovery");
+}
+
+test "disabled recovery annotations are inert in LL and LR generation" {
+    const plain_source =
+        \\Start
+        \\| Item
+        \\
+        \\Item
+        \\| "x" Item
+        \\|
+        \\
+    ;
+    const annotated_source =
+        \\Start!^"synchronization"
+        \\|!";"^ Item!^","
+        \\
+        \\Item
+        \\| "x" Item
+        \\|
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const options: Options = .{
+        .with_ast = false,
+        .with_procedures = false,
+        .with_error_recovery = false,
+    };
+
+    inline for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const plain = try generateParserAlloc(arena.allocator(), plain_source, parser_type, options);
+        const annotated = try generateParserAlloc(arena.allocator(), annotated_source, parser_type, options);
+        try std.testing.expectEqualStrings(plain, annotated);
+    }
+}
+
+test "Galley recovery annotations preserve the canonical LR topology" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const source = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        "languages/galley/lr.grm",
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    const annotated = try parseGrammar(arena.allocator(), source);
+    const stripped = try grammarWithoutRecoveryAnnotations(arena.allocator(), annotated);
+    const options: Options = .{
+        .with_ast = true,
+        .with_procedures = true,
+        .with_error_recovery = true,
+    };
+
+    try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
+    try std.testing.expectEqual(@as(usize, 126), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+
+    var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
+    var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());
+    try lr_generator.emitErrorMessagesWithOptions(arena.allocator(), annotated, &annotated_messages.writer, options);
+    try lr_generator.emitErrorMessagesWithOptions(arena.allocator(), stripped, &stripped_messages.writer, options);
+    try std.testing.expectEqualStrings(annotated_messages.written(), stripped_messages.written());
+}
+
+test "generateParserAlloc emits explicit-only recovery when annotations exist" {
+    const source =
+        \\Start
+        \\| "a" Child!";"^
+        \\
+        \\Child
+        \\| "x"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const options: Options = .{
+        .with_ast = false,
+        .with_procedures = false,
+        .with_error_recovery = true,
+    };
+    const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, options);
+    _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = true;");
+    _ = try expectContains(ll_output, "pub const error_recovery_mode: ErrorRecoveryMode = .explicit;");
+    _ = try expectContains(ll_output, "const ExplicitRecoveryScope = struct");
+    _ = try expectContains(ll_output, "context.tryExplicitRecovery(scope.id, scope.target, scope.points)");
+    try expectNotContains(ll_output, "llRecoveryOffset");
+
+    const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, options);
+    _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = true;");
+    _ = try expectContains(lr_output, "pub const error_recovery_mode: ErrorRecoveryMode = .explicit;");
+    _ = try expectContains(lr_output, "const ExplicitRecoveryScope = struct");
+    _ = try expectContains(lr_output, "context.tryExplicitRecovery(scope.id, scope.target, scope.points)");
+    try expectNotContains(lr_output, "lrRecoveryOffset");
 }
 
 test "LL syntax error recovery tail calls have a portable fallback" {
