@@ -35,6 +35,14 @@ zig build -Doptimize=ReleaseFast ll-json
 
 That's it — `languages/json/samples/code-01.json` parses at hundreds of megabytes per second.
 
+The separate `json-recovery` implementation demonstrates explicit recovery and custom messages while keeping the benchmark grammar minimal. Its demonstration input is intentionally malformed and exits with `SyntaxError` after reporting three recoverable value errors:
+
+```sh
+./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
+zig build ll-json-recovery
+./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+```
+
 ### Try the LR parser too
 
 ```sh

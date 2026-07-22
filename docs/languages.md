@@ -5,6 +5,7 @@
 - [Overview](#overview)
 - [Bundled Grammars](#bundled-grammars)
   - [JSON (`languages/json`)](#json-languagesjson)
+  - [JSON Recovery (`languages/json-recovery`)](#json-recovery-languagesjson-recovery)
   - [JSON Structured AST (`languages/json-structured-ast`)](#json-structured-ast-languagesjson-structured-ast)
   - [JSON Augmented (`languages/json-augmented`)](#json-augmented-languagesjson-augmented)
   - [Lisp (`languages/lisp`)](#lisp-languageslisp)
@@ -28,6 +29,24 @@ Galley ships with several ready-to-use grammar definitions located in the `langu
 The standard RFC 8259 JSON implementation used for JSON benchmarking. It supports full recursive object and array structures, floating-point numbers, unicode escape sequences, and string content literals. Its grammar is written with fewer non-terminals so the generated parser has fewer calls and less intermediate AST structure.
 
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+
+This is the minimal performance reference. Recovery-oriented grammar structure lives in `languages/json-recovery` so it cannot affect JSON benchmark topology or throughput.
+
+### JSON Recovery (`languages/json-recovery`)
+
+The full JSON recovery and diagnostics demonstration. It accepts the same valid corpus through symlinks to `languages/json/samples`, while its grammar is free to use recovery-specific boundaries.
+
+- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+- **Recovery:** Uses explicit occurrence, production, and LHS annotations to preserve later array elements and object members while safely closing damaged containers. LL isolates one damaged value; LR uses its existing left-recursive list production where that preserves the same visible behavior without an additional reduction per list item.
+- **Diagnostics:** `error_messages.zig` provides shared JSON-specific guidance, exposed through semantic LL hooks and the parser-wide LR fallback.
+
+Generate either parser with recovery enabled, then run the intentionally malformed demonstration. Its nonzero exit status is expected after all recoverable diagnostics are printed:
+
+```sh
+./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
+zig build ll-json-recovery
+./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+```
 
 ### JSON Structured AST (`languages/json-structured-ast`)
 

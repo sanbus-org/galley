@@ -100,6 +100,7 @@ const parser_type_specs = [_]ParserTypeSpec{
 const languages = [_][]const u8{
     "galley",
     "json",
+    "json-recovery",
     "json-augmented",
     "json-structured-ast",
     "lisp",
@@ -314,7 +315,9 @@ fn addCase(
             trackFilteredTestRun(b, options, &run_recovery_error_tests.step);
             work.errors += 1;
 
-            if (std.mem.eql(u8, language, "json") and std.mem.eql(u8, variant.name, "no-ast-procedures-size16")) {
+            if ((std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "json-recovery")) and
+                std.mem.eql(u8, variant.name, "no-ast-procedures-size16"))
+            {
                 const recovery_cli_options = b.addOptions();
                 recovery_cli_options.addOption([]const u8, "api_benchmark_step", "run-api-bench-generated-parser-matrix");
                 const recovery_cli_mod = b.createModule(.{
@@ -597,7 +600,7 @@ const ErrorInputs = struct {
 };
 
 fn errorInputs(language: []const u8) ?ErrorInputs {
-    if (std.mem.eql(u8, language, "json")) {
+    if (std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "json-recovery")) {
         return .{
             .valid = "{}",
             .malformed = "{",

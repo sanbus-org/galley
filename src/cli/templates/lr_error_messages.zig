@@ -9,3 +9,9 @@ const root = @import("galley");
 // pub fn syntax_error_lr_example_0(args: root.SyntaxErrorMessageArgs) ![]const u8 {
 //     return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 // }
+//
+// A parser-wide LR fallback is also supported:
+//
+// pub fn syntax_error_lr(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+//     return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+// }

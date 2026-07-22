@@ -113,6 +113,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_galley_recovery_tests = try addGalleyRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_galley_recovery_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_galley_recovery_tests.step);
+
+            const run_json_recovery_tests = try addJsonRecoveryTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_json_recovery_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_recovery_tests.step);
         }
     }
 
@@ -218,6 +222,10 @@ pub fn add(b: *std.Build, options: Options) !void {
         try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-lr-no-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--no-ast"});
         try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-ll-with-ast", "languages/json/ll.grm", "_ll-parser.zig", &.{"--with-ast"});
         try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-lr-with-ast", "languages/json/lr.grm", "_lr-parser.zig", &.{"--with-ast"});
+        try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-recovery-ll-no-ast", "languages/json-recovery/ll.grm", "_ll-parser.zig", &.{ "--no-ast", "--with-error-recovery" });
+        try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-recovery-lr-no-ast", "languages/json-recovery/lr.grm", "_lr-parser.zig", &.{ "--no-ast", "--with-error-recovery" });
+        try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-recovery-ll-with-ast", "languages/json-recovery/ll.grm", "_ll-parser.zig", &.{ "--with-ast", "--with-error-recovery" });
+        try addGalleyBootstrapParityCase(b, parity_step, options.ll_galley_exe, lr_galley_exe, "json-recovery-lr-with-ast", "languages/json-recovery/lr.grm", "_lr-parser.zig", &.{ "--with-ast", "--with-error-recovery" });
         test_step.dependOn(parity_step);
     } else {
         addSelectionFailure(b, parity_step, "the selected filters do not include suite:galley-parity");
@@ -555,6 +563,69 @@ fn addGalleyRecoveryTests(
     });
     const tests = b.addTest(.{
         .name = b.fmt("galley-recovery-{s}-tests", .{parser_type}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addJsonRecoveryTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path(b.fmt("languages/json-recovery/{s}.grm", .{parser_type})));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--output");
+    const parser_path = generate_parser.addOutputFileArg(b.fmt("json-recovery-{s}-parser.zig", .{parser_type}));
+    generate_parser.addArgs(&.{
+        "--no-ast",
+        "--no-procedures",
+        "--with-error-recovery",
+        "--input-size",
+        "16",
+    });
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("languages/json-recovery/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path("languages/json-recovery/config.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("languages/json-recovery/{s}_error_messages.zig", .{parser_type})),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        b.fmt("json-recovery-{s}", .{parser_type}),
+        b.fmt("json-recovery-{s}-source", .{parser_type}),
+        parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.ll_generator_mod,
+        options.generator.lr_generator_mod,
+    );
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/json_recovery_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("json-recovery-{s}-tests", .{parser_type}),
         .root_module = test_mod,
         .filters = filters,
     });

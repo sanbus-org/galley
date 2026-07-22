@@ -140,6 +140,8 @@ The fill mode appends missing `pub fn syntax_error_*` hooks, preserves existing 
 
 LL hook names are semantic: `syntax_error_ll_<parser-symbol>__expected_<semantic-alternatives>`. The LL parser resolves hooks at comptime from most specific to broadest: exact semantic hook, `syntax_error_ll_<parser-symbol>`, `syntax_error_ll`, `syntax_error`, then the default renderer.
 
+LR hook names identify exact generated sites, for example `syntax_error_lr_state_12_action_19`. LR resolution checks that exact hook first, followed by the language-wide `syntax_error_lr`, the cross-parser `syntax_error`, and finally the default renderer.
+
 ```zig
 const root = @import("galley");
 

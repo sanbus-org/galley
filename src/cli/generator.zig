@@ -350,7 +350,7 @@ fn isValidSyntaxErrorHook(name: []const u8, generated_names: []const []const u8,
     if (containsString(generated_names, name)) return true;
     return switch (parser_type) {
         .ll => isValidLlSyntaxErrorFallback(name, generated_names),
-        .lr => false,
+        .lr => std.mem.eql(u8, name, "syntax_error_lr") or std.mem.eql(u8, name, "syntax_error"),
     };
 }
 
@@ -412,6 +412,43 @@ test "mergeErrorMessages accepts LL fallback hooks and appends missing exact hoo
     try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail(args: root.SyntaxErrorMessageArgs)");
     try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs)");
     try expectContains(merge.source, "pub fn syntax_error_ll_Item__expected_terminal_a(args: root.SyntaxErrorMessageArgs)");
+}
+
+test "mergeErrorMessages accepts LR fallback hooks and appends missing exact hooks" {
+    const existing =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_lr(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return "custom";
+        \\}
+        \\
+        \\pub fn syntax_error(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return "shared";
+        \\}
+        \\
+    ;
+    const filled =
+        \\const root = @import("galley");
+        \\
+        \\pub fn syntax_error_lr_state_12_action_19(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+        \\    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+        \\}
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const merge = try mergeErrorMessages(arena.allocator(), existing, filled, .lr);
+    try std.testing.expectEqual(@as(usize, 0), merge.obsolete_names.len);
+    try std.testing.expect(merge.appended_any);
+    try expectContains(merge.source, "pub fn syntax_error_lr(args: root.SyntaxErrorMessageArgs)");
+    try expectContains(merge.source, "pub fn syntax_error(args: root.SyntaxErrorMessageArgs)");
+    try expectContains(merge.source, "pub fn syntax_error_lr_state_12_action_19(args: root.SyntaxErrorMessageArgs)");
+}
+
+test "default LR error message scaffold documents parser fallback" {
+    try expectContains(defaultLrErrorMessagesSource, "pub fn syntax_error_lr(args: root.SyntaxErrorMessageArgs)");
 }
 
 test "mergeErrorMessages reports obsolete syntax error hooks" {

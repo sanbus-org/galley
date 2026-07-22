@@ -1954,13 +1954,18 @@ const Generator = struct {
         _ = self;
         try writer.print(
             \\{s}const diagnostic = context.runtime().last_diagnostic.?;
+            \\{s}const message_args = root.SyntaxErrorMessageArgs{{
+            \\{s}    .allocator = context.runtime().arena_allocator,
+            \\{s}    .context = context,
+            \\{s}    .diagnostic = diagnostic,
+            \\{s}    .style = .ansi,
+            \\{s}}};
             \\{s}const diagnostic_message = if (comptime @hasDecl(error_messages, "{s}"))
-            \\{s}    @field(error_messages, "{s}")(.{{
-            \\{s}        .allocator = context.runtime().arena_allocator,
-            \\{s}        .context = context,
-            \\{s}        .diagnostic = diagnostic,
-            \\{s}        .style = .ansi,
-            \\{s}    }}) catch ""
+            \\{s}    @field(error_messages, "{s}")(message_args) catch ""
+            \\{s}else if (comptime @hasDecl(error_messages, "syntax_error_lr"))
+            \\{s}    error_messages.syntax_error_lr(message_args) catch ""
+            \\{s}else if (comptime @hasDecl(error_messages, "syntax_error"))
+            \\{s}    error_messages.syntax_error(message_args) catch ""
             \\{s}else
             \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             \\{s}if (!builtin.is_test) std.debug.print("{{s}}", .{{diagnostic_message}});
@@ -1968,10 +1973,15 @@ const Generator = struct {
         , .{
             indent,
             indent,
-            function_name,
+            indent,
+            indent,
+            indent,
+            indent,
+            indent,
             indent,
             function_name,
             indent,
+            function_name,
             indent,
             indent,
             indent,
