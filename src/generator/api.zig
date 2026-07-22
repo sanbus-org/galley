@@ -464,6 +464,18 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
     _ = try expectContainsAfter(output, "root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi)", global);
 }
 
+test "generateParserAlloc emits LR syntax error hook fallback chain" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
+
+    const exact = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_lr_state_");
+    const parser_level = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_lr\")", exact);
+    const global = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
+    _ = try expectContainsAfter(output, "root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi)", global);
+}
+
 test "generateParserAlloc emits position-based LL recovery" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

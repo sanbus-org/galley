@@ -50,6 +50,16 @@ zig build -Doptimize=ReleaseFast ll-json
 ./zig-out/bin/ll-json languages/json/samples/code-01.json
 ```
 
+The separate `json-recovery` implementation demonstrates explicit recovery and custom diagnostics without adding recovery-oriented grammar structure to the benchmark reference:
+
+```sh
+./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
+zig build ll-json-recovery
+./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+```
+
+The command reports `SyntaxError` after printing the recovered diagnostics, so its nonzero exit status is expected.
+
 ---
 
 ## Benchmarked Grammar Coverage

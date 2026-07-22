@@ -155,6 +155,8 @@ This appends missing `pub fn syntax_error_*` hooks to `ll_error_messages.zig` or
 
 LL hook names are semantic instead of numbered. A specific hook is named from the parser symbol and what that branch expected, for example `syntax_error_ll_Value__expected_String_or_Number`. If the specific LL hook is not present, the generated parser checks broader hooks at comptime in this order: `syntax_error_ll_Value`, `syntax_error_ll`, `syntax_error`, then Galley's default renderer.
 
+LR sites retain their stable generated names such as `syntax_error_lr_state_12_action_19`. If that exact hook is absent, the parser checks `syntax_error_lr`, then `syntax_error`, then Galley's default renderer. The parser-level fallback is useful for a language-wide diagnostic style without maintaining one wrapper per LR state.
+
 Each hook receives the current diagnostic and returns the text to print:
 
 ```zig
@@ -235,7 +237,7 @@ Statement!^"}"!";"^@hook
 
 The caret selects the resume side: `!^"}"` preserves `}` and resumes before it, while `!";"^` consumes `;` and resumes after it. Multiple consecutive annotations are candidates on the same target and must precede `@` hooks. If a grammar contains any recovery annotation, recovery is explicit-only: a mismatch with no active annotated scope fails instead of falling back to automatic recovery. See the [grammar guidelines](grammar_guidelines.md#5-explicit-syntax-recovery-) for validation and scope-selection details.
 
-Galley's own LL and LR grammars use newline and blank-line annotations as the production example. From the repository root, compare their material effect against automatic recovery with:
+Galley's own LL and LR grammars use newline and blank-line annotations as the production example. The `languages/json-recovery` LL and LR grammars demonstrate nested occurrence, production, and LHS recovery around object and array delimiters, together with finalized custom diagnostics in `languages/json-recovery/error_messages.zig`. The minimal `languages/json` grammars remain the performance reference. From the repository root, compare Galley's material recovery behavior against automatic recovery with:
 
 ```sh
 zig build compare-galley-recovery

@@ -87,6 +87,7 @@ zig build -Doptimize=ReleaseFast ll-json
 
 ### High-Precision Benchmarking Loop (100 Iterations with 10 Warmups)
 ```sh
+./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery --input-size 32 languages/json
 zig build -Doptimize=ReleaseFast ll-json
 ./zig-out/bin/ll-json -r 100 -w 10 languages/json/samples/code-02.json
 ```
@@ -99,7 +100,7 @@ zig build ll-json
 
 ### Report More Than One Syntax Error
 ```sh
-./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json
-zig build ll-json
-./zig-out/bin/ll-json --max-errors 10 --recovery-window 500 malformed.json
+./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
+zig build ll-json-recovery
+./zig-out/bin/ll-json-recovery --max-errors 10 --recovery-window 500 languages/json-recovery/recovery-demo.json
 ```

@@ -1,0 +1,57 @@
+Value
+|!"}"^ "{" OptionalBlank ObjectMembers OptionalBlank
+|!"]"^ "[" OptionalBlank ArrayMembers OptionalBlank
+| IntegerNumber FloatTail OptionalBlank
+| '" _StringContent '" OptionalBlank
+| "null" OptionalBlank
+| "true" OptionalBlank
+| "false" OptionalBlank
+
+ObjectMembers!"}"^
+|!"}"^ '" _StringContent '" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail "}"
+| "}"
+
+ObjectMembersTail
+|!^"}" "," OptionalBlank '" _StringContent '" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail
+|
+
+ArrayMembers!"]"^
+|!"]"^ Value!^","!^"]" ArrayMembersTail "]"
+| "]"
+
+ArrayMembersTail
+|!^"]" "," _ValueSlot!^","!^"]" ArrayMembersTail
+|
+
+_ValueSlot
+| OptionalBlank Value
+
+OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_StringContent
+| character^'" _StringContent
+|
+
+IntegerNumber
+| digit _PositiveIntegerNumberTail
+| "-" digit _PositiveIntegerNumberTail
+
+_PositiveIntegerNumberTail
+| digit _PositiveIntegerNumberTail
+|
+
+FloatTail
+| "." digit _PositiveIntegerNumberTail
+|
