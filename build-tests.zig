@@ -141,8 +141,9 @@ pub fn add(b: *std.Build, options: Options) !void {
             .target = target,
             .optimize = optimize,
         });
-        const runtime_test_options = b.addOptions();
-        runtime_test_options.addOption(bool, "include", true);
+        const runtime_options = b.addOptions();
+        runtime_options.addOption(bool, "include_tests", true);
+        runtime_options.addOption(bool, "ast_memory_benchmark", generator.ast_memory_benchmark);
         const runtime_test_mod = b.createModule(.{
             .root_source_file = b.path("src/runtime/api.zig"),
             .target = target,
@@ -152,7 +153,7 @@ pub fn add(b: *std.Build, options: Options) !void {
                 .{ .name = "config", .module = runtime_test_config_mod },
                 .{ .name = "error_messages", .module = runtime_test_error_messages_mod },
                 .{ .name = "parser", .module = runtime_test_parser_mod },
-                .{ .name = "runtime_test_options", .module = runtime_test_options.createModule() },
+                .{ .name = "runtime_options", .module = runtime_options.createModule() },
             },
         });
         runtime_test_mod.addImport("galley", runtime_test_mod);
@@ -361,6 +362,7 @@ fn addGalleyRecoveryComparisonParser(
         error_messages_mod,
         options.generator.ll_generator_mod,
         options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
     );
 }
 
@@ -417,6 +419,7 @@ fn addProcedureHookTests(
         error_messages_mod,
         options.generator.ll_generator_mod,
         options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -490,6 +493,7 @@ fn addExplicitRecoveryTests(
         error_messages_mod,
         options.generator.ll_generator_mod,
         options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -554,6 +558,7 @@ fn addGalleyRecoveryTests(
         error_messages_mod,
         options.generator.ll_generator_mod,
         options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
     );
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/galley_recovery_test.zig"),
@@ -617,6 +622,7 @@ fn addJsonRecoveryTests(
         error_messages_mod,
         options.generator.ll_generator_mod,
         options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
     );
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/json_recovery_test.zig"),
@@ -778,6 +784,7 @@ fn addGalleyBootstrapParser(
         error_messages_mod,
         generator.ll_generator_mod,
         generator.lr_generator_mod,
+        generator.runtime_options_mod,
     );
 
     const cli_options = b.addOptions();

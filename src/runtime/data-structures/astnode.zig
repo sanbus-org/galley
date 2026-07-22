@@ -3,6 +3,20 @@ const builtin = @import("builtin");
 const root = @import("galley");
 const Context = root.data_structures.Context;
 
+pub const ASTMemoryBenchmarkStats = struct {
+    reachable_nodes: usize,
+    final_counter: usize,
+    peak_counter: usize,
+    total_create_calls: usize,
+    usable_capacity: usize,
+    preallocated_vector_items: usize,
+};
+
+const ASTMemoryBenchmarkCounters = struct {
+    peak_counter: usize = 0,
+    total_create_calls: usize = 0,
+};
+
 pub fn ASTAllocator(comptime PayloadType: type) type {
     return struct {
         const ASTNodeType = ASTNode(PayloadType);
@@ -26,6 +40,8 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
         counter: ASTNodeType.Pointer = 0,
         memory: []ASTNodeType,
+        memory_benchmark: if (root.ast_memory_benchmark_enabled) ASTMemoryBenchmarkCounters else void =
+            if (root.ast_memory_benchmark_enabled) .{} else {},
 
         const Self = @This();
 
@@ -40,6 +56,9 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
         pub fn reset(self: *Self) void {
             @memset(self.memory[0..self.counter], default);
             self.counter = 0;
+            if (comptime root.ast_memory_benchmark_enabled) {
+                self.memory_benchmark = .{};
+            }
         }
 
         pub inline fn at(self: *Self, address: ASTNodeType.Pointer) *ASTNodeType {
@@ -49,6 +68,14 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
         pub inline fn create(self: *Self, start: Context.Size, variable: u16) ASTNodeType.Pointer {
             const address = self.counter;
             self.counter +%= 1;
+
+            if (comptime root.ast_memory_benchmark_enabled) {
+                self.memory_benchmark.total_create_calls +%= 1;
+                self.memory_benchmark.peak_counter = @max(
+                    self.memory_benchmark.peak_counter,
+                    @as(usize, self.counter),
+                );
+            }
 
             if (comptime builtin.mode == .Debug) {
                 if (self.counter >= self.memory.len) {
@@ -64,6 +91,48 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             node.children_count = 0;
 
             return address;
+        }
+
+        pub fn memoryBenchmarkStats(
+            self: *const Self,
+            scratch_allocator: std.mem.Allocator,
+            ast_root: ?ASTNodeType.Pointer,
+        ) !ASTMemoryBenchmarkStats {
+            if (comptime !root.ast_memory_benchmark_enabled) {
+                @compileError("AST memory benchmark instrumentation is disabled; rebuild with -Dast-memory-benchmark=true");
+            }
+
+            var visited = try std.DynamicBitSetUnmanaged.initEmpty(scratch_allocator, self.counter);
+            defer visited.deinit(scratch_allocator);
+
+            var pending: std.ArrayList(ASTNodeType.Pointer) = .empty;
+            defer pending.deinit(scratch_allocator);
+            if (ast_root) |address| try pending.append(scratch_allocator, address);
+
+            var reachable_nodes: usize = 0;
+            while (pending.pop()) |address| {
+                if (address >= self.counter) return error.InvalidASTPointer;
+                if (visited.isSet(address)) continue;
+                visited.set(address);
+                reachable_nodes += 1;
+
+                const node = &self.memory[address];
+                if (node.first_child != invalid_pointer) {
+                    try pending.append(scratch_allocator, node.first_child);
+                }
+                if (node.next != invalid_pointer) {
+                    try pending.append(scratch_allocator, node.next);
+                }
+            }
+
+            return .{
+                .reachable_nodes = reachable_nodes,
+                .final_counter = self.counter,
+                .peak_counter = self.memory_benchmark.peak_counter,
+                .total_create_calls = self.memory_benchmark.total_create_calls,
+                .usable_capacity = preallocated_nodes,
+                .preallocated_vector_items = self.memory.len,
+            };
         }
 
         pub inline fn terminalNode(terminal: u8) ASTNodeType.Pointer {
@@ -656,6 +725,56 @@ pub fn ASTNode(comptime PayloadType: type) type {
 const TestPayload = root.data_structures.Payload;
 const TestASTNode = ASTNode(TestPayload);
 const TestASTAllocator = ASTAllocator(TestPayload);
+
+test "AST memory benchmark counts reachable nodes and allocator usage" {
+    if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
+    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    const ast_root = node_allocator.create(0, 1);
+    const first_child = node_allocator.create(1, 2);
+    const second_child = node_allocator.create(2, 3);
+    _ = node_allocator.create(3, 4);
+
+    node_allocator.at(ast_root).first_child = first_child;
+    node_allocator.at(first_child).next = second_child;
+    node_allocator.at(second_child).next = first_child;
+
+    const stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, ast_root);
+    try std.testing.expectEqual(@as(usize, 3), stats.reachable_nodes);
+    try std.testing.expectEqual(@as(usize, 4), stats.final_counter);
+    try std.testing.expectEqual(@as(usize, 4), stats.peak_counter);
+    try std.testing.expectEqual(@as(usize, 4), stats.total_create_calls);
+    try std.testing.expectEqual(@as(usize, TestASTAllocator.preallocated_nodes), stats.usable_capacity);
+    try std.testing.expectEqual(stats.usable_capacity + 1, stats.preallocated_vector_items);
+
+    const no_root_stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
+    try std.testing.expectEqual(@as(usize, 0), no_root_stats.reachable_nodes);
+    try std.testing.expectError(
+        error.InvalidASTPointer,
+        node_allocator.memoryBenchmarkStats(std.testing.allocator, TestASTNode.invalid_pointer),
+    );
+}
+
+test "AST memory benchmark tracks allocation peak and resets counters" {
+    if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
+    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    _ = node_allocator.create(0, 1);
+    _ = node_allocator.create(1, 2);
+
+    const stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
+    try std.testing.expectEqual(@as(usize, 2), stats.final_counter);
+    try std.testing.expectEqual(@as(usize, 2), stats.peak_counter);
+    try std.testing.expectEqual(@as(usize, 2), stats.total_create_calls);
+
+    node_allocator.reset();
+    const reset_stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
+    try std.testing.expectEqual(@as(usize, 0), reset_stats.final_counter);
+    try std.testing.expectEqual(@as(usize, 0), reset_stats.peak_counter);
+    try std.testing.expectEqual(@as(usize, 0), reset_stats.total_create_calls);
+}
 
 test "zero length augmented node" {
     if (comptime !root.parser.is_ast_enabled) return;

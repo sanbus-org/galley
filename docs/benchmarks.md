@@ -44,6 +44,19 @@ zig build -Doptimize=ReleaseFast run-api-bench-<parser>-<language> -- <file> --i
 
 ---
 
+## AST Memory Usage
+
+An opt-in API benchmark can inspect AST allocator usage without recording timing. Generate an AST-enabled parser, then build the normal API benchmark target with the compile-time instrumentation enabled:
+
+```sh
+./zig-out/bin/galley --parser-type ll --with-ast --no-procedures languages/json
+zig build -Dast-memory-benchmark=true run-api-bench-ll-json -- languages/json/samples/code-01.json
+```
+
+It parses once and reports reachable nodes, the final and peak allocator counters, total node creations, sparsity, and pool capacity/utilization. The instrumentation is compiled out by default; `--iterations` and `--warmup-iterations` are intentionally unavailable in this mode.
+
+---
+
 ## Executable Throughput
 
 This route benchmarks the normal generated executable. It includes the CLI path and executable-level layout effects.
