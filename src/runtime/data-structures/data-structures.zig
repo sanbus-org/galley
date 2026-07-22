@@ -7,6 +7,7 @@ const are_procedures_enabled = if (@hasDecl(root.parser, "are_procedures_enabled
 pub const Payload = if (are_procedures_enabled) root.procedures.Payload else struct {};
 pub const ASTNode = @import("astnode.zig").ASTNode(Payload);
 pub const ASTAllocator = @import("astnode.zig").ASTAllocator(Payload);
+pub const ASTMemoryBenchmarkStats = @import("astnode.zig").ASTMemoryBenchmarkStats;
 pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;

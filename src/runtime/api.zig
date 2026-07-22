@@ -1,11 +1,12 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const runtime_test_options = @import("runtime_test_options");
+const runtime_options = @import("runtime_options");
 
 pub const procedures = @import("procedures");
 pub const config = @import("config");
 pub const error_messages = @import("error_messages");
 pub const parser = @import("parser");
+pub const ast_memory_benchmark_enabled = runtime_options.ast_memory_benchmark;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
@@ -104,7 +105,7 @@ pub const ParsedInput = struct {
 };
 
 comptime {
-    if (builtin.is_test and runtime_test_options.include) {
+    if (builtin.is_test and runtime_options.include_tests) {
         _ = @import("runtime_test.zig");
     }
 }
