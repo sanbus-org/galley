@@ -3,6 +3,8 @@ const std = @import("std");
 pub const languages_path = "languages";
 
 pub const GeneratorModules = struct {
+    runtime_options_mod: *std.Build.Module,
+    ast_memory_benchmark: bool,
     generator_common_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
@@ -27,9 +29,8 @@ pub fn addGeneratedParserModule(
     error_messages_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
+    runtime_options_mod: *std.Build.Module,
 ) GeneratedParserModule {
-    const runtime_test_options = b.addOptions();
-    runtime_test_options.addOption(bool, "include", false);
     const parser_mod = b.addModule(parser_module_name, .{
         .root_source_file = parser_source,
         .target = target,
@@ -44,7 +45,7 @@ pub fn addGeneratedParserModule(
             .{ .name = "config", .module = config_mod },
             .{ .name = "error_messages", .module = error_messages_mod },
             .{ .name = "parser", .module = parser_mod },
-            .{ .name = "runtime_test_options", .module = runtime_test_options.createModule() },
+            .{ .name = "runtime_options", .module = runtime_options_mod },
         },
     });
     runtime_mod.addImport("galley", runtime_mod);
@@ -95,6 +96,16 @@ pub fn addGeneratorModules(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) GeneratorModules {
+    const ast_memory_benchmark = b.option(
+        bool,
+        "ast-memory-benchmark",
+        "Instrument AST allocation and report final AST memory usage",
+    ) orelse false;
+    const runtime_options = b.addOptions();
+    runtime_options.addOption(bool, "include_tests", false);
+    runtime_options.addOption(bool, "ast_memory_benchmark", ast_memory_benchmark);
+    const runtime_options_mod = runtime_options.createModule();
+
     const generator_common_mod = b.addModule("generator_common", .{
         .root_source_file = b.path("src/generator/common.zig"),
         .target = target,
@@ -139,6 +150,7 @@ pub fn addGeneratorModules(
         galley_grammar_error_messages_mod,
         ll_generator_mod,
         lr_generator_mod,
+        runtime_options_mod,
     );
     const galley_grammar_library_mod = galley_grammar.runtime_mod;
 
@@ -155,6 +167,8 @@ pub fn addGeneratorModules(
     });
 
     return .{
+        .runtime_options_mod = runtime_options_mod,
+        .ast_memory_benchmark = ast_memory_benchmark,
         .generator_common_mod = generator_common_mod,
         .ll_generator_mod = ll_generator_mod,
         .lr_generator_mod = lr_generator_mod,
@@ -331,6 +345,7 @@ pub fn addLanguageParserFromFile(
         error_messages_mod,
         generator.ll_generator_mod,
         generator.lr_generator_mod,
+        generator.runtime_options_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
     const parser_mod = generated_parser.parser_mod;
@@ -448,6 +463,7 @@ pub fn addDelegatedTestStep(
     description: []const u8,
     delegated_step_name: []const u8,
     test_filters: []const []const u8,
+    ast_memory_benchmark: bool,
 ) void {
     const step = b.step(name, description);
     const run_tests = b.addSystemCommand(&.{
@@ -463,6 +479,9 @@ pub fn addDelegatedTestStep(
     run_tests.stdio = .inherit;
     run_tests.addArg("--summary");
     run_tests.addArg("all");
+    if (ast_memory_benchmark) {
+        run_tests.addArg("-Dast-memory-benchmark=true");
+    }
     for (test_filters) |filter| {
         const option = std.fmt.allocPrint(b.allocator, "-Dtest-filter={s}", .{filter}) catch @panic("OOM");
         run_tests.addArg(option);
