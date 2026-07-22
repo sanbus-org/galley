@@ -452,6 +452,7 @@ fn generatorOptionsFromContext(context: *data_structures.Context) ll_generator.O
     return .{
         .with_ast = context.runtime().language_options.with_ast,
         .with_procedures = context.runtime().language_options.with_procedures,
+        .with_error_recovery = context.runtime().language_options.with_error_recovery,
         .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
         .input_size = context.runtime().language_options.input_size,
     };
@@ -461,6 +462,7 @@ fn lrGeneratorOptionsFromContext(context: *data_structures.Context) lr_generator
     return .{
         .with_ast = context.runtime().language_options.with_ast,
         .with_procedures = context.runtime().language_options.with_procedures,
+        .with_error_recovery = context.runtime().language_options.with_error_recovery,
         .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
         .input_size = context.runtime().language_options.input_size,
     };
