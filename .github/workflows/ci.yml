@@ -10,7 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  core:
+    name: core
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Checkout repository
@@ -26,7 +27,74 @@ jobs:
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
       - name: Verify package consumer
-        run: zig build test-package-consumer --summary all
+        run: zig build -j1 test-package-consumer --summary all
 
-      - name: Run parser test suite
-        run: zig build -j2 test --summary all --test-timeout 30m
+      - name: Run core test suites
+        run: |
+          zig build -j1 test \
+            --summary all \
+            --test-timeout 30m \
+            -Dtest-filter=suite:build \
+            -Dtest-filter=suite:generator \
+            -Dtest-filter=suite:runtime \
+            -Dtest-filter=suite:galley-parity
+
+  matrix:
+    name: matrix (${{ matrix.case }})
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        case:
+          - ll-galley
+          - lr-galley
+          - ll-json
+          - lr-json
+          - ll-json-augmented
+          - ll-json-recovery
+          - lr-json-recovery
+          - ll-json-structured-ast
+          - lr-json-structured-ast
+          - ll-lisp
+          - ll-ll1
+          - ll-lua
+          - ll-sanbus
+          - lr-sanbus
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Run parser test case
+        run: |
+          zig build -j1 test \
+            --summary all \
+            --test-timeout 30m \
+            -Dtest-filter=case:${{ matrix.case }}
+
+  test:
+    name: test
+    if: ${{ always() }}
+    needs:
+      - core
+      - matrix
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    steps:
+      - name: Verify CI results
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          MATRIX_RESULT: ${{ needs.matrix.result }}
+        run: |
+          echo "core: $CORE_RESULT"
+          echo "matrix: $MATRIX_RESULT"
+          test "$CORE_RESULT" = success
+          test "$MATRIX_RESULT" = success
