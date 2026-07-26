@@ -27,11 +27,11 @@ pub fn main(init: std.process.Init) !void {
         \\-w, --warmup-iterations <ITERATIONS>
         \\                                  Warmup iterations of the parse process.
         \\                                  Useful for benchmarking.
+        \\    --enable-stack-overflow-recovery
+        \\                                  Enable native stack-overflow recovery.
         \\
     ++ syntax_recovery_params ++
         \\
-        \\    --disable-stack-overflow-recovery
-        \\                                  Disables the stack overflow recovery mechanism
         \\<FILE>
         \\
     ++ config.params);
@@ -77,6 +77,7 @@ pub fn main(init: std.process.Init) !void {
         if (@field(res.args, "recovery-window")) |recovery_window| recovery_window else 500
     else
         500;
+    const stack_overflow_recovery = @field(res.args, "enable-stack-overflow-recovery") != 0;
 
     const io = init.io;
 
@@ -95,6 +96,7 @@ pub fn main(init: std.process.Init) !void {
         .verbosity = verbosity,
         .max_errors = max_errors,
         .recovery_window = recovery_window,
+        .stack_overflow_recovery = stack_overflow_recovery,
     });
     defer session.deinit();
 

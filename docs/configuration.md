@@ -67,7 +67,7 @@ zig build -Doptimize=ReleaseFast ll-json
 | `--warmup-iterations` | `-w` | `<INT>` | Number of warmup parse passes before recording benchmark timers to ensure CPU cache saturation. | `0` |
 | `--max-errors` | None | `<INT>` | Maximum syntax errors to print before stopping. Available only when the parser was generated with error recovery. | `10` |
 | `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each recovery attempt. Available only when the parser was generated with error recovery. | `500` |
-| `--disable-stack-overflow-recovery` | None | Flag | Disables dynamic stack overflow recovery, falling back to static stack boundaries. | Enabled |
+| `--enable-stack-overflow-recovery` | None | Flag | Enables native stack-overflow recovery. This adds fixed setup and teardown work to each parse call. | Off |
 | `<FILE>` | None | `<PATH>` | **Required.** Path to the source code file to parse. | None |
 
 > [!IMPORTANT]
