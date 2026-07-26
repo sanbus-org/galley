@@ -148,6 +148,7 @@ pub fn add(b: *std.Build, options: Options) !void {
             .root_source_file = b.path("src/runtime/api.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = common.runtimeLinkLibC(target),
             .imports = &.{
                 .{ .name = "procedures", .module = runtime_test_procedures_mod },
                 .{ .name = "config", .module = runtime_test_config_mod },

@@ -7,6 +7,7 @@ const Options = struct {
     verbosity: usize = 0,
     max_errors: usize = 10,
     recovery_window: usize = 500,
+    stack_overflow_recovery: bool = false,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -27,6 +28,7 @@ pub fn main(init: std.process.Init) !void {
         .verbosity = options.verbosity,
         .max_errors = options.max_errors,
         .recovery_window = options.recovery_window,
+        .stack_overflow_recovery = options.stack_overflow_recovery,
     });
     defer session.deinit();
 
@@ -131,6 +133,8 @@ fn parseArgs(init: std.process.Init) !Options {
         } else if (std.mem.startsWith(u8, arg, "--recovery-window=")) {
             if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
             options.recovery_window = try std.fmt.parseInt(usize, arg["--recovery-window=".len..], 10);
+        } else if (std.mem.eql(u8, arg, "--enable-stack-overflow-recovery")) {
+            options.stack_overflow_recovery = true;
         } else {
             return error.UnknownArgument;
         }
@@ -156,6 +160,8 @@ fn printUsage(init: std.process.Init) !void {
         \\  -r, --iterations <ITERATIONS>      Repeat each sample parse.
         \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
         \\  -v, --verbosity <LEVEL>            Debug verbosity level.
+        \\      --enable-stack-overflow-recovery
+        \\                                      Enable native stack-overflow recovery.
     );
     if (comptime parser.parser.is_error_recovery_enabled) {
         try stdout.writeAll(

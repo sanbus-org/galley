@@ -6,7 +6,7 @@
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Syntax-Error Recovery](#syntax-error-recovery)
-- [Dynamic Stack-Overflow Recovery](#dynamic-stack-overflow-recovery)
+- [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
 - [Self-Hosting](#self-hosting)
@@ -55,11 +55,23 @@ Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers
 
 ---
 
-## Dynamic Stack-Overflow Recovery
+## Optional Stack-Overflow Recovery
 
-Leveraging the native CPU call stack introduces a potential risk when parsing deeply recursive structures (such as thousands of nested JSON arrays): exceeding the operating system thread stack limit.
+Generated parsers use the native call stack, so excessive recursive nesting can
+exhaust the stack available to the calling thread. On Linux and macOS, Galley
+can run a parse inside a protected signal-recovery scope that converts a fault
+at the thread's stack boundary into `ParseError.StackOverflow`.
 
-To prevent crashes, Galley includes a runtime stack-overflow recovery mechanism. As parsing approaches the stack limit, the runtime intercepts execution and dynamically transitions to heap-backed continuation frames. This guarantees safety on arbitrarily deep input files while maintaining maximum bare-metal speed during normal execution depths.
+Recovery is disabled by default because establishing that scope adds fixed
+setup and teardown work to every protected parse call. Runtime callers opt in
+with `ParseOptions.stack_overflow_recovery = true`; generated executables expose
+`--enable-stack-overflow-recovery`.
+
+The recovery scope installs an alternate signal stack and temporary
+`SIGSEGV`/`SIGBUS` handlers, records the current thread's stack bounds, and
+restores the previous process and thread state when parsing finishes. A memory
+fault outside the active thread's stack boundary is forwarded to the previously
+installed handler instead of being reported as parser stack overflow.
 
 ---
 

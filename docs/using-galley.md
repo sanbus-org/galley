@@ -219,6 +219,20 @@ const first = try session.parseBytes("first input", "first");
 const second = try session.parseBytes("second input", "second");
 ```
 
+Stack-overflow recovery is disabled by default so ordinary parses pay no
+signal-recovery setup cost. Enable it for inputs that may contain excessive
+recursive nesting:
+
+```zig
+var session = try parser.Session.init(io, allocator, .{
+    .stack_overflow_recovery = true,
+});
+defer session.deinit();
+```
+
+Recovery is currently available on Linux and macOS. Generated executables
+expose the same opt-in behavior as `--enable-stack-overflow-recovery`.
+
 LL and LR parsers report the first syntax error and stop by default. Enable recovery while generating the parser to report multiple diagnostics:
 
 ```sh
@@ -259,6 +273,9 @@ if (session.parseBytes(input, "input")) |_| {
 } else |err| switch (err) {
     parser.ParseError.SyntaxError => {
         std.debug.print("reported {d} syntax errors\n", .{session.syntaxErrorCount()});
+    },
+    parser.ParseError.StackOverflow => {
+        std.debug.print("parser stack overflow recovered\n", .{});
     },
     else => return err,
 }

@@ -12,6 +12,7 @@ pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
 pub const standard_procedures = @import("standard-procedures.zig");
 pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
+pub const stack_overflow_recovery_available = stack_overflow_utilities.is_supported;
 
 pub const ParseError = error{
     SyntaxError,
@@ -79,6 +80,7 @@ pub const ParseOptions = struct {
     verbosity: usize = 0,
     max_errors: usize = 10,
     recovery_window: usize = 500,
+    stack_overflow_recovery: bool = false,
 };
 
 pub const SyntaxErrorMessageArgs = struct {
@@ -107,6 +109,7 @@ pub const ParsedInput = struct {
 comptime {
     if (builtin.is_test and runtime_options.include_tests) {
         _ = @import("runtime_test.zig");
+        _ = stack_overflow_utilities;
     }
 }
 
@@ -226,10 +229,14 @@ pub const Session = struct {
     owned_input: ?[]u8 = null,
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
     verbosity: if (builtin.mode == .Debug) usize else void,
+    stack_overflow_recovery: bool,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
         if (options.max_errors == 0) return error.InvalidMaxErrors;
         if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+        if (options.stack_overflow_recovery and !stack_overflow_recovery_available) {
+            return error.StackOverflowRecoveryUnsupported;
+        }
 
         var arena = std.heap.ArenaAllocator.init(allocator);
         errdefer arena.deinit();
@@ -261,6 +268,7 @@ pub const Session = struct {
             .chunk_buffer = chunk_buffer,
             .node_allocator = node_allocator,
             .verbosity = if (builtin.mode == .Debug) options.verbosity else {},
+            .stack_overflow_recovery = options.stack_overflow_recovery,
         };
     }
 
@@ -349,6 +357,9 @@ pub const Session = struct {
         defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
         try context_value.reset();
+        if (self.stack_overflow_recovery) {
+            return try stack_overflow_utilities.protectedParse(context_value);
+        }
         return try parser.parseWithResult(context_value);
     }
 };
