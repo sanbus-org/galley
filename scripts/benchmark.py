@@ -1,12 +1,141 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 
 MAX_BENCHMARK_INPUT_BYTES = 1024 * 1024
 BENCHMARK_COOLDOWN_SECONDS = 15
+
+
+@dataclass(frozen=True)
+class BenchmarkVariant:
+    ast_mode: str
+    input_size_dir: str
+    term_ast: str
+    input_size: int | None
+    procedures_enabled: bool
+    variant_name: str
+
+
+@dataclass(frozen=True)
+class BenchmarkCard:
+    input_file: str
+    parser_type: str
+    file_size: int
+    skip_limit: str | None
+    skip_cause: str | None
+
+    @property
+    def is_runnable(self):
+        return self.skip_cause is None
+
+
+@dataclass(frozen=True)
+class BenchmarkSuite:
+    name: str
+    variant: BenchmarkVariant
+    cards: tuple[BenchmarkCard, ...]
+
+    @property
+    def runnable_count(self):
+        return sum(card.is_runnable for card in self.cards)
+
+
+class GlobalProgress:
+    def __init__(self, total, enabled):
+        self.total = total
+        self.completed = 0
+        self.enabled = enabled
+        self.active = False
+        self.terminal_lines = 0
+        self.suite_label = ""
+        self.card_index = 0
+        self.card_total = 0
+        if self.enabled:
+            self._start()
+
+    def _start(self):
+        terminal_size = shutil.get_terminal_size(fallback=(80, 24))
+        if terminal_size.lines < 2:
+            self.enabled = False
+            return
+
+        self.terminal_lines = terminal_size.lines
+        content_bottom = terminal_size.lines - 1
+        # Create a clean boundary below the invoking command, reserve the last
+        # terminal row, and keep all normal output inside the scrolling region.
+        sys.stdout.write(
+            f"\n\033[1;{content_bottom}r\033[{content_bottom};1H"
+        )
+        sys.stdout.flush()
+        self.active = True
+
+    def _refresh_scrolling_region(self, terminal_lines):
+        if terminal_lines == self.terminal_lines:
+            return
+        if terminal_lines < 2:
+            self.clear()
+            self.enabled = False
+            return
+
+        self.terminal_lines = terminal_lines
+        sys.stdout.write(
+            f"\0337\033[1;{terminal_lines - 1}r\0338"
+        )
+
+    def begin_card(self, suite_label, card_index, card_total):
+        self.suite_label = suite_label
+        self.card_index = card_index
+        self.card_total = card_total
+        self.render()
+
+    def complete_card(self):
+        self.completed += 1
+        self.render()
+
+    def render(self):
+        if not self.enabled or not self.active:
+            return
+        terminal_size = shutil.get_terminal_size(fallback=(80, 24))
+        self._refresh_scrolling_region(terminal_size.lines)
+        if not self.active:
+            return
+        line = format_progress_line(
+            self.completed,
+            self.total,
+            self.suite_label,
+            self.card_index,
+            self.card_total,
+            max(1, terminal_size.columns - 1),
+        )
+        sys.stdout.write(
+            f"\0337\033[{terminal_size.lines};1H\033[2K{line}\0338"
+        )
+        sys.stdout.flush()
+
+    def clear(self):
+        if not self.enabled or not self.active:
+            return
+        terminal_size = shutil.get_terminal_size(fallback=(80, 24))
+        sys.stdout.write(f"\033[{terminal_size.lines};1H\033[2K\033[r")
+        sys.stdout.write(f"\033[{terminal_size.lines};1H\n")
+        sys.stdout.flush()
+        self.active = False
+
+    def finish(self):
+        self.completed = self.total
+        self.render()
+        if self.enabled and self.active:
+            terminal_size = shutil.get_terminal_size(fallback=(80, 24))
+            sys.stdout.write(
+                f"\033[r\033[{terminal_size.lines};1H\n"
+            )
+            sys.stdout.flush()
+            self.active = False
 
 
 def truncate_text(text, max_len):
@@ -28,6 +157,44 @@ def truncate_name(name, inner_width):
         if avail_width >= 5:
             return prefix + "..." + rest[-(avail_width - 3) :]
     return truncate_text(name, inner_width)
+
+
+def format_progress_line(
+    completed, total, suite_label, card_index, card_total, terminal_width
+):
+    percent = 100 if total == 0 else min(100, int(completed * 100 / total))
+    count_text = f"{completed}/{total} ({percent}%)"
+    card_text = f"Card {card_index}/{card_total}"
+    counter_only = f"Global {count_text} │ {card_text}"
+
+    if terminal_width <= len(counter_only) + 4:
+        return truncate_text(
+            f"{completed}/{total} │ {card_index}/{card_total}", terminal_width
+        )
+
+    if terminal_width < 54:
+        suite_width = max(
+            1,
+            terminal_width
+            - len(f"Global {count_text} │  │ {card_text}"),
+        )
+        return (
+            f"Global {count_text} │ "
+            f"{truncate_text(suite_label, suite_width)} │ {card_text}"
+        )
+
+    fixed_width = len(f"Global [] {count_text} │  │ {card_text}")
+    suite_width = min(len(suite_label), max(8, terminal_width // 3))
+    bar_width = min(30, terminal_width - fixed_width - suite_width)
+    if bar_width < 10:
+        suite_width = max(1, terminal_width - fixed_width - 10)
+        bar_width = 10
+
+    filled = bar_width if total == 0 else int(bar_width * completed / total)
+    filled = min(bar_width, filled)
+    bar = "█" * filled + "░" * (bar_width - filled)
+    suite_display = truncate_text(suite_label, suite_width)
+    return f"Global [{bar}] {count_text} │ {suite_display} │ {card_text}"
 
 
 def format_file_size(size_bytes):
@@ -427,51 +594,29 @@ def write_result_to_file(filepath, content):
 # No local code generation needed as we compile matrix targets directly.
 
 
-def run_benchmark_suite(name, gen_opts, args, inputs=None):
-    """
-    Compiles/runs benchmarks for all input files using the matrix build targets.
-    """
-    parser_types = get_parser_types_for_language(name, args)
-    if not parser_types:
-        print(f"\033[31mNo parser types found for '{name}'\033[0m")
-        sys.exit(1)
-
-    if inputs is None:
-        inputs = sample_inputs(name)
-
-    # Extract AST mode
+def benchmark_variant(gen_opts):
     ast_mode = "default-ast"
     if "--no-ast" in gen_opts:
         ast_mode = "no-ast"
     elif "--no-procedures" in gen_opts:
         ast_mode = "no-procedures"
 
-    # Extract input size string for path
     input_size_dir = "default-size"
+    input_size = None
     if "--input-size" in gen_opts:
         try:
             size_idx = gen_opts.index("--input-size")
-            input_size_dir = f"size_{gen_opts[size_idx + 1]}"
+            input_size = int(gen_opts[size_idx + 1])
+            input_size_dir = f"size_{input_size}"
         except (ValueError, IndexError):
             pass
 
-    # Extract terminal AST mode
     term_ast = "default-term-ast"
     if "--no-ast-for-terminals" in gen_opts:
         term_ast = "no-ast-for-terminals"
     elif "--ast-for-terminals" in gen_opts:
         term_ast = "ast-for-terminals"
 
-    # Extract input size from gen_opts (defaults to None if not specified)
-    input_size = None
-    if "--input-size" in gen_opts:
-        try:
-            size_idx = gen_opts.index("--input-size")
-            input_size = int(gen_opts[size_idx + 1])
-        except (ValueError, IndexError):
-            pass
-
-    # Map generator options to matrix variant names in build/generated_parser_matrix.zig
     is_no_ast = "--no-ast" in gen_opts
     is_no_procedures = "--no-procedures" in gen_opts
     is_ast_for_terminals = "--ast-for-terminals" in gen_opts
@@ -486,6 +631,86 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     else:
         term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
         variant_name = f"ast-procedures-{term_suffix}-size{variant_size}"
+
+    return BenchmarkVariant(
+        ast_mode=ast_mode,
+        input_size_dir=input_size_dir,
+        term_ast=term_ast,
+        input_size=input_size,
+        procedures_enabled=procedures_enabled,
+        variant_name=variant_name,
+    )
+
+
+def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
+    parser_types = get_parser_types_for_language(name, args)
+    if not parser_types:
+        print(f"\033[31mNo parser types found for '{name}'\033[0m")
+        sys.exit(1)
+
+    if inputs is None:
+        inputs = sample_inputs(name)
+
+    variant = benchmark_variant(gen_opts)
+    cards = []
+    for input_file in inputs:
+        file_size = os.path.getsize(input_file) if os.path.exists(input_file) else 0
+        skip_limit = None
+        skip_cause = None
+        if (
+            variant.procedures_enabled
+            and file_size > MAX_BENCHMARK_INPUT_BYTES
+        ):
+            skip_limit = "> 1 MB"
+            skip_cause = "procedures enabled"
+        elif (
+            variant.input_size is not None
+            and file_size >= (2**variant.input_size)
+        ):
+            skip_limit = f">= 2^{variant.input_size}"
+            skip_cause = "input size limit"
+
+        for parser_type in parser_types:
+            cards.append(
+                BenchmarkCard(
+                    input_file=input_file,
+                    parser_type=parser_type,
+                    file_size=file_size,
+                    skip_limit=skip_limit,
+                    skip_cause=skip_cause,
+                )
+            )
+
+    return BenchmarkSuite(name=name, variant=variant, cards=tuple(cards))
+
+
+def suite_progress_label(suite, route):
+    details = [
+        "No AST" if suite.variant.ast_mode == "no-ast" else "AST",
+    ]
+    if suite.variant.term_ast == "ast-for-terminals":
+        details.append("Terminal AST")
+    elif (
+        suite.variant.term_ast == "no-ast-for-terminals"
+        and suite.variant.ast_mode != "no-ast"
+    ):
+        details.append("No terminal AST")
+    if suite.variant.input_size is not None:
+        details.append(f"2^{suite.variant.input_size}")
+    details.append(route.upper())
+    return " · ".join([suite.name.upper(), *details])
+
+
+def run_benchmark_suite(suite, args, progress):
+    """
+    Compiles/runs benchmarks for all input files using the matrix build targets.
+    """
+    name = suite.name
+    ast_mode = suite.variant.ast_mode
+    input_size_dir = suite.variant.input_size_dir
+    term_ast = suite.variant.term_ast
+    input_size = suite.variant.input_size
+    variant_name = suite.variant.variant_name
 
     RESET = "" if args.no_color else "\033[0m"
     BOLD = "" if args.no_color else "\033[1m"
@@ -522,11 +747,8 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
     # Determine the number of columns to use dynamically
     cols = get_terminal_cols(args.width, spacing=2)
 
-    # Combine inputs and parser_types into grid items
-    grid_items = []
-    for input_file in inputs:
-        for p_type in parser_types:
-            grid_items.append((input_file, p_type))
+    grid_items = suite.cards
+    progress_label = suite_progress_label(suite, args.route)
 
     input_results = {}
 
@@ -541,24 +763,15 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             sys.stdout.write("\033[9A\033[1G")
             sys.stdout.flush()
 
-        for col_idx, (input_file, p_type) in enumerate(row_items):
-            # With procedures enabled, skip inputs larger than 1 MB. Always
-            # respect the parser input-size limit.
-            file_path = input_file
-            is_too_large = False
-            skip_limit = None
-            skip_cause = None
-            file_size = 0
-            if os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-                if procedures_enabled and file_size > MAX_BENCHMARK_INPUT_BYTES:
-                    is_too_large = True
-                    skip_limit = "> 1 MB"
-                    skip_cause = "procedures enabled"
-                elif input_size is not None and file_size >= (2**input_size):
-                    is_too_large = True
-                    skip_limit = f">= 2^{input_size}"
-                    skip_cause = "input size limit"
+        for col_idx, card in enumerate(row_items):
+            input_file = card.input_file
+            p_type = card.parser_type
+            file_size = card.file_size
+            is_too_large = not card.is_runnable
+            skip_limit = card.skip_limit
+            skip_cause = card.skip_cause
+            card_index = i + col_idx + 1
+            progress.begin_card(progress_label, card_index, len(grid_items))
 
             card_title = f"[{p_type}] {input_file.replace('languages/', '')}"
 
@@ -632,6 +845,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 )
             except subprocess.CalledProcessError:
                 debug_cmd = benchmark_build_cmd(target, "Debug", p_type, name)
+                progress.clear()
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
                     sys.stdout.flush()
@@ -761,6 +975,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                     draw_card_in_row(card_lines, col_idx, width=args.width, spacing=2)
                 else:
                     row_cards.append(card_lines)
+                progress.complete_card()
 
             except subprocess.CalledProcessError as run_err:
                 # If execution fails, compile and run in Debug mode to get detailed stack traces
@@ -774,6 +989,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
                 debug_run_cmd = [binary_path] + benchmark_debug_args(
                     args.route, input_file
                 )
+                progress.clear()
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
                     sys.stdout.flush()
@@ -798,6 +1014,7 @@ def run_benchmark_suite(name, gen_opts, args, inputs=None):
             sys.stdout.write("\033[9B\033[1G")
             print()  # Row separator space
             sys.stdout.flush()
+            progress.render()
         else:
             print_grid(row_cards, cols=cols)
 
@@ -878,37 +1095,43 @@ def galley_benchmark(gen_opts, args):
         "languages/sanbus/ll.grm",
         "languages/ll1/ll.grm",
     ]
-    run_benchmark_suite("galley", gen_opts, args, inputs)
+    args.benchmark_plan.append(
+        prepare_benchmark_suite("galley", gen_opts, args, inputs)
+    )
 
 
 def json_benchmark(gen_opts, args):
-    run_benchmark_suite("json", gen_opts, args)
+    args.benchmark_plan.append(prepare_benchmark_suite("json", gen_opts, args))
 
 
 def json_structured_ast_benchmark(gen_opts, args):
     inputs = sample_inputs("json")
-    run_benchmark_suite("json-structured-ast", gen_opts, args, inputs)
+    args.benchmark_plan.append(
+        prepare_benchmark_suite("json-structured-ast", gen_opts, args, inputs)
+    )
 
 
 def augmented_json_benchmark(gen_opts, args):
     inputs = sample_inputs("json") + sample_inputs("json-augmented")
-    run_benchmark_suite("json-augmented", gen_opts, args, inputs)
+    args.benchmark_plan.append(
+        prepare_benchmark_suite("json-augmented", gen_opts, args, inputs)
+    )
 
 
 def sanbus_benchmark(gen_opts, args):
-    run_benchmark_suite("sanbus", gen_opts, args)
+    args.benchmark_plan.append(prepare_benchmark_suite("sanbus", gen_opts, args))
 
 
 def ll1_benchmark(gen_opts, args):
-    run_benchmark_suite("ll1", gen_opts, args)
+    args.benchmark_plan.append(prepare_benchmark_suite("ll1", gen_opts, args))
 
 
 def lisp_benchmark(gen_opts, args):
-    run_benchmark_suite("lisp", gen_opts, args)
+    args.benchmark_plan.append(prepare_benchmark_suite("lisp", gen_opts, args))
 
 
 def lua_benchmark(gen_opts, args):
-    run_benchmark_suite("lua", gen_opts, args)
+    args.benchmark_plan.append(prepare_benchmark_suite("lua", gen_opts, args))
 
 
 def run_all_modes(benchmark_fn, args):
@@ -1040,6 +1263,9 @@ def main():
             "--benchmark-runs must be at least 2 when discarding the first run."
         )
 
+    args.benchmark_plan = []
+    progress = None
+    completed_successfully = False
     try:
         if args.language is None:
             if args.inputs:
@@ -1047,11 +1273,7 @@ def main():
 
             for lang in BENCHMARKS:
                 benchmark_fn = BENCHMARKS[lang]
-                try:
-                    run_all_modes(benchmark_fn, args)
-                except KeyboardInterrupt:
-                    print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
-                    sys.exit(1)
+                run_all_modes(benchmark_fn, args)
         else:
             if args.language in BENCHMARKS and not args.inputs:
                 benchmark_fn = BENCHMARKS[args.language]
@@ -1064,15 +1286,30 @@ def main():
                 inputs = list(args.inputs)
 
                 def benchmark_fn(gen_opts, a, _lang=lang, _inputs=inputs):
-                    run_benchmark_suite(_lang, gen_opts, a, _inputs)
+                    a.benchmark_plan.append(
+                        prepare_benchmark_suite(_lang, gen_opts, a, _inputs)
+                    )
 
-            try:
-                run_all_modes(benchmark_fn, args)
-            except KeyboardInterrupt:
-                print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
-                sys.exit(1)
+            run_all_modes(benchmark_fn, args)
+
+        progress = GlobalProgress(
+            total=sum(suite.runnable_count for suite in args.benchmark_plan),
+            enabled=sys.stdout.isatty() and not args.no_color,
+        )
+        for suite in args.benchmark_plan:
+            run_benchmark_suite(suite, args, progress)
+        completed_successfully = True
+    except KeyboardInterrupt:
+        if progress is not None:
+            progress.clear()
+        print("\n\033[31mBenchmark suite cancelled by user.\033[0m")
+        sys.exit(1)
     finally:
-        pass
+        if progress is not None:
+            if completed_successfully:
+                progress.finish()
+            else:
+                progress.clear()
 
 
 if __name__ == "__main__":
