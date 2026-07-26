@@ -17,6 +17,13 @@ pub const GeneratedParserModule = struct {
     parser_mod: *std.Build.Module,
 };
 
+pub fn runtimeLinkLibC(target: std.Build.ResolvedTarget) ?bool {
+    return switch (target.result.os.tag) {
+        .linux, .macos => true,
+        else => null,
+    };
+}
+
 pub fn addGeneratedParserModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -40,6 +47,7 @@ pub fn addGeneratedParserModule(
         .root_source_file = b.path("src/runtime/api.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = runtimeLinkLibC(target),
         .imports = &.{
             .{ .name = "procedures", .module = procedures_mod },
             .{ .name = "config", .module = config_mod },

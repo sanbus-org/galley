@@ -19,7 +19,10 @@ See [Benchmark Layout Findings](/benchmark_layout_findings) for the code-layout 
 
 ## Parser-only Throughput
 
-This route benchmarks the generated parser API directly. It reuses one `Session`, reads the input once into sentinel-terminated memory, and times `Session.parseSentinelBytes`.
+This route benchmarks the generated parser API directly. It reuses one
+`Session`, reads the input once into sentinel-terminated memory, and times
+`Session.parseSentinelBytes`. Stack-overflow recovery is disabled by default so
+the result isolates raw generated-parser throughput.
 
 Use it when:
 

@@ -57,7 +57,9 @@ A full RFC 8259 JSON grammar with additional non-terminals for a richer AST shap
 
 ### JSON Augmented (`languages/json-augmented`)
 
-An extended JSON variant designed to test extreme recursion depths and stress-test the parser's stack overflow recovery mechanisms. It introduces special grouping syntax (`*(...)` and `(...)`) that allows deeply nested structures without exceeding memory limits.
+An extended JSON variant designed to test extreme recursion depths and the
+optional stack-overflow recovery mechanism. It introduces special grouping
+syntax (`*(...)` and `(...)`) for deeply nested stress inputs.
 
 - **Parser Engines:** `ll.grm` is provided.
 - **Hooks:** Uses LHS cleanup hooks plus automatic symbol and general reduction hooks to shape the AST and collect payload counts.
