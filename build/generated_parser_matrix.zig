@@ -5,7 +5,6 @@ const test_selection = @import("test_selection.zig");
 pub const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    clap_mod: *std.Build.Module,
     generator_modules: common.GeneratorModules,
     generate_parser_file_exe: *std.Build.Step.Compile,
     selection: test_selection.Selection,
@@ -31,14 +30,14 @@ const MatrixVariant = struct {
 
 const matrix_variants = [_]MatrixVariant{
     .{
-        .name = "no-ast-procedures-size16",
+        .name = "no-ast-no-procedures-size16",
         .input_size = 16,
-        .args = &.{ "--no-ast", "--with-procedures", "--input-size", "16", "--no-ast-for-terminals" },
+        .args = &.{ "--no-ast", "--input-size", "16", "--no-ast-for-terminals" },
     },
     .{
-        .name = "no-ast-procedures-size32",
+        .name = "no-ast-no-procedures-size32",
         .input_size = 32,
-        .args = &.{ "--no-ast", "--with-procedures", "--input-size", "32", "--no-ast-for-terminals" },
+        .args = &.{ "--no-ast", "--input-size", "32", "--no-ast-for-terminals" },
     },
     .{
         .name = "ast-no-procedures-no-terminal-ast-size16",
@@ -83,7 +82,7 @@ const matrix_variants = [_]MatrixVariant{
 };
 
 fn testsErrorRecovery(variant: MatrixVariant) bool {
-    return std.mem.eql(u8, variant.name, "no-ast-procedures-size16") or
+    return std.mem.eql(u8, variant.name, "no-ast-no-procedures-size16") or
         std.mem.eql(u8, variant.name, "ast-procedures-no-terminal-ast-size16");
 }
 
@@ -318,7 +317,7 @@ fn addCase(
             work.errors += 1;
 
             if ((std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "json-recovery")) and
-                std.mem.eql(u8, variant.name, "no-ast-procedures-size16"))
+                std.mem.eql(u8, variant.name, "no-ast-no-procedures-size16"))
             {
                 const recovery_cli_options = b.addOptions();
                 recovery_cli_options.addOption([]const u8, "api_benchmark_step", "run-api-bench-generated-parser-matrix");
@@ -328,7 +327,6 @@ fn addCase(
                     .optimize = options.optimize,
                     .link_libc = true,
                     .imports = &.{
-                        .{ .name = "clap", .module = options.clap_mod },
                         .{ .name = "build_options", .module = recovery_cli_options.createModule() },
                         .{ .name = "galley", .module = recovery_parser.runtime_mod },
                     },
@@ -340,7 +338,7 @@ fn addCase(
                 const run_recovery_cli = b.addRunArtifact(recovery_cli);
                 run_recovery_cli.setName(b.fmt("test recovery CLI options {s}", .{recovery_case_label}));
                 run_recovery_cli.addArgs(&.{ "--max-errors", "2", "--recovery-window", "64", "--help" });
-                run_recovery_cli.expectStdOutMatch("--max-errors <MAX_ERRORS>");
+                run_recovery_cli.expectStdOutMatch("--max-errors <COUNT>");
                 run_recovery_cli.expectStdOutMatch("--recovery-window <BYTES>");
                 run_recovery_cli.expectStdErrEqual("");
                 matrix_step.dependOn(&run_recovery_cli.step);
@@ -362,7 +360,6 @@ fn addCase(
         .optimize = options.optimize,
         .link_libc = true,
         .imports = &.{
-            .{ .name = "clap", .module = options.clap_mod },
             .{ .name = "build_options", .module = parser_cli_options.createModule() },
             .{ .name = "galley", .module = galley_parser_mod },
         },
