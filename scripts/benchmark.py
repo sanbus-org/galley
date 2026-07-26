@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 
 MAX_BENCHMARK_INPUT_BYTES = 1024 * 1024
-BENCHMARK_COOLDOWN_SECONDS = 15
+BENCHMARK_COOLDOWN_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -1158,8 +1158,6 @@ def run_all_modes(benchmark_fn, args):
 BENCHMARKS = {
     "galley": galley_benchmark,
     "json": json_benchmark,
-    "json-augmented": augmented_json_benchmark,
-    "json-structured-ast": json_structured_ast_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
     "sanbus": sanbus_benchmark,

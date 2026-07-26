@@ -477,9 +477,12 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
 
     const exact = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail\")");
     const symbol = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_ll_ItemsTail\")", exact);
-    const parser_level = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_ll\")", symbol);
-    const global = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
-    _ = try expectContainsAfter(output, "root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi)", global);
+    _ = try expectContainsAfter(output, "return llFailFastDefaultMessage(args);", symbol);
+
+    const fallback = try generatedFunction(output, "fn llFailFastDefaultMessage");
+    const parser_level = try expectContains(fallback, "@hasDecl(error_messages, \"syntax_error_ll\")");
+    const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
+    _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
 }
 
 test "generateParserAlloc emits LR syntax error hook fallback chain" {
@@ -489,9 +492,12 @@ test "generateParserAlloc emits LR syntax error hook fallback chain" {
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
 
     const exact = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_lr_state_");
-    const parser_level = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_lr\")", exact);
-    const global = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
-    _ = try expectContainsAfter(output, "root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi)", global);
+    _ = try expectContainsAfter(output, "return lrFailFastDefaultMessage(args);", exact);
+
+    const fallback = try generatedFunction(output, "fn lrFailFastDefaultMessage");
+    const parser_level = try expectContains(fallback, "@hasDecl(error_messages, \"syntax_error_lr\")");
+    const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
+    _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
 }
 
 test "generateParserAlloc emits position-based LL recovery" {
@@ -550,21 +556,26 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
     const ll_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
     _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = false;");
     _ = try expectContains(ll_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
-    _ = try expectContains(ll_output, "try context.recordSyntaxDiagnostic(");
+    _ = try expectContains(ll_output, "context.recordSyntaxDiagnostic(");
     _ = try expectContains(ll_output, "return root.ParseError.SyntaxError;");
+    _ = try expectContains(ll_output, "noinline fn ll_syntax_error_");
+    _ = try expectContains(ll_output, "@branchHint(.cold);");
+    _ = try expectContains(ll_output, "fn llFailFastSyntaxError(");
+    _ = try expectContains(ll_output, "fn llFailFastDefaultMessage(");
     try expectNotContains(ll_output, "llRecoveryOffset");
     try expectNotContains(ll_output, "beginSyntaxRecovery");
-    try expectNotContains(ll_output, "ll_syntax_error_");
-    try expectNotContains(ll_output, "always_tail");
 
     const lr_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
     _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = false;");
     _ = try expectContains(lr_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
-    _ = try expectContains(lr_output, "try context.recordSyntaxDiagnostic(");
+    _ = try expectContains(lr_output, "context.recordSyntaxDiagnostic(");
     _ = try expectContains(lr_output, "return root.ParseError.SyntaxError;");
+    _ = try expectContains(lr_output, "noinline fn lr_syntax_error_");
+    _ = try expectContains(lr_output, "@branchHint(.cold);");
+    _ = try expectContains(lr_output, "fn lrFailFastSyntaxError(");
+    _ = try expectContains(lr_output, "fn lrFailFastDefaultMessage(");
     try expectNotContains(lr_output, "lrRecoveryOffset");
     try expectNotContains(lr_output, "state_recovery:");
-    try expectNotContains(lr_output, "lr_syntax_error_");
     try expectNotContains(lr_output, ".is_recovery");
 }
 

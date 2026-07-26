@@ -316,10 +316,8 @@ const Generator = struct {
         if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
-        if (self.options.with_error_recovery) {
-            try self.emitSyntaxErrorHandlers(writer);
-            if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
-        }
+        try self.emitSyntaxErrorHandlers(writer);
+        if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
             \\    _ = parse__AugmentedStart(context
@@ -1199,20 +1197,6 @@ const Generator = struct {
         skip_ast_construction: bool,
         indent: []const u8,
     ) !void {
-        if (!self.options.with_error_recovery) {
-            const symbol = self.symbols.items[symbol_index];
-            try writer.print("{s}try context.recordSyntaxDiagnostic(.{{ .while_parsing = ", .{indent});
-            try emitStringLiteral(writer, symbol.id);
-            try writer.writeAll(" }, ");
-            try self.emitRecoveryCandidates(writer, expected_tokens);
-            try writer.writeAll(");\n");
-            try writer.print("{s}if (!builtin.is_test) {{\n", .{indent});
-            try self.emitSyntaxErrorMessagePrint(writer, function_names.exact, function_names.symbol, try indented(self.allocator, indent, 4));
-            try writer.print("{s}}}\n", .{indent});
-            try writer.print("{s}return root.ParseError.SyntaxError;\n", .{indent});
-            return;
-        }
-
         const handler_name = try std.fmt.allocPrint(self.allocator, "ll_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
         try self.syntax_error_handlers.append(self.allocator, .{
             .name = handler_name,
@@ -1226,6 +1210,21 @@ const Generator = struct {
             try writer.print("{s}return {s}(context, occurrence_recovery);\n", .{ indent, handler_name });
             return;
         }
+        if (!self.options.with_error_recovery) {
+            try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
+            return;
+        }
+        try self.emitSyntaxErrorHandlerReturn(writer, symbol_index, skip_ast_construction, handler_name, indent);
+    }
+
+    fn emitSyntaxErrorHandlerReturn(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        symbol_index: usize,
+        skip_ast_construction: bool,
+        handler_name: []const u8,
+        indent: []const u8,
+    ) !void {
         const can_tail_call = !self.has_occurrence_procedures and (!self.options.with_ast or
             (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
@@ -1237,17 +1236,31 @@ const Generator = struct {
     }
 
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
+        if (!self.options.with_error_recovery) {
+            try self.emitFailFastSyntaxErrorSupport(writer);
+        }
         for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
             const symbol = self.symbols.items[spec.symbol_index];
             const returns_node = self.symbolReturnsNode(spec.symbol_index, spec.skip_ast_construction);
-            const candidates = try self.recoveryTerminalStringsForSequence(&.{spec.symbol_index}, if (symbol.kind == .variable) spec.symbol_index else null);
 
-            try writer.print("\nfn {s}(context: *data_structures.Context", .{spec.name});
+            try writer.print("\n{s}fn {s}(context: *data_structures.Context", .{
+                if (!self.options.with_error_recovery) "noinline " else "",
+                spec.name,
+            });
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
             try writer.print(") anyerror!{s} {{\n", .{
                 if (returns_node) "data_structures.ASTNode.Pointer" else "void",
             });
             try writer.writeAll("    @branchHint(.cold);\n");
+            if (!self.options.with_error_recovery) {
+                try writer.writeAll("    return llFailFastSyntaxError(context, .{ .while_parsing = ");
+                try emitStringLiteral(writer, symbol.id);
+                try writer.writeAll(" }, ");
+                try self.emitRecoveryCandidates(writer, spec.expected_tokens);
+                try writer.print(", {s}_message);\n}}\n", .{spec.name});
+                try self.emitFailFastSyntaxErrorMessageRenderer(writer, spec);
+                continue;
+            }
             if (self.uses_explicit_recovery) {
                 try writer.writeAll("    try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
                 try emitStringLiteral(writer, symbol.id);
@@ -1269,6 +1282,7 @@ const Generator = struct {
                 try writer.writeAll("    return error.ExplicitSyntaxRecovery;\n}\n");
                 continue;
             }
+            const candidates = try self.recoveryTerminalStringsForSequence(&.{spec.symbol_index}, if (symbol.kind == .variable) spec.symbol_index else null);
             try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
             try writer.writeAll("    if (report_syntax_error) {\n");
             try writer.writeAll("        try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
@@ -1291,6 +1305,68 @@ const Generator = struct {
             }
             try writer.writeAll("}\n");
         }
+    }
+
+    fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
+        _ = self;
+        try writer.writeAll(
+            \\
+            \\const LLFailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
+            \\
+            \\fn llFailFastSyntaxError(
+            \\    context: *data_structures.Context,
+            \\    diagnostic_context: root.SyntaxDiagnosticContext,
+            \\    expected_tokens: []const []const u8,
+            \\    render_message: LLFailFastMessageRenderer,
+            \\) anyerror {
+            \\    @branchHint(.cold);
+            \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
+            \\    if (!builtin.is_test) {
+            \\        const diagnostic_message = render_message(.{
+            \\            .allocator = context.runtime().arena_allocator,
+            \\            .context = context,
+            \\            .diagnostic = context.runtime().last_diagnostic.?,
+            \\            .style = .ansi,
+            \\        }) catch "";
+            \\        std.debug.print("{s}", .{diagnostic_message});
+            \\    }
+            \\    return root.ParseError.SyntaxError;
+            \\}
+            \\
+            \\fn llFailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {
+            \\    if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+            \\        return error_messages.syntax_error_ll(args);
+            \\    if (comptime @hasDecl(error_messages, "syntax_error"))
+            \\        return error_messages.syntax_error(args);
+            \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+            \\}
+            \\
+        );
+    }
+
+    fn emitFailFastSyntaxErrorMessageRenderer(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        spec: SyntaxErrorHandlerSpec,
+    ) !void {
+        _ = self;
+        try writer.print(
+            \\
+            \\fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
+            \\    if (comptime @hasDecl(error_messages, "{s}"))
+            \\        return @field(error_messages, "{s}")(args);
+            \\    if (comptime @hasDecl(error_messages, "{s}"))
+            \\        return @field(error_messages, "{s}")(args);
+            \\    return llFailFastDefaultMessage(args);
+            \\}}
+            \\
+        , .{
+            spec.name,
+            spec.exact_name,
+            spec.exact_name,
+            spec.symbol_name,
+            spec.symbol_name,
+        });
     }
 
     const SyntaxErrorFunctionNames = struct {

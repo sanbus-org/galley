@@ -434,11 +434,9 @@ const Generator = struct {
             try self.emitStateFunction(writer, state, index);
             try writer.writeByte('\n');
         }
-        if (self.options.with_error_recovery) {
-            if (!self.uses_explicit_recovery) try self.emitStateRecoveryCandidateTables(writer);
-            try self.emitSyntaxErrorHandlers(writer);
-            if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
-        }
+        if (self.options.with_error_recovery and !self.uses_explicit_recovery) try self.emitStateRecoveryCandidateTables(writer);
+        try self.emitSyntaxErrorHandlers(writer);
+        if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
 
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
@@ -1025,17 +1023,6 @@ const Generator = struct {
         recoverable: bool,
         indent: []const u8,
     ) !void {
-        if (!self.options.with_error_recovery) {
-            try writer.print("{s}try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{ indent, state_index });
-            try self.emitStringSliceItems(writer, expected_tokens);
-            try writer.writeAll("});\n");
-            try writer.print("{s}if (!builtin.is_test) {{\n", .{indent});
-            try self.emitSyntaxErrorMessagePrint(writer, error_function_name, try indented(self.allocator, indent, 4));
-            try writer.print("{s}}}\n", .{indent});
-            try writer.print("{s}return root.ParseError.SyntaxError;\n", .{indent});
-            return;
-        }
-
         const handler_name = try std.fmt.allocPrint(self.allocator, "lr_syntax_error_{d}", .{self.syntax_error_handlers.items.len});
         try self.syntax_error_handlers.append(self.allocator, .{
             .name = handler_name,
@@ -1044,6 +1031,10 @@ const Generator = struct {
             .error_function_name = error_function_name,
             .recoverable = recoverable,
         });
+        if (!self.options.with_error_recovery) {
+            try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
+            return;
+        }
         if (self.uses_explicit_recovery) {
             try writer.print("{s}if (try {s}(context, stack, recovery_frame)) |explicit_recovery| {{\n", .{ indent, handler_name });
             try writer.print("{s}    if (explicit_recovery.return_from_state) return explicit_recovery.result;\n", .{indent});
@@ -1870,13 +1861,36 @@ const Generator = struct {
     }
 
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
+        if (!self.options.with_error_recovery) {
+            try self.emitFailFastSyntaxErrorSupport(writer);
+        }
         for (self.syntax_error_handlers.items, 0..) |spec, site_index| {
-            try writer.print("fn {s}(context: *data_structures.Context, stack: *SemanticStack{s}) anyerror!{s} {{\n", .{
+            const parameters = if (!self.options.with_error_recovery)
+                ""
+            else if (self.uses_explicit_recovery)
+                ", stack: *SemanticStack, recovery_frame: *const LRRecoveryFrame"
+            else
+                ", stack: *SemanticStack";
+            const return_type = if (!self.options.with_error_recovery)
+                "ReduceResult"
+            else if (self.uses_explicit_recovery)
+                "?ExplicitRecoveryResult"
+            else
+                "bool";
+            try writer.print("{s}fn {s}(context: *data_structures.Context{s}) anyerror!{s} {{\n", .{
+                if (!self.options.with_error_recovery) "noinline " else "",
                 spec.name,
-                if (self.uses_explicit_recovery) ", recovery_frame: *const LRRecoveryFrame" else "",
-                if (self.uses_explicit_recovery) "?ExplicitRecoveryResult" else "bool",
+                parameters,
+                return_type,
             });
             try writer.writeAll("    @branchHint(.cold);\n");
+            if (!self.options.with_error_recovery) {
+                try writer.print("    return lrFailFastSyntaxError(context, .{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+                try self.emitStringSliceItems(writer, spec.expected_tokens);
+                try writer.print("}}, {s}_message);\n}}\n", .{spec.name});
+                try self.emitFailFastSyntaxErrorMessageRenderer(writer, spec);
+                continue;
+            }
             if (self.uses_explicit_recovery) {
                 try writer.print("    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
                 try self.emitStringSliceItems(writer, spec.expected_tokens);
@@ -1917,6 +1931,62 @@ const Generator = struct {
             }
             try writer.writeAll("}\n\n");
         }
+    }
+
+    fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
+        _ = self;
+        try writer.writeAll(
+            \\const LRFailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
+            \\
+            \\fn lrFailFastSyntaxError(
+            \\    context: *data_structures.Context,
+            \\    diagnostic_context: root.SyntaxDiagnosticContext,
+            \\    expected_tokens: []const []const u8,
+            \\    render_message: LRFailFastMessageRenderer,
+            \\) anyerror {
+            \\    @branchHint(.cold);
+            \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
+            \\    if (!builtin.is_test) {
+            \\        const diagnostic_message = render_message(.{
+            \\            .allocator = context.runtime().arena_allocator,
+            \\            .context = context,
+            \\            .diagnostic = context.runtime().last_diagnostic.?,
+            \\            .style = .ansi,
+            \\        }) catch "";
+            \\        std.debug.print("{s}", .{diagnostic_message});
+            \\    }
+            \\    return root.ParseError.SyntaxError;
+            \\}
+            \\
+            \\fn lrFailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {
+            \\    if (comptime @hasDecl(error_messages, "syntax_error_lr"))
+            \\        return error_messages.syntax_error_lr(args);
+            \\    if (comptime @hasDecl(error_messages, "syntax_error"))
+            \\        return error_messages.syntax_error(args);
+            \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+            \\}
+            \\
+        );
+    }
+
+    fn emitFailFastSyntaxErrorMessageRenderer(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        spec: SyntaxErrorHandlerSpec,
+    ) !void {
+        _ = self;
+        try writer.print(
+            \\fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
+            \\    if (comptime @hasDecl(error_messages, "{s}"))
+            \\        return @field(error_messages, "{s}")(args);
+            \\    return lrFailFastDefaultMessage(args);
+            \\}}
+            \\
+        , .{
+            spec.name,
+            spec.error_function_name,
+            spec.error_function_name,
+        });
     }
 
     fn recoveryTerminalStringsForState(self: *Generator, state: State) !std.ArrayList([]const u8) {
