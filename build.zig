@@ -5,8 +5,6 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const clap = b.dependency("clap", .{});
-
     const generator = common.addGeneratorModules(b, target, optimize);
     _ = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
@@ -69,7 +67,6 @@ pub fn build(b: *std.Build) !void {
                 target,
                 optimize,
                 generator,
-                clap.module("clap"),
                 entry.path,
                 parser_type,
             )) |parser| {

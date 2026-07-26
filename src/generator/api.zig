@@ -112,6 +112,7 @@ pub fn emitParser(
     parser_type: ParserType,
     options: Options,
 ) !void {
+    try options.validate();
     switch (parser_type) {
         .ll => try ll_generator.emitParserWithOptions(allocator, parsed_grammar, writer, options),
         .lr => try lr_generator.emitParserWithOptions(allocator, parsed_grammar, writer, options),
@@ -125,6 +126,7 @@ pub fn emitErrorMessages(
     parser_type: ParserType,
     options: Options,
 ) !void {
+    try options.validate();
     switch (parser_type) {
         .ll => try ll_generator.emitErrorMessagesWithOptions(allocator, parsed_grammar, writer, options),
         .lr => try lr_generator.emitErrorMessagesWithOptions(allocator, parsed_grammar, writer, options),
@@ -200,6 +202,22 @@ test generateParserAlloc {
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
     try std.testing.expect(std.mem.indexOf(u8, output, "pub fn parse") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
+}
+
+test "generator rejects procedures without AST construction" {
+    const source =
+        \\Start
+        \\| "a"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.ProceduresRequireAst, generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = false,
+        .with_procedures = true,
+    }));
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {

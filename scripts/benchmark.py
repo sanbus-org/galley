@@ -68,9 +68,7 @@ class GlobalProgress:
         content_bottom = terminal_size.lines - 1
         # Create a clean boundary below the invoking command, reserve the last
         # terminal row, and keep all normal output inside the scrolling region.
-        sys.stdout.write(
-            f"\n\033[1;{content_bottom}r\033[{content_bottom};1H"
-        )
+        sys.stdout.write(f"\n\033[1;{content_bottom}r\033[{content_bottom};1H")
         sys.stdout.flush()
         self.active = True
 
@@ -83,9 +81,7 @@ class GlobalProgress:
             return
 
         self.terminal_lines = terminal_lines
-        sys.stdout.write(
-            f"\0337\033[1;{terminal_lines - 1}r\0338"
-        )
+        sys.stdout.write(f"\0337\033[1;{terminal_lines - 1}r\0338")
 
     def begin_card(self, suite_label, card_index, card_total):
         self.suite_label = suite_label
@@ -112,9 +108,7 @@ class GlobalProgress:
             self.card_total,
             max(1, terminal_size.columns - 1),
         )
-        sys.stdout.write(
-            f"\0337\033[{terminal_size.lines};1H\033[2K{line}\0338"
-        )
+        sys.stdout.write(f"\0337\033[{terminal_size.lines};1H\033[2K{line}\0338")
         sys.stdout.flush()
 
     def clear(self):
@@ -131,9 +125,7 @@ class GlobalProgress:
         self.render()
         if self.enabled and self.active:
             terminal_size = shutil.get_terminal_size(fallback=(80, 24))
-            sys.stdout.write(
-                f"\033[r\033[{terminal_size.lines};1H\n"
-            )
+            sys.stdout.write(f"\033[r\033[{terminal_size.lines};1H\n")
             sys.stdout.flush()
             self.active = False
 
@@ -175,8 +167,7 @@ def format_progress_line(
     if terminal_width < 54:
         suite_width = max(
             1,
-            terminal_width
-            - len(f"Global {count_text} │  │ {card_text}"),
+            terminal_width - len(f"Global {count_text} │  │ {card_text}"),
         )
         return (
             f"Global {count_text} │ "
@@ -275,6 +266,7 @@ def format_card(name, metrics, width, no_color=False, error_msg=None, skip_limit
     if no_color:
         RESET = ""
         BOLD = ""
+        ITALIC = ""
         DIM = ""
         CYAN = ""
         GREEN = ""
@@ -285,6 +277,7 @@ def format_card(name, metrics, width, no_color=False, error_msg=None, skip_limit
     else:
         RESET = "\033[0m"
         BOLD = "\033[1m"
+        ITALIC = "\033[3m"
         DIM = "\033[2m"
         CYAN = "\033[36m"
         GREEN = "\033[32m"
@@ -447,10 +440,15 @@ def format_card(name, metrics, width, no_color=False, error_msg=None, skip_limit
     except ValueError:
         nodes_styled = f"{BOLD}{nodes_visible}{RESET}"
 
+    iterations = metrics.get("Iterations")
     file_size_visible = metrics.get("File size", "N/A")
     file_size_styled = (
-        f"{BOLD}{file_size_visible}{RESET}" if not no_color else file_size_visible
+        f"{BOLD}{file_size_visible}{RESET} {ITALIC}{GRAY}x{iterations}{RESET}"
+        if not no_color
+        else file_size_visible
     )
+    if "File size" in metrics:
+        file_size_visible += f" x{iterations}"
 
     lines.append(make_line("File size:", file_size_styled, file_size_visible))
     lines.append(make_line("Parsed bytes:", bytes_styled, parsed_bytes))
@@ -620,11 +618,11 @@ def benchmark_variant(gen_opts):
     is_no_ast = "--no-ast" in gen_opts
     is_no_procedures = "--no-procedures" in gen_opts
     is_ast_for_terminals = "--ast-for-terminals" in gen_opts
-    procedures_enabled = not is_no_procedures
+    procedures_enabled = not is_no_ast and not is_no_procedures
 
     variant_size = input_size if input_size is not None else 16
     if is_no_ast:
-        variant_name = f"no-ast-procedures-size{variant_size}"
+        variant_name = f"no-ast-no-procedures-size{variant_size}"
     elif is_no_procedures:
         term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
         variant_name = f"ast-no-procedures-{term_suffix}-size{variant_size}"
@@ -657,16 +655,10 @@ def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
         file_size = os.path.getsize(input_file) if os.path.exists(input_file) else 0
         skip_limit = None
         skip_cause = None
-        if (
-            variant.procedures_enabled
-            and file_size > MAX_BENCHMARK_INPUT_BYTES
-        ):
+        if variant.procedures_enabled and file_size > MAX_BENCHMARK_INPUT_BYTES:
             skip_limit = "> 1 MB"
             skip_cause = "procedures enabled"
-        elif (
-            variant.input_size is not None
-            and file_size >= (2**variant.input_size)
-        ):
+        elif variant.input_size is not None and file_size >= (2**variant.input_size):
             skip_limit = f">= 2^{variant.input_size}"
             skip_cause = "input size limit"
 
@@ -961,6 +953,7 @@ def run_benchmark_suite(suite, args, progress):
 
                 metrics_2 = best_metrics(measured_runs)
                 metrics_2["File size"] = format_file_size(file_size)
+                metrics_2["Iterations"] = second_iterations
                 if (
                     "Parsed bytes" not in metrics_2
                     or metrics_2["Parsed bytes"] == "N/A"

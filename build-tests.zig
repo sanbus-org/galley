@@ -6,21 +6,19 @@ const test_selection = @import("build/test_selection.zig");
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const clap = b.dependency("clap", .{});
     const generator = common.addGeneratorModules(b, target, optimize);
     const galley_cli = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
         .add_galley_step = true,
         .include_generate_parser_file = true,
     });
-    const ll_galley = (try common.addLanguageParser(b, target, optimize, generator, clap.module("clap"), "galley", "ll")) orelse
+    const ll_galley = (try common.addLanguageParser(b, target, optimize, generator, "galley", "ll")) orelse
         return error.MissingBootstrapGalleyParser;
     const test_filters = b.option([]const []const u8, "test-filter", "Select tests by suite:, case:, and name:") orelse &.{};
 
     try add(b, .{
         .target = target,
         .optimize = optimize,
-        .clap_mod = clap.module("clap"),
         .generator = generator,
         .generator_cli_mod = galley_cli.generator_cli_mod,
         .generate_parser_file_exe = galley_cli.generate_parser_file_exe.?,
@@ -32,7 +30,6 @@ pub fn build(b: *std.Build) !void {
 pub const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    clap_mod: *std.Build.Module,
     generator: common.GeneratorModules,
     generator_cli_mod: *std.Build.Module,
     generate_parser_file_exe: *std.Build.Step.Compile,
@@ -180,7 +177,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         _ = try generated_parser_matrix.add(b, &matrix_work.step, .{
             .target = target,
             .optimize = optimize,
-            .clap_mod = options.clap_mod,
             .generator_modules = generator,
             .generate_parser_file_exe = generate_parser_file_exe,
             .selection = selection,
@@ -214,7 +210,6 @@ pub fn add(b: *std.Build, options: Options) !void {
             target,
             optimize,
             generator,
-            options.clap_mod,
             lr_galley_parser_path,
         );
 
@@ -755,7 +750,6 @@ fn addGalleyBootstrapParser(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     generator: common.GeneratorModules,
-    clap_mod: *std.Build.Module,
     parser_source: std.Build.LazyPath,
 ) *std.Build.Step.Compile {
     const procedures_mod = b.addModule("galley-bootstrap-parity-procedures", .{
@@ -796,7 +790,6 @@ fn addGalleyBootstrapParser(
         .optimize = optimize,
         .link_libc = true,
         .imports = &.{
-            .{ .name = "clap", .module = clap_mod },
             .{ .name = "build_options", .module = cli_options.createModule() },
             .{ .name = "galley", .module = generated_parser.runtime_mod },
         },

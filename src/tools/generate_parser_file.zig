@@ -70,6 +70,7 @@ fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *cons
 
 fn parseArgs(init: std.process.Init) !CliOptions {
     var result = CliOptions{};
+    var procedures_mode: ?bool = null;
 
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
@@ -105,8 +106,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.with_ast = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
             result.generator_options.with_procedures = true;
+            procedures_mode = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.generator_options.with_procedures = false;
+            procedures_mode = false;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.generator_options.with_error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
@@ -126,6 +129,12 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         }
     }
 
+    if (!result.generator_options.with_ast) {
+        if (procedures_mode == true) {
+            fatal("error: --no-ast cannot be combined with --with-procedures\n", .{});
+        }
+        result.generator_options.with_procedures = false;
+    }
     return result;
 }
 
@@ -146,7 +155,7 @@ fn printUsage(init: std.process.Init) !void {
         \\      --strip-recovery-annotations
         \\                             Test-only: clear recovery annotations before generation.
         \\      --with-ast             Enables AST construction.
-        \\      --no-ast               Disables AST construction.
+        \\      --no-ast               Disables AST construction and procedures.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
         \\      --with-error-recovery  Enables syntax-error recovery.

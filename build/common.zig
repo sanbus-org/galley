@@ -262,7 +262,6 @@ pub fn addLanguageParser(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     generator: GeneratorModules,
-    clap_mod: *std.Build.Module,
     entry_path: []const u8,
     parser_type: []const u8,
 ) !?LanguageParser {
@@ -286,7 +285,6 @@ pub fn addLanguageParser(
         target,
         optimize,
         generator,
-        clap_mod,
         entry_path,
         parser_type,
         b.path(parser_path),
@@ -298,7 +296,6 @@ pub fn addLanguageParserFromFile(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     generator: GeneratorModules,
-    clap_mod: *std.Build.Module,
     entry_path: []const u8,
     parser_type: []const u8,
     parser_file: std.Build.LazyPath,
@@ -364,7 +361,6 @@ pub fn addLanguageParserFromFile(
         .optimize = optimize,
         .link_libc = true,
         .imports = &.{
-            .{ .name = "clap", .module = clap_mod },
             .{ .name = "build_options", .module = parser_cli_options.createModule() },
             .{ .name = "galley", .module = galley_parser_mod },
         },

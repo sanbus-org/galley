@@ -6,6 +6,10 @@ pub const Options = struct {
     with_error_recovery: bool = false,
     ast_for_terminals: bool = false,
     input_size: u16 = 16,
+
+    pub fn validate(self: Options) !void {
+        if (!self.with_ast and self.with_procedures) return error.ProceduresRequireAst;
+    }
 };
 
 pub const ErrorMessageSpec = struct {
