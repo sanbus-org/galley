@@ -49,13 +49,13 @@ jobs:
         case:
           - ll-galley
           - lr-galley
+          - ll-json-structured-ast
+          - lr-json-structured-ast
           - ll-json
           - lr-json
           - ll-json-augmented
           - ll-json-recovery
           - lr-json-recovery
-          - ll-json-structured-ast
-          - lr-json-structured-ast
           - ll-lisp
           - ll-ll1
           - ll-lua
