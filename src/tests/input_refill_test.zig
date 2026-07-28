@@ -70,12 +70,32 @@ fn parseFile(input: []const u8) !parser.ParseResult {
 }
 
 test "input refill generated capability" {
-    try std.testing.expect(parser.input_refill_enabled);
+    try std.testing.expectEqual(test_options.refill_enabled, parser.input_refill_enabled);
     try std.testing.expectEqual(@as(usize, 16), @bitSizeOf(parser.parser.input_size_cap));
     try std.testing.expectEqual(test_options.ast_limit, parser.parser.is_ast_enabled);
-    try std.testing.expectEqual(!test_options.ast_limit, parser.sliding_input_enabled);
+    try std.testing.expectEqual(
+        test_options.refill_enabled and !test_options.ast_limit,
+        parser.sliding_input_enabled,
+    );
     try std.testing.expectEqual(test_options.indentation, parser.config.indentation_syntax);
     try std.testing.expect(parser.position_tracking_enabled);
+}
+
+test "input refill file read failures propagate through the parser API" {
+    if (!test_options.read_error) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var directory = try tmp.dir.openFile(std.testing.io, ".", .{
+        .mode = .read_only,
+        .lock = .exclusive,
+    });
+    defer directory.close(std.testing.io);
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    try std.testing.expectError(error.ReadFailed, session.parseFile(directory, "directory"));
+    try std.testing.expectEqual(null, session.lastDiagnostic());
 }
 
 test "input refill sliding parses bytes, sentinel bytes, and files" {

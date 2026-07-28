@@ -64,6 +64,7 @@ pub const Context = struct {
     token: data_structures.Token = .{},
     source: Source = .{ .bytes = .{ .input = &[_]u8{0} } },
     chunk_buffer: []u8 = undefined,
+    input_read_failed: bool = false,
 
     // These fields are defined only when non-indentation input refilling is enabled.
     file_input: if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) []u8 else void = if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) &.{} else {},
@@ -123,6 +124,7 @@ pub const Context = struct {
         diagnostic_context: root.SyntaxDiagnosticContext,
         expected_tokens: []const []const u8,
     ) !void {
+        if (self.input_read_failed) return error.ReadFailed;
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.token.items());
         self.runtime().last_diagnostic = .{
             .syntax = .{
@@ -333,7 +335,10 @@ pub const Context = struct {
     pub fn read(self: *@This()) void {
         const bytes_read = switch (self.source) {
             .file => |*reader| reader.interface.readSliceShort(self.chunk_buffer) catch |err| switch (err) {
-                error.ReadFailed => return,
+                error.ReadFailed => failed: {
+                    self.input_read_failed = true;
+                    break :failed 0;
+                },
             },
             .bytes => |*bytes| bytes_read: {
                 if (bytes.offset >= bytes.input.len) {
@@ -353,6 +358,7 @@ pub const Context = struct {
     }
 
     pub fn reset(self: *@This()) !void {
+        self.input_read_failed = false;
         switch (self.source) {
             .file => |*reader| try reader.seekTo(0),
             .bytes => |*bytes| bytes.offset = 0,
@@ -536,7 +542,12 @@ pub const Context = struct {
 
     fn readInput(self: *@This(), destination: []u8) usize {
         return switch (self.source) {
-            .file => |*reader| reader.interface.readSliceShort(destination) catch 0,
+            .file => |*reader| reader.interface.readSliceShort(destination) catch |err| switch (err) {
+                error.ReadFailed => failed: {
+                    self.input_read_failed = true;
+                    break :failed 0;
+                },
+            },
             .bytes => |*bytes| bytes_read: {
                 if (bytes.offset >= bytes.input.len) break :bytes_read 0;
                 const amount = @min(destination.len, bytes.input.len - bytes.offset);
@@ -594,7 +605,12 @@ pub const Context = struct {
                 self.input_end,
                 @max(required_end, self.loaded_end +| root.read_chunk_size),
             );
-            const bytes_read = reader.interface.readSliceShort(self.token.buffer[self.loaded_end..target_end]) catch 0;
+            const bytes_read = reader.interface.readSliceShort(self.token.buffer[self.loaded_end..target_end]) catch |err| switch (err) {
+                error.ReadFailed => failed: {
+                    self.input_read_failed = true;
+                    break :failed 0;
+                },
+            };
             if (bytes_read == 0) {
                 self.input_end = self.loaded_end;
                 break;
