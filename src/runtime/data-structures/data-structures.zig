@@ -11,6 +11,7 @@ pub const ASTMemoryBenchmarkStats = @import("astnode.zig").ASTMemoryBenchmarkSta
 pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;
+pub const RuntimeContextRegistration = @import("context.zig").RuntimeContextRegistration;
 pub const Offsets = @import("offsets.zig").Offsets;
 pub const ProcedureArguments = @import("procedure-utilities.zig").ProcedureArguments;
 pub const Procedure = @import("procedure-utilities.zig").Procedure;

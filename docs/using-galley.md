@@ -205,6 +205,8 @@ var parsed = try parser.parseBytes(
 defer parsed.deinit();
 
 const result = parsed.result;
+var reader = try parsed.session.read(result);
+defer reader.deinit();
 ```
 
 `parseBytes` makes a sentinel-terminated copy of the input. The returned `ParsedInput` owns that copy, the parser session, and any AST storage, so it must remain alive while its result or AST is being inspected.
@@ -216,8 +218,22 @@ var session = try parser.Session.init(io, allocator, .{});
 defer session.deinit();
 
 const first = try session.parseBytes("first input", "first");
+{
+    var reader = try session.read(first);
+    defer reader.deinit();
+    // Inspect first.ast_root through reader.astAllocator().
+}
 const second = try session.parseBytes("second input", "second");
 ```
+
+Parsing takes an exclusive session lock and returns `error.SessionInUse` rather
+than waiting if the session is already parsing or has active readers. Call
+`session.read(result)` before inspecting session-owned AST data. Multiple
+readers may coexist, but every reader must be released before parsing again.
+Results carry a session generation, so `read` returns
+`error.StaleParseResult` after a later parse has reused the session.
+`tryDeinit()` similarly returns `error.SessionInUse`; `deinit()` reports
+incorrect active-guard destruction with a clear panic.
 
 Stack-overflow recovery is disabled by default so ordinary parses pay no
 signal-recovery setup cost. Enable it for inputs that may contain excessive
@@ -272,7 +288,9 @@ if (session.parseBytes(input, "input")) |_| {
     // Parsed without syntax errors.
 } else |err| switch (err) {
     parser.ParseError.SyntaxError => {
-        std.debug.print("reported {d} syntax errors\n", .{session.syntaxErrorCount()});
+        var reader = try session.readLatest();
+        defer reader.deinit();
+        std.debug.print("reported {d} syntax errors\n", .{reader.syntaxErrorCount()});
     },
     parser.ParseError.StackOverflow => {
         std.debug.print("parser stack overflow recovered\n", .{});
@@ -281,7 +299,11 @@ if (session.parseBytes(input, "input")) |_| {
 }
 ```
 
-Fail-fast parsers populate `lastDiagnostic()` and report a syntax-error count of one. A recovery-enabled parse that encounters errors still returns `ParseError.SyntaxError`; `syntaxErrorCount()` reports how many diagnostics were produced, while `lastDiagnostic()` retains the final one.
+Fail-fast parsers populate `SessionReadGuard.lastDiagnostic()` and report a
+syntax-error count of one. A recovery-enabled parse that encounters errors
+still returns `ParseError.SyntaxError`; acquire `session.readLatest()` before
+allowing another reuse, then use `syntaxErrorCount()` and `lastDiagnostic()` on
+that guard.
 
 `SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
 
@@ -292,7 +314,9 @@ Each call resets the session's transient parsing state while retaining reusable 
 - `session.parseFile(file, input_path)` parses from a `std.Io.File`.
 - `parseSentinelBytes` and `session.parseSentinelBytes` accept caller-owned `[:0]const u8` input and avoid the copy performed by `parseBytes`.
 
-The sentinel-terminated input must remain valid for the complete parse. When AST generation is enabled, the parse result exposes `ast_root`, and the session exposes its AST allocator through `astAllocator()`.
+The sentinel-terminated input must remain valid for the complete parse. When
+AST generation is enabled, the parse result exposes `ast_root`, and a matching
+session read guard exposes the AST allocator through `astAllocator()`.
 
 ## Understand the Package Boundary
 

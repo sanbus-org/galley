@@ -4,6 +4,10 @@ const parser = @import("parser-under-test");
 const ParsedError = struct {
     session: parser.Session,
     context: parser.data_structures.Context,
+
+    fn read(self: *ParsedError) !parser.SessionReadGuard {
+        return try self.session.readLatest();
+    }
 };
 
 fn parseError(input: [:0]const u8) !ParsedError {
@@ -14,8 +18,8 @@ fn parseError(input: [:0]const u8) !ParsedError {
     return .{ .session = session, .context = context };
 }
 
-fn syntaxDiagnostic(session: *const parser.Session) parser.SyntaxDiagnostic {
-    return switch (session.lastDiagnostic().?) {
+fn syntaxDiagnostic(read_guard: *const parser.SessionReadGuard) parser.SyntaxDiagnostic {
+    return switch (read_guard.lastDiagnostic().?) {
         .syntax => |syntax| syntax,
     };
 }
@@ -33,8 +37,10 @@ test "json recovers damaged array values at sibling boundaries" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.session.syntaxErrorCount());
-    const recovery = syntaxDiagnostic(&parsed.session).recovery orelse return error.MissingRecovery;
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 2), read_guard.syntaxErrorCount());
+    const recovery = syntaxDiagnostic(&read_guard).recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.before, recovery.@"resume");
     try std.testing.expectEqualStrings(",", recovery.terminal);
     switch (parser.parser.parser_type) {
@@ -62,8 +68,10 @@ test "json recovers damaged object values and renders tailored context" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
-    const diagnostic = syntaxDiagnostic(&parsed.session);
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = syntaxDiagnostic(&read_guard);
     const recovery = diagnostic.recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.before, recovery.@"resume");
     try std.testing.expectEqualStrings(",", recovery.terminal);
@@ -106,7 +114,9 @@ test "json production recovery closes a damaged object tail" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    const recovery = syntaxDiagnostic(&parsed.session).recovery orelse return error.MissingRecovery;
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    const recovery = syntaxDiagnostic(&read_guard).recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.before, recovery.@"resume");
     try std.testing.expectEqualStrings("}", recovery.terminal);
     const production = switch (recovery.target) {
@@ -122,7 +132,9 @@ test "json container production recovery discards an unselectable array" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    const recovery = syntaxDiagnostic(&parsed.session).recovery orelse return error.MissingRecovery;
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    const recovery = syntaxDiagnostic(&read_guard).recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.after, recovery.@"resume");
     try std.testing.expectEqualStrings("]", recovery.terminal);
     const production = switch (recovery.target) {
@@ -138,7 +150,9 @@ test "json remains fail fast outside committed recovery scopes" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
-    try std.testing.expect(syntaxDiagnostic(&parsed.session).recovery == null);
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    try std.testing.expect(syntaxDiagnostic(&read_guard).recovery == null);
     try std.testing.expect(parsed.context.pos() <= input.len);
 }

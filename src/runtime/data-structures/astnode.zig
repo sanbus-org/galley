@@ -65,6 +65,10 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             return &self.memory[address];
         }
 
+        pub inline fn atConst(self: *const Self, address: ASTNodeType.Pointer) *const ASTNodeType {
+            return &self.memory[address];
+        }
+
         pub inline fn create(self: *Self, start: Context.Size, variable: u16) ASTNodeType.Pointer {
             const address = self.counter;
             self.counter +%= 1;
@@ -866,6 +870,7 @@ const TestFixture = struct {
     nodes: []TestASTNode,
     root: Context.Size,
     free_nodes: []Context.Size,
+    runtime_context: *root.data_structures.RuntimeContext = undefined,
 
     pub fn allocator(self: *TestFixture) std.mem.Allocator {
         return self.arena.allocator();
@@ -959,8 +964,7 @@ fn runWithContext(test_fn: *const fn (*TestFixture) anyerror!void) !void {
         .io = undefined,
         .arena_allocator = fixture.allocator(),
     };
-    root.data_structures.context.activateRuntimeContext(&runtime_context);
-    defer root.data_structures.context.deactivateRuntimeContext(&runtime_context);
+    fixture.runtime_context = &runtime_context;
     try test_fn(&fixture);
 }
 
@@ -1198,8 +1202,11 @@ test "insertChildren" {
 }
 
 fn testAugmentedText(fixture: *TestFixture) !void {
-    var ctx_val = fixture.getContext();
-    const ctx = &ctx_val;
+    var context = fixture.getContext();
+    const ctx = &context;
+    var runtime_registration = root.data_structures.RuntimeContextRegistration.init(ctx, fixture.runtime_context);
+    runtime_registration.register();
+    defer runtime_registration.unregister();
 
     // Leaf nodes return their own text
     fixture.nodes[5].text_start = 0;

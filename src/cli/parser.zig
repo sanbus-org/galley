@@ -246,7 +246,9 @@ fn run(session: *galley.Session, input: anytype, input_path: ?[]const u8, warmup
         std.debug.print("Parsed bytes:  {s}\n", .{try string_utilities.formatFileSize(total_parsed_bytes, &buffer)});
         std.debug.print("Duration:      {s} ns\n", .{try string_utilities.formatWithThousands(elapsed_ns, &buffer)});
         std.debug.print("Throughput:    {s}/s\n", .{try string_utilities.formatFileSize(mbps, &buffer)});
-        const nodes_allocated = if (comptime parser.is_ast_enabled) session.astAllocator().counter else 0;
+        var read_guard = try session.readLatest();
+        defer read_guard.deinit();
+        const nodes_allocated = if (comptime parser.is_ast_enabled) read_guard.astAllocator().counter else 0;
         std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(
             nodes_allocated,
             &buffer,

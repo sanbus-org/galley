@@ -15,13 +15,18 @@ fn sampleFitsParserInputSize() bool {
     return true;
 }
 
+fn sampleSupportsSessionSafetyTests() bool {
+    return @bitSizeOf(parser.parser.input_size_cap) <= 16 and
+        sampleFitsParserInputSize() and
+        sample_input.len <= 1024 * 1024;
+}
+
 fn expectParsedAll(result: parser.ParseResult, comptime test_label: []const u8) !void {
     if (result.parsed_bytes != sample_input.len) {
         const line = if (@TypeOf(result.line) == u32) result.line else 0;
         const col = if (@TypeOf(result.column) == u32) result.column else 0;
         std.debug.print(
             \\
-
             \\=== generated_parser_api failure ===
             \\case: {s}
             \\suite: {s}
@@ -118,6 +123,77 @@ test "generated_parser_api reusable session sentinel slices" {
 
     const second = try session.parseSentinelBytes(input, test_options.sample_path);
     try expectParsedAll(second, "reusable session sentinel slices");
+}
+
+test "generated_parser_api session readers prevent reuse" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleSupportsSessionSafetyTests()) return error.SkipZigTest;
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    const first = try session.parseBytes(sample_input, test_options.sample_path);
+    {
+        var first_reader = try session.read(first);
+        defer first_reader.deinit();
+        {
+            var second_reader = try session.read(first);
+            defer second_reader.deinit();
+
+            try std.testing.expectError(error.SessionInUse, session.parseBytes(sample_input, test_options.sample_path));
+        }
+        try std.testing.expectError(error.SessionInUse, session.parseBytes(sample_input, test_options.sample_path));
+        try std.testing.expectError(error.SessionInUse, session.tryDeinit());
+    }
+
+    const second = try session.parseBytes(sample_input, test_options.sample_path);
+    try expectParsedAll(second, "session readers prevent reuse");
+    try std.testing.expectError(error.StaleParseResult, session.read(first));
+
+    var latest_reader = try session.read(second);
+    defer latest_reader.deinit();
+
+    var other_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer other_session.deinit();
+    const other_result = try other_session.parseBytes(sample_input, test_options.sample_path);
+    try std.testing.expectError(error.StaleParseResult, session.read(other_result));
+}
+
+const ConcurrentParse = struct {
+    session: *parser.Session,
+    result: ?parser.ParseResult = null,
+    parse_error: ?anyerror = null,
+
+    fn run(self: *ConcurrentParse) void {
+        self.result = self.session.parseBytes(sample_input, test_options.sample_path) catch |err| {
+            self.parse_error = err;
+            return;
+        };
+    }
+};
+
+test "generated_parser_api separate sessions parse concurrently" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleSupportsSessionSafetyTests()) return error.SkipZigTest;
+
+    var first_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer first_session.deinit();
+    var second_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer second_session.deinit();
+
+    var first = ConcurrentParse{ .session = &first_session };
+    var second = ConcurrentParse{ .session = &second_session };
+    const first_thread = try std.Thread.spawn(.{}, ConcurrentParse.run, .{&first});
+    const second_thread = try std.Thread.spawn(.{}, ConcurrentParse.run, .{&second});
+    first_thread.join();
+    second_thread.join();
+
+    if (first.parse_error) |err| return err;
+    if (second.parse_error) |err| return err;
+    try expectParsedAll(first.result orelse return error.MissingConcurrentParseResult, "concurrent first session");
+    try expectParsedAll(second.result orelse return error.MissingConcurrentParseResult, "concurrent second session");
 }
 
 test "generated_parser_api parse files" {

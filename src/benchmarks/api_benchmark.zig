@@ -33,7 +33,9 @@ pub fn main(init: std.process.Init) !void {
 
     if (comptime galley.ast_memory_benchmark_enabled) {
         const result = try session.parseSentinelBytes(sentinel_input, input_path);
-        const stats = try session.astAllocator().memoryBenchmarkStats(init.gpa, result.ast_root);
+        var read_guard = try session.read(result);
+        defer read_guard.deinit();
+        const stats = try read_guard.astAllocator().memoryBenchmarkStats(init.gpa, result.ast_root);
         try printMemoryStats(result.parsed_bytes, stats);
     } else {
         for (0..options.warmup_iterations) |_| {
@@ -56,7 +58,9 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("Parsed bytes:  {s}\n", .{try string_utilities.formatFileSize(total_parsed_bytes, &buffer)});
         std.debug.print("Duration:      {s} ns\n", .{try string_utilities.formatWithThousands(elapsed_ns, &buffer)});
         std.debug.print("Throughput:    {s}/s\n", .{try string_utilities.formatFileSize(mbps, &buffer)});
-        const nodes_allocated = if (comptime galley.parser.is_ast_enabled) session.astAllocator().counter else 0;
+        var read_guard = try session.readLatest();
+        defer read_guard.deinit();
+        const nodes_allocated = if (comptime galley.parser.is_ast_enabled) read_guard.astAllocator().counter else 0;
         std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(nodes_allocated, &buffer)});
     }
 }

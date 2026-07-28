@@ -385,10 +385,10 @@ pub fn grammarFromContext(context: *data_structures.Context) ?*Grammar {
     return grammarFromAstAllocator(context.node_allocator);
 }
 
-pub fn grammarFromAstAllocator(node_allocator: *data_structures.ASTAllocator) ?*Grammar {
+pub fn grammarFromAstAllocator(node_allocator: *const data_structures.ASTAllocator) ?*Grammar {
     var index: usize = 0;
     while (index < node_allocator.counter) : (index += 1) {
-        const node = node_allocator.at(@intCast(index));
+        const node = node_allocator.atConst(@intCast(index));
         if (node.payload.grammar) |grammar| return grammar;
     }
     return null;

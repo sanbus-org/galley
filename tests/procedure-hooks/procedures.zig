@@ -41,6 +41,8 @@ pub const Event = struct {
 
 var event_buffer: [128]Event = undefined;
 var event_count: usize = 0;
+var trace_enabled = true;
+var nested_callback: ?*const fn (*ProcedureArguments) anyerror!void = null;
 
 pub fn resetTrace() void {
     event_count = 0;
@@ -50,7 +52,16 @@ pub fn trace() []const Event {
     return event_buffer[0..event_count];
 }
 
+pub fn setTraceEnabled(enabled: bool) void {
+    trace_enabled = enabled;
+}
+
+pub fn setNestedCallback(callback: ?*const fn (*ProcedureArguments) anyerror!void) void {
+    nested_callback = callback;
+}
+
 fn record(hook: Hook, args: *ProcedureArguments) !void {
+    if (!trace_enabled) return;
     if (event_count == event_buffer.len) return error.ProcedureHookTraceOverflow;
 
     const node = if (args.node) |node_address| args.context.node_allocator.at(node_address) else null;
@@ -154,6 +165,10 @@ pub fn terminalFirst(args: *ProcedureArguments) !void {
 
 pub fn terminalSecond(args: *ProcedureArguments) !void {
     try record(.terminal_second, args);
+}
+
+pub fn nestedHook(args: *ProcedureArguments) !void {
+    if (nested_callback) |callback| try callback(args);
 }
 
 pub fn reduction_j(args: *ProcedureArguments) !void {
