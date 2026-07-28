@@ -56,7 +56,7 @@ pub fn addSymbol(
     kind: SymbolKind,
 ) !usize {
     for (symbols.items, 0..) |symbol, index| {
-        if (std.mem.eql(u8, symbol.id, id)) return index;
+        if (symbol.kind == kind and std.mem.eql(u8, symbol.id, id)) return index;
     }
 
     var symbol = Symbol{
@@ -74,6 +74,35 @@ pub fn addSymbol(
     try symbols.append(allocator, symbol);
     if (kind == .variable) try variables.append(allocator, index);
     return index;
+}
+
+test "symbol identity includes kind" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+
+    const variable_first = try addSymbol(allocator, &symbols, &variables, "VariableFirst", .variable);
+    const terminal_second = try addSymbol(allocator, &symbols, &variables, "VariableFirst", .terminal);
+    try std.testing.expect(variable_first != terminal_second);
+    try std.testing.expectEqual(variable_first, try addSymbol(allocator, &symbols, &variables, "VariableFirst", .variable));
+    try std.testing.expectEqual(terminal_second, try addSymbol(allocator, &symbols, &variables, "VariableFirst", .terminal));
+
+    const terminal_first = try addSymbol(allocator, &symbols, &variables, "TerminalFirst", .terminal);
+    const variable_second = try addSymbol(allocator, &symbols, &variables, "TerminalFirst", .variable);
+    try std.testing.expect(terminal_first != variable_second);
+
+    const literal = try addSymbol(allocator, &symbols, &variables, "digit", .terminal);
+    const generative = try addSymbol(allocator, &symbols, &variables, "digit", .generative_terminal);
+    try std.testing.expect(literal != generative);
+
+    const end = try addSymbol(allocator, &symbols, &variables, "\x00", .end);
+    const nul_terminal = try addSymbol(allocator, &symbols, &variables, "\x00", .terminal);
+    try std.testing.expect(end != nul_terminal);
+
+    try std.testing.expectEqualSlices(usize, &.{ variable_first, variable_second }, variables.items);
 }
 
 pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList([]const u8), names: []const []const u8) !void {

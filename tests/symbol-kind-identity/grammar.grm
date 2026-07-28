@@ -1,0 +1,8 @@
+Start
+| VariableFirst "VariableFirst" "TerminalFirst" TerminalFirst
+
+VariableFirst
+| "v"
+
+TerminalFirst
+| "t"
