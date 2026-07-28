@@ -394,6 +394,7 @@ const Generator = struct {
             \\pub const are_procedures_enabled = {};
             \\pub const is_error_recovery_enabled = {};
             \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
+            \\pub const is_position_tracking_enabled = {s};
             \\pub const input_size_cap = u{d};
             \\pub const longest_terminal_length = {d};
             \\
@@ -403,6 +404,7 @@ const Generator = struct {
             self.options.with_procedures,
             self.options.with_error_recovery,
             if (!self.options.with_error_recovery) "disabled" else if (self.uses_explicit_recovery) "explicit" else "automatic",
+            if (self.options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
             self.options.input_size,
             self.longestTerminalLength(),
         });

@@ -579,6 +579,26 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
     try expectNotContains(lr_output, ".is_recovery");
 }
 
+test "generateParserAlloc configures position tracking" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const default_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
+    _ = try expectContains(default_ll, "pub const is_position_tracking_enabled = builtin.mode != .ReleaseFast;");
+
+    const tracked_lr = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{
+        .with_procedures = false,
+        .with_position_tracking = true,
+    });
+    _ = try expectContains(tracked_lr, "pub const is_position_tracking_enabled = true;");
+
+    const untracked_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{
+        .with_procedures = false,
+        .with_position_tracking = false,
+    });
+    _ = try expectContains(untracked_ll, "pub const is_position_tracking_enabled = false;");
+}
+
 test "disabled recovery annotations are inert in LL and LR generation" {
     const plain_source =
         \\Start

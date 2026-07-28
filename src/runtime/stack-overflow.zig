@@ -71,8 +71,8 @@ fn stackOverflowDiagnostic(context: *const root.data_structures.Context) StackOv
         context.token.head;
 
     return .{
-        .line = if (comptime builtin.mode != .ReleaseFast) context.line else 0,
-        .column = if (comptime builtin.mode != .ReleaseFast) context.column else 0,
+        .line = if (comptime root.position_tracking_enabled) context.line else 0,
+        .column = if (comptime root.position_tracking_enabled) context.column else 0,
         .excerpt = centeredExcerpt(input, cursor),
         .token = context.token.items(),
     };
