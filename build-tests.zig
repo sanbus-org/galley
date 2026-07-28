@@ -660,6 +660,7 @@ const InputRefillTestKind = enum {
     indentation,
     recovery_eof,
     ast_limit,
+    unbuffered_read_error,
 };
 
 fn addInputRefillTests(
@@ -684,11 +685,15 @@ fn addInputRefillTests(
     const parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--no-procedures",
-        "--with-input-refill",
         "--with-position-tracking",
         "--input-size",
         "16",
     });
+    if (kind == .unbuffered_read_error) {
+        generate_parser.addArg("--no-input-refill");
+    } else {
+        generate_parser.addArg("--with-input-refill");
+    }
     if (kind == .ast_limit) {
         generate_parser.addArg("--with-ast");
     } else {
@@ -731,6 +736,15 @@ fn addInputRefillTests(
     test_options.addOption(bool, "indentation", kind == .indentation);
     test_options.addOption(bool, "recovery_eof", kind == .recovery_eof);
     test_options.addOption(bool, "ast_limit", kind == .ast_limit);
+    test_options.addOption(bool, "refill_enabled", kind != .unbuffered_read_error);
+    test_options.addOption(
+        bool,
+        "read_error",
+        kind == .sliding or
+            kind == .indentation or
+            kind == .recovery_eof or
+            kind == .unbuffered_read_error,
+    );
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/input_refill_test.zig"),
         .target = options.target,
@@ -745,7 +759,34 @@ fn addInputRefillTests(
         .root_module = test_mod,
         .filters = filters,
     });
-    return b.addRunArtifact(tests);
+    const run_tests = b.addRunArtifact(tests);
+
+    if (kind == .sliding and std.mem.eql(u8, parser_type, "ll")) {
+        const cli_options = b.addOptions();
+        cli_options.addOption([]const u8, "api_benchmark_step", "run-api-bench-input-refill-stdin");
+        const cli_mod = b.createModule(.{
+            .root_source_file = b.path("src/cli/parser.zig"),
+            .target = options.target,
+            .optimize = options.optimize,
+            .link_libc = true,
+            .imports = &.{
+                .{ .name = "build_options", .module = cli_options.createModule() },
+                .{ .name = "galley", .module = generated_parser.runtime_mod },
+            },
+        });
+        const cli = b.addExecutable(.{
+            .name = "input-refill-stdin-cli",
+            .root_module = cli_mod,
+        });
+        const run_stdin_cli = b.addRunArtifact(cli);
+        run_stdin_cli.setStdIn(.{ .bytes = "[]" });
+        run_stdin_cli.addArgs(&.{ "--warmup-iterations", "1", "--iterations", "2" });
+        run_stdin_cli.expectStdOutEqual("");
+        run_stdin_cli.expectStdErrMatch("Parsed bytes:");
+        run_tests.step.dependOn(&run_stdin_cli.step);
+    }
+
+    return run_tests;
 }
 
 const DependencyGroup = struct {
