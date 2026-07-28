@@ -185,6 +185,55 @@ test "input refill indentation parses beyond the offset type" {
     try expectParsedAll(try parseFile(input), input);
 }
 
+test "input refill invalid indentation returns a structured diagnostic" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    const invalid = "Rule:\n  - field: int\n   - broken: int\n";
+    const valid = "Rule:\n  - field: int\n";
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    try std.testing.expectError(
+        parser.ParseError.IndentationError,
+        session.parseBytes(invalid, "invalid-bytes"),
+    );
+    {
+        var read_guard = try session.readLatest();
+        defer read_guard.deinit();
+        const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+        const indentation = switch (diagnostic) {
+            .indentation => |indentation| indentation,
+            .syntax => return error.ExpectedIndentationDiagnostic,
+        };
+        try std.testing.expectEqual(@as(u32, 3), indentation.line);
+        try std.testing.expectEqual(@as(u32, 1), indentation.column);
+        try std.testing.expectEqual(@as(u16, 3), indentation.spaces);
+        try std.testing.expectEqual(@as(u16, 2), indentation.indentation_width);
+
+        const rendered = try parser.renderParseDiagnostic(
+            std.testing.allocator,
+            diagnostic,
+            .plain,
+        );
+        defer std.testing.allocator.free(rendered);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "IndentationError at 3:1") != null);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "3 spaces") != null);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "width of 2") != null);
+    }
+
+    try expectParsedAll(try session.parseBytes(valid, "valid-after-error"), valid);
+
+    const sentinel = try allocSentinel(invalid);
+    defer std.testing.allocator.free(sentinel);
+    try std.testing.expectError(
+        parser.ParseError.IndentationError,
+        session.parseSentinelBytes(sentinel, "invalid-sentinel"),
+    );
+
+    try std.testing.expectError(parser.ParseError.IndentationError, parseFile(invalid));
+}
+
 test "input refill recovery handles EOF without reading beyond the window" {
     if (!test_options.recovery_eof) return error.SkipZigTest;
 
@@ -201,6 +250,7 @@ test "input refill recovery handles EOF without reading beyond the window" {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     };
     try std.testing.expect(syntax.line >= 1);
     try std.testing.expect(syntax.column >= 1);

@@ -31,6 +31,7 @@ fn expectRecovery(
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |value| value,
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     };
     const recovery = syntax.recovery orelse return error.MissingRecoveryContext;
     try std.testing.expectEqualStrings(terminal, recovery.terminal);
@@ -143,6 +144,7 @@ test "explicit mode has no automatic fallback outside active scopes" {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     }
 }
 
@@ -156,6 +158,7 @@ test "explicit recovery does not invent a synchronization terminal at EOF" {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     }
 }
 
@@ -185,6 +188,7 @@ test "explicit LR recovery does not activate speculative shared-prefix productio
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     }
 }
 

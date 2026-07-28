@@ -68,6 +68,7 @@ pub const Context = struct {
     // These fields are defined only when indentation syntax is enabled
     indent_width: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
     current_indent: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
+    indentation_error: if (root.config.indentation_syntax) bool else void = if (root.config.indentation_syntax) false else {},
     seek: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
     read_bytes: if (root.config.indentation_syntax)
         if (root.sliding_input_enabled) usize else Size
@@ -115,6 +116,9 @@ pub const Context = struct {
         expected_tokens: []const []const u8,
     ) !void {
         if (self.input_read_failed) return error.ReadFailed;
+        if (comptime root.config.indentation_syntax) {
+            if (self.indentation_error) return error.IndentationError;
+        }
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.token.items());
         self.runtime().last_diagnostic = .{
             .syntax = .{
@@ -207,6 +211,7 @@ pub const Context = struct {
         const diagnostic = &(self.runtime().last_diagnostic orelse return error.MissingSyntaxDiagnostic);
         switch (diagnostic.*) {
             .syntax => |*syntax| syntax.recovery = recovery,
+            .indentation => return error.MissingSyntaxDiagnostic,
         }
     }
 
@@ -358,6 +363,7 @@ pub const Context = struct {
             self.seek = 0;
             self.indent_width = 0;
             self.current_indent = 0;
+            self.indentation_error = false;
         }
         if (comptime root.position_tracking_enabled) {
             self.line = 1;
@@ -439,13 +445,11 @@ pub const Context = struct {
                 if (self.indent_width == 0) {
                     self.indent_width = line_spaces;
                 } else if (line_spaces % self.indent_width != 0) {
-                    std.log.err("\x1b[35mIndentationError at line {d}:\n\x1b[0mInvalid number of spaces {d} which is not divisible by previousely detected indentation width of \x1b[31m\"{d}\"\x1b[0m.", .{
-                        if (comptime root.position_tracking_enabled) self.line + 1 else 0,
-                        line_spaces,
-                        self.indent_width,
-                    });
-
-                    unreachable;
+                    self.recordIndentationDiagnostic(line_spaces);
+                    while (self.token.len < @max(root.parser.longest_terminal_length, 1)) {
+                        self.token.append(0);
+                    }
+                    return;
                 }
                 const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
                 if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
@@ -509,6 +513,20 @@ pub const Context = struct {
                 });
             }
         }
+    }
+
+    fn recordIndentationDiagnostic(self: *Self, line_spaces: u16) void {
+        comptime std.debug.assert(root.config.indentation_syntax);
+
+        self.indentation_error = true;
+        const runtime_context = self.runtime();
+        const diagnostic: root.ParseDiagnostic = .{ .indentation = .{
+            .line = if (comptime root.position_tracking_enabled) self.line + 1 else 0,
+            .column = if (comptime root.position_tracking_enabled) 1 else 0,
+            .spaces = line_spaces,
+            .indentation_width = self.indent_width,
+        } };
+        runtime_context.last_diagnostic = diagnostic;
     }
 
     inline fn ensureInputLoaded(self: *@This(), needed_len: usize) void {
