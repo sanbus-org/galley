@@ -19,7 +19,7 @@ class ProgressFormattingTests(unittest.TestCase):
         line = benchmark.format_progress_line(
             completed=18,
             total=42,
-            suite_label="JSON · No AST · 2^16 · API",
+            suite_label="JSON · No AST · 2^16",
             card_index=2,
             card_total=4,
             terminal_width=120,
@@ -27,7 +27,7 @@ class ProgressFormattingTests(unittest.TestCase):
 
         self.assertIn("Global [", line)
         self.assertIn("] 18/42 (42%)", line)
-        self.assertIn("JSON · No AST · 2^16 · API", line)
+        self.assertIn("JSON · No AST · 2^16", line)
         self.assertTrue(line.endswith("Card 2/4"))
         self.assertLessEqual(len(line), 120)
 
@@ -35,7 +35,7 @@ class ProgressFormattingTests(unittest.TestCase):
         line = benchmark.format_progress_line(
             completed=18,
             total=42,
-            suite_label="JSON · No AST · 2^16 · API",
+            suite_label="JSON · No AST · 2^16",
             card_index=2,
             card_total=4,
             terminal_width=18,
@@ -71,7 +71,7 @@ class ProgressFormattingTests(unittest.TestCase):
         line = benchmark.format_progress_line(
             completed=suite.runnable_count,
             total=suite.runnable_count,
-            suite_label=benchmark.suite_progress_label(suite, "api"),
+            suite_label=benchmark.suite_progress_label(suite),
             card_index=len(suite.cards),
             card_total=len(suite.cards),
             terminal_width=100,
@@ -89,7 +89,7 @@ class InteractiveProgressTests(unittest.TestCase):
             return_value=os.terminal_size((100, 24)),
         ), mock.patch.object(sys, "stdout", output):
             progress = benchmark.GlobalProgress(total=2, enabled=True)
-            progress.begin_card("JSON · No AST · API", 1, 2)
+            progress.begin_card("JSON · No AST", 1, 2)
             progress.complete_card()
             progress.clear()
 
@@ -108,7 +108,7 @@ class InteractiveProgressTests(unittest.TestCase):
             return_value=os.terminal_size((100, 24)),
         ), mock.patch.object(sys, "stdout", output):
             progress = benchmark.GlobalProgress(total=3, enabled=True)
-            progress.begin_card("JSON · No AST · API", 3, 3)
+            progress.begin_card("JSON · No AST", 3, 3)
             progress.finish()
 
         rendered = output.getvalue()
@@ -128,7 +128,7 @@ class InteractiveProgressTests(unittest.TestCase):
             benchmark.shutil, "get_terminal_size", side_effect=terminal_sizes
         ), mock.patch.object(sys, "stdout", output):
             progress = benchmark.GlobalProgress(total=1, enabled=True)
-            progress.begin_card("JSON · No AST · API", 1, 1)
+            progress.begin_card("JSON · No AST", 1, 1)
 
         rendered = output.getvalue()
         self.assertIn("\033[1;23r", rendered)

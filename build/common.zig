@@ -34,8 +34,6 @@ pub fn addGeneratedParserModule(
     procedures_mod: *std.Build.Module,
     config_mod: *std.Build.Module,
     error_messages_mod: *std.Build.Module,
-    ll_generator_mod: *std.Build.Module,
-    lr_generator_mod: *std.Build.Module,
     runtime_options_mod: *std.Build.Module,
 ) GeneratedParserModule {
     const parser_mod = b.addModule(parser_module_name, .{
@@ -58,8 +56,6 @@ pub fn addGeneratedParserModule(
     });
     runtime_mod.addImport("galley", runtime_mod);
     procedures_mod.addImport("galley", runtime_mod);
-    procedures_mod.addImport("ll_generator", ll_generator_mod);
-    procedures_mod.addImport("lr_generator", lr_generator_mod);
     config_mod.addImport("galley", runtime_mod);
     error_messages_mod.addImport("galley", runtime_mod);
     parser_mod.addImport("galley", runtime_mod);
@@ -92,11 +88,6 @@ pub const LanguageParser = struct {
     config_mod: *std.Build.Module,
     error_messages_mod: *std.Build.Module,
     parser_mod: *std.Build.Module,
-    galley_cli_mod: *std.Build.Module,
-    exe: *std.Build.Step.Compile,
-    install_artifact: *std.Build.Step.InstallArtifact,
-    build_step: *std.Build.Step,
-    run_step: *std.Build.Step,
 };
 
 pub fn addGeneratorModules(
@@ -156,8 +147,6 @@ pub fn addGeneratorModules(
         galley_grammar_procedures_mod,
         galley_grammar_config_mod,
         galley_grammar_error_messages_mod,
-        ll_generator_mod,
-        lr_generator_mod,
         runtime_options_mod,
     );
     const galley_grammar_library_mod = galley_grammar.runtime_mod;
@@ -192,15 +181,11 @@ pub fn addGalleyCli(
     generator: GeneratorModules,
     options: GalleyCliOptions,
 ) GalleyCli {
-    const cli_options = b.addOptions();
-    cli_options.addOption([]const u8, "galley_root", b.pathFromRoot("."));
-
     const generator_cli_mod = b.createModule(.{
         .root_source_file = b.path("src/cli/generator.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "build_options", .module = cli_options.createModule() },
             .{ .name = "galley_generator", .module = generator.galley_generator_mod },
         },
     });
@@ -248,13 +233,6 @@ pub fn parserName(
     entry_path: []const u8,
 ) ![]const u8 {
     return std.mem.concat(allocator, u8, &.{ parser_type, "-", entry_path });
-}
-
-pub fn apiBenchmarkRunStepName(
-    allocator: std.mem.Allocator,
-    parser_name: []const u8,
-) ![]const u8 {
-    return std.mem.concat(allocator, u8, &.{ "run-api-bench-", parser_name });
 }
 
 pub fn addLanguageParser(
@@ -334,9 +312,6 @@ pub fn addLanguageParserFromFile(
     });
     const parser_name = try parserName(b.allocator, parser_type, entry_path);
     const parser_module_name = try std.mem.concat(b.allocator, u8, &.{ parser_name, "-source" });
-    const api_benchmark_run_step_name = try apiBenchmarkRunStepName(b.allocator, parser_name);
-    const parser_cli_options = b.addOptions();
-    parser_cli_options.addOption([]const u8, "api_benchmark_step", api_benchmark_run_step_name);
 
     const generated_parser = addGeneratedParserModule(
         b,
@@ -348,51 +323,10 @@ pub fn addLanguageParserFromFile(
         procedures_mod,
         config_mod,
         error_messages_mod,
-        generator.ll_generator_mod,
-        generator.lr_generator_mod,
         generator.runtime_options_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
     const parser_mod = generated_parser.parser_mod;
-
-    const galley_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/cli/parser.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .imports = &.{
-            .{ .name = "build_options", .module = parser_cli_options.createModule() },
-            .{ .name = "galley", .module = galley_parser_mod },
-        },
-    });
-    const exe = b.addExecutable(.{
-        .name = parser_name,
-        .root_module = galley_cli_mod,
-    });
-    const install_artifact = b.addInstallArtifact(exe, .{});
-
-    const description = try std.mem.concat(
-        b.allocator,
-        u8,
-        &.{ "Run the ", entry_path, " compiler" },
-    );
-
-    const build_step = b.step(parser_name, description);
-    build_step.dependOn(&install_artifact.step);
-
-    const run_step_name = try std.mem.concat(
-        b.allocator,
-        u8,
-        &.{ "run-", parser_name },
-    );
-    const run_step = b.step(run_step_name, description);
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_step.dependOn(&run_cmd.step);
-    run_cmd.step.dependOn(&install_artifact.step);
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
 
     return .{
         .entry_path = entry_path,
@@ -403,32 +337,22 @@ pub fn addLanguageParserFromFile(
         .config_mod = config_mod,
         .error_messages_mod = error_messages_mod,
         .parser_mod = parser_mod,
-        .galley_cli_mod = galley_cli_mod,
-        .exe = exe,
-        .install_artifact = install_artifact,
-        .build_step = build_step,
-        .run_step = run_step,
     };
 }
 
-pub fn addApiBenchmark(
+pub fn addBenchmark(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     parser: LanguageParser,
 ) !void {
-    const api_benchmark_name = try std.mem.concat(
+    const benchmark_run_step_name = try std.mem.concat(
         b.allocator,
         u8,
-        &.{ "api-bench-", parser.parser_name },
-    );
-    const api_benchmark_run_step_name = try std.mem.concat(
-        b.allocator,
-        u8,
-        &.{ "run-", api_benchmark_name },
+        &.{ "run-", parser.parser_name },
     );
 
-    const api_benchmark_mod = b.createModule(.{
+    const benchmark_mod = b.createModule(.{
         .root_source_file = b.path("src/benchmarks/api_benchmark.zig"),
         .target = target,
         .optimize = optimize,
@@ -436,28 +360,28 @@ pub fn addApiBenchmark(
             .{ .name = "galley", .module = parser.galley_parser_mod },
         },
     });
-    const api_benchmark_exe = b.addExecutable(.{
-        .name = api_benchmark_name,
-        .root_module = api_benchmark_mod,
+    const benchmark_exe = b.addExecutable(.{
+        .name = parser.parser_name,
+        .root_module = benchmark_mod,
     });
-    const install_api_benchmark_artifact = b.addInstallArtifact(api_benchmark_exe, .{});
+    const install_benchmark_artifact = b.addInstallArtifact(benchmark_exe, .{});
 
-    const api_benchmark_description = try std.mem.concat(
+    const benchmark_description = try std.mem.concat(
         b.allocator,
         u8,
         &.{ "Benchmark the ", parser.entry_path, " parser API" },
     );
 
-    const api_benchmark_step = b.step(api_benchmark_name, api_benchmark_description);
-    api_benchmark_step.dependOn(&install_api_benchmark_artifact.step);
+    const benchmark_step = b.step(parser.parser_name, benchmark_description);
+    benchmark_step.dependOn(&install_benchmark_artifact.step);
 
-    const api_benchmark_run_step = b.step(api_benchmark_run_step_name, api_benchmark_description);
-    const api_benchmark_run_cmd = b.addRunArtifact(api_benchmark_exe);
-    api_benchmark_run_step.dependOn(&api_benchmark_run_cmd.step);
-    api_benchmark_run_cmd.step.dependOn(&install_api_benchmark_artifact.step);
+    const benchmark_run_step = b.step(benchmark_run_step_name, benchmark_description);
+    const benchmark_run_cmd = b.addRunArtifact(benchmark_exe);
+    benchmark_run_step.dependOn(&benchmark_run_cmd.step);
+    benchmark_run_cmd.step.dependOn(&install_benchmark_artifact.step);
 
     if (b.args) |args| {
-        api_benchmark_run_cmd.addArgs(args);
+        benchmark_run_cmd.addArgs(args);
     }
 }
 

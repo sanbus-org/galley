@@ -1,6 +1,6 @@
 # Testing
 
-Galley's repository tests are split into standalone unit suites and a generated-parser matrix. Use typed filters to run the smallest suite that covers a change.
+Galley's repository tests are split into focused unit suites and a generated-parser matrix. Use typed filters to run the smallest suite that covers a change.
 
 ## Run All Tests
 
@@ -37,10 +37,9 @@ Bare filters such as `-Dtest-filter=ll-sanbus` are invalid. Use `case:ll-sanbus`
 | `suite:generator` | Parser-generator unit tests |
 | `suite:runtime` | Configuration-independent runtime, ASTNode, and standard-procedure tests |
 | `suite:matrix` | All generated-parser matrix phases |
-| `suite:matrix-compile` | Parser generation and production CLI compilation |
+| `suite:matrix-compile` | Parser generation and API benchmark-harness compilation |
 | `suite:matrix-api` | Generated-parser Zig API tests against language samples |
 | `suite:matrix-error` | Diagnostic and recovery tests for 16-bit JSON, augmented-JSON, and Sanbus variants |
-| `suite:matrix-cli` | Generated parser CLI validation against language samples |
 | `suite:galley-parity` | LL-versus-LR Galley bootstrap output comparison |
 
 ### Cases
@@ -63,7 +62,7 @@ The command fails if the name matches no tests.
 
 ## Dedicated Steps
 
-Run the generated-parser matrix or bootstrap parity directly when no standalone suite is needed:
+Run the generated-parser matrix or bootstrap parity directly when no other suite is needed:
 
 ```sh
 zig build test-generated-parser-matrix -Dtest-filter=case:ll-json
@@ -78,7 +77,6 @@ Zig test cases and build checks are reported separately:
 
 - API tests run five Zig test functions for every eligible variant/sample combination.
 - Error tests validate fail-fast diagnostics for every 16-bit JSON, augmented-JSON, or Sanbus variant. Focused recovery-enabled LL/LR variants additionally cover multiple diagnostics, limits, recovery windows, and reusable sessions.
-- CLI validation runs each eligible sample through the generated executable once.
-- Generation and production compilation validate that each selected parser configuration can be generated and built; they are build steps, not additional Zig test cases.
+- Generation and benchmark-harness compilation validate that each selected parser configuration can be generated and consumed through its API; they are build steps, not additional Zig test cases.
 
 Samples that exceed a 16-bit parser's input limit run only on 32-bit configurations.

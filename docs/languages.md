@@ -40,12 +40,11 @@ The full JSON recovery and diagnostics demonstration. It accepts the same valid 
 - **Recovery:** Uses explicit occurrence, production, and LHS annotations to preserve later array elements and object members while safely closing damaged containers. LL isolates one damaged value; LR uses its existing left-recursive list production where that preserves the same visible behavior without an additional reduction per list item.
 - **Diagnostics:** `error_messages.zig` provides shared JSON-specific guidance, exposed through semantic LL hooks and the parser-wide LR fallback.
 
-Generate either parser with recovery enabled, then run the intentionally malformed demonstration. Its nonzero exit status is expected after all recoverable diagnostics are printed:
+Generate either parser with recovery enabled, then run the intentionally malformed demonstration through the repository API harness. Its nonzero exit status is expected after all recoverable diagnostics are printed:
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
-zig build ll-json-recovery
-./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+zig build run-ll-json-recovery -- languages/json-recovery/recovery-demo.json
 ```
 
 ### JSON Structured AST (`languages/json-structured-ast`)
@@ -100,19 +99,23 @@ When working with or creating languages in Galley, you can choose between two pa
 
 ---
 
-## Building and Running Included Languages
+## Generating and Benchmarking Included Languages
 
 To compile and benchmark any included language, generate its parser and invoke `zig build` from the repository root:
 
 ```sh
-# Generate and test the LL parser for standard JSON
+# Generate and benchmark the LL parser for standard JSON
 zig build
 ./zig-out/bin/galley --parser-type ll languages/json
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json languages/json/samples/code-01.json
+zig build -Doptimize=ReleaseFast run-ll-json -- \
+  languages/json/samples/code-01.json --iterations 100
 
-# Generate and test the LR parser for the Grammar specification itself
+# Generate and benchmark the LR parser for the Grammar specification itself
 ./zig-out/bin/galley --parser-type lr languages/galley
-zig build -Doptimize=ReleaseFast lr-galley
-./zig-out/bin/lr-galley languages/galley/lr.grm
+zig build -Doptimize=ReleaseFast run-lr-galley -- \
+  languages/galley/lr.grm --iterations 100
 ```
+
+These `ll-*` and `lr-*` repository executables are benchmark harnesses around
+the parser API. Applications should import an assembled parser module rather
+than treating these harnesses as generated applications.

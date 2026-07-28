@@ -146,7 +146,7 @@ fn parseCount(value: ?[]const u8, name: []const u8) !usize {
 fn printUsage() void {
     if (comptime galley.ast_memory_benchmark_enabled) {
         std.debug.print(
-            \\usage: api-benchmark <file> [OPTIONS]
+            \\usage: benchmark <file> [OPTIONS]
             \\
             \\AST memory benchmark mode parses the input once.
             \\
@@ -156,7 +156,7 @@ fn printUsage() void {
         , .{});
     } else {
         std.debug.print(
-            \\usage: api-benchmark <file> [OPTIONS]
+            \\usage: benchmark <file> [OPTIONS]
             \\
             \\Options:
             \\  -h, --help                         Display this help and exit.
