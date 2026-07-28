@@ -60,7 +60,6 @@ fn parseFile(input: []const u8) !parser.ParseResult {
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input", .data = input });
     var file = try tmp.dir.openFile(std.testing.io, "input", .{
         .mode = .read_only,
-        .lock = .exclusive,
     });
     defer file.close(std.testing.io);
 
@@ -88,7 +87,6 @@ test "input refill file read failures propagate through the parser API" {
     defer tmp.cleanup();
     var directory = try tmp.dir.openFile(std.testing.io, ".", .{
         .mode = .read_only,
-        .lock = .exclusive,
     });
     defer directory.close(std.testing.io);
 
@@ -158,7 +156,6 @@ test "input refill sliding session is reusable" {
     for (0..2) |_| {
         var file = try tmp.dir.openFile(std.testing.io, "input", .{
             .mode = .read_only,
-            .lock = .exclusive,
         });
         defer file.close(std.testing.io);
         try expectParsedAll(try session.parseFile(file, "file"), input);
@@ -283,7 +280,6 @@ test "input refill AST mode enforces the offset limit" {
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "oversized", .data = oversized });
     var file = try tmp.dir.openFile(std.testing.io, "oversized", .{
         .mode = .read_only,
-        .lock = .exclusive,
     });
     defer file.close(std.testing.io);
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});

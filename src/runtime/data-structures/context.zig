@@ -4,18 +4,23 @@ const std = @import("std");
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
-fn findScalarLast(comptime T: type, slice: []const T, value: T) ?Context.Size {
-    var i = slice.len;
-    while (i > 0) {
-        i -= 1;
-        if (slice[i] == value) {
-            if (comptime builtin.mode == .Debug) {
-                std.debug.assert(i <= std.math.maxInt(Context.Size));
-            }
-            return @intCast(i);
+const NewlineSummary = struct {
+    count: u32 = 0,
+    last: ?usize = null,
+};
+
+fn summarizeNewlines(input: []const u8) NewlineSummary {
+    var summary = NewlineSummary{};
+    for (input, 0..) |byte, index| {
+        switch (byte) {
+            '\n', '\x01', '\x02' => {
+                summary.count += 1;
+                summary.last = index;
+            },
+            else => {},
         }
     }
-    return null;
+    return summary;
 }
 
 pub const RuntimeContext = struct {
@@ -306,17 +311,12 @@ pub const Context = struct {
                 self.line += self.line_offsets.sum(0, length);
             }
             self.column += self.column_offsets.sum(0, length);
-            var last_newline: i16 = -1;
-            for ("\n\x01\x02") |newline_char| {
-                if (findScalarLast(u8, self.token.items()[0..length], newline_char)) |index| {
-                    if (index > last_newline) {
-                        self.column = self.column_offsets.sum(index, length);
-                        last_newline = @intCast(index);
-                    }
-                    if (comptime !root.config.indentation_syntax) {
-                        self.line += 1;
-                    }
-                }
+            const newlines = summarizeNewlines(self.token.items()[0..length]);
+            if (newlines.last) |last_newline| {
+                self.column = self.column_offsets.sum(@intCast(last_newline), length);
+            }
+            if (comptime !root.config.indentation_syntax) {
+                self.line += newlines.count;
             }
 
             if (comptime root.config.indentation_syntax) {
@@ -457,7 +457,7 @@ pub const Context = struct {
                 }
                 if (new_indent == self.current_indent) {
                     if (comptime root.position_tracking_enabled) {
-                        self.column_offsets.append(@intCast(line_spaces + 1));
+                        self.column_offsets.append(@as(u32, line_spaces) + 1);
                     }
                     self.token.append('\n');
                 } else {
@@ -469,7 +469,7 @@ pub const Context = struct {
                                         self.line_offsets.append(0);
                                     }
                                 }
-                                self.column_offsets.append(@intCast(new_indent * self.indent_width + 1));
+                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
                             self.token.append('\x01');
                         }
@@ -481,7 +481,7 @@ pub const Context = struct {
                                         self.line_offsets.append(0);
                                     }
                                 }
-                                self.column_offsets.append(@intCast(new_indent * self.indent_width + 1));
+                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
                             self.token.append('\x02');
                         }
@@ -675,6 +675,12 @@ pub const Context = struct {
         return self.token.buffer;
     }
 };
+
+test "newline summary counts every marker and retains the final position" {
+    const summary = summarizeNewlines("a\n\nb\x01c\x02\x02d");
+    try std.testing.expectEqual(@as(u32, 5), summary.count);
+    try std.testing.expectEqual(@as(?usize, 7), summary.last);
+}
 
 pub const RuntimeContextRegistration = struct {
     context_address: usize,

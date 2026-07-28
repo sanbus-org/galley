@@ -139,9 +139,9 @@ test "generated_parser_error reusable file session recovers" {
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "malformed", .data = malformed_input });
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "valid", .data = valid_input });
 
-    var malformed_file = try tmp.dir.openFile(std.testing.io, "malformed", .{ .mode = .read_only, .lock = .exclusive });
+    var malformed_file = try tmp.dir.openFile(std.testing.io, "malformed", .{ .mode = .read_only });
     defer malformed_file.close(std.testing.io);
-    var valid_file = try tmp.dir.openFile(std.testing.io, "valid", .{ .mode = .read_only, .lock = .exclusive });
+    var valid_file = try tmp.dir.openFile(std.testing.io, "valid", .{ .mode = .read_only });
     defer valid_file.close(std.testing.io);
 
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
