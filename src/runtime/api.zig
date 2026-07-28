@@ -113,6 +113,32 @@ pub const ParseResult = struct {
     line: if (position_tracking_enabled) u32 else void,
     column: if (position_tracking_enabled) u32 else void,
     ast_root: ?data_structures.ASTNode.Pointer = null,
+    _session_generation: usize = 0,
+    _session_identity: ?*const anyopaque = null,
+};
+
+pub const SessionReadGuard = struct {
+    session: *Session,
+
+    pub fn deinit(self: *SessionReadGuard) void {
+        self.session.session_lock.unlockShared(self.session.io);
+        self.* = undefined;
+    }
+
+    pub fn astAllocator(self: *const SessionReadGuard) if (parser.is_ast_enabled) *const data_structures.ASTAllocator else void {
+        if (parser.is_ast_enabled) {
+            return &self.session.node_allocator;
+        }
+        return {};
+    }
+
+    pub fn lastDiagnostic(self: *const SessionReadGuard) ?ParseDiagnostic {
+        return self.session.runtime_context.last_diagnostic;
+    }
+
+    pub fn syntaxErrorCount(self: *const SessionReadGuard) usize {
+        return self.session.runtime_context.syntax_error_count;
+    }
 };
 
 pub const ParsedInput = struct {
@@ -248,6 +274,8 @@ pub const Session = struct {
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
     verbosity: if (builtin.mode == .Debug) usize else void,
     stack_overflow_recovery: bool,
+    session_lock: std.Io.RwLock = .init,
+    generation: usize = 0,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
         if (options.max_errors == 0) return error.InvalidMaxErrors;
@@ -295,6 +323,13 @@ pub const Session = struct {
     }
 
     pub fn deinit(self: *Session) void {
+        self.tryDeinit() catch @panic("attempted to deinitialize a parser session while it is in use");
+    }
+
+    pub fn tryDeinit(self: *Session) error{SessionInUse}!void {
+        if (!self.session_lock.tryLock(self.io)) return error.SessionInUse;
+        defer self.session_lock.unlock(self.io);
+
         if (self.owned_input) |owned_input| {
             self.allocator.free(owned_input);
             self.owned_input = null;
@@ -305,6 +340,31 @@ pub const Session = struct {
         self.allocator.free(self.chunk_buffer);
         self.allocator.free(self.reader_buffer);
         self.arena.deinit();
+    }
+
+    pub fn read(self: *Session, result: ParseResult) error{ SessionInUse, StaleParseResult }!SessionReadGuard {
+        if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
+        if (result._session_identity != @as(*const anyopaque, @ptrCast(self.reader_buffer.ptr)) or
+            result._session_generation != self.generation)
+        {
+            self.session_lock.unlockShared(self.io);
+            return error.StaleParseResult;
+        }
+        return .{ .session = self };
+    }
+
+    pub fn readLatest(self: *Session) error{SessionInUse}!SessionReadGuard {
+        if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
+        return .{ .session = self };
+    }
+
+    fn beginParse(self: *Session) error{ SessionInUse, SessionGenerationExhausted }!void {
+        if (!self.session_lock.tryLock(self.io)) return error.SessionInUse;
+        if (self.generation == std.math.maxInt(usize)) {
+            self.session_lock.unlock(self.io);
+            return error.SessionGenerationExhausted;
+        }
+        self.generation += 1;
     }
 
     fn ensureOwnedInputCapacity(self: *Session, required: usize) ![]u8 {
@@ -320,6 +380,12 @@ pub const Session = struct {
     }
 
     pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+        try self.beginParse();
+        defer self.session_lock.unlock(self.io);
+        return try self.parseBytesUnlocked(input, input_path);
+    }
+
+    fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
         if (comptime input_refill_enabled and parser.is_ast_enabled) {
             if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
         }
@@ -329,10 +395,16 @@ pub const Session = struct {
         @memset(owned_input[input.len..], 0);
 
         var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
-        return try self._parseContext(&context_value);
+        return try self._parseContextUnlocked(&context_value);
     }
 
     pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+        try self.beginParse();
+        defer self.session_lock.unlock(self.io);
+        return try self.parseSentinelBytesUnlocked(input, input_path);
+    }
+
+    fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
         if (comptime input_refill_enabled and parser.is_ast_enabled) {
             if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
         }
@@ -342,10 +414,16 @@ pub const Session = struct {
         }
 
         var context_value = self._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, input_path);
-        return try self._parseContext(&context_value);
+        return try self._parseContextUnlocked(&context_value);
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
+        try self.beginParse();
+        defer self.session_lock.unlock(self.io);
+        return try self.parseFileUnlocked(file, input_path);
+    }
+
+    fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
         if (comptime input_refill_enabled and !config.indentation_syntax and parser.is_ast_enabled) {
             const max_input_length = std.math.maxInt(data_structures.Context.Size) - 1;
             const file_length_u64: ?u64 = file_length: {
@@ -356,7 +434,7 @@ pub const Session = struct {
                 var reader = file.reader(self.io, self.reader_buffer);
                 const input = try reader.interface.allocRemaining(self.allocator, .limited(max_input_length));
                 defer self.allocator.free(input);
-                return try self.parseBytes(input, input_path);
+                return try self.parseBytesUnlocked(input, input_path);
             };
             const file_length = std.math.cast(usize, known_file_length) orelse return error.InputTooLarge;
             if (file_length > max_input_length) return error.InputTooLarge;
@@ -367,26 +445,11 @@ pub const Session = struct {
             var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
             context_value.file_input = input;
             context_value.input_end = file_length;
-            return try self._parseContext(&context_value);
+            return try self._parseContextUnlocked(&context_value);
         }
 
         var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
-        return try self._parseContext(&context_value);
-    }
-
-    pub fn astAllocator(self: *Session) if (parser.is_ast_enabled) *data_structures.ASTAllocator else void {
-        if (parser.is_ast_enabled) {
-            return &self.node_allocator;
-        }
-        return {};
-    }
-
-    pub fn lastDiagnostic(self: *const Session) ?ParseDiagnostic {
-        return self.runtime_context.last_diagnostic;
-    }
-
-    pub fn syntaxErrorCount(self: *const Session) usize {
-        return self.runtime_context.syntax_error_count;
+        return try self._parseContextUnlocked(&context_value);
     }
 
     pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
@@ -405,6 +468,16 @@ pub const Session = struct {
     }
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
+        try self.beginParse();
+        defer self.session_lock.unlock(self.io);
+        return try self._parseContextUnlocked(context_value);
+    }
+
+    fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !ParseResult {
+        var runtime_registration = data_structures.RuntimeContextRegistration.init(context_value, &self.runtime_context);
+        runtime_registration.register();
+        defer runtime_registration.unregister();
+
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.last_diagnostic = null;
         self.runtime_context.syntax_error_count = 0;
@@ -412,8 +485,6 @@ pub const Session = struct {
         self.runtime_context.explicit_recovery_position = null;
         self.runtime_context.explicit_recovery_target_id = null;
         self.runtime_context.pending_syntax_error_site = null;
-        data_structures.context.activateRuntimeContext(&self.runtime_context);
-        defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
         try context_value.reset();
         const result = if (self.stack_overflow_recovery)
@@ -428,7 +499,10 @@ pub const Session = struct {
             @branchHint(.unlikely);
             return error.ReadFailed;
         }
-        return parsed;
+        var session_result = parsed;
+        session_result._session_generation = self.generation;
+        session_result._session_identity = @ptrCast(self.reader_buffer.ptr);
+        return session_result;
     }
 };
 

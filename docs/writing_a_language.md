@@ -229,6 +229,8 @@ var parsed = try json_parser.parseBytes(io, allocator, "{\"ok\": true}", .{});
 defer parsed.deinit();
 
 std.debug.assert(parsed.result.parsed_bytes == 12);
+var reader = try parsed.session.read(parsed.result);
+defer reader.deinit();
 ```
 
 `ParsedInput` owns the parser session, buffers, arena, and AST memory. Keep it alive while inspecting AST data, and call `deinit` when finished.
@@ -241,9 +243,19 @@ const json_parser = @import("ll-json");
 var session = try json_parser.Session.init(io, allocator, .{});
 defer session.deinit();
 
-_ = try session.parseBytes("{}", null);
+const result = try session.parseBytes("{}", null);
+{
+    var reader = try session.read(result);
+    defer reader.deinit();
+    // Inspect result.ast_root through reader.astAllocator().
+}
 _ = try session.parseBytes("[]", null);
 ```
+
+Parsing rejects concurrent reuse with `error.SessionInUse`. Session-owned AST
+and diagnostic data is available only through shared read guards; all guards
+must be released before the next parse. A guard also rejects an older result
+with `error.StaleParseResult` if the session has already been reused.
 
 Use `session.parseFile(file, input_path)` when parsing from a `std.Io.File`.
 

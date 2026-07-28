@@ -2,11 +2,53 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 const procedures = parser.procedures;
 
+var nested_same_session: ?*parser.Session = null;
+var nested_separate_session: ?*parser.Session = null;
+var nested_callback_called = false;
+var concurrent_arrivals = std.atomic.Value(u8).init(0);
+
 fn parse(input: []const u8) !void {
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
+
+fn exerciseNestedSessions(args: *parser.data_structures.ProcedureArguments) !void {
+    nested_callback_called = true;
+    const outer_runtime = args.context.runtime();
+    try std.testing.expectEqualStrings("outer", outer_runtime.input_path orelse return error.MissingOuterInputPath);
+
+    const same_session = nested_same_session orelse return error.MissingNestedSession;
+    try std.testing.expectError(error.SessionInUse, same_session.parseBytes("c", "same"));
+    try std.testing.expectError(error.SessionInUse, same_session.readLatest());
+    try std.testing.expectError(error.SessionInUse, same_session.tryDeinit());
+
+    const separate_session = nested_separate_session orelse return error.MissingSeparateSession;
+    const nested_result = try separate_session.parseBytes("c", "inner");
+    try std.testing.expectEqual(@as(usize, 1), nested_result.parsed_bytes);
+    try std.testing.expect(args.context.runtime() == outer_runtime);
+    try std.testing.expectEqualStrings("outer", args.context.runtimeConst().input_path orelse return error.MissingRestoredInputPath);
+}
+
+fn synchronizeRuntimeContexts(args: *parser.data_structures.ProcedureArguments) !void {
+    const input_path = args.context.runtimeConst().input_path orelse return error.MissingConcurrentInputPath;
+    _ = concurrent_arrivals.fetchAdd(1, .seq_cst);
+    while (concurrent_arrivals.load(.seq_cst) != 2) try std.Thread.yield();
+    try std.testing.expectEqualStrings(input_path, args.context.runtimeConst().input_path orelse return error.LostConcurrentInputPath);
+}
+
+const ConcurrentSessionParse = struct {
+    session: *parser.Session,
+    input_path: []const u8,
+    parse_error: ?anyerror = null,
+
+    fn run(self: *ConcurrentSessionParse) void {
+        _ = self.session.parseBytes("k", self.input_path) catch |err| {
+            self.parse_error = err;
+            return;
+        };
+    }
+};
 
 fn expectNodeName(event: procedures.Event, expected: []const u8) !void {
     const variable = event.node_variable orelse return error.ExpectedProcedureNode;
@@ -210,4 +252,46 @@ test "procedure-hooks production indices follow alternatives under one LHS heade
     procedures.resetTrace();
     try parse("i1");
     try expectHookTargets(.automatic_repeated_production, &.{"IndexedTarget"});
+}
+
+test "procedure-hooks reject same-session nesting and preserve separate-session context" {
+    var outer_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer outer_session.deinit();
+    var inner_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer inner_session.deinit();
+
+    nested_same_session = &outer_session;
+    nested_separate_session = &inner_session;
+    nested_callback_called = false;
+    procedures.setNestedCallback(exerciseNestedSessions);
+    defer procedures.setNestedCallback(null);
+    defer nested_same_session = null;
+    defer nested_separate_session = null;
+
+    const result = try outer_session.parseBytes("k", "outer");
+    try std.testing.expectEqual(@as(usize, 1), result.parsed_bytes);
+    try std.testing.expect(nested_callback_called);
+}
+
+test "procedure-hooks keep concurrent session runtime contexts separate" {
+    var first_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer first_session.deinit();
+    var second_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer second_session.deinit();
+
+    concurrent_arrivals.store(0, .seq_cst);
+    procedures.setTraceEnabled(false);
+    defer procedures.setTraceEnabled(true);
+    procedures.setNestedCallback(synchronizeRuntimeContexts);
+    defer procedures.setNestedCallback(null);
+
+    var first = ConcurrentSessionParse{ .session = &first_session, .input_path = "first" };
+    var second = ConcurrentSessionParse{ .session = &second_session, .input_path = "second" };
+    const first_thread = try std.Thread.spawn(.{}, ConcurrentSessionParse.run, .{&first});
+    const second_thread = try std.Thread.spawn(.{}, ConcurrentSessionParse.run, .{&second});
+    first_thread.join();
+    second_thread.join();
+
+    if (first.parse_error) |err| return err;
+    if (second.parse_error) |err| return err;
 }
