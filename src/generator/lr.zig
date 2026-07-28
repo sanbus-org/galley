@@ -2,6 +2,7 @@ const std = @import("std");
 const common = @import("generator_common");
 
 pub const Options = common.Options;
+pub const atomic_file = common.atomic_file;
 const SymbolKind = common.SymbolKind;
 const Symbol = common.Symbol;
 const Rule = common.Rule;

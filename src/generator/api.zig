@@ -14,6 +14,7 @@ pub const Annotations = galley_grammar.procedures.Annotations;
 pub const RecoveryPoint = galley_grammar.procedures.RecoveryPoint;
 pub const RecoveryResume = galley_grammar.procedures.RecoveryResume;
 pub const Options = common.Options;
+pub const atomic_file = common.atomic_file;
 
 pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar {
     var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
