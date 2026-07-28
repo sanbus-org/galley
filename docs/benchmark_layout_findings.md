@@ -4,7 +4,9 @@
 
 Galley benchmarks exposed a real code-layout sensitivity in ReleaseFast builds. Small source changes that do not execute in the timed parser loop can still move generated parser functions in the final executable and change measured throughput substantially.
 
-The important conclusion is not that CLI features add per-iteration parsing overhead. The issue is that executable text layout can place hot parser code in faster or slower address regions on modern CPUs.
+The important conclusion is that executable text layout can place hot parser
+code in faster or slower address regions on modern CPUs, even when the changed
+code is outside the timed loop.
 
 ## Local Findings
 
@@ -39,15 +41,19 @@ Galley should not use CPU-specific padding or alignment tricks to chase a fast a
 
 Instead, raw parser throughput should be measured through the lean ReleaseFast parser API path:
 
-- CLI behavior remains ergonomic and unchanged.
+- Repository benchmark executables are dedicated parser API harnesses.
 - ReleaseFast generated parser modules use a smaller parser-library root internally.
-- API benchmarks should avoid CLI process/layout noise and use sentinel byte input through `parseSentinelBytes`.
+- Benchmark harnesses use sentinel byte input through `parseSentinelBytes`.
 - Existing safe byte APIs remain available and keep their copying/sentinel behavior.
 
-CLI benchmark output is still useful as an end-to-end executable measurement, but it is not the canonical raw parser throughput measurement.
+The repository benchmark harnesses call the parser API directly and are the
+canonical raw parser throughput measurement.
 
 ## Practical Guidance
 
-Use CLI benchmarks to check generated executable behavior and basic throughput. Use the ReleaseFast API sentinel path for raw parser capacity and comparisons against other parser libraries.
+Use the ReleaseFast benchmark harness and its API sentinel path for raw parser
+capacity and comparisons against other parser libraries. Applications own their
+own input and output layers, so measure those separately when end-to-end behavior
+matters.
 
 When investigating performance regressions, record hot parser symbol addresses with `nm -an zig-out/bin/<parser>` and compare them alongside throughput. Address changes do not prove a parser-code regression; they may indicate a layout-induced frontend effect.

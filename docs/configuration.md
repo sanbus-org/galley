@@ -1,17 +1,18 @@
-# Configuration & Flags
+# Configuration & Options
 
 ## Table of Contents
 - [Overview](#overview)
 - [Generator CLI Options](#generator-cli-options)
 - [Language Configuration](#language-configuration)
-- [Runtime Executable Flags](#runtime-executable-flags)
+- [Runtime API Options](#runtime-api-options)
 - [Quick Reference](#quick-reference)
 
 ---
 
 ## Overview
 
-Galley's pipeline consists of two distinct stages: generating parser files for a language directory via `galley`, and running the compiled Zig binary. Both stages expose command-line flags to tune AST generation and benchmarking behavior.
+Galley's pipeline consists of two distinct stages: generating parser source via
+`galley`, then assembling and consuming the parser through its Zig API.
 
 ---
 
@@ -31,8 +32,10 @@ zig build
 | `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. Disabling AST construction also disables procedures and maximizes raw syntax validation speed. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `!` annotations use explicit-only recovery. | `--no-error-recovery` |
+| `--with-position-tracking` / `--no-position-tracking` | Flag | Enables or disables generated line and column tracking. Without either flag, tracking is enabled except in `ReleaseFast`. | Build-mode dependent |
+| `--with-input-refill` / `--no-input-refill` | Flag | Selects refill-aware or fixed-buffer input advancement at generation time. Refill allows no-AST parsers to stream inputs larger than their cursor range. | `--no-input-refill` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
-| `--input-size` | `<BITS>` | Number of bit-width integer bits required to represent input file length pointers (e.g. `16` or `32`). | `16` |
+| `--input-size` | `<BITS>` | Bit width used for generated input offsets and AST indices (for example `16` or `32`). | `16` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
 
 `--no-ast` and `--with-procedures` are mutually incompatible because procedure hooks operate on AST nodes.
@@ -47,62 +50,76 @@ Each language's `config.zig` declares compile-time parser configuration:
 
 ```zig
 pub const indentation_syntax = true; // or false
+pub const Options = struct {};
 ```
 
 When `indentation_syntax` is set to `true`, the parser tracks indentation changes at the beginning of lines and emits virtual `block_start` (`\x01`) and `block_end` (`\x02`) tokens for indentation-sensitive grammars.
 
+`Options` defines arbitrary per-session state made available to procedures
+through `ParseOptions.language_options`. Both declarations are required, even
+when a language does not need indentation or custom options.
+
 ---
 
-## Runtime Executable Flags
+## Runtime API Options
 
-Build a parser target first, then invoke the installed binary directly:
+Pass runtime behavior to `Session.init` or one-shot parse helpers through
+`ParseOptions`:
 
-```sh
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json [OPTIONS] <FILE>
+```zig
+var session = try parser.Session.init(io, allocator, .{
+    .language_options = .{},
+    .input_path = "input.json",
+    .verbosity = 0,
+    .max_errors = 10,
+    .recovery_window = 500,
+    .stack_overflow_recovery = false,
+});
+defer session.deinit();
 ```
 
-| Flag | Short | Argument | Description | Default |
-| :--- | :--- | :--- | :--- | :--- |
-| `--verbosity` | `-v` | `<0-2>` | Verbosity level. `0` prints benchmark speed; `1` prints parsed AST structure and metrics; `2` outputs detailed execution traces. | `0` |
-| `--iterations` | `-r` | `<INT>` | Number of times to repeat parsing the file. Highly useful for getting stable throughput averages during benchmarking. | `1` |
-| `--warmup-iterations` | `-w` | `<INT>` | Number of warmup parse passes before recording benchmark timers to ensure CPU cache saturation. | `0` |
-| `--max-errors` | None | `<INT>` | Maximum syntax errors to print before stopping. Available only when the parser was generated with error recovery. | `10` |
-| `--recovery-window` | None | `<BYTES>` | Maximum input distance examined by each recovery attempt. Available only when the parser was generated with error recovery. | `500` |
-| `--enable-stack-overflow-recovery` | None | Flag | Enables native stack-overflow recovery. This adds fixed setup and teardown work to each parse call. | Off |
-| `<FILE>` | None | `<PATH>` | **Required.** Path to the source code file to parse. | None |
+`language_options` has the language-defined `config.Options` type and is
+available to arbitrary reduction procedures. `max_errors` and
+`recovery_window` configure generated error recovery.
+`stack_overflow_recovery` enables the optional native recovery boundary and is
+disabled by default.
 
-> [!IMPORTANT]
-> When compiling the parser with `-Doptimize=ReleaseFast` (the default optimization mode for benchmarking), all debugging instrumentation, execution logging, verbosity traces, and even source location tracking (line/column numbers) are completely disabled and compiled out to maximize parsing throughput. For debugging, syntax error reporting, or verbose parsing traces, compile the parser without `-Doptimize=ReleaseFast` (which defaults to Debug mode).
+ReleaseFast builds compile out debugging instrumentation and position tracking
+where configured to maximize throughput.
 
 ---
 
 ## Quick Reference
 
-### Standard Production Generation & Run
+### Generate and Parse
 ```sh
 zig build
 ./zig-out/bin/galley --parser-type ll languages/json
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json languages/json/samples/code-01.json
 ```
 
-### High-Precision Benchmarking Loop (100 Iterations with 10 Warmups)
+```zig
+var parsed = try json_parser.parseBytes(io, allocator, input, .{});
+defer parsed.deinit();
+```
+
+### High-Precision API Benchmark
 ```sh
 ./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery --input-size 32 languages/json
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json -r 100 -w 10 languages/json/samples/code-02.json
-```
-
-### AST Debugging & Inspection
-```sh
-zig build ll-json
-./zig-out/bin/ll-json -v 1 languages/json/samples/code-01.json
+zig build -Doptimize=ReleaseFast run-ll-json -- \
+  languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```
 
 ### Report More Than One Syntax Error
+```zig
+var session = try json_parser.Session.init(io, allocator, .{
+    .max_errors = 10,
+    .recovery_window = 500,
+});
+defer session.deinit();
+```
+
+Generate the parser with recovery support first:
+
 ```sh
 ./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
-zig build ll-json-recovery
-./zig-out/bin/ll-json-recovery --max-errors 10 --recovery-window 500 languages/json-recovery/recovery-demo.json
 ```

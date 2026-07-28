@@ -18,10 +18,10 @@ When building optimized parser generators, managing memory allocation in the Abs
 For helper or temporary variables in the grammar (like `_StringContent` or `_OptionalBlank` starting with an underscore), AST node generation should be skipped completely to keep memory usage low.
 
 - **LL Parser (Top-Down):**
-  LL parses rules top-down. The parser knows which rule it is expanding before it matches the children. If the variable has `is_ast_enabled = False`, LL simply skips allocating the AST node.
+  LL parses rules top-down. The parser knows which rule it is expanding before it matches the children. If the variable has `is_ast_enabled = false`, LL simply skips allocating the AST node.
   
 - **LR Parser (Bottom-Up):**
-  LR parses rules bottom-up, meaning parent nodes are only created during reduction. If the reduced variable has `is_ast_enabled = False`, LR skips the node allocation. However, because it still needs to track positions for parent rules, it pushes the start position (`context.pos()`) directly onto the semantic stack as a raw integer instead of allocating an AST node.
+  LR parses rules bottom-up, meaning parent nodes are only created during reduction. If the reduced variable has `is_ast_enabled = false`, LR skips the node allocation. However, because it still needs to track positions for parent rules, it pushes the start position (`context.pos()`) directly onto the semantic stack as a raw integer instead of allocating an AST node.
 
 ---
 
