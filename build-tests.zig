@@ -51,6 +51,18 @@ pub fn add(b: *std.Build, options: Options) !void {
     var matrix_filtered_test_run_steps: std.ArrayList(*std.Build.Step) = .empty;
 
     const test_step = b.step("test", "Run all tests (build + generator + runtime + matrix + parity)");
+    const benchmark_progress_test_step = b.step(
+        "test-benchmark-progress",
+        "Run benchmark progress planning and terminal rendering tests",
+    );
+    const run_benchmark_progress_tests = b.addSystemCommand(&.{
+        "python3",
+        "-m",
+        "unittest",
+        "scripts/test_benchmark.py",
+    });
+    run_benchmark_progress_tests.setCwd(b.path("."));
+    benchmark_progress_test_step.dependOn(&run_benchmark_progress_tests.step);
     const recovery_comparison = try addGalleyRecoveryComparison(b, options, selection.names);
     const recovery_comparison_step = b.step(
         "compare-galley-recovery",
@@ -72,6 +84,9 @@ pub fn add(b: *std.Build, options: Options) !void {
         const run_build_tests = b.addRunArtifact(build_tests);
         test_step.dependOn(&run_build_tests.step);
         trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_build_tests.step);
+        if (selection.names.len == 0) {
+            test_step.dependOn(&run_benchmark_progress_tests.step);
+        }
     }
 
     if (selection.includes(.generator)) {
@@ -114,6 +129,12 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_json_recovery_tests = try addJsonRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_json_recovery_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_recovery_tests.step);
+
+            inline for (std.meta.tags(InputRefillTestKind)) |kind| {
+                const run_input_refill_tests = try addInputRefillTests(b, options, parser_type, kind, selection.names);
+                test_step.dependOn(&run_input_refill_tests.step);
+                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_input_refill_tests.step);
+            }
         }
     }
 
@@ -628,6 +649,99 @@ fn addJsonRecoveryTests(
     });
     const tests = b.addTest(.{
         .name = b.fmt("json-recovery-{s}-tests", .{parser_type}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+const InputRefillTestKind = enum {
+    sliding,
+    indentation,
+    recovery_eof,
+    ast_limit,
+};
+
+fn addInputRefillTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    kind: InputRefillTestKind,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const language = if (kind == .indentation) "sanbus" else "json";
+    const label = @tagName(kind);
+    const parser_name = b.fmt("input-refill-{s}-{s}", .{ parser_type, label });
+
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path(b.fmt("languages/{s}/{s}.grm", .{ language, parser_type })));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(b.fmt("{s}/input-refill/{s}", .{ parser_type, label }));
+    generate_parser.addArg("--output");
+    const parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArgs(&.{
+        "--no-procedures",
+        "--with-input-refill",
+        "--with-position-tracking",
+        "--input-size",
+        "16",
+    });
+    if (kind == .ast_limit) {
+        generate_parser.addArg("--with-ast");
+    } else {
+        generate_parser.addArg("--no-ast");
+    }
+    if (kind == .recovery_eof) generate_parser.addArg("--with-error-recovery");
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("languages/{s}/procedures.zig", .{language})),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("languages/{s}/config.zig", .{language})),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path(b.fmt("languages/{s}/{s}_error_messages.zig", .{ language, parser_type })),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.ll_generator_mod,
+        options.generator.lr_generator_mod,
+        options.generator.runtime_options_mod,
+    );
+
+    const test_options = b.addOptions();
+    test_options.addOption(bool, "sliding", kind == .sliding);
+    test_options.addOption(bool, "indentation", kind == .indentation);
+    test_options.addOption(bool, "recovery_eof", kind == .recovery_eof);
+    test_options.addOption(bool, "ast_limit", kind == .ast_limit);
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/input_refill_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "parser-under-test", .module = generated_parser.runtime_mod },
+            .{ .name = "test_options", .module = test_options.createModule() },
+        },
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
         .root_module = test_mod,
         .filters = filters,
     });

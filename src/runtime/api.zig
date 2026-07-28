@@ -11,11 +11,25 @@ pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking
     parser.is_position_tracking_enabled
 else
     builtin.mode != .ReleaseFast;
+pub const input_refill_enabled = if (@hasDecl(parser, "is_input_refill_enabled"))
+    parser.is_input_refill_enabled
+else
+    false;
+pub const sliding_input_enabled = input_refill_enabled and !parser.is_ast_enabled;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
 pub const standard_procedures = @import("standard-procedures.zig");
-pub const read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
+const max_read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
+pub const read_chunk_size = if (input_refill_enabled)
+    @min(max_read_chunk_size, 64 * 1024)
+else
+    max_read_chunk_size;
+pub const input_padding_size = @max(parser.longest_terminal_length, 1);
+pub const input_window_size = if (sliding_input_enabled)
+    @min(read_chunk_size, std.math.maxInt(data_structures.Context.Size) - input_padding_size)
+else
+    read_chunk_size;
 pub const stack_overflow_recovery_available = stack_overflow_utilities.is_supported;
 
 pub const ParseError = error{
@@ -248,7 +262,11 @@ pub const Session = struct {
         const reader_buffer = try allocator.alloc(u8, read_chunk_size * 2);
         errdefer allocator.free(reader_buffer);
 
-        const chunk_buffer = try allocator.alloc(u8, read_chunk_size);
+        const chunk_buffer_size = if (sliding_input_enabled and !config.indentation_syntax)
+            input_window_size + input_padding_size
+        else
+            read_chunk_size;
+        const chunk_buffer = try allocator.alloc(u8, chunk_buffer_size);
         errdefer allocator.free(chunk_buffer);
 
         const node_allocator = if (parser.is_ast_enabled)
@@ -289,22 +307,35 @@ pub const Session = struct {
         self.arena.deinit();
     }
 
-    pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+    fn ensureOwnedInputCapacity(self: *Session, required: usize) ![]u8 {
         if (self.owned_input) |owned_input| {
+            if (owned_input.len >= required) return owned_input[0..required];
             self.allocator.free(owned_input);
             self.owned_input = null;
         }
 
-        const owned_input = try self.allocator.alloc(u8, input.len + 1);
-        @memcpy(owned_input[0..input.len], input);
-        owned_input[input.len] = 0;
+        const owned_input = try self.allocator.alloc(u8, required);
         self.owned_input = owned_input;
+        return owned_input;
+    }
+
+    pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+        if (comptime input_refill_enabled and parser.is_ast_enabled) {
+            if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
+        }
+        const padding = if (input_refill_enabled) input_padding_size else 1;
+        const owned_input = try self.ensureOwnedInputCapacity(input.len + padding);
+        @memcpy(owned_input[0..input.len], input);
+        @memset(owned_input[input.len..], 0);
 
         var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
         return try self._parseContext(&context_value);
     }
 
     pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+        if (comptime input_refill_enabled and parser.is_ast_enabled) {
+            if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
+        }
         if (self.owned_input) |owned_input| {
             self.allocator.free(owned_input);
             self.owned_input = null;
@@ -315,6 +346,30 @@ pub const Session = struct {
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
+        if (comptime input_refill_enabled and !config.indentation_syntax and parser.is_ast_enabled) {
+            const max_input_length = std.math.maxInt(data_structures.Context.Size) - 1;
+            const file_length_u64: ?u64 = file_length: {
+                const stat = file.stat(self.io) catch break :file_length null;
+                break :file_length if (stat.kind == .file) stat.size else null;
+            };
+            const known_file_length = file_length_u64 orelse {
+                var reader = file.reader(self.io, self.reader_buffer);
+                const input = try reader.interface.allocRemaining(self.allocator, .limited(max_input_length));
+                defer self.allocator.free(input);
+                return try self.parseBytes(input, input_path);
+            };
+            const file_length = std.math.cast(usize, known_file_length) orelse return error.InputTooLarge;
+            if (file_length > max_input_length) return error.InputTooLarge;
+
+            const input = try self.ensureOwnedInputCapacity(file_length + input_padding_size);
+            @memset(input[file_length..], 0);
+
+            var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
+            context_value.file_input = input;
+            context_value.input_end = file_length;
+            return try self._parseContext(&context_value);
+        }
+
         var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
         return try self._parseContext(&context_value);
     }

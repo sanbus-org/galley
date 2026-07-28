@@ -46,6 +46,14 @@ pub fn build(b: *std.Build) !void {
     );
     common.addDelegatedTestStep(
         b,
+        "test-benchmark-progress",
+        "Run benchmark progress planning and terminal rendering tests",
+        "test-benchmark-progress",
+        &.{},
+        generator.ast_memory_benchmark,
+    );
+    common.addDelegatedTestStep(
+        b,
         "compare-galley-recovery",
         "Show automatic and explicit recovery on the same malformed Galley grammar",
         "compare-galley-recovery",
