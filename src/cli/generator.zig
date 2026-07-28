@@ -1,5 +1,4 @@
 const std = @import("std");
-const build_options = @import("build_options");
 const generator = @import("galley_generator");
 
 const max_input_size = 1024 * 1024 * 1024;
@@ -18,14 +17,6 @@ const GenerationResult = struct {
     created_config: bool = false,
     created_ll_error_messages: bool = false,
     created_lr_error_messages: bool = false,
-    created_build_zig: bool = false,
-    created_main_zig: bool = false,
-    created_tests_dir: bool = false,
-    created_parser_test: bool = false,
-    created_samples_dir: bool = false,
-    created_sample: bool = false,
-    standalone: bool = false,
-    in_repo_language_name: ?[]const u8 = null,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -150,8 +141,6 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
     defer dir.close(init.io);
 
     var result = GenerationResult{};
-    result.in_repo_language_name = try inRepoLanguageName(init, language_dir);
-    result.standalone = result.in_repo_language_name == null;
 
     const has_ll = fileExists(init, language_dir, "ll.grm");
     const has_lr = fileExists(init, language_dir, "lr.grm");
@@ -187,16 +176,6 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
 
     result.created_procedures = try createFileIfMissing(init, language_dir, "procedures.zig", defaultProceduresSource);
     result.created_config = try createFileIfMissing(init, language_dir, "config.zig", defaultConfigSource);
-
-    if (result.standalone) {
-        const build_source = try standaloneBuildSource(init);
-        result.created_build_zig = try createFileIfMissing(init, language_dir, "build.zig", build_source);
-        result.created_main_zig = try createFileIfMissing(init, language_dir, "main.zig", standaloneMainSource);
-        result.created_tests_dir = try createDirectoryIfMissing(init, language_dir, "tests");
-        result.created_parser_test = try createFileIfMissing(init, language_dir, "tests/parser_test.zig", standaloneParserTestSource);
-        result.created_samples_dir = try createDirectoryIfMissing(init, language_dir, "samples");
-        result.created_sample = try createFileIfMissing(init, language_dir, "samples/code-01", defaultSampleSource);
-    }
 
     return result;
 }
@@ -559,32 +538,11 @@ fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: [
     return true;
 }
 
-fn createDirectoryIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8) !bool {
-    const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
-    defer init.gpa.free(path);
-
-    const status = try std.Io.Dir.cwd().createDirPathStatus(init.io, path, .default_dir);
-    return status == .created;
-}
-
 fn fileExists(init: std.process.Init, dir_path: []const u8, basename: []const u8) bool {
     const path = std.fs.path.join(init.gpa, &.{ dir_path, basename }) catch return false;
     defer init.gpa.free(path);
     std.Io.Dir.cwd().access(init.io, path, .{}) catch return false;
     return true;
-}
-
-fn inRepoLanguageName(init: std.process.Init, language_dir: []const u8) !?[]const u8 {
-    const target_abs_z = std.Io.Dir.cwd().realPathFileAlloc(init.io, language_dir, init.gpa) catch return null;
-    defer init.gpa.free(target_abs_z);
-    const target_abs = target_abs_z[0..target_abs_z.len];
-
-    const languages_abs = try std.fs.path.join(init.gpa, &.{ build_options.galley_root, "languages" });
-    defer init.gpa.free(languages_abs);
-
-    const parent = std.fs.path.dirname(target_abs) orelse return null;
-    if (!std.mem.eql(u8, parent, languages_abs)) return null;
-    return try init.arena.allocator().dupe(u8, std.fs.path.basename(target_abs));
 }
 
 fn printSuccess(init: std.process.Init, language_dir: []const u8, result: GenerationResult) !void {
@@ -604,13 +562,7 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
         @as(usize, @intFromBool(result.created_procedures)) +
         @as(usize, @intFromBool(result.created_config)) +
         @as(usize, @intFromBool(result.created_ll_error_messages)) +
-        @as(usize, @intFromBool(result.created_lr_error_messages)) +
-        @as(usize, @intFromBool(result.created_build_zig)) +
-        @as(usize, @intFromBool(result.created_main_zig)) +
-        @as(usize, @intFromBool(result.created_tests_dir)) +
-        @as(usize, @intFromBool(result.created_parser_test)) +
-        @as(usize, @intFromBool(result.created_samples_dir)) +
-        @as(usize, @intFromBool(result.created_sample));
+        @as(usize, @intFromBool(result.created_lr_error_messages));
 
     try stdout.print("{s}{s}Galley{s} generated {d} parser{s} in {s}{s}{s}\n", .{
         green,
@@ -626,22 +578,6 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
     if (created_count > 0) {
         try stdout.print("Created {d} support file{s}.\n", .{ created_count, if (created_count == 1) "" else "s" });
     }
-
-    try stdout.writeAll("Run it with:\n  ");
-    if (result.in_repo_language_name) |language_name| {
-        if (result.generated_ll) {
-            try stdout.print("zig build -Doptimize=ReleaseFast ll-{s} && ./zig-out/bin/ll-{s} <input_path>\n", .{ language_name, language_name });
-        } else {
-            try stdout.print("zig build -Doptimize=ReleaseFast lr-{s} && ./zig-out/bin/lr-{s} <input_path>\n", .{ language_name, language_name });
-        }
-    } else {
-        if (result.generated_ll) {
-            try stdout.print("cd {s} && zig build run-ll -- <input_path>\n", .{language_dir});
-        } else {
-            try stdout.print("cd {s} && zig build run-lr -- <input_path>\n", .{language_dir});
-        }
-        try stdout.print("Test it with:\n  cd {s} && zig build test\n", .{language_dir});
-    }
     try stdout.flush();
 }
 
@@ -652,20 +588,6 @@ const defaultConfigSource = @embedFile("templates/config.zig");
 const defaultLlErrorMessagesSource = @embedFile("templates/ll_error_messages.zig");
 
 const defaultLrErrorMessagesSource = @embedFile("templates/lr_error_messages.zig");
-
-const defaultSampleSource = "Write a sample code here";
-
-const standaloneMainSource = @embedFile("templates/main.zig");
-
-const standaloneParserTestSource = @embedFile("templates/parser_test.zig");
-
-fn standaloneBuildSource(init: std.process.Init) ![]const u8 {
-    return try std.fmt.allocPrint(
-        init.arena.allocator(),
-        @embedFile("templates/build.zig.template"),
-        .{build_options.galley_root},
-    );
-}
 
 fn errorMessagesFileName(parser_type: generator.ParserType) []const u8 {
     return switch (parser_type) {

@@ -9,19 +9,24 @@
 - [Hooks in procedures.zig](#hooks-in-procedureszig)
   - [Common Hook Conventions](#common-hook-conventions)
   - [Writing Custom Hooks](#writing-custom-hooks)
-- [Build and Run](#build-and-run)
+- [Generate and Integrate](#generate-and-integrate)
 - [Parsing Verbose Output](#parsing-verbose-output)
 - [Conventions and Tips](#conventions-and-tips)
 
 ---
 
-This guide covers how to scaffold a new grammar directory for a custom language.
+This guide covers how to create and generate a grammar directory for a custom
+language.
 
 ---
 
 ## Directory Structure
 
-Each language lives under `languages/<name>/`. The build system automatically discovers languages by scanning for a `_ll-parser.zig` or `_lr-parser.zig` file.
+Inside the Galley repository, each bundled language lives under
+`languages/<name>/`, where the repository build discovers generated
+`_ll-parser.zig` and `_lr-parser.zig` files. External consumers may place the
+same grammar and customization files anywhere and wire them explicitly in
+their own `build.zig`.
 
 ```
 languages/
@@ -34,20 +39,25 @@ languages/
     ├── ll_error_messages.zig # Optional LL syntax error message hooks
     ├── lr_error_messages.zig # Optional LR syntax error message hooks
     ├── procedures.zig  # Required: hook functions and runtime payload definition
-    └── samples/        # Test inputs — will be parsed each build
-        └── code-01     # Example sample code input
+    └── samples/        # Optional repository benchmark inputs
+        └── code-01     # Example benchmark input
 ```
 
 ### Getting Started
 
-Run all commands from the root directory of the repository. A Galley language is a directory containing `ll.grm`, `lr.grm`, or both. When you run `galley`, it generates parser files and creates missing support files without overwriting your existing `procedures.zig`, `config.zig`, error-message files, or build files.
+Run all commands from the root directory of the repository. A Galley language
+is a directory containing `ll.grm`, `lr.grm`, or both. When you run `galley`,
+it generates parser files and creates missing customization files without
+overwriting existing customization. It does not create or modify application
+build files.
 
 ```sh
 zig build
 ./zig-out/bin/galley path/to/language-dir
 ```
 
-To build a runnable parser executable through this repository's `build.zig`, use the bundled language-directory convention:
+To add a bundled repository language and its API benchmark harness, use the
+`languages/<name>/` convention:
 
 1. Create a new directory under `languages/`:
 
@@ -61,13 +71,16 @@ To build a runnable parser executable through this repository's `build.zig`, use
 
     ```zig
     pub const indentation_syntax = false;
+    pub const Options = struct {};
     ```
 
     ```zig
     pub const Payload = struct {};
     ```
 
-1. Create a `samples/` directory and add a `code-01` file with an example input so the parser has something to parse on every build.
+1. Optionally create `samples/` and add `code-*` inputs if the language should
+   participate in repository benchmarks. Normal parser generation and module
+   compilation do not require samples.
 
 1. Generate the parser:
 
@@ -152,7 +165,7 @@ pub fn syntax_error_ll_Value__expected_String_or_Number(args: root.SyntaxErrorMe
 
 ---
 
-## Build and Run
+## Generate and Integrate
 
 ### Generate LL Parser
 
@@ -168,31 +181,12 @@ zig build
 ./zig-out/bin/galley --parser-type lr languages/mylang
 ```
 
-### Build and Run
-
-```sh
-zig build ll-mylang
-./zig-out/bin/ll-mylang languages/mylang/samples/code-01
-```
-
-```sh
-zig build lr-mylang
-./zig-out/bin/lr-mylang languages/mylang/samples/code-01
-```
-
-The executable will be built automatically — `build.zig` scans the `languages/` directory for any subdirectory containing a `_ll-parser.zig` or `_lr-parser.zig` file.
-
-### Standalone Directories
-
-When you run `galley` on a language directory outside this repository's `languages/` directory, Galley also creates a local `build.zig`, `main.zig`, `tests/parser_test.zig`, and `samples/code-01` if they are missing. Replace the placeholder sample with valid source for your language, then run:
-
-```sh
-zig build test
-zig build run-ll
-zig build run-ll -- --iterations 100 --warmup-iterations 10
-```
-
-Use `run-lr` instead when the directory only has an LR grammar.
+Generation creates `_ll-parser.zig` or `_lr-parser.zig` and any missing
+customization files. It does not create an application. Assemble the generated
+source, `config.zig`, `procedures.zig`, and the matching error-message module
+with Galley's runtime in your own `build.zig`. See
+[Using Galley from Another Zig Project](using-galley.md) for the complete
+module wiring.
 
 ---
 
@@ -201,9 +195,9 @@ Use `run-lr` instead when the directory only has an LR grammar.
 Projects that depend on Galley can call the generator directly:
 
 ```zig
-const galley = @import("galley");
+const generator = @import("galley_generator");
 
-try galley.generator.emitParserFromSource(
+try generator.emitParserFromSource(
     allocator,
     grammar_source,
     writer,
@@ -218,12 +212,13 @@ Use `.lr` for LR generation. The options struct matches the CLI flags.
 
 ## Use a Generated Parser from Zig Code
 
-Generated parsers are also importable Zig modules. The repository build exposes included languages by parser target name, such as `ll-json` and `lr-json`; standalone generated `build.zig` files expose `ll-parser` and `lr-parser`.
+Generated parsers are consumed as assembled Zig modules. The import name is
+chosen by the consumer's `build.zig`.
 
 For one-shot parsing, call `parseBytes`:
 
 ```zig
-const json_parser = @import("ll-json");
+const json_parser = @import("json_parser");
 
 var parsed = try json_parser.parseBytes(io, allocator, "{\"ok\": true}", .{});
 defer parsed.deinit();
@@ -238,7 +233,7 @@ defer reader.deinit();
 For repeated parses, reuse a `Session`:
 
 ```zig
-const json_parser = @import("ll-json");
+const json_parser = @import("json_parser");
 
 var session = try json_parser.Session.init(io, allocator, .{});
 defer session.deinit();
@@ -258,6 +253,7 @@ must be released before the next parse. A guard also rejects an older result
 with `error.StaleParseResult` if the session has already been reused.
 
 Use `session.parseFile(file, input_path)` when parsing from a `std.Io.File`.
+The caller retains ownership of the file and must close it.
 
 For callers that already own sentinel-terminated input, use `parseSentinelBytes` or `session.parseSentinelBytes`:
 
@@ -272,19 +268,19 @@ The sentinel byte must remain valid for the duration of the parse. This path avo
 
 ## Parsing Verbose Output
 
-Pass `--verbosity 1` (or `2`) to the generated executable to print the resulting AST alongside benchmark metrics:
-
-```sh
-zig build ll-json
-./zig-out/bin/ll-json languages/json/samples/code-01.json --verbosity 1
-```
+Set `.verbosity = 1` or `2` in `ParseOptions` when constructing a session or
+using a one-shot parse helper. Applications decide how to present ASTs and
+diagnostics.
 
 ---
 
 ## Conventions and Tips
 
-- Keep your grammar in alphabetical rule order; the generator may depend on it.
-- Use `_`-prefixed CamelCase helper rules (like `_WhiteSpace` or `_Tail`) for whitespace, trailing symbols, and optional parts — they incur zero overhead.
+- Keep the intended start rule first. Remaining rules can be organized in any
+  order.
+- Use `_`-prefixed CamelCase helper rules (like `_WhiteSpace` or `_Tail`) for
+  whitespace, trailing symbols, and optional parts when those rules should not
+  allocate AST nodes.
 - If your language needs to handle both LL and LR, write both `ll.grm` and `lr.grm` with equivalent grammars in each.
 - Remember that the first rule in the file is the entry point — no explicit `@start` annotation is needed.
 - Check that all your terminal symbols match what the grammar generator expects (`digit`, `letter`, `space`, `new_line`, `operator`, etc.).

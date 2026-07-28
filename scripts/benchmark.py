@@ -219,12 +219,6 @@ def metric_mbps(metrics):
         return 0.0
 
 
-def benchmark_target(base_target, route):
-    if route == "api":
-        return f"api-bench-{base_target}"
-    return base_target
-
-
 def benchmark_build_cmd(target, optimize, parser_type, language):
     return [
         "zig",
@@ -238,19 +232,12 @@ def benchmark_build_cmd(target, optimize, parser_type, language):
     ]
 
 
-def benchmark_run_args(route, input_file, iterations):
-    args = [input_file]
-    if route == "cli":
-        args.extend(["--verbosity", "0"])
-    args.extend(["--iterations", str(iterations)])
-    return args
+def benchmark_run_args(input_file, iterations):
+    return [input_file, "--iterations", str(iterations)]
 
 
-def benchmark_debug_args(route, input_file):
-    args = [input_file]
-    if route == "cli":
-        args.extend(["--verbosity", "0"])
-    return args
+def benchmark_debug_args(input_file):
+    return [input_file]
 
 
 def best_metrics(results):
@@ -676,7 +663,7 @@ def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
     return BenchmarkSuite(name=name, variant=variant, cards=tuple(cards))
 
 
-def suite_progress_label(suite, route):
+def suite_progress_label(suite):
     details = [
         "No AST" if suite.variant.ast_mode == "no-ast" else "AST",
     ]
@@ -689,7 +676,6 @@ def suite_progress_label(suite, route):
         details.append("No terminal AST")
     if suite.variant.input_size is not None:
         details.append(f"2^{suite.variant.input_size}")
-    details.append(route.upper())
     return " · ".join([suite.name.upper(), *details])
 
 
@@ -724,7 +710,6 @@ def run_benchmark_suite(suite, args, progress):
 
     if input_size is not None:
         header_details.append(f"Size Limit: 2^{input_size}")
-    header_details.append(f"Route: {args.route.upper()}")
 
     details_str = " | ".join(header_details)
     title_text = f" {name.upper()} BENCHMARKS ({details_str}) "
@@ -740,7 +725,7 @@ def run_benchmark_suite(suite, args, progress):
     cols = get_terminal_cols(args.width, spacing=2)
 
     grid_items = suite.cards
-    progress_label = suite_progress_label(suite, args.route)
+    progress_label = suite_progress_label(suite)
 
     input_results = {}
 
@@ -803,7 +788,7 @@ def run_benchmark_suite(suite, args, progress):
                 continue
 
             base_target = f"generated-{p_type.lower()}-{name}-{variant_name}"
-            target = benchmark_target(base_target, args.route)
+            target = base_target
 
             # Render placeholder as "Building..."
             if is_interactive and not is_too_large:
@@ -883,7 +868,7 @@ def run_benchmark_suite(suite, args, progress):
 
             # Benchmark mode - Calibration run aiming for 30MB
             run_cmd = [binary_path] + benchmark_run_args(
-                args.route, input_file, calibration_iterations
+                input_file, calibration_iterations
             )
 
             start_time = time.perf_counter()
@@ -936,7 +921,7 @@ def run_benchmark_suite(suite, args, progress):
                 # by default and report the best remaining run. Benchmark noise is
                 # mostly downward, so best-of-run tracks parser capacity better.
                 run_cmd_2 = [binary_path] + benchmark_run_args(
-                    args.route, input_file, second_iterations
+                    input_file, second_iterations
                 )
                 measured_runs = []
                 for run_idx in range(args.benchmark_runs):
@@ -979,9 +964,7 @@ def run_benchmark_suite(suite, args, progress):
                     stderr=subprocess.STDOUT,
                 )
 
-                debug_run_cmd = [binary_path] + benchmark_debug_args(
-                    args.route, input_file
-                )
+                debug_run_cmd = [binary_path] + benchmark_debug_args(input_file)
                 progress.clear()
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
@@ -1033,7 +1016,6 @@ def run_benchmark_suite(suite, args, progress):
             f"AST Mode: {ast_mode}",
             f"Input Size Limit: {input_size_dir}",
             f"Terminal AST: {term_ast}",
-            f"Benchmark Route: {args.route}",
             "-" * 40,
         ]
 
@@ -1226,12 +1208,6 @@ def main():
         "--no-ast-for-terminals",
         action="store_true",
         help="Fix terminal AST mode to --no-ast-for-terminals",
-    )
-    parser.add_argument(
-        "--route",
-        choices=["api", "cli"],
-        default="api",
-        help="Benchmark route: api uses api-bench-* parser API targets, cli uses generated executables (default: api).",
     )
     parser.add_argument(
         "--benchmark-runs",

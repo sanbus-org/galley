@@ -51,7 +51,9 @@ Automatic recovery does not use Zig errors for internal control flow: LL void pa
 
 Normal automatic-mode LL child calls retain the same `try parse_child(...)` shape. Eligible automatic recovery calls use `always_tail` on the LLVM and native AArch64 backends and fall back to ordinary calls on other backends. LR state calls inspect the returned recovery result, and each state uses its existing native frame rather than a second parser stack. Neither parser scans for synchronization terminals during normal shifts or reductions; recovery lookahead allocation happens only after a mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run on partial or later-discarded trees, so an AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
 
-Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers can set `ParseOptions.max_errors` and `ParseOptions.recovery_window`; recovery-enabled parser executables expose the same settings as `--max-errors` and `--recovery-window`.
+Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers
+configure the limit and search window through `ParseOptions.max_errors` and
+`ParseOptions.recovery_window`.
 
 ---
 
@@ -64,8 +66,7 @@ at the thread's stack boundary into `ParseError.StackOverflow`.
 
 Recovery is disabled by default because establishing that scope adds fixed
 setup and teardown work to every protected parse call. Runtime callers opt in
-with `ParseOptions.stack_overflow_recovery = true`; generated executables expose
-`--enable-stack-overflow-recovery`.
+with `ParseOptions.stack_overflow_recovery = true`.
 
 The recovery scope installs an alternate signal stack and temporary
 `SIGSEGV`/`SIGBUS` handlers, records the current thread's stack bounds, and
@@ -79,18 +80,24 @@ installed handler instead of being reported as parser stack overflow.
 
 When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from contiguous, preallocated memory pools (`ASTAllocator`).
 
-Furthermore, AST nodes reference their parents, children, and siblings using compact integer indices (`u16` or bit-width defined by `--input-size`) rather than 64-bit pointers. This cuts AST memory consumption in half, ensures dense cache packing in CPU L1/L2 caches, and allows resetting the entire parser state between iterations in \(O(1)\) time simply by zeroing a counter.
+Furthermore, AST nodes reference their parents, children, and siblings using
+compact integer indices (`u16` or the bit width defined by `--input-size`)
+rather than 64-bit pointers. This reduces AST memory consumption and keeps nodes
+dense for CPU caches. Session reuse retains the allocated pool, although reset
+currently clears the previously used node range before rewinding it.
 
 ---
 
 ## Role of the Self-Hosted Generator
 
-The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parser for its own grammar format in `languages/galley/_ll-parser.zig`; that parser is responsible for:
+The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed
+parser for its own grammar format in `languages/galley/_ll-parser.zig`. The
+seed parser constructs the grammar model; the generator API then:
 
-1. Parsing the `.grm` definition files.
-2. Computing FIRST, FOLLOW, and nullable sets.
-3. Constructing deterministic LL(k) lookup tables or LR/LALR shift-reduce automatas.
-4. Emitting highly optimized, zero-boilerplate Zig code (`_ll-parser.zig` and `_lr-parser.zig`).
+1. Validates the parsed grammar model.
+2. Computes FIRST, FOLLOW, and nullable sets.
+3. Constructs deterministic LL(k) lookup tables or LR/LALR shift-reduce automata.
+4. Emits optimized Zig parser source (`_ll-parser.zig` or `_lr-parser.zig`).
 
 Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary carries zero generator overhead. The original Python bootstrap generator was removed after commit `0190e40`.
 
@@ -98,4 +105,8 @@ Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary c
 
 ## Self-Hosting
 
-Galley ships with a formal specification of its own grammar syntax (`languages/galley`). The tracked LL seed parser can parse `.grm` files and generate both LL and LR parsers from them. The Galley LR parser stays generated/ignored and is used as a verification path rather than as a second bootstrap artifact.
+Galley ships with a formal specification of its own grammar syntax
+(`languages/galley`). The tracked LL seed parser parses `.grm` files into the
+grammar model used by the generator API, which can emit both LL and LR parser
+source. The Galley LR parser stays generated/ignored and is used as a
+verification path rather than as a second bootstrap artifact.

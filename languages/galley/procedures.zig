@@ -1,7 +1,5 @@
 const std = @import("std");
 const root = @import("galley");
-const ll_generator = @import("ll_generator");
-const lr_generator = @import("lr_generator");
 const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const ASTNode = data_structures.ASTNode;
@@ -79,7 +77,6 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         const node = args.context.node_allocator.at(node_address);
         if (comptime root.parser.are_procedures_enabled)
             node.payload.grammar = grammar;
-        try emitParserForInputPath(args.context, grammar);
     }
 
     if (args.context.verbosityLevel() > 0)
@@ -377,10 +374,6 @@ fn nodeText(context: *data_structures.Context, node_address: ASTNode.Pointer) []
     return context.getTextSlice(node.text_start, node.text_length);
 }
 
-pub fn grammarFromContext(context: *data_structures.Context) ?*Grammar {
-    return grammarFromAstAllocator(context.node_allocator);
-}
-
 pub fn grammarFromAstAllocator(node_allocator: *const data_structures.ASTAllocator) ?*Grammar {
     var index: usize = 0;
     while (index < node_allocator.counter) : (index += 1) {
@@ -388,101 +381,6 @@ pub fn grammarFromAstAllocator(node_allocator: *const data_structures.ASTAllocat
         if (node.payload.grammar) |grammar| return grammar;
     }
     return null;
-}
-
-pub fn emitLlParser(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
-    try ll_generator.emitParser(allocator, grammar, writer);
-}
-
-pub fn emitLlParserWithOptions(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer, options: ll_generator.Options) !void {
-    try ll_generator.emitParserWithOptions(allocator, grammar, writer, options);
-}
-
-pub fn emitLlParserFromContext(context: *data_structures.Context, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
-    const grammar = grammarFromContext(context) orelse return error.GrammarModelMissing;
-    try emitLlParserWithOptions(grammar, allocator, writer, generatorOptionsFromContext(context));
-}
-
-pub fn emitLrParser(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
-    try lr_generator.emitParser(allocator, grammar, writer);
-}
-
-pub fn emitLrParserWithOptions(grammar: *const Grammar, allocator: std.mem.Allocator, writer: *std.Io.Writer, options: lr_generator.Options) !void {
-    try lr_generator.emitParserWithOptions(allocator, grammar, writer, options);
-}
-
-pub fn emitLrParserFromContext(context: *data_structures.Context, allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {
-    const grammar = grammarFromContext(context) orelse return error.GrammarModelMissing;
-    try emitLrParserWithOptions(grammar, allocator, writer, lrGeneratorOptionsFromContext(context));
-}
-
-const OutputParserType = enum { ll, lr };
-
-fn emitParserForInputPath(context: *data_structures.Context, grammar: *const Grammar) !void {
-    const input_path = context.runtime().input_path orelse return;
-    const parser_type: OutputParserType = if (std.mem.endsWith(u8, input_path, "/ll.grm") or std.mem.eql(u8, input_path, "ll.grm"))
-        .ll
-    else if (std.mem.endsWith(u8, input_path, "/lr.grm") or std.mem.eql(u8, input_path, "lr.grm"))
-        .lr
-    else
-        return;
-
-    const dir_path = std.fs.path.dirname(input_path) orelse ".";
-    const output_file = switch (parser_type) {
-        .ll => "_ll-parser.zig",
-        .lr => "_lr-parser.zig",
-    };
-    const output_path = try std.fs.path.join(context.runtime().arena_allocator, &.{ dir_path, output_file });
-
-    try ll_generator.atomic_file.write(
-        context.runtime().io,
-        .cwd(),
-        output_path,
-        .replace,
-        ContextParserEmission{
-            .context = context,
-            .grammar = grammar,
-            .parser_type = parser_type,
-        },
-        ContextParserEmission.emit,
-    );
-}
-
-const ContextParserEmission = struct {
-    context: *data_structures.Context,
-    grammar: *const Grammar,
-    parser_type: OutputParserType,
-
-    fn emit(self: ContextParserEmission, writer: *std.Io.Writer) !void {
-        switch (self.parser_type) {
-            .ll => try emitLlParserWithOptions(self.grammar, self.context.runtime().arena_allocator, writer, generatorOptionsFromContext(self.context)),
-            .lr => try emitLrParserWithOptions(self.grammar, self.context.runtime().arena_allocator, writer, lrGeneratorOptionsFromContext(self.context)),
-        }
-    }
-};
-
-fn generatorOptionsFromContext(context: *data_structures.Context) ll_generator.Options {
-    return .{
-        .with_ast = context.runtime().language_options.with_ast,
-        .with_procedures = context.runtime().language_options.with_procedures,
-        .with_error_recovery = context.runtime().language_options.with_error_recovery,
-        .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
-        .with_position_tracking = context.runtime().language_options.with_position_tracking,
-        .with_input_refill = context.runtime().language_options.with_input_refill,
-        .input_size = context.runtime().language_options.input_size,
-    };
-}
-
-fn lrGeneratorOptionsFromContext(context: *data_structures.Context) lr_generator.Options {
-    return .{
-        .with_ast = context.runtime().language_options.with_ast,
-        .with_procedures = context.runtime().language_options.with_procedures,
-        .with_error_recovery = context.runtime().language_options.with_error_recovery,
-        .ast_for_terminals = context.runtime().language_options.ast_for_terminals,
-        .with_position_tracking = context.runtime().language_options.with_position_tracking,
-        .with_input_refill = context.runtime().language_options.with_input_refill,
-        .input_size = context.runtime().language_options.input_size,
-    };
 }
 
 fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {

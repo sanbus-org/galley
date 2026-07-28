@@ -8,7 +8,11 @@
 
 > **Alpha** — interfaces and grammar format may change between releases.
 
-A parser generator and high-performance parser runtime written in [Zig](https://ziglang.org). Galley reads a grammar definition (`.grm` file), generates a native Zig parser, and produces recursive-descent and recursive-ascent parsers that run at **hundreds of megabytes per second** with zero heap allocation during parsing.
+A parser generator and high-performance parser runtime written in
+[Zig](https://ziglang.org). Galley reads a grammar definition (`.grm` file),
+generates native Zig parser source, and produces recursive-descent and
+recursive-ascent parsers that run at **hundreds of megabytes per second** while
+reusing preallocated session memory.
 
 ---
 
@@ -19,11 +23,11 @@ Full user guides and architectural documentation are available online at:
 
 * **[Getting Started](https://sanbus-org.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
 * **[Included Languages](https://sanbus-org.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
-* **[Configuration & Flags](https://sanbus-org.github.io/galley/configuration)** — Complete list of generator CLI and runtime compiler flags.
-* **[Writing a Language](https://sanbus-org.github.io/galley/writing_a_language)** — Creating new grammars, directory layout, and compiling custom targets.
+* **[Configuration & Options](https://sanbus-org.github.io/galley/configuration)** — Generator CLI flags, language configuration, and runtime API options.
+* **[Writing a Language](https://sanbus-org.github.io/galley/writing_a_language)** — Creating grammars, generated sources, and parser API modules.
 * **[Using Galley from Another Project](docs/using-galley.md)** — Consuming the generator API and generated parser modules from Zig projects.
 * **[Reduction Procedures](https://sanbus-org.github.io/galley/procedures)** — Writing Zig hooks to manipulate ASTs, handle state, and clean up nodes.
-* **[Testing](docs/testing.md)** — Running standalone suites, focused generated-parser cases, and typed test filters.
+* **[Testing](docs/testing.md)** — Running focused suites, generated-parser cases, and typed test filters.
 * **[Architecture](https://sanbus-org.github.io/galley/architecture)** — Under the hood of Galley's optional stack-overflow recovery, lexer-less design, and self-hosting roadmap.
 * **[AST Allocations](https://sanbus-org.github.io/galley/ast_node_allocations)** — AST node pool optimizations and top-down vs. bottom-up allocation limits.
 * **[Benchmarks](https://sanbus-org.github.io/galley/benchmarks)** — Precision benchmarking guidelines and throughput metrics.
@@ -38,24 +42,23 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 
 * [Zig 0.16+](https://ziglang.org/download/) — Native compiler toolchain
 
-### Compile & Run a Bundled Parser
+### Generate and Benchmark a Bundled Parser
 
 ```sh
 # 1. Generate the Zig parser for JSON.
 zig build
 ./zig-out/bin/galley --parser-type ll languages/json
 
-# 2. Build exactly that parser, then run it.
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json languages/json/samples/code-01.json
+# 2. Run the repository's API benchmark harness for that parser.
+zig build -Doptimize=ReleaseFast run-ll-json -- \
+  languages/json/samples/code-01.json --iterations 100
 ```
 
 The separate `json-recovery` implementation demonstrates explicit recovery and custom diagnostics without adding recovery-oriented grammar structure to the benchmark reference:
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
-zig build ll-json-recovery
-./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+zig build run-ll-json-recovery -- languages/json-recovery/recovery-demo.json
 ```
 
 The command reports `SyntaxError` after printing the recovered diagnostics, so its nonzero exit status is expected.

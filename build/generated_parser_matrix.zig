@@ -15,10 +15,9 @@ pub const Work = struct {
     compile: usize = 0,
     api: usize = 0,
     errors: usize = 0,
-    cli: usize = 0,
 
     pub fn total(self: Work) usize {
-        return self.compile + self.api + self.errors + self.cli;
+        return self.compile + self.api + self.errors;
     }
 };
 
@@ -218,8 +217,6 @@ fn addCase(
         procedures_mod,
         config_mod,
         error_messages_mod,
-        options.generator_modules.ll_generator_mod,
-        options.generator_modules.lr_generator_mod,
         options.generator_modules.runtime_options_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
@@ -290,8 +287,6 @@ fn addCase(
                 recovery_procedures_mod,
                 recovery_config_mod,
                 recovery_error_messages_mod,
-                options.generator_modules.ll_generator_mod,
-                options.generator_modules.lr_generator_mod,
                 options.generator_modules.runtime_options_mod,
             );
             const run_recovery_error_tests = addGeneratedParserErrorTest(
@@ -315,70 +310,10 @@ fn addCase(
             matrix_step.dependOn(&run_recovery_error_tests.step);
             trackFilteredTestRun(b, options, &run_recovery_error_tests.step);
             work.errors += 1;
-
-            if ((std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "json-recovery")) and
-                std.mem.eql(u8, variant.name, "no-ast-no-procedures-size16"))
-            {
-                const recovery_cli_options = b.addOptions();
-                recovery_cli_options.addOption([]const u8, "api_benchmark_step", "run-api-bench-generated-parser-matrix");
-                const recovery_cli_mod = b.createModule(.{
-                    .root_source_file = b.path("src/cli/parser.zig"),
-                    .target = options.target,
-                    .optimize = options.optimize,
-                    .link_libc = true,
-                    .imports = &.{
-                        .{ .name = "build_options", .module = recovery_cli_options.createModule() },
-                        .{ .name = "galley", .module = recovery_parser.runtime_mod },
-                    },
-                });
-                const recovery_cli = b.addExecutable(.{
-                    .name = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-cli" }),
-                    .root_module = recovery_cli_mod,
-                });
-                const run_recovery_cli = b.addRunArtifact(recovery_cli);
-                run_recovery_cli.setName(b.fmt("test recovery CLI options {s}", .{recovery_case_label}));
-                run_recovery_cli.addArgs(&.{ "--max-errors", "2", "--recovery-window", "64", "--help" });
-                run_recovery_cli.expectStdOutMatch("--max-errors <COUNT>");
-                run_recovery_cli.expectStdOutMatch("--recovery-window <BYTES>");
-                run_recovery_cli.expectStdErrEqual("");
-                matrix_step.dependOn(&run_recovery_cli.step);
-                work.errors += 1;
-            }
         }
     };
 
-    const parser_cli_options = b.addOptions();
-    parser_cli_options.addOption(
-        []const u8,
-        "api_benchmark_step",
-        "run-api-bench-generated-parser-matrix",
-    );
-
-    const galley_cli_mod = b.createModule(.{
-        .root_source_file = b.path("src/cli/parser.zig"),
-        .target = options.target,
-        .optimize = options.optimize,
-        .link_libc = true,
-        .imports = &.{
-            .{ .name = "build_options", .module = parser_cli_options.createModule() },
-            .{ .name = "galley", .module = galley_parser_mod },
-        },
-    });
-    const exe = b.addExecutable(.{
-        .name = case_name,
-        .root_module = galley_cli_mod,
-    });
-    const install_artifact = b.addInstallArtifact(exe, .{});
-    const build_step = b.step(case_name, try std.mem.concat(b.allocator, u8, &.{ "Build matrix variant: ", case_name }));
-    build_step.dependOn(&install_artifact.step);
-    build_step.dependOn(&generate_parser.step);
-
-    if (options.selection.includes(.matrix_compile)) {
-        matrix_step.dependOn(&exe.step);
-        work.compile += 1;
-    }
-
-    const api_benchmark_mod = b.createModule(.{
+    const benchmark_mod = b.createModule(.{
         .root_source_file = b.path("src/benchmarks/api_benchmark.zig"),
         .target = options.target,
         .optimize = options.optimize,
@@ -386,21 +321,25 @@ fn addCase(
             .{ .name = "galley", .module = galley_parser_mod },
         },
     });
-    const api_benchmark_name = try std.mem.concat(b.allocator, u8, &.{ "api-bench-", case_name });
-    const api_benchmark_exe = b.addExecutable(.{
-        .name = api_benchmark_name,
-        .root_module = api_benchmark_mod,
+    const benchmark_exe = b.addExecutable(.{
+        .name = case_name,
+        .root_module = benchmark_mod,
     });
-    const install_api_benchmark_artifact = b.addInstallArtifact(api_benchmark_exe, .{});
-    const api_benchmark_step = b.step(api_benchmark_name, try std.mem.concat(b.allocator, u8, &.{ "Benchmark matrix variant API: ", case_name }));
-    api_benchmark_step.dependOn(&install_api_benchmark_artifact.step);
+    const install_artifact = b.addInstallArtifact(benchmark_exe, .{});
+    const build_step = b.step(case_name, try std.mem.concat(b.allocator, u8, &.{ "Benchmark matrix variant API: ", case_name }));
+    build_step.dependOn(&install_artifact.step);
+    build_step.dependOn(&generate_parser.step);
+
+    if (options.selection.includes(.matrix_compile)) {
+        matrix_step.dependOn(&benchmark_exe.step);
+        work.compile += 1;
+    }
 
     try addLanguageSamples(
         b,
         matrix_step,
         options,
         galley_parser_mod,
-        exe,
         language,
         case_name,
         case_label,
@@ -423,7 +362,6 @@ fn addLanguageSamples(
     matrix_step: *std.Build.Step,
     options: Options,
     galley_parser_mod: *std.Build.Module,
-    exe: *std.Build.Step.Compile,
     language: []const u8,
     case_name: []const u8,
     case_label: []const u8,
@@ -456,7 +394,6 @@ fn addLanguageSamples(
                 matrix_step,
                 options,
                 galley_parser_mod,
-                exe,
                 case_name,
                 case_label,
                 config_label,
@@ -474,7 +411,6 @@ fn addValidationInput(
     matrix_step: *std.Build.Step,
     options: Options,
     galley_parser_mod: *std.Build.Module,
-    exe: *std.Build.Step.Compile,
     case_name: []const u8,
     case_label: []const u8,
     config_label: []const u8,
@@ -511,40 +447,6 @@ fn addValidationInput(
         trackFilteredTestRun(b, options, &run_parser_api_tests.step);
         work.api += 1;
     }
-
-    if (!options.selection.includes(.matrix_cli)) return;
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.setName(b.fmt("test CLI {s} {s}", .{ case_label, std.fs.path.basename(input_path) }));
-    common.expectSilentSuccess(run_cmd);
-    run_cmd.addArgs(&.{
-        "--verbosity",
-        "0",
-        "--iterations",
-        "1",
-    });
-
-    if (std.mem.endsWith(u8, input_path, ".grm")) {
-        const cache_dir = try std.fs.path.join(b.allocator, &.{ ".zig-cache", "matrix-validation", case_name });
-        const cached_input = try std.fs.path.join(b.allocator, &.{ cache_dir, std.fs.path.basename(input_path) });
-
-        const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", cache_dir });
-        mkdir.has_side_effects = true;
-        common.expectSilentSuccess(mkdir);
-
-        const copy_input = b.addSystemCommand(&.{ "cp", input_path, cached_input });
-        copy_input.has_side_effects = true;
-        common.expectSilentSuccess(copy_input);
-        copy_input.step.dependOn(&mkdir.step);
-
-        run_cmd.addArg(cached_input);
-        run_cmd.step.dependOn(&copy_input.step);
-    } else {
-        run_cmd.addFileArg(b.path(input_path));
-    }
-
-    matrix_step.dependOn(&run_cmd.step);
-    work.cli += 1;
 }
 
 fn addGeneratedParserApiTest(

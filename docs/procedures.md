@@ -27,7 +27,9 @@ Reduction procedures in Galley are user-defined semantic hooks written in Zig (`
 
 ## How Procedures Work
 
-1. **Table Generation:** The grammar generator parses your grammar file (`ll.grm` or `lr.grm`) and outputs a serialized parser file (e.g. `_ll-parser.zig`).
+1. **Source Generation:** The grammar generator parses your grammar file
+   (`ll.grm` or `lr.grm`) and emits Zig parser source such as
+   `_ll-parser.zig`.
 2. **Binding:** For every hook reference (explicit or implicit), the generator checks if a public declaration with that name is exported by `languages/<name>/procedures.zig`.
 3. **Execution:** During runtime, when the parser shifts or reduces the marked symbols, it calls the corresponding hook function, passing a mutable context.
 

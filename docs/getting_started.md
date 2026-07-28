@@ -12,7 +12,7 @@
 
 ## What You Need
 
-- [Zig 0.16+](https://ziglang.org/download/) — this is the only runtime requirement
+- [Zig 0.16+](https://ziglang.org/download/) — the supported build toolchain
 - A terminal or shell
 
 ---
@@ -28,9 +28,9 @@ The fastest path is to start with an example grammar that already ships with the
 zig build
 ./zig-out/bin/galley --parser-type ll languages/json
 
-# 2. Build exactly that parser, then run it with release optimization
-zig build -Doptimize=ReleaseFast ll-json
-./zig-out/bin/ll-json languages/json/samples/code-01.json
+# 2. Run the repository API benchmark harness
+zig build -Doptimize=ReleaseFast run-ll-json -- \
+  languages/json/samples/code-01.json --iterations 100
 ```
 
 That's it — `languages/json/samples/code-01.json` parses at hundreds of megabytes per second.
@@ -39,8 +39,7 @@ The separate `json-recovery` implementation demonstrates explicit recovery and c
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
-zig build ll-json-recovery
-./zig-out/bin/ll-json-recovery languages/json-recovery/recovery-demo.json
+zig build run-ll-json-recovery -- languages/json-recovery/recovery-demo.json
 ```
 
 ### Try the LR parser too
@@ -50,13 +49,17 @@ zig build ll-json-recovery
 zig build
 ./zig-out/bin/galley --parser-type lr languages/json
 
-# 2. Build and run it
-zig build -Doptimize=ReleaseFast lr-json
-./zig-out/bin/lr-json languages/json/samples/code-01.json
+# 2. Run its API benchmark harness
+zig build -Doptimize=ReleaseFast run-lr-json -- \
+  languages/json/samples/code-01.json --iterations 100
 ```
 
 ---
 
 ## Next Steps
 
-Now that you have verified the bundled JSON parsers work, you can learn how to [use Galley from another Zig project](using-galley.md), explore the other [included languages](languages.md), check out the [CLI configuration and flags](configuration.md), or start [writing your own custom language](writing_a_language.md).
+Now that you have verified the bundled JSON parsers work, you can learn how to
+[use Galley from another Zig project](using-galley.md), explore the other
+[included languages](languages.md), review the
+[generator and runtime options](configuration.md), or start
+[writing your own custom language](writing_a_language.md).

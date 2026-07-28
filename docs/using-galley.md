@@ -5,7 +5,10 @@ Galley can be used from another project in two related ways:
 1. Use the `galley_generator` package module to generate Zig parser source from a grammar.
 2. Use a generated parser module to parse input from Zig code.
 
-These are separate stages. The generator produces a Zig source file; that source must then be assembled with Galley's runtime, your language configuration, and your reduction procedures. Galley's CLI can create that complete parser project for you.
+These are separate stages. The generator API emits parser source only. The
+`galley` CLI also creates missing customization files when generating into a
+language directory. In either case, the consuming project's `build.zig`
+assembles the generated source and customization modules with Galley's runtime.
 
 ## Add Galley as a Dependency
 
@@ -81,11 +84,22 @@ const options = generator.Options{
     .with_procedures = true,
     .with_error_recovery = false,
     .ast_for_terminals = false,
+    .with_position_tracking = null,
+    .with_input_refill = false,
     .input_size = 16,
 };
 ```
 
-The defaults are shown above. `input_size` is the bit width used for input offsets and must be large enough for the largest input the generated parser will accept.
+The defaults are shown above. A `null` position-tracking setting enables
+tracking except in `ReleaseFast`; set it explicitly to `true` or `false` to
+override that build-mode default. `with_input_refill` selects refill-aware input
+advancement at generation time.
+
+`input_size` is the bit width used for generated input offsets and AST indices.
+Without refill it must cover the complete input. A refill-enabled no-AST parser
+can stream inputs larger than this range because the offsets cover only its
+active window; an AST-enabled parser still requires offsets wide enough for the
+complete retained input.
 
 When the destination is already represented by a `std.Io.Writer`, use `emitParserFromSource` to avoid allocating the complete generated file:
 
@@ -99,9 +113,17 @@ try generator.emitParserFromSource(
 );
 ```
 
-For tools that need to inspect or transform the grammar first, `parseGrammar` returns Galley's grammar model and `emitParser` generates code from that model. `Rule`, `RightHandSide`, and `SymbolRef` each expose an `annotations` field containing `procedures` and `recovery_points`; every `RecoveryPoint` contains exact terminal bytes and a `.before` or `.after` resume side. Programmatically constructed grammars use the same validation and recovery behavior as parsed grammar source.
+For tools that need to inspect or transform the grammar first, `parseGrammar`
+returns Galley's grammar model and `emitParser` generates code from that model.
+`parseGrammar` allocates the complete cloned model with the supplied allocator;
+an arena is the simplest ownership strategy when the model can be discarded as
+a unit. `Rule`, `RightHandSide`, and `SymbolRef` each expose an `annotations`
+field containing `procedures` and `recovery_points`; every `RecoveryPoint`
+contains exact terminal bytes and a `.before` or `.after` resume side.
+Programmatically constructed grammars use the same validation and recovery
+behavior as parsed grammar source.
 
-## Create a Standalone Parser Project
+## Generate into a Language Directory
 
 Generating source is only the first half of the pipeline. A generated parser depends on:
 
@@ -110,8 +132,6 @@ Generating source is only the first half of the pipeline. A generated parser dep
 - `config.zig` for language-specific runtime options; and
 - `procedures.zig` for reduction hooks and AST payloads;
 - `ll_error_messages.zig` or `lr_error_messages.zig` for optional syntax-error message hooks.
-
-The easiest way to assemble these pieces is to run the Galley CLI on a language directory outside the Galley repository.
 
 First build the generator from the Galley checkout:
 
@@ -131,21 +151,18 @@ In addition to `_ll-parser.zig`, the first run creates any missing support files
 ```text
 my-language/
 ├── _ll-parser.zig
-├── build.zig
 ├── config.zig
 ├── ll_error_messages.zig
 ├── ll.grm
-├── main.zig
-├── procedures.zig
-├── samples/
-│   └── code-01
-└── tests/
-    └── parser_test.zig
+└── procedures.zig
 ```
 
-Support files are never overwritten by normal generation. Regenerating updates the selected parser file while preserving your configuration, procedures, error-message hooks, application code, samples, and tests. Generated parser files are underscore-prefixed (`_ll-parser.zig`, `_lr-parser.zig`) to signal that Galley owns and overwrites them; user-edited support files are not underscore-prefixed.
+Support files are never overwritten by normal generation. Regenerating updates
+the selected parser file while preserving configuration, procedures, and
+error-message hooks. Generated parser files are underscore-prefixed
+(`_ll-parser.zig`, `_lr-parser.zig`) to signal that Galley owns them.
 
-To scaffold all default syntax-error hooks for the current grammar, run:
+To populate all default syntax-error hooks for the current grammar, run:
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --fill-error-messages ../my-language
@@ -167,30 +184,126 @@ pub fn syntax_error_ll_Value__expected_String_or_Number(args: root.SyntaxErrorMe
 }
 ```
 
-Replace the placeholder in `samples/code-01` with valid input for the grammar, then build and test the parser project:
+Your `build.zig` must assemble the generated source and customization files
+around Galley's runtime API. Importing `_ll-parser.zig` directly is not enough:
+that file contains the generated parsing implementation, while public entry
+points such as `parseBytes`, `parseFile`, and `Session` are provided by
+`src/runtime/api.zig`.
 
-```sh
-cd ../my-language
-zig build test
-zig build run-ll
+For a language stored in `language/`, this complete LL example exposes the
+assembled API to the application as `parser`:
+
+```zig
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const galley = b.dependency("galley", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const runtime_options = b.addOptions();
+    runtime_options.addOption(bool, "include_tests", false);
+    runtime_options.addOption(bool, "ast_memory_benchmark", false);
+
+    const procedures = b.createModule(.{
+        .root_source_file = b.path("language/procedures.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const config = b.createModule(.{
+        .root_source_file = b.path("language/config.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const error_messages = b.createModule(.{
+        .root_source_file = b.path("language/ll_error_messages.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const generated_parser = b.createModule(.{
+        .root_source_file = b.path("language/_ll-parser.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const parser = b.createModule(.{
+        .root_source_file = galley.path("src/runtime/api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = switch (target.result.os.tag) {
+            .linux, .macos => true,
+            else => null,
+        },
+        .imports = &.{
+            .{ .name = "procedures", .module = procedures },
+            .{ .name = "config", .module = config },
+            .{ .name = "error_messages", .module = error_messages },
+            .{ .name = "parser", .module = generated_parser },
+            .{
+                .name = "runtime_options",
+                .module = runtime_options.createModule(),
+            },
+        },
+    });
+
+    // These imports let generated and customization code refer to the
+    // assembled runtime as @import("galley").
+    parser.addImport("galley", parser);
+    procedures.addImport("galley", parser);
+    config.addImport("galley", parser);
+    error_messages.addImport("galley", parser);
+    generated_parser.addImport("galley", parser);
+
+    const exe = b.addExecutable(.{
+        .name = "my-app",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "parser", .module = parser },
+            },
+        }),
+    });
+    b.installArtifact(exe);
+}
 ```
 
-`run-ll` parses every file under `samples/` whose name begins with `code-`. Use `run-lr` for an LR parser. Benchmark-style repetition is available after `--`:
+The corresponding `build.zig.zon` must declare the Galley package under the
+same `galley` dependency name. For a local checkout:
 
-```sh
-zig build -Doptimize=ReleaseFast run-ll -- \
-    --iterations 100 \
-    --warmup-iterations 10
+```zig
+.dependencies = .{
+    .galley = .{
+        .path = "../path/to/galley",
+    },
+},
 ```
 
-The generated `build.zig` records the absolute path of the Galley checkout used to create it. If that checkout moves, regenerate the support project or update `galley_root` in `build.zig`.
+For LR, replace `_ll-parser.zig` and `ll_error_messages.zig` with
+`_lr-parser.zig` and `lr_error_messages.zig`. The repository's
+[`tests/package-consumer/build.zig`](https://github.com/sanbus-org/galley/blob/main/tests/package-consumer/build.zig)
+continuously validates the same assembly pattern.
+
+The generated parser type is selected by this build wiring, so parsing does not
+take a `.ll` or `.lr` argument:
+
+```zig
+var parsed = try parser.parseBytes(io, allocator, input, .{});
+defer parsed.deinit();
+```
 
 ## Parse Input from Zig
 
-The standalone build injects the assembled parser into `main.zig` and `tests/parser_test.zig` under the import name `generated_parser`:
+Choose an import name for the assembled runtime module in your application,
+for example:
 
 ```zig
-const parser = @import("generated_parser");
+const parser = @import("parser");
 ```
 
 For a single in-memory input, use `parseBytes`:
@@ -223,7 +336,7 @@ const first = try session.parseBytes("first input", "first");
     defer reader.deinit();
     // Inspect first.ast_root through reader.astAllocator().
 }
-const second = try session.parseBytes("second input", "second");
+_ = try session.parseBytes("second input", "second");
 ```
 
 Parsing takes an exclusive session lock and returns `error.SessionInUse` rather
@@ -246,13 +359,12 @@ var session = try parser.Session.init(io, allocator, .{
 defer session.deinit();
 ```
 
-Recovery is currently available on Linux and macOS. Generated executables
-expose the same opt-in behavior as `--enable-stack-overflow-recovery`.
+Recovery is currently available on Linux and macOS.
 
 LL and LR parsers report the first syntax error and stop by default. Enable recovery while generating the parser to report multiple diagnostics:
 
 ```sh
-galley --with-error-recovery <LANGUAGE_DIR>
+./zig-out/bin/galley --parser-type ll --with-error-recovery <LANGUAGE_DIR>
 ```
 
 API generators enable the same behavior with `.with_error_recovery = true`. Every generated parser exposes `ErrorRecoveryMode`, `error_recovery_mode`, and the compatibility boolean `is_error_recovery_enabled`. The mode is `.disabled` without generated recovery, `.automatic` when recovery is enabled for an unannotated grammar, and `.explicit` when recovery is enabled for a grammar containing `!` annotations.
@@ -311,7 +423,8 @@ Recovery procedures may run on partial trees, so AST results from an erroneous p
 
 Each call resets the session's transient parsing state while retaining reusable allocations. Other input APIs are available for specialized callers:
 
-- `session.parseFile(file, input_path)` parses from a `std.Io.File`.
+- `session.parseFile(file, input_path)` parses from a `std.Io.File`; the caller
+  retains ownership of the file and must close it.
 - `parseSentinelBytes` and `session.parseSentinelBytes` accept caller-owned `[:0]const u8` input and avoid the copy performed by `parseBytes`.
 
 The sentinel-terminated input must remain valid for the complete parse. When
@@ -320,6 +433,13 @@ session read guard exposes the AST allocator through `astAllocator()`.
 
 ## Understand the Package Boundary
 
-`galley_generator` is Galley's supported package-level generator API. A generated parser is not just the emitted Zig file: it is a configured module assembled from generated source, runtime code, configuration, and procedures. That is why application code should import the assembled parser module rather than files under Galley's `src/runtime` directory.
+`galley_generator` is Galley's supported package-level generator API. A
+generated parser is not just the emitted Zig file: it is a configured module
+assembled from generated source, runtime code, configuration, procedures,
+error-message hooks, and build-created runtime options. That is why application
+code should import the assembled parser module rather than the generated source
+or files under Galley's `src/runtime` directory directly.
 
-Use the generator API when your project needs to produce parser source itself. Use the CLI-generated standalone project when you want to define a language and immediately build, test, and call its parser.
+Use the generator API or `galley` CLI to produce parser source. Applications
+assemble that source with their customization modules and consume only the
+generated parser API.

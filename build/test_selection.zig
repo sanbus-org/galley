@@ -8,12 +8,11 @@ pub const Suite = enum {
     matrix_compile,
     matrix_api,
     matrix_error,
-    matrix_cli,
     galley_parity,
 
     pub fn isMatrix(self: Suite) bool {
         return switch (self) {
-            .matrix, .matrix_compile, .matrix_api, .matrix_error, .matrix_cli => true,
+            .matrix, .matrix_compile, .matrix_api, .matrix_error => true,
             else => false,
         };
     }
@@ -107,8 +106,7 @@ pub const Selection = struct {
     pub fn includesMatrix(self: Selection) bool {
         return self.includes(.matrix_compile) or
             self.includes(.matrix_api) or
-            self.includes(.matrix_error) or
-            self.includes(.matrix_cli);
+            self.includes(.matrix_error);
     }
 
     pub fn matchesCase(self: Selection, case_name: []const u8) bool {
@@ -153,7 +151,6 @@ pub fn suiteName(suite: Suite) []const u8 {
         .matrix_compile => "matrix-compile",
         .matrix_api => "matrix-api",
         .matrix_error => "matrix-error",
-        .matrix_cli => "matrix-cli",
         .galley_parity => "galley-parity",
     };
 }
@@ -208,7 +205,6 @@ test "selectors OR within a type and AND across types" {
 
     try std.testing.expect(selection.includes(.matrix_api));
     try std.testing.expect(selection.includes(.matrix_error));
-    try std.testing.expect(!selection.includes(.matrix_cli));
     try std.testing.expect(selection.matchesCase("ll-sanbus"));
     try std.testing.expect(selection.matchesCase("lr-json"));
     try std.testing.expect(!selection.matchesCase("ll-json"));
@@ -224,7 +220,6 @@ test "case selector defaults to the complete matrix suite" {
     try std.testing.expect(selection.includes(.matrix_compile));
     try std.testing.expect(selection.includes(.matrix_api));
     try std.testing.expect(selection.includes(.matrix_error));
-    try std.testing.expect(selection.includes(.matrix_cli));
     try std.testing.expect(!selection.includes(.generator));
     try std.testing.expect(!selection.includes(.galley_parity));
 }
@@ -234,5 +229,5 @@ test "invalid selector forms are rejected" {
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"suite:unknown"}, false));
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"name:dropSelf"}, false));
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{ "suite:runtime", "case:ll-sanbus" }, false));
-    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{ "suite:matrix-cli", "name:parse" }, false));
+    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"suite:removed"}, false));
 }
