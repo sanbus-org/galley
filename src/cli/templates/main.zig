@@ -38,7 +38,6 @@ pub fn main(init: std.process.Init) !void {
     if (options.input_path) |path| {
         const input_file = try std.Io.Dir.cwd().openFile(init.io, path, .{
             .mode = .read_only,
-            .lock = .exclusive,
         });
         defer input_file.close(init.io);
         try run(&session, input_file, options.input_path, warmup_iterations, options.iterations);

@@ -1,11 +1,10 @@
-const builtin = @import("builtin");
 const root = @import("galley");
 const std = @import("std");
 const Context = @import("context.zig").Context;
 
 pub const Offsets = struct {
     pub const max_length = @max(6, root.parser.longest_terminal_length);
-    buffer: [Self.max_length * 2]i8 = undefined,
+    buffer: [Self.max_length * 2]u32 = undefined,
     head: Context.Size = 0,
     len: Context.Size = 0,
 
@@ -16,7 +15,7 @@ pub const Offsets = struct {
         self.len = 0;
     }
 
-    pub inline fn append(self: *Self, offset: i8) void {
+    pub inline fn append(self: *Self, offset: u32) void {
         std.debug.assert(self.len < Self.max_length);
 
         self.buffer[self.head] = offset;
@@ -34,11 +33,18 @@ pub const Offsets = struct {
         }
     }
 
-    pub inline fn sum(self: *const Self, start: Context.Size, end: Context.Size) Context.Size {
-        var sum_: i16 = 0;
+    pub inline fn sum(self: *const Self, start: Context.Size, end: Context.Size) u32 {
+        var sum_: u32 = 0;
         for (self.buffer[self.head - self.len + start .. self.head - self.len + end]) |item| {
             sum_ += item;
         }
-        return @intCast(sum_);
+        return sum_;
     }
 };
+
+test "offsets preserve indentation columns wider than i8" {
+    var offsets = Offsets{};
+    offsets.append(1);
+    offsets.append(512);
+    try std.testing.expectEqual(@as(u32, 513), offsets.sum(0, 2));
+}

@@ -223,7 +223,6 @@ test "generated_parser_api parse files" {
 
     var file = try std.Io.Dir.cwd().openFile(std.testing.io, test_options.sample_path, .{
         .mode = .read_only,
-        .lock = .exclusive,
     });
     defer file.close(std.testing.io);
 

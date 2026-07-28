@@ -15,8 +15,6 @@ pub const Payload = struct {
     parse_id: usize = 0,
 };
 
-var indent: u16 = 0;
-
 const block_start_id = 1;
 const block_end_id = 2;
 
@@ -108,14 +106,6 @@ fn blockEdge(parse_id: comptime_int) type {
         fn function(args: *ProcedureArguments) !void {
             if (args.node) |node_address| {
                 const node = args.context.node_allocator.at(node_address);
-                if (parse_id == block_start_id) indent += 1 else indent -= 1;
-
-                // const spaces = try args.allocator.alloc(u8, indent * 2 + 1);
-                // @memset(spaces, ' ');
-                // spaces[0] = '\n';
-                // args.node.?.text = spaces;
-                // args.node.?.label = if (parse_id == block_start_id) "BlockStart" else "BlockEnd";
-
                 node.payload.parse_id = parse_id;
             }
         }

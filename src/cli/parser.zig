@@ -43,7 +43,6 @@ pub fn main(init: std.process.Init) !void {
     if (input_path) |path| {
         const program_file = try std.Io.Dir.cwd().openFile(init.io, path, .{
             .mode = .read_only,
-            .lock = .exclusive,
         });
         defer program_file.close(init.io);
         try run(&session, program_file, input_path, warmup_iterations, options.iterations);

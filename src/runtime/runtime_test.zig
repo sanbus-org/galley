@@ -5,6 +5,9 @@ const ProcedureArguments = galley.data_structures.ProcedureArguments;
 comptime {
     _ = @import("standard-procedures.zig");
     _ = @import("data-structures/astnode.zig");
+    _ = @import("data-structures/context.zig");
+    _ = @import("data-structures/offsets.zig");
+    _ = @import("string.zig");
 }
 
 var zero_argument_handler_called = false;

@@ -114,10 +114,7 @@ const ASTNodeFormatter = struct {
                 else
                     parser.variables[ast_node.variable],
                 fmtString(self.context.getTextSlice(ast_node.text_start, ast_node.text_length)),
-                if (ast_node.first_child == ASTNode.invalid_pointer)
-                    0
-                else
-                    self.context.node_allocator.at(ast_node.first_child).children_count,
+                formattedChildrenCount(ast_node),
             });
 
             children.items.len = 0;
@@ -144,11 +141,33 @@ const ASTNodeFormatter = struct {
     }
 };
 
+fn formattedChildrenCount(ast_node: *const ASTNode) u32 {
+    return ast_node.children_count;
+}
+
 pub fn fmtASTNode(ast_node_address: ?ASTNode.Pointer, context: *Context) ASTNodeFormatter {
     return .{
         .ast_node_address = ast_node_address,
         .context = context,
     };
+}
+
+test "AST formatter reports the current node child count" {
+    if (comptime !parser.is_ast_enabled) return;
+
+    var node_allocator = try root.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 4);
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    const parent = try node_allocator.create(0, 0);
+    const first_child = try node_allocator.create(0, 0);
+    const second_child = try node_allocator.create(0, 0);
+    const grandchild = try node_allocator.create(0, 0);
+    try ASTNode.appendChildren(parent, &node_allocator, first_child);
+    try ASTNode.appendChildren(parent, &node_allocator, second_child);
+    try ASTNode.appendChildren(first_child, &node_allocator, grandchild);
+
+    try std.testing.expectEqual(@as(u32, 2), formattedChildrenCount(node_allocator.at(parent)));
+    try std.testing.expectEqual(@as(u32, 1), node_allocator.at(first_child).children_count);
 }
 
 pub fn formatWithThousands(value: anytype, buf: []u8) ![]u8 {

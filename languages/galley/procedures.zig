@@ -53,8 +53,6 @@ pub const Payload = struct {
     grammar: ?*Grammar = null,
 };
 
-var last_grammar: ?*Grammar = null;
-
 const MutableRightHandSide = struct {
     symbols: std.ArrayList(SymbolRef) = .empty,
     procedures: std.ArrayList([]const u8) = .empty,
@@ -81,7 +79,6 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         const node = args.context.node_allocator.at(node_address);
         if (comptime root.parser.are_procedures_enabled)
             node.payload.grammar = grammar;
-        last_grammar = grammar;
         try emitParserForInputPath(args.context, grammar);
     }
 
@@ -381,7 +378,6 @@ fn nodeText(context: *data_structures.Context, node_address: ASTNode.Pointer) []
 }
 
 pub fn grammarFromContext(context: *data_structures.Context) ?*Grammar {
-    if (last_grammar) |grammar| return grammar;
     return grammarFromAstAllocator(context.node_allocator);
 }
 
