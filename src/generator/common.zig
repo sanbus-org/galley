@@ -5,6 +5,7 @@ pub const Options = struct {
     with_procedures: bool = true,
     with_error_recovery: bool = false,
     ast_for_terminals: bool = false,
+    with_position_tracking: ?bool = null,
     input_size: u16 = 16,
 
     pub fn validate(self: Options) !void {
