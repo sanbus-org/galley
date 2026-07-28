@@ -1,30 +1,33 @@
 const std = @import("std");
-const parser = @import("generated_parser");
+const galley = @import("generated_parser");
+
+const config = galley.config;
+const parser = galley.parser;
+const string_utilities = galley.string_utilities;
+
+const LanguageArg = struct {
+    name: []const u8,
+    value: ?[]const u8,
+};
 
 const Options = struct {
+    verbosity: u8 = 0,
     iterations: u32 = 1,
     warmup_iterations: ?u32 = null,
-    verbosity: usize = 0,
     max_errors: usize = 10,
     recovery_window: usize = 500,
     stack_overflow_recovery: bool = false,
+    input_path: ?[]const u8 = null,
+    language_options: config.Options = .{},
 };
 
 pub fn main(init: std.process.Init) !void {
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
-    const stdout = &stdout_writer.interface;
-
     const options = try parseArgs(init);
     const warmup_iterations = options.warmup_iterations orelse options.iterations / 10;
 
-    var samples_dir = try std.Io.Dir.cwd().openDir(init.io, "samples", .{ .iterate = true });
-    defer samples_dir.close(init.io);
-
-    var walker = try samples_dir.walk(init.gpa);
-    defer walker.deinit();
-
-    var session = try parser.Session.init(init.io, init.gpa, .{
+    var session = try galley.Session.init(init.io, init.gpa, .{
+        .language_options = options.language_options,
+        .input_path = options.input_path,
         .verbosity = options.verbosity,
         .max_errors = options.max_errors,
         .recovery_window = options.recovery_window,
@@ -32,143 +35,216 @@ pub fn main(init: std.process.Init) !void {
     });
     defer session.deinit();
 
-    var parsed_count: usize = 0;
-    while (try walker.next(init.io)) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.startsWith(u8, std.fs.path.basename(entry.path), "code-")) continue;
-
-        const sample_path = try std.fs.path.join(init.gpa, &.{ "samples", entry.path });
-        defer init.gpa.free(sample_path);
-
-        const file = try std.Io.Dir.cwd().openFile(init.io, sample_path, .{
+    if (options.input_path) |path| {
+        const input_file = try std.Io.Dir.cwd().openFile(init.io, path, .{
             .mode = .read_only,
             .lock = .exclusive,
         });
-        const result = try runSample(&session, file, sample_path, warmup_iterations, options.iterations);
-        parsed_count += 1;
-        try stdout.print("parsed {s} ({d} bytes", .{ sample_path, result.parsed_bytes });
-        if (result.elapsed_ns) |elapsed_ns| {
-            const duration_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
-            const mbps = @as(f64, @floatFromInt(result.parsed_bytes)) / duration_secs;
-            var buffer: [64]u8 = undefined;
-            try stdout.print(", {s} ns, {s}/s", .{
-                try parser.string_utilities.formatWithThousands(elapsed_ns, &buffer),
-                try parser.string_utilities.formatFileSize(mbps, &buffer),
-            });
-        }
-        try stdout.writeAll(")\n");
-        try stdout.flush();
+        defer input_file.close(init.io);
+        try run(&session, input_file, options.input_path, warmup_iterations, options.iterations);
+    } else {
+        var stdin_buffer: [8192]u8 = undefined;
+        var stdin_reader = std.Io.File.stdin().reader(init.io, &stdin_buffer);
+        const input = try stdin_reader.interface.allocRemaining(init.gpa, .unlimited);
+        defer init.gpa.free(input);
+        try run(&session, input, null, warmup_iterations, options.iterations);
     }
-
-    if (parsed_count == 0) {
-        try stdout.writeAll("no samples/code-* files found\n");
-    }
-    try stdout.flush();
-}
-
-const RunResult = struct {
-    parsed_bytes: usize,
-    elapsed_ns: ?usize = null,
-};
-
-fn runSample(session: *parser.Session, file: std.Io.File, sample_path: []const u8, warmup_iterations: u32, iterations: u32) !RunResult {
-    for (0..warmup_iterations) |_| {
-        _ = try session.parseFile(file, sample_path);
-    }
-
-    var total_parsed_bytes: usize = 0;
-    const start = std.Io.Clock.awake.now(session.io);
-    for (0..iterations) |_| {
-        const result = try session.parseFile(file, sample_path);
-        total_parsed_bytes += result.parsed_bytes;
-    }
-
-    if (iterations > 1) {
-        const end = std.Io.Clock.awake.now(session.io);
-        return .{
-            .parsed_bytes = total_parsed_bytes,
-            .elapsed_ns = @intCast(start.durationTo(end).toNanoseconds()),
-        };
-    }
-
-    return .{ .parsed_bytes = total_parsed_bytes };
 }
 
 fn parseArgs(init: std.process.Init) !Options {
     var options = Options{};
+    var language_args: std.ArrayList(LanguageArg) = .empty;
+    defer language_args.deinit(init.gpa);
+
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
 
     _ = args.skip();
+    var positional_only = false;
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+        if (!positional_only and (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help"))) {
             try printUsage(init);
             std.process.exit(0);
-        } else if (std.mem.eql(u8, arg, "-r") or std.mem.eql(u8, arg, "--iterations")) {
-            const value = args.next() orelse return error.MissingIterations;
-            options.iterations = try std.fmt.parseInt(u32, value, 10);
-        } else if (std.mem.startsWith(u8, arg, "--iterations=")) {
-            options.iterations = try std.fmt.parseInt(u32, arg["--iterations=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "-w") or std.mem.eql(u8, arg, "--warmup-iterations")) {
-            const value = args.next() orelse return error.MissingWarmupIterations;
-            options.warmup_iterations = try std.fmt.parseInt(u32, value, 10);
-        } else if (std.mem.startsWith(u8, arg, "--warmup-iterations=")) {
-            options.warmup_iterations = try std.fmt.parseInt(u32, arg["--warmup-iterations=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--verbosity")) {
-            const value = args.next() orelse return error.MissingVerbosity;
-            options.verbosity = try std.fmt.parseInt(usize, value, 10);
-        } else if (std.mem.startsWith(u8, arg, "--verbosity=")) {
-            options.verbosity = try std.fmt.parseInt(usize, arg["--verbosity=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "--max-errors")) {
-            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
-            const value = args.next() orelse return error.MissingMaxErrors;
-            options.max_errors = try std.fmt.parseInt(usize, value, 10);
-        } else if (std.mem.startsWith(u8, arg, "--max-errors=")) {
-            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
-            options.max_errors = try std.fmt.parseInt(usize, arg["--max-errors=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "--recovery-window")) {
-            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
-            const value = args.next() orelse return error.MissingRecoveryWindow;
-            options.recovery_window = try std.fmt.parseInt(usize, value, 10);
-        } else if (std.mem.startsWith(u8, arg, "--recovery-window=")) {
-            if (comptime !parser.parser.is_error_recovery_enabled) return error.UnknownArgument;
-            options.recovery_window = try std.fmt.parseInt(usize, arg["--recovery-window=".len..], 10);
-        } else if (std.mem.eql(u8, arg, "--enable-stack-overflow-recovery")) {
+        } else if (!positional_only and (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--verbosity"))) {
+            options.verbosity = parseInteger(u8, args.next(), "--verbosity");
+        } else if (activeLongOptionValue(positional_only, arg, "--verbosity")) |value| {
+            options.verbosity = parseInteger(u8, value, "--verbosity");
+        } else if (!positional_only and (std.mem.eql(u8, arg, "-r") or std.mem.eql(u8, arg, "--iterations"))) {
+            options.iterations = parseInteger(u32, args.next(), "--iterations");
+        } else if (activeLongOptionValue(positional_only, arg, "--iterations")) |value| {
+            options.iterations = parseInteger(u32, value, "--iterations");
+        } else if (!positional_only and (std.mem.eql(u8, arg, "-w") or std.mem.eql(u8, arg, "--warmup-iterations"))) {
+            options.warmup_iterations = parseInteger(u32, args.next(), "--warmup-iterations");
+        } else if (activeLongOptionValue(positional_only, arg, "--warmup-iterations")) |value| {
+            options.warmup_iterations = parseInteger(u32, value, "--warmup-iterations");
+        } else if (activeRecoveryOption(positional_only, arg, "--max-errors")) {
+            options.max_errors = parseInteger(usize, args.next(), "--max-errors");
+        } else if (activeRecoveryLongOptionValue(positional_only, arg, "--max-errors")) |value| {
+            options.max_errors = parseInteger(usize, value, "--max-errors");
+        } else if (activeRecoveryOption(positional_only, arg, "--recovery-window")) {
+            options.recovery_window = parseInteger(usize, args.next(), "--recovery-window");
+        } else if (activeRecoveryLongOptionValue(positional_only, arg, "--recovery-window")) |value| {
+            options.recovery_window = parseInteger(usize, value, "--recovery-window");
+        } else if (!positional_only and std.mem.eql(u8, arg, "--enable-stack-overflow-recovery")) {
             options.stack_overflow_recovery = true;
+        } else if (!positional_only and std.mem.eql(u8, arg, "--")) {
+            positional_only = true;
+        } else if (activeLanguageOption(positional_only, arg)) |language_arg| {
+            const value = if (language_arg.takes_value)
+                language_arg.value orelse args.next() orelse
+                    fatal("error: {s} requires a value\n", .{language_arg.name})
+            else if (language_arg.value != null)
+                fatal("error: {s} does not take a value\n", .{language_arg.name})
+            else
+                null;
+            try language_args.append(init.gpa, .{ .name = language_arg.name, .value = value });
+        } else if (!positional_only and std.mem.startsWith(u8, arg, "-")) {
+            fatal("error: unknown argument: {s}\n", .{arg});
+        } else if (options.input_path == null) {
+            options.input_path = arg;
         } else {
-            return error.UnknownArgument;
+            fatal("error: unexpected positional argument: {s}\n", .{arg});
         }
     }
 
-    if (options.iterations == 0) return error.InvalidIterations;
-    if (comptime parser.parser.is_error_recovery_enabled) {
-        if (options.max_errors == 0) return error.InvalidMaxErrors;
-        if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+    if (options.iterations == 0) fatal("error: --iterations must be greater than zero\n", .{});
+    if (comptime parser.is_error_recovery_enabled) {
+        if (options.max_errors == 0) fatal("error: --max-errors must be greater than zero\n", .{});
+        if (options.recovery_window == 0) fatal("error: --recovery-window must be greater than zero\n", .{});
+    }
+    if (@hasDecl(config, "optionsFromCliArgs")) {
+        options.language_options = config.optionsFromCliArgs(language_args.items);
+    } else if (language_args.items.len != 0) {
+        unreachable;
     }
     return options;
+}
+
+const ParsedLanguageOption = struct {
+    name: []const u8,
+    value: ?[]const u8,
+    takes_value: bool,
+};
+
+fn languageOption(arg: []const u8) ?ParsedLanguageOption {
+    if (!@hasDecl(config, "cli_options")) return null;
+
+    const separator = std.mem.indexOfScalar(u8, arg, '=');
+    const name = if (separator) |index| arg[0..index] else arg;
+    const value = if (separator) |index| arg[index + 1 ..] else null;
+    inline for (config.cli_options) |option| {
+        if (std.mem.eql(u8, name, option.name)) {
+            return .{
+                .name = name,
+                .value = value,
+                .takes_value = option.takes_value,
+            };
+        }
+    }
+    return null;
+}
+
+fn activeLanguageOption(positional_only: bool, arg: []const u8) ?ParsedLanguageOption {
+    if (positional_only) return null;
+    return languageOption(arg);
+}
+
+fn longOptionValue(arg: []const u8, name: []const u8) ?[]const u8 {
+    if (arg.len <= name.len or arg[name.len] != '=' or !std.mem.eql(u8, arg[0..name.len], name)) return null;
+    return arg[name.len + 1 ..];
+}
+
+fn activeLongOptionValue(positional_only: bool, arg: []const u8, name: []const u8) ?[]const u8 {
+    if (positional_only) return null;
+    return longOptionValue(arg, name);
+}
+
+fn activeRecoveryLongOptionValue(positional_only: bool, arg: []const u8, name: []const u8) ?[]const u8 {
+    if (comptime !parser.is_error_recovery_enabled) return null;
+    return activeLongOptionValue(positional_only, arg, name);
+}
+
+fn activeRecoveryOption(positional_only: bool, arg: []const u8, name: []const u8) bool {
+    if (comptime !parser.is_error_recovery_enabled) return false;
+    return !positional_only and std.mem.eql(u8, arg, name);
+}
+
+fn parseInteger(comptime T: type, value: ?[]const u8, name: []const u8) T {
+    const text = value orelse fatal("error: {s} requires a value\n", .{name});
+    return std.fmt.parseInt(T, text, 10) catch fatal("error: invalid {s}: {s}\n", .{ name, text });
 }
 
 fn printUsage(init: std.process.Init) !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
+
     try stdout.writeAll(
-        \\usage: zig build run-ll -- [OPTIONS]
+        \\usage: parser [OPTIONS] [FILE]
+        \\
+        \\Arguments:
+        \\  [FILE]                            Input file. Reads stdin when omitted.
         \\
         \\Options:
-        \\  -h, --help                         Display this help and exit.
-        \\  -r, --iterations <ITERATIONS>      Repeat each sample parse.
-        \\  -w, --warmup-iterations <COUNT>    Warmup parses before timing.
-        \\  -v, --verbosity <LEVEL>            Debug verbosity level.
+        \\  -h, --help                        Display this help and exit.
+        \\  -v, --verbosity <LEVEL>           Diagnostic verbosity.
+        \\  -r, --iterations <COUNT>          Repeat the parse process.
+        \\  -w, --warmup-iterations <COUNT>   Warm up before measured iterations.
         \\      --enable-stack-overflow-recovery
-        \\                                      Enable native stack-overflow recovery.
+        \\                                    Enable native stack-overflow recovery.
+        \\
     );
-    if (comptime parser.parser.is_error_recovery_enabled) {
+    if (comptime parser.is_error_recovery_enabled) {
         try stdout.writeAll(
-            \\      --max-errors <COUNT>           Maximum syntax errors to report (default: 10).
-            \\      --recovery-window <BYTES>      Syntax recovery lookahead per attempt (default: 500).
+            \\      --max-errors <COUNT>          Maximum syntax errors to report.
+            \\      --recovery-window <BYTES>     Maximum input bytes considered per recovery attempt.
+            \\
         );
     }
-    try stdout.writeByte('\n');
+    if (@hasDecl(config, "cli_help")) try stdout.writeAll(config.cli_help);
     try stdout.flush();
+}
+
+fn fatal(comptime format: []const u8, args: anytype) noreturn {
+    std.debug.print(format, args);
+    std.process.exit(1);
+}
+
+fn parseInput(session: *galley.Session, input: anytype, input_path: ?[]const u8) !galley.ParseResult {
+    if (comptime @TypeOf(input) == std.Io.File) {
+        return try session.parseFile(input, input_path);
+    }
+    return try session.parseBytes(input, input_path);
+}
+
+fn run(session: *galley.Session, input: anytype, input_path: ?[]const u8, warmup_iterations: usize, iterations: usize) !void {
+    for (0..warmup_iterations) |_| {
+        _ = try parseInput(session, input, input_path);
+    }
+
+    var total_parsed_bytes: usize = 0;
+    const start = std.Io.Clock.awake.now(session.io);
+    for (0..iterations) |_| {
+        const result = try parseInput(session, input, input_path);
+        total_parsed_bytes += result.parsed_bytes;
+    }
+
+    if (iterations > 1) {
+        const end = std.Io.Clock.awake.now(session.io);
+        const elapsed_ns: usize = @intCast(start.durationTo(end).toNanoseconds());
+        const duration_secs = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
+        const mbps = @as(f64, @floatFromInt(total_parsed_bytes)) / duration_secs;
+
+        var buffer: [64]u8 = undefined;
+        std.debug.print("Parsed bytes:  {s}\n", .{try string_utilities.formatFileSize(total_parsed_bytes, &buffer)});
+        std.debug.print("Duration:      {s} ns\n", .{try string_utilities.formatWithThousands(elapsed_ns, &buffer)});
+        std.debug.print("Throughput:    {s}/s\n", .{try string_utilities.formatFileSize(mbps, &buffer)});
+        var read_guard = try session.readLatest();
+        defer read_guard.deinit();
+        const nodes_allocated = if (comptime parser.is_ast_enabled) read_guard.astAllocator().counter else 0;
+        std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(
+            nodes_allocated,
+            &buffer,
+        )});
+    }
 }

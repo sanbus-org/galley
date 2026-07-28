@@ -24,17 +24,8 @@ pub fn build(b: *std.Build) !void {{
     }});
     lr_generator_mod.addImport("generator_common", generator_common_mod);
 
-    const procedures_mod = b.addModule("procedures", .{{
-        .root_source_file = b.path("procedures.zig"),
-        .target = target,
-    }});
-    const config_mod = b.addModule("config", .{{
-        .root_source_file = b.path("config.zig"),
-        .target = target,
-    }});
-
-    const ll_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig", "ll_error_messages.zig");
-    const lr_mod = try addParser(b, target, optimize, procedures_mod, config_mod, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig", "lr_error_messages.zig");
+    const ll_mod = try addParser(b, target, optimize, ll_generator_mod, lr_generator_mod, "ll", "_ll-parser.zig", "ll_error_messages.zig");
+    const lr_mod = try addParser(b, target, optimize, ll_generator_mod, lr_generator_mod, "lr", "_lr-parser.zig", "lr_error_messages.zig");
     const preferred_mod = ll_mod orelse lr_mod;
     if (preferred_mod) |parser_mod| {{
         addTests(b, target, optimize, parser_mod);
@@ -45,8 +36,6 @@ fn addParser(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    procedures_mod: *std.Build.Module,
-    config_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
     parser_type: []const u8,
@@ -58,19 +47,32 @@ fn addParser(
         else => |e| return e,
     }};
 
-    const parser_mod = b.addModule("parser", .{{
+    const procedures_mod = b.createModule(.{{
+        .root_source_file = b.path("procedures.zig"),
+        .target = target,
+        .optimize = optimize,
+    }});
+    const config_mod = b.createModule(.{{
+        .root_source_file = b.path("config.zig"),
+        .target = target,
+        .optimize = optimize,
+    }});
+    const parser_mod = b.createModule(.{{
         .root_source_file = b.path(parser_path),
         .target = target,
+        .optimize = optimize,
     }});
-    const error_messages_mod = b.addModule("error_messages", .{{
+    const error_messages_mod = b.createModule(.{{
         .root_source_file = b.path(error_messages_path),
         .target = target,
+        .optimize = optimize,
     }});
 
     const exe_name = try std.mem.concat(b.allocator, u8, &.{{ parser_type, "-parser" }});
-    const runtime_test_options = b.addOptions();
-    runtime_test_options.addOption(bool, "include", false);
-    const galley_mod = b.addModule(exe_name, .{{
+    const runtime_options = b.addOptions();
+    runtime_options.addOption(bool, "include_tests", false);
+    runtime_options.addOption(bool, "ast_memory_benchmark", false);
+    const galley_mod = b.createModule(.{{
         .root_source_file = .{{ .cwd_relative = galley_root ++ "/src/runtime/api.zig" }},
         .target = target,
         .optimize = optimize,
@@ -79,7 +81,7 @@ fn addParser(
             .{{ .name = "config", .module = config_mod }},
             .{{ .name = "error_messages", .module = error_messages_mod }},
             .{{ .name = "parser", .module = parser_mod }},
-            .{{ .name = "runtime_test_options", .module = runtime_test_options.createModule() }},
+            .{{ .name = "runtime_options", .module = runtime_options.createModule() }},
         }},
     }});
     galley_mod.addImport("galley", galley_mod);
@@ -135,7 +137,7 @@ fn addTests(
             .{{ .name = "generated_parser", .module = parser_mod }},
         }},
     }});
-    const tests = b.addExecutable(.{{ .name = "parser-tests", .root_module = test_mod }});
+    const tests = b.addTest(.{{ .name = "parser-tests", .root_module = test_mod }});
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run parser tests");
     test_step.dependOn(&run_tests.step);
