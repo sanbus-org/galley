@@ -25,8 +25,10 @@ fn expectRecovery(
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
-    try std.testing.expectEqual(expected_count, session.syntaxErrorCount());
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(expected_count, read_guard.syntaxErrorCount());
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |value| value,
     };
@@ -135,8 +137,10 @@ test "explicit mode has no automatic fallback outside active scopes" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("faq;", null));
-    try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
     }
@@ -146,8 +150,10 @@ test "explicit recovery does not invent a synchronization terminal at EOF" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("oaq", null));
-    try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
     }
@@ -173,8 +179,10 @@ test "explicit LR recovery does not activate speculative shared-prefix productio
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("saq;", null));
-    try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     switch (diagnostic) {
         .syntax => |syntax| try std.testing.expectEqual(null, syntax.recovery),
     }

@@ -26,8 +26,10 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     try std.testing.expect(std.mem.indexOf(u8, haystack, needle) != null);
 }
 
-fn expectSyntaxDiagnostic(session: *const parser.Session) !void {
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+fn expectSyntaxDiagnostic(session: *parser.Session) !void {
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
     };
@@ -55,6 +57,19 @@ fn expectSyntaxDiagnostic(session: *const parser.Session) !void {
     try expectContains(rendered, "Unexpected token");
     try expectContains(rendered, "Expected tokens:");
     try expectContains(rendered, expected_token);
+}
+
+fn syntaxErrorCount(session: *parser.Session) !usize {
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    return read_guard.syntaxErrorCount();
+}
+
+fn expectNoDiagnostics(session: *parser.Session) !void {
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(null, read_guard.lastDiagnostic());
+    try std.testing.expectEqual(@as(usize, 0), read_guard.syntaxErrorCount());
 }
 
 test "generated_parser_error recovery capability" {
@@ -85,8 +100,20 @@ test "generated_parser_error reusable byte session recovers" {
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(malformed_input, null));
     try expectSyntaxDiagnostic(&session);
     try expectParsedAll(try session.parseBytes(valid_input, null));
-    try std.testing.expectEqual(null, session.lastDiagnostic());
-    try std.testing.expectEqual(@as(usize, 0), session.syntaxErrorCount());
+    try expectNoDiagnostics(&session);
+}
+
+test "generated_parser_error failed reuse invalidates prior results" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
+    defer session.deinit();
+
+    const successful = try session.parseBytes(valid_input, null);
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(malformed_input, null));
+    try std.testing.expectError(error.StaleParseResult, session.read(successful));
+
+    const recovered = try session.parseBytes(valid_input, null);
+    var read_guard = try session.read(recovered);
+    defer read_guard.deinit();
 }
 
 test "generated_parser_error reusable sentinel session recovers" {
@@ -101,8 +128,7 @@ test "generated_parser_error reusable sentinel session recovers" {
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseSentinelBytes(malformed, null));
     try expectSyntaxDiagnostic(&session);
     try expectParsedAll(try session.parseSentinelBytes(valid, null));
-    try std.testing.expectEqual(null, session.lastDiagnostic());
-    try std.testing.expectEqual(@as(usize, 0), session.syntaxErrorCount());
+    try expectNoDiagnostics(&session);
 }
 
 test "generated_parser_error reusable file session recovers" {
@@ -123,8 +149,7 @@ test "generated_parser_error reusable file session recovers" {
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseFile(malformed_file, "malformed"));
     try expectSyntaxDiagnostic(&session);
     try expectParsedAll(try session.parseFile(valid_file, "valid"));
-    try std.testing.expectEqual(null, session.lastDiagnostic());
-    try std.testing.expectEqual(@as(usize, 0), session.syntaxErrorCount());
+    try expectNoDiagnostics(&session);
 }
 
 test "generated_parser_error reports multiple syntax errors" {
@@ -133,9 +158,9 @@ test "generated_parser_error reports multiple syntax errors" {
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
     if (error_recovery_enabled) {
-        try std.testing.expect(session.syntaxErrorCount() >= 2);
+        try std.testing.expect(try syntaxErrorCount(&session) >= 2);
     } else {
-        try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
+        try std.testing.expectEqual(@as(usize, 1), try syntaxErrorCount(&session));
     }
 }
 
@@ -144,7 +169,7 @@ test "generated_parser_error max errors restores fail fast" {
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
-    try std.testing.expectEqual(@as(usize, 1), session.syntaxErrorCount());
+    try std.testing.expectEqual(@as(usize, 1), try syntaxErrorCount(&session));
 }
 
 test "generated_parser_error recovery window limits resynchronization" {
@@ -154,7 +179,7 @@ test "generated_parser_error recovery window limits resynchronization" {
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
-    try std.testing.expectEqual(small_window_error_count, session.syntaxErrorCount());
+    try std.testing.expectEqual(small_window_error_count, try syntaxErrorCount(&session));
 }
 
 test "generated_parser_error rejects zero recovery options" {

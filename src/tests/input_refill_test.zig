@@ -95,7 +95,9 @@ test "input refill file read failures propagate through the parser API" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(error.ReadFailed, session.parseFile(directory, "directory"));
-    try std.testing.expectEqual(null, session.lastDiagnostic());
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(null, read_guard.lastDiagnostic());
 }
 
 test "input refill sliding parses bytes, sentinel bytes, and files" {
@@ -194,7 +196,9 @@ test "input refill recovery handles EOF without reading beyond the window" {
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, "eof"));
 
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
     };

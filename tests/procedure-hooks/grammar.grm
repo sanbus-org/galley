@@ -13,6 +13,7 @@ Start
 | "d" DropTarget@dropOccurrence
 | "j"@terminalFirst@terminalSecond
 | "i" IndexedTarget
+| "k"@nestedHook
 
 LhsTarget@lhsHook
 | "a"

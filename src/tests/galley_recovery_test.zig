@@ -1,10 +1,16 @@
 const std = @import("std");
 const parser = @import("parser-under-test");
 
-fn parseError(input: [:0]const u8) !struct {
+const ParsedError = struct {
     session: parser.Session,
     context: parser.data_structures.Context,
-} {
+
+    fn read(self: *ParsedError) !parser.SessionReadGuard {
+        return try self.session.readLatest();
+    }
+};
+
+fn parseError(input: [:0]const u8) !ParsedError {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     errdefer session.deinit();
     var context = session._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, null);
@@ -12,8 +18,8 @@ fn parseError(input: [:0]const u8) !struct {
     return .{ .session = session, .context = context };
 }
 
-fn syntaxDiagnostic(session: *const parser.Session) parser.SyntaxDiagnostic {
-    return switch (session.lastDiagnostic().?) {
+fn syntaxDiagnostic(read_guard: *const parser.SessionReadGuard) parser.SyntaxDiagnostic {
+    return switch (read_guard.lastDiagnostic().?) {
         .syntax => |syntax| syntax,
     };
 }
@@ -36,8 +42,10 @@ test "galley grammar recovers a damaged symbol before its newline" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
-    const diagnostic = syntaxDiagnostic(&parsed.session);
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = syntaxDiagnostic(&read_guard);
     const recovery = diagnostic.recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.before, recovery.@"resume");
     try std.testing.expectEqualStrings("\n", recovery.terminal);
@@ -68,8 +76,10 @@ test "galley grammar discards a damaged production line after its newline" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
-    const diagnostic = syntaxDiagnostic(&parsed.session);
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = syntaxDiagnostic(&read_guard);
     const recovery = diagnostic.recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.after, recovery.@"resume");
     try std.testing.expectEqualStrings("\n", recovery.terminal);
@@ -93,8 +103,10 @@ test "galley grammar falls back to the next rule separator" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
-    const recovery = syntaxDiagnostic(&parsed.session).recovery orelse return error.MissingRecovery;
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const recovery = syntaxDiagnostic(&read_guard).recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.before, recovery.@"resume");
     try std.testing.expectEqualStrings("\n\n", recovery.terminal);
     const variable = switch (recovery.target) {
@@ -118,7 +130,9 @@ test "galley grammar fails fast between committed recovery scopes" {
     var parsed = try parseError(input);
     defer parsed.session.deinit();
 
-    try std.testing.expectEqual(@as(usize, 1), parsed.session.syntaxErrorCount());
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
     try std.testing.expect(parsed.context.pos() - 1 < input.len);
-    try std.testing.expect(syntaxDiagnostic(&parsed.session).recovery == null);
+    try std.testing.expect(syntaxDiagnostic(&read_guard).recovery == null);
 }

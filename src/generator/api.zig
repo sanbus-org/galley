@@ -19,7 +19,9 @@ pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar 
     var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
     defer parsed.deinit();
 
-    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(parsed.session.astAllocator()) orelse
+    var read_guard = try parsed.session.read(parsed.result);
+    defer read_guard.deinit();
+    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(read_guard.astAllocator()) orelse
         return error.GrammarModelMissing;
     return try cloneGrammar(allocator, parsed_grammar);
 }
@@ -143,7 +145,9 @@ pub fn emitParserFromSource(
     var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
     defer parsed.deinit();
 
-    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(parsed.session.astAllocator()) orelse
+    var read_guard = try parsed.session.read(parsed.result);
+    defer read_guard.deinit();
+    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(read_guard.astAllocator()) orelse
         return error.GrammarModelMissing;
 
     try emitParser(allocator, parsed_grammar, writer, parser_type, options);
@@ -159,7 +163,9 @@ pub fn emitErrorMessagesFromSource(
     var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
     defer parsed.deinit();
 
-    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(parsed.session.astAllocator()) orelse
+    var read_guard = try parsed.session.read(parsed.result);
+    defer read_guard.deinit();
+    const parsed_grammar = galley_grammar.procedures.grammarFromAstAllocator(read_guard.astAllocator()) orelse
         return error.GrammarModelMissing;
 
     try emitErrorMessages(allocator, parsed_grammar, writer, parser_type, options);

@@ -33,19 +33,11 @@ pub const RuntimeContext = struct {
     pending_syntax_error_site: ?usize = null,
 };
 
-var active_runtime_context: ?*RuntimeContext = null;
+var runtime_registry_mutex: std.atomic.Mutex = .unlocked;
+var runtime_registry_head: ?*RuntimeContextRegistration = null;
 
-pub fn activateRuntimeContext(runtime_context_: *RuntimeContext) void {
-    active_runtime_context = runtime_context_;
-}
-
-pub fn deactivateRuntimeContext(runtime_context_: *RuntimeContext) void {
-    std.debug.assert(active_runtime_context == runtime_context_);
-    active_runtime_context = null;
-}
-
-fn runtimeContext() *RuntimeContext {
-    return active_runtime_context orelse unreachable;
+fn lockRuntimeRegistry() void {
+    while (!runtime_registry_mutex.tryLock()) std.atomic.spinLoopHint();
 }
 
 pub const Context = struct {
@@ -102,14 +94,12 @@ pub const Context = struct {
 
     const Self = @This();
 
-    pub inline fn runtime(self: *Self) *RuntimeContext {
-        _ = self;
-        return runtimeContext();
+    pub noinline fn runtime(self: *Self) *RuntimeContext {
+        return registeredRuntimeContext(self);
     }
 
-    pub inline fn runtimeConst(self: *const Self) *const RuntimeContext {
-        _ = self;
-        return runtimeContext();
+    pub noinline fn runtimeConst(self: *const Self) *const RuntimeContext {
+        return registeredRuntimeContext(self);
     }
 
     pub inline fn verbosityLevel(self: *const Self) usize {
@@ -667,3 +657,57 @@ pub const Context = struct {
         return self.token.buffer;
     }
 };
+
+pub const RuntimeContextRegistration = struct {
+    context_address: usize,
+    runtime_context: *RuntimeContext,
+    next: ?*RuntimeContextRegistration = null,
+    is_registered: bool = false,
+
+    pub fn init(context: *Context, runtime_context: *RuntimeContext) RuntimeContextRegistration {
+        return .{
+            .context_address = @intFromPtr(context),
+            .runtime_context = runtime_context,
+        };
+    }
+
+    pub fn register(self: *RuntimeContextRegistration) void {
+        lockRuntimeRegistry();
+        defer runtime_registry_mutex.unlock();
+
+        std.debug.assert(!self.is_registered);
+        self.next = runtime_registry_head;
+        runtime_registry_head = self;
+        self.is_registered = true;
+    }
+
+    pub fn unregister(self: *RuntimeContextRegistration) void {
+        lockRuntimeRegistry();
+        defer runtime_registry_mutex.unlock();
+
+        var link = &runtime_registry_head;
+        while (link.*) |registration| {
+            if (registration == self) {
+                link.* = registration.next;
+                self.next = null;
+                self.is_registered = false;
+                return;
+            }
+            link = &registration.next;
+        }
+        unreachable;
+    }
+};
+
+fn registeredRuntimeContext(context: *const Context) *RuntimeContext {
+    const context_address = @intFromPtr(context);
+
+    lockRuntimeRegistry();
+    defer runtime_registry_mutex.unlock();
+
+    var registration = runtime_registry_head;
+    while (registration) |entry| : (registration = entry.next) {
+        if (entry.context_address == context_address) return entry.runtime_context;
+    }
+    @panic("parser context has no active runtime registration");
+}

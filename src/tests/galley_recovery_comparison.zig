@@ -48,7 +48,9 @@ fn run(io: std.Io, allocator: std.mem.Allocator) !Summary {
         else => return err,
     }
 
-    const diagnostic = session.lastDiagnostic() orelse return error.MissingDiagnostic;
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |value| value,
     };
@@ -73,7 +75,7 @@ fn run(io: std.Io, allocator: std.mem.Allocator) !Summary {
     errdefer allocator.free(unexpected_token);
     const rendered = try parser.renderParseDiagnostic(allocator, diagnostic, .plain);
     return .{
-        .error_count = session.syntaxErrorCount(),
+        .error_count = read_guard.syntaxErrorCount(),
         .reached_bytes = context.pos() - 1,
         .line = syntax.line,
         .column = syntax.column,
