@@ -416,10 +416,19 @@ pub const Session = struct {
         defer data_structures.context.deactivateRuntimeContext(&self.runtime_context);
 
         try context_value.reset();
-        if (self.stack_overflow_recovery) {
-            return try stack_overflow_utilities.protectedParse(context_value);
+        const result = if (self.stack_overflow_recovery)
+            stack_overflow_utilities.protectedParse(context_value)
+        else
+            parser.parseWithResult(context_value);
+        const parsed = result catch |err| {
+            if (context_value.input_read_failed) return error.ReadFailed;
+            return err;
+        };
+        if (context_value.input_read_failed) {
+            @branchHint(.unlikely);
+            return error.ReadFailed;
         }
-        return try parser.parseWithResult(context_value);
+        return parsed;
     }
 };
 

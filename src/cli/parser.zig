@@ -30,14 +30,6 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     const input_path = options.input_path;
-    const program_file = if (input_path) |path|
-        try std.Io.Dir.cwd().openFile(init.io, path, .{
-            .mode = .read_only,
-            .lock = .exclusive,
-        })
-    else
-        std.Io.File.stdin();
-
     var session = try galley.Session.init(io, init.gpa, .{
         .language_options = options.language_options,
         .input_path = input_path,
@@ -48,7 +40,20 @@ pub fn main(init: std.process.Init) !void {
     });
     defer session.deinit();
 
-    try run(&session, program_file, input_path, warmup_iterations, options.iterations);
+    if (input_path) |path| {
+        const program_file = try std.Io.Dir.cwd().openFile(init.io, path, .{
+            .mode = .read_only,
+            .lock = .exclusive,
+        });
+        defer program_file.close(init.io);
+        try run(&session, program_file, input_path, warmup_iterations, options.iterations);
+    } else {
+        var stdin_buffer: [8192]u8 = undefined;
+        var stdin_reader = std.Io.File.stdin().reader(init.io, &stdin_buffer);
+        const input = try stdin_reader.interface.allocRemaining(init.gpa, .unlimited);
+        defer init.gpa.free(input);
+        try run(&session, input, null, warmup_iterations, options.iterations);
+    }
 }
 
 fn parseArgs(init: std.process.Init) !CliOptions {
@@ -210,16 +215,23 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
-fn run(session: *galley.Session, program_file: std.Io.File, input_path: ?[]const u8, warmup_iterations: usize, iterations: usize) !void {
+fn parseInput(session: *galley.Session, input: anytype, input_path: ?[]const u8) !galley.ParseResult {
+    if (comptime @TypeOf(input) == std.Io.File) {
+        return try session.parseFile(input, input_path);
+    }
+    return try session.parseBytes(input, input_path);
+}
+
+fn run(session: *galley.Session, input: anytype, input_path: ?[]const u8, warmup_iterations: usize, iterations: usize) !void {
     for (0..warmup_iterations) |_| {
-        _ = try session.parseFile(program_file, input_path);
+        _ = try parseInput(session, input, input_path);
     }
 
     var total_parsed_bytes: usize = 0;
     const start = std.Io.Clock.awake.now(session.io);
 
     for (0..iterations) |_| {
-        const result = try session.parseFile(program_file, input_path);
+        const result = try parseInput(session, input, input_path);
         total_parsed_bytes += result.parsed_bytes;
     }
 
