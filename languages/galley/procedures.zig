@@ -420,9 +420,11 @@ pub fn emitLrParserFromContext(context: *data_structures.Context, allocator: std
     try emitLrParserWithOptions(grammar, allocator, writer, lrGeneratorOptionsFromContext(context));
 }
 
+const OutputParserType = enum { ll, lr };
+
 fn emitParserForInputPath(context: *data_structures.Context, grammar: *const Grammar) !void {
     const input_path = context.runtime().input_path orelse return;
-    const parser_type: enum { ll, lr } = if (std.mem.endsWith(u8, input_path, "/ll.grm") or std.mem.eql(u8, input_path, "ll.grm"))
+    const parser_type: OutputParserType = if (std.mem.endsWith(u8, input_path, "/ll.grm") or std.mem.eql(u8, input_path, "ll.grm"))
         .ll
     else if (std.mem.endsWith(u8, input_path, "/lr.grm") or std.mem.eql(u8, input_path, "lr.grm"))
         .lr
@@ -436,17 +438,32 @@ fn emitParserForInputPath(context: *data_structures.Context, grammar: *const Gra
     };
     const output_path = try std.fs.path.join(context.runtime().arena_allocator, &.{ dir_path, output_file });
 
-    var output = try std.Io.Dir.cwd().createFile(context.runtime().io, output_path, .{ .truncate = true });
-    defer output.close(context.runtime().io);
-
-    var buffer: [8192]u8 = undefined;
-    var file_writer = output.writer(context.runtime().io, &buffer);
-    switch (parser_type) {
-        .ll => try emitLlParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, generatorOptionsFromContext(context)),
-        .lr => try emitLrParserWithOptions(grammar, context.runtime().arena_allocator, &file_writer.interface, lrGeneratorOptionsFromContext(context)),
-    }
-    try file_writer.interface.flush();
+    try ll_generator.atomic_file.write(
+        context.runtime().io,
+        .cwd(),
+        output_path,
+        .replace,
+        ContextParserEmission{
+            .context = context,
+            .grammar = grammar,
+            .parser_type = parser_type,
+        },
+        ContextParserEmission.emit,
+    );
 }
+
+const ContextParserEmission = struct {
+    context: *data_structures.Context,
+    grammar: *const Grammar,
+    parser_type: OutputParserType,
+
+    fn emit(self: ContextParserEmission, writer: *std.Io.Writer) !void {
+        switch (self.parser_type) {
+            .ll => try emitLlParserWithOptions(self.grammar, self.context.runtime().arena_allocator, writer, generatorOptionsFromContext(self.context)),
+            .lr => try emitLrParserWithOptions(self.grammar, self.context.runtime().arena_allocator, writer, lrGeneratorOptionsFromContext(self.context)),
+        }
+    }
+};
 
 fn generatorOptionsFromContext(context: *data_structures.Context) ll_generator.Options {
     return .{

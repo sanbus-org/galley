@@ -23,20 +23,39 @@ pub fn main(init: std.process.Init) !void {
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_input_size));
     defer init.gpa.free(source);
 
-    var output = try std.Io.Dir.cwd().createFile(init.io, output_path, .{ .truncate = true });
-    defer output.close(init.io);
-
-    var file_buffer: [8192]u8 = undefined;
-    var file_writer = output.writer(init.io, &file_buffer);
-    if (options.strip_recovery_annotations) {
-        const grammar = try generator.parseGrammar(init.arena.allocator(), source);
-        const automatic_grammar = try grammarWithoutRecoveryAnnotations(init.arena.allocator(), grammar);
-        try generator.emitParser(init.arena.allocator(), automatic_grammar, &file_writer.interface, parser_type, options.generator_options);
-    } else {
-        try generator.emitParserFromSource(init.arena.allocator(), source, &file_writer.interface, parser_type, options.generator_options);
-    }
-    try file_writer.interface.flush();
+    try generator.atomic_file.write(
+        init.io,
+        .cwd(),
+        output_path,
+        .replace,
+        ParserEmission{
+            .allocator = init.arena.allocator(),
+            .source = source,
+            .parser_type = parser_type,
+            .options = options.generator_options,
+            .strip_recovery_annotations = options.strip_recovery_annotations,
+        },
+        ParserEmission.emit,
+    );
 }
+
+const ParserEmission = struct {
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    parser_type: generator.ParserType,
+    options: generator.Options,
+    strip_recovery_annotations: bool,
+
+    fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
+        if (self.strip_recovery_annotations) {
+            const grammar = try generator.parseGrammar(self.allocator, self.source);
+            const automatic_grammar = try grammarWithoutRecoveryAnnotations(self.allocator, grammar);
+            try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, self.options);
+        } else {
+            try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, self.options);
+        }
+    }
+};
 
 fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const generator.Grammar) !*generator.Grammar {
     const rules = try allocator.alloc(generator.Rule, source.rules.len);

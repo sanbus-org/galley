@@ -219,14 +219,31 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_input_size));
     defer init.gpa.free(source);
 
-    var output = try std.Io.Dir.cwd().createFile(init.io, output_path, .{ .truncate = true });
-    defer output.close(init.io);
-
-    var file_buffer: [8192]u8 = undefined;
-    var file_writer = output.writer(init.io, &file_buffer);
-    try generator.emitParserFromSource(init.arena.allocator(), source, &file_writer.interface, parser_type, options);
-    try file_writer.interface.flush();
+    try generator.atomic_file.write(
+        init.io,
+        .cwd(),
+        output_path,
+        .replace,
+        ParserEmission{
+            .allocator = init.arena.allocator(),
+            .source = source,
+            .parser_type = parser_type,
+            .options = options,
+        },
+        ParserEmission.emit,
+    );
 }
+
+const ParserEmission = struct {
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    parser_type: generator.ParserType,
+    options: generator.Options,
+
+    fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
+        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, self.options);
+    }
+};
 
 fn ensureErrorMessages(
     init: std.process.Init,
@@ -254,15 +271,13 @@ fn ensureErrorMessages(
     const path = try std.fs.path.join(init.gpa, &.{ language_dir, basename });
     defer init.gpa.free(path);
 
-    var created_file = std.Io.Dir.cwd().createFile(init.io, path, .{ .exclusive = true }) catch |err| switch (err) {
+    generator.atomic_file.writeAll(init.io, .cwd(), path, .create, filled_source) catch |err| switch (err) {
         error.PathAlreadyExists => {
             try appendMissingErrorMessages(init, path, filled_source, parser_type);
             return false;
         },
         else => |e| return e,
     };
-    defer created_file.close(init.io);
-    try created_file.writeStreamingAll(init.io, filled_source);
     return true;
 }
 
@@ -278,9 +293,7 @@ fn appendMissingErrorMessages(init: std.process.Init, path: []const u8, filled_s
 
     if (!merge.appended_any) return;
 
-    var file = try std.Io.Dir.cwd().createFile(init.io, path, .{ .truncate = true });
-    defer file.close(init.io);
-    try file.writeStreamingAll(init.io, merge.source);
+    try generator.atomic_file.writeAll(init.io, .cwd(), path, .replace, merge.source);
 }
 
 const ErrorMessageMerge = struct {
@@ -399,6 +412,40 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     }
 }
 
+test "failed parser generation preserves the previous output" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "_ll-parser.zig",
+        .data = "previous generated parser",
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.SyntaxError, generator.atomic_file.write(
+        std.testing.io,
+        tmp.dir,
+        "_ll-parser.zig",
+        .replace,
+        ParserEmission{
+            .allocator = arena.allocator(),
+            .source = "Start\n| \"unterminated\n",
+            .parser_type = .ll,
+            .options = .{ .with_procedures = false },
+        },
+        ParserEmission.emit,
+    ));
+
+    const output = try tmp.dir.readFileAlloc(
+        std.testing.io,
+        "_ll-parser.zig",
+        std.testing.allocator,
+        .limited(1024),
+    );
+    defer std.testing.allocator.free(output);
+    try std.testing.expectEqualStrings("previous generated parser", output);
+}
+
 test "mergeErrorMessages accepts LL fallback hooks and appends missing exact hooks" {
     const existing =
         \\const root = @import("galley");
@@ -505,12 +552,10 @@ fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: [
     const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
     defer init.gpa.free(path);
 
-    var file = std.Io.Dir.cwd().createFile(init.io, path, .{ .exclusive = true }) catch |err| switch (err) {
+    generator.atomic_file.writeAll(init.io, .cwd(), path, .create, contents) catch |err| switch (err) {
         error.PathAlreadyExists => return false,
         else => |e| return e,
     };
-    defer file.close(init.io);
-    try file.writeStreamingAll(init.io, contents);
     return true;
 }
 
