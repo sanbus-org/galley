@@ -128,7 +128,8 @@ const Posix = if (is_supported) struct {
 
     const SignalMask = struct {
         faults: c.sigset_t,
-        previous: c.sigset_t,
+        thread_previous: c.sigset_t,
+        process_previous: if (builtin.target.os.tag == .macos) c.sigset_t else void,
 
         fn block() !SignalMask {
             var faults: c.sigset_t = undefined;
@@ -136,16 +137,36 @@ const Posix = if (is_supported) struct {
             if (c.sigaddset(&faults, c.SIGSEGV) != 0) return error.SignalMaskSetupFailed;
             if (c.sigaddset(&faults, c.SIGBUS) != 0) return error.SignalMaskSetupFailed;
 
-            var previous: c.sigset_t = undefined;
-            if (c.pthread_sigmask(c.SIG_BLOCK, &faults, &previous) != 0) {
+            const process_previous = if (comptime builtin.target.os.tag == .macos) previous: {
+                var value: c.sigset_t = undefined;
+                if (c.sigprocmask(c.SIG_BLOCK, null, &value) != 0) {
+                    return error.SignalMaskSetupFailed;
+                }
+                break :previous value;
+            } else {};
+
+            var thread_previous: c.sigset_t = undefined;
+            if (c.pthread_sigmask(c.SIG_BLOCK, &faults, &thread_previous) != 0) {
                 return error.SignalMaskSetupFailed;
             }
-            return .{ .faults = faults, .previous = previous };
+            return .{
+                .faults = faults,
+                .thread_previous = thread_previous,
+                .process_previous = process_previous,
+            };
         }
 
-        fn restore(self: *const SignalMask) !void {
-            if (c.pthread_sigmask(c.SIG_SETMASK, &self.previous, null) != 0) {
+        fn restore(self: *const SignalMask, restore_process: bool) !void {
+            if (c.pthread_sigmask(c.SIG_SETMASK, &self.thread_previous, null) != 0) {
                 return error.SignalMaskRestoreFailed;
+            }
+            if (restore_process and comptime builtin.target.os.tag == .macos) {
+                // Darwin's siglongjmp restores the setup-time mask process-wide.
+                // Undo that only after a recovered signal; successful calls never
+                // change the process mask.
+                if (c.sigprocmask(c.SIG_SETMASK, &self.process_previous, null) != 0) {
+                    return error.SignalMaskRestoreFailed;
+                }
             }
         }
 
@@ -216,7 +237,7 @@ const Posix = if (is_supported) struct {
 
         const signal_mask = try SignalMask.block();
         var mask_is_blocked = true;
-        errdefer if (mask_is_blocked) signal_mask.restore() catch {};
+        errdefer if (mask_is_blocked) signal_mask.restore(false) catch {};
 
         try acquireHandlers();
         var handlers_are_acquired = true;
@@ -235,7 +256,7 @@ const Posix = if (is_supported) struct {
         var outcome: Outcome(T) = undefined;
         const jump_result = c.sigsetjmp(&scope.jump_environment, 1);
         if (jump_result == 0) {
-            signal_mask.restore() catch |err| {
+            signal_mask.restore(false) catch |err| {
                 outcome = .{ .failure = err };
                 active_scope = null;
                 return finishProtectedCall(
@@ -246,6 +267,7 @@ const Posix = if (is_supported) struct {
                     &alternate_stack,
                     &alternate_stack_is_installed,
                     &handlers_are_acquired,
+                    false,
                 );
             };
             mask_is_blocked = false;
@@ -278,6 +300,7 @@ const Posix = if (is_supported) struct {
             &alternate_stack,
             &alternate_stack_is_installed,
             &handlers_are_acquired,
+            jump_result != 0,
         );
     }
 
@@ -289,12 +312,13 @@ const Posix = if (is_supported) struct {
         alternate_stack: *AlternateStack,
         alternate_stack_is_installed: *bool,
         handlers_are_acquired: *bool,
+        restore_process_mask: bool,
     ) anyerror!T {
         alternate_stack.restore() catch |err| {
             alternate_stack_is_installed.* = false;
             releaseHandlers() catch {};
             handlers_are_acquired.* = false;
-            signal_mask.restore() catch {};
+            signal_mask.restore(restore_process_mask) catch {};
             mask_is_blocked.* = false;
             return err;
         };
@@ -302,13 +326,13 @@ const Posix = if (is_supported) struct {
 
         releaseHandlers() catch |err| {
             handlers_are_acquired.* = false;
-            signal_mask.restore() catch {};
+            signal_mask.restore(restore_process_mask) catch {};
             mask_is_blocked.* = false;
             return err;
         };
         handlers_are_acquired.* = false;
 
-        try signal_mask.restore();
+        try signal_mask.restore(restore_process_mask);
         mask_is_blocked.* = false;
 
         return switch (outcome) {
@@ -625,6 +649,7 @@ test "protected call restores signal handlers and alternate stack" {
 test "protected call converts a real guard-page fault to StackOverflow" {
     if (comptime !is_supported) return error.SkipZigTest;
 
+    const masks_before = try TestCallbacks.faultSignalMaskState();
     var result: ?anyerror = null;
     const thread = try std.Thread.spawn(
         .{},
@@ -635,11 +660,19 @@ test "protected call converts a real guard-page fault to StackOverflow" {
 
     try std.testing.expect(result != null);
     try std.testing.expectEqual(root.ParseError.StackOverflow, result.?);
+    try std.testing.expectEqualDeep(
+        masks_before,
+        try TestCallbacks.faultSignalMaskState(),
+    );
+    try expectUnrelatedFaultChained();
 }
 
 test "protected call chains unrelated faults to the previous handler" {
     if (comptime !is_supported) return error.SkipZigTest;
+    try expectUnrelatedFaultChained();
+}
 
+fn expectUnrelatedFaultChained() !void {
     const c = Posix.c;
     var previous: c.struct_sigaction = undefined;
     var action = std.mem.zeroes(c.struct_sigaction);
@@ -660,7 +693,34 @@ test "protected call chains unrelated faults to the previous handler" {
 }
 
 const TestCallbacks = if (is_supported) struct {
+    const FaultSignalMaskState = struct {
+        thread_sigsegv: c_int,
+        thread_sigbus: c_int,
+        process_sigsegv: c_int,
+        process_sigbus: c_int,
+    };
+
     var signal_count = std.atomic.Value(usize).init(0);
+
+    fn faultSignalMaskState() !FaultSignalMaskState {
+        const c = Posix.c;
+        var thread_mask: c.sigset_t = undefined;
+        if (c.pthread_sigmask(c.SIG_BLOCK, null, &thread_mask) != 0) {
+            return error.SignalMaskSetupFailed;
+        }
+
+        var process_mask: c.sigset_t = undefined;
+        if (c.sigprocmask(c.SIG_BLOCK, null, &process_mask) != 0) {
+            return error.SignalMaskSetupFailed;
+        }
+
+        return .{
+            .thread_sigsegv = c.sigismember(&thread_mask, c.SIGSEGV),
+            .thread_sigbus = c.sigismember(&thread_mask, c.SIGBUS),
+            .process_sigsegv = c.sigismember(&process_mask, c.SIGSEGV),
+            .process_sigbus = c.sigismember(&process_mask, c.SIGBUS),
+        };
+    }
 
     fn noop(_: *anyopaque) !void {}
 
