@@ -353,14 +353,14 @@ pub const Context = struct {
             self.node_allocator.reset();
         }
         if (comptime root.config.indentation_syntax) {
-            self.token.reset(self.chunk_buffer);
+            self.token.resetBuffered();
             self.read();
         } else switch (self.source) {
             .file => {
-                self.token.reset(self.chunk_buffer);
+                self.token.resetInput(self.chunk_buffer);
                 self.read();
             },
-            .bytes => |bytes| self.token.reset(@constCast(bytes.input)),
+            .bytes => |bytes| self.token.resetInput(@constCast(bytes.input)),
         }
     }
 
