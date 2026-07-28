@@ -46,7 +46,12 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
         const Self = @This();
 
         pub fn initCapacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
-            const memory = try allocator.alloc(ASTNodeType, preallocated_nodes + 1);
+            return initWithCapacity(allocator, preallocated_nodes);
+        }
+
+        pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocator(PayloadType) {
+            if (capacity > preallocated_nodes) return error.ASTCapacityTooLarge;
+            const memory = try allocator.alloc(ASTNodeType, capacity + 1);
 
             @memset(memory, default);
 
@@ -69,9 +74,14 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             return &self.memory[address];
         }
 
-        pub inline fn create(self: *Self, start: Context.Size, variable: u16) ASTNodeType.Pointer {
+        pub inline fn create(self: *Self, start: Context.Size, variable: u16) error{ASTCapacityExceeded}!ASTNodeType.Pointer {
+            if (@as(usize, self.counter) >= self.memory.len - 1) {
+                @branchHint(.unlikely);
+                return error.ASTCapacityExceeded;
+            }
+
             const address = self.counter;
-            self.counter +%= 1;
+            self.counter += 1;
 
             if (comptime root.ast_memory_benchmark_enabled) {
                 self.memory_benchmark.total_create_calls +%= 1;
@@ -79,13 +89,6 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
                     self.memory_benchmark.peak_counter,
                     @as(usize, self.counter),
                 );
-            }
-
-            if (comptime builtin.mode == .Debug) {
-                if (self.counter >= self.memory.len) {
-                    std.debug.print("Ran out of preallocated ast nodes of {d}.\n", .{self.memory.len});
-                    unreachable;
-                }
             }
 
             const node = &self.memory[address];
@@ -735,10 +738,10 @@ test "AST memory benchmark counts reachable nodes and allocator usage" {
     var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const ast_root = node_allocator.create(0, 1);
-    const first_child = node_allocator.create(1, 2);
-    const second_child = node_allocator.create(2, 3);
-    _ = node_allocator.create(3, 4);
+    const ast_root = try node_allocator.create(0, 1);
+    const first_child = try node_allocator.create(1, 2);
+    const second_child = try node_allocator.create(2, 3);
+    _ = try node_allocator.create(3, 4);
 
     node_allocator.at(ast_root).first_child = first_child;
     node_allocator.at(first_child).next = second_child;
@@ -765,8 +768,8 @@ test "AST memory benchmark tracks allocation peak and resets counters" {
     var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    _ = node_allocator.create(0, 1);
-    _ = node_allocator.create(1, 2);
+    _ = try node_allocator.create(0, 1);
+    _ = try node_allocator.create(1, 2);
 
     const stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
     try std.testing.expectEqual(@as(usize, 2), stats.final_counter);
@@ -778,6 +781,23 @@ test "AST memory benchmark tracks allocation peak and resets counters" {
     try std.testing.expectEqual(@as(usize, 0), reset_stats.final_counter);
     try std.testing.expectEqual(@as(usize, 0), reset_stats.peak_counter);
     try std.testing.expectEqual(@as(usize, 0), reset_stats.total_create_calls);
+}
+
+test "AST allocator reports exhaustion without wrapping or overwriting nodes" {
+    if (comptime !root.parser.is_ast_enabled) return;
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 2);
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    const first = try node_allocator.create(3, 11);
+    const second = try node_allocator.create(5, 13);
+    try std.testing.expectEqual(@as(TestASTNode.Pointer, 0), first);
+    try std.testing.expectEqual(@as(TestASTNode.Pointer, 1), second);
+    try std.testing.expectError(error.ASTCapacityExceeded, node_allocator.create(7, 17));
+    try std.testing.expectEqual(@as(TestASTNode.Pointer, 2), node_allocator.counter);
+    try std.testing.expectEqual(@as(Context.Size, 3), node_allocator.at(first).text_start);
+    try std.testing.expectEqual(@as(u16, 11), node_allocator.at(first).variable);
+    try std.testing.expectEqual(@as(Context.Size, 5), node_allocator.at(second).text_start);
+    try std.testing.expectEqual(@as(u16, 13), node_allocator.at(second).variable);
 }
 
 test "zero length augmented node" {

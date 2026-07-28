@@ -36,6 +36,7 @@ pub const ParseError = error{
     SyntaxError,
     IndentationError,
     StackOverflow,
+    ASTCapacityExceeded,
 };
 
 pub const SyntaxDiagnosticContext = union(enum) {
