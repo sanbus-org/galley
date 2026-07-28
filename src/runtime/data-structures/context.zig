@@ -65,11 +65,21 @@ pub const Context = struct {
     source: Source = .{ .bytes = .{ .input = &[_]u8{0} } },
     chunk_buffer: []u8 = undefined,
 
+    // These fields are defined only when non-indentation input refilling is enabled.
+    file_input: if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) []u8 else void = if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) &.{} else {},
+    input_end: if (root.input_refill_enabled and !root.config.indentation_syntax) usize else void = if (root.input_refill_enabled and !root.config.indentation_syntax) 0 else {},
+    loaded_end: if (root.input_refill_enabled and !root.config.indentation_syntax) usize else void = if (root.input_refill_enabled and !root.config.indentation_syntax) 0 else {},
+    window_base: if (root.sliding_input_enabled and !root.config.indentation_syntax) usize else void = if (root.sliding_input_enabled and !root.config.indentation_syntax) 0 else {},
+    input_eof: if (root.sliding_input_enabled and !root.config.indentation_syntax) bool else void = if (root.sliding_input_enabled and !root.config.indentation_syntax) false else {},
+
     // These fields are defined only when indentation syntax is enabled
     indent_width: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
     current_indent: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
     seek: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
-    read_bytes: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
+    read_bytes: if (root.config.indentation_syntax)
+        if (root.sliding_input_enabled) usize else Size
+    else
+        void = if (root.config.indentation_syntax) 0 else {},
 
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
@@ -234,8 +244,18 @@ pub const Context = struct {
         );
 
         if (comptime !root.config.indentation_syntax) {
+            if (comptime root.input_refill_enabled) {
+                self.loadInputUpTo(if (comptime root.sliding_input_enabled)
+                    @min(required, root.input_window_size)
+                else
+                    required);
+            }
             const start: usize = self.token.head - self.token.len;
-            const available = self.token.buffer[start..];
+            const available_end = if (comptime root.input_refill_enabled)
+                @min(self.loaded_end, self.input_end + 1)
+            else
+                self.token.buffer.len;
+            const available = self.token.buffer[start..available_end];
             const sentinel = std.mem.indexOfScalar(u8, available, 0) orelse available.len - 1;
             return available[0..@min(available.len, @min(required, sentinel + 1))];
         }
@@ -355,6 +375,22 @@ pub const Context = struct {
         if (comptime root.config.indentation_syntax) {
             self.token.resetBuffered();
             self.read();
+        } else if (comptime root.sliding_input_enabled) {
+            self.input_end = 0;
+            self.loaded_end = 0;
+            self.window_base = 0;
+            self.input_eof = false;
+            self.token.resetInput(self.chunk_buffer);
+        } else if (comptime root.input_refill_enabled) switch (self.source) {
+            .file => {
+                self.loaded_end = 0;
+                self.token.resetInput(self.file_input);
+            },
+            .bytes => |bytes| {
+                self.input_end = bytes.input.len - 1;
+                self.loaded_end = bytes.input.len;
+                self.token.resetInput(@constCast(bytes.input));
+            },
         } else switch (self.source) {
             .file => {
                 self.token.resetInput(self.chunk_buffer);
@@ -365,24 +401,29 @@ pub const Context = struct {
     }
 
     pub inline fn advanceInputWithCheck(self: *@This()) void {
-        if (comptime root.config.indentation_syntax) {
-            if (self.seek == root.read_chunk_size - 1) {
-                self.read_bytes += self.seek;
-                self.seek = 0;
-                self.read();
-            }
-            self.seek +%= 1;
+        comptime std.debug.assert(root.config.indentation_syntax);
+
+        if (self.seek == self.chunk_buffer.len - 1) {
+            self.read_bytes += @intCast(self.chunk_buffer.len);
+            self.seek = 0;
+            self.read();
+        } else {
+            self.seek += 1;
         }
     }
 
     pub inline fn advanceInputWithoutCheck(self: *@This()) void {
-        if (comptime root.config.indentation_syntax) {
-            self.seek +%= 1;
-        }
+        comptime std.debug.assert(root.config.indentation_syntax);
+
+        self.seek +%= 1;
     }
 
     pub inline fn advanceInput(self: *@This()) void {
-        if (comptime root.config.indentation_syntax) {
+        comptime std.debug.assert(root.config.indentation_syntax);
+
+        if (comptime root.input_refill_enabled) {
+            self.advanceInputWithCheck();
+        } else {
             self.advanceInputWithoutCheck();
         }
     }
@@ -474,9 +515,106 @@ pub const Context = struct {
         }
     }
 
+    inline fn ensureInputLoaded(self: *@This(), needed_len: usize) void {
+        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+
+        self.loadInputUpTo(needed_len);
+        const token_start: usize = self.token.head - self.token.len;
+        std.debug.assert(token_start + needed_len <= self.loaded_end);
+    }
+
+    inline fn loadInputUpTo(self: *@This(), needed_len: usize) void {
+        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+
+        const token_start: usize = self.token.head - self.token.len;
+        const required_end = token_start + needed_len;
+        if (required_end > self.loaded_end) {
+            @branchHint(.unlikely);
+            self.refillInput(needed_len);
+        }
+    }
+
+    fn readInput(self: *@This(), destination: []u8) usize {
+        return switch (self.source) {
+            .file => |*reader| reader.interface.readSliceShort(destination) catch 0,
+            .bytes => |*bytes| bytes_read: {
+                if (bytes.offset >= bytes.input.len) break :bytes_read 0;
+                const amount = @min(destination.len, bytes.input.len - bytes.offset);
+                @memcpy(destination[0..amount], bytes.input[bytes.offset..][0..amount]);
+                bytes.offset += amount;
+                break :bytes_read amount;
+            },
+        };
+    }
+
+    noinline fn refillInput(self: *@This(), needed_len: usize) void {
+        @branchHint(.cold);
+        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+
+        if (comptime root.sliding_input_enabled) {
+            const token_start: usize = self.token.head - self.token.len;
+            if (token_start != 0) {
+                std.debug.assert(token_start <= self.input_end);
+                const remaining = self.input_end - token_start;
+                std.mem.copyForwards(
+                    u8,
+                    self.token.buffer[0..remaining],
+                    self.token.buffer[token_start..self.input_end],
+                );
+                self.window_base += token_start;
+                self.token.head -= @intCast(token_start);
+                self.input_end = remaining;
+                self.loaded_end = remaining;
+            }
+
+            while (needed_len > self.loaded_end and !self.input_eof) {
+                std.debug.assert(self.input_end < root.input_window_size);
+                const bytes_read = self.readInput(self.token.buffer[self.input_end..root.input_window_size]);
+                if (bytes_read == 0) {
+                    self.input_eof = true;
+                    const padded_end = self.input_end + root.input_padding_size;
+                    @memset(self.token.buffer[self.input_end..padded_end], 0);
+                    self.loaded_end = padded_end;
+                    break;
+                }
+                self.input_end += bytes_read;
+                self.loaded_end = self.input_end;
+            }
+            return;
+        }
+
+        const required_end = @as(usize, self.token.head - self.token.len) + needed_len;
+        const reader = switch (self.source) {
+            .file => |*reader| reader,
+            .bytes => unreachable,
+        };
+
+        while (self.loaded_end < required_end and self.loaded_end < self.input_end) {
+            const target_end = @min(
+                self.input_end,
+                @max(required_end, self.loaded_end +| root.read_chunk_size),
+            );
+            const bytes_read = reader.interface.readSliceShort(self.token.buffer[self.loaded_end..target_end]) catch 0;
+            if (bytes_read == 0) {
+                self.input_end = self.loaded_end;
+                break;
+            }
+            self.loaded_end += bytes_read;
+        }
+
+        if (self.loaded_end == self.input_end) {
+            const padded_end = @min(self.token.buffer.len, self.input_end + root.input_padding_size);
+            @memset(self.token.buffer[self.input_end..padded_end], 0);
+            self.loaded_end = padded_end;
+        }
+    }
+
     pub fn head(self: *@This(), comptime T: type, offset: Size) T {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
+        if (comptime root.input_refill_enabled and !root.config.indentation_syntax) {
+            self.ensureInputLoaded(needed_len);
+        }
         while (self.token.len < needed_len) {
             self.advanceLexer();
         }
@@ -491,14 +629,25 @@ pub const Context = struct {
         return std.mem.readInt(T, array_ptr, .big);
     }
 
-    pub inline fn pos(self: *Self) Size {
-        return if (comptime root.config.indentation_syntax)
-            self.read_bytes + self.seek
-        else
-            self.token.head - self.token.len;
+    pub inline fn pos(self: *Self) if (root.sliding_input_enabled) usize else Size {
+        if (comptime root.config.indentation_syntax) {
+            return self.read_bytes + self.seek;
+        }
+        if (comptime root.sliding_input_enabled) {
+            return self.window_base + self.token.head - self.token.len;
+        }
+        return self.token.head - self.token.len;
     }
 
     pub inline fn getTextSlice(self: *const Self, start: Size, length: Size) []const u8 {
         return self.token.buffer[start .. start + length];
+    }
+
+    pub inline fn diagnosticInput(self: *const Self) []const u8 {
+        if (comptime root.config.indentation_syntax) return self.chunk_buffer;
+        if (comptime root.input_refill_enabled) {
+            return self.token.buffer[0..@min(self.loaded_end, self.input_end + 1)];
+        }
+        return self.token.buffer;
     }
 };

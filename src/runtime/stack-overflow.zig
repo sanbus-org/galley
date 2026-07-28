@@ -61,10 +61,7 @@ const StackOverflowDiagnostic = struct {
 };
 
 fn stackOverflowDiagnostic(context: *const root.data_structures.Context) StackOverflowDiagnostic {
-    const input = if (comptime root.config.indentation_syntax)
-        context.chunk_buffer
-    else
-        context.token.buffer;
+    const input = context.diagnosticInput();
     const cursor: usize = if (comptime root.config.indentation_syntax)
         context.seek
     else
