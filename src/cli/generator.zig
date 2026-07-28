@@ -636,9 +636,9 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
         }
     } else {
         if (result.generated_ll) {
-            try stdout.print("cd {s} && zig build run-ll\n", .{language_dir});
+            try stdout.print("cd {s} && zig build run-ll -- <input_path>\n", .{language_dir});
         } else {
-            try stdout.print("cd {s} && zig build run-lr\n", .{language_dir});
+            try stdout.print("cd {s} && zig build run-lr -- <input_path>\n", .{language_dir});
         }
         try stdout.print("Test it with:\n  cd {s} && zig build test\n", .{language_dir});
     }

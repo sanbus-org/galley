@@ -468,7 +468,7 @@ pub fn addDelegatedTestStep(
     delegated_step_name: []const u8,
     test_filters: []const []const u8,
     ast_memory_benchmark: bool,
-) void {
+) *std.Build.Step {
     const step = b.step(name, description);
     const run_tests = b.addSystemCommand(&.{
         b.graph.zig_exe,
@@ -495,6 +495,7 @@ pub fn addDelegatedTestStep(
         run_tests.addArgs(args);
     }
     step.dependOn(&run_tests.step);
+    return step;
 }
 
 pub fn expectSilentSuccess(run: *std.Build.Step.Run) void {
