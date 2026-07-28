@@ -32,6 +32,7 @@ fn expectSyntaxDiagnostic(session: *parser.Session) !void {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
+        .indentation => return error.ExpectedSyntaxDiagnostic,
     };
 
     try std.testing.expectEqual(diagnostic_line, syntax.line);

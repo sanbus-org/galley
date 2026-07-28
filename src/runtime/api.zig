@@ -84,8 +84,16 @@ pub const SyntaxDiagnostic = struct {
     recovery: ?SyntaxRecovery = null,
 };
 
+pub const IndentationDiagnostic = struct {
+    line: u32,
+    column: u32,
+    spaces: u16,
+    indentation_width: u16,
+};
+
 pub const ParseDiagnostic = union(enum) {
     syntax: SyntaxDiagnostic,
+    indentation: IndentationDiagnostic,
 };
 
 pub const DiagnosticStyle = enum {
@@ -253,6 +261,29 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     if (syntax.recovery) |recovery| try formatSyntaxRecovery(writer, recovery);
                 },
             }
+        },
+        .indentation => |indentation| switch (style) {
+            .plain => try writer.print(
+                \\IndentationError at {d}:{d}:
+                \\Invalid indentation: {d} spaces are not divisible by the detected indentation width of {d}.
+                \\
+            , .{
+                indentation.line,
+                indentation.column,
+                indentation.spaces,
+                indentation.indentation_width,
+            }),
+            .ansi => try writer.print(
+                "\x1b[35mIndentationError at {d}:{d}:\n" ++
+                    "\x1b[37mInvalid indentation: \x1b[31m{d}\x1b[37m spaces are not divisible by " ++
+                    "the detected indentation width of \x1b[31m{d}\x1b[37m.\x1b[0m\n",
+                .{
+                    indentation.line,
+                    indentation.column,
+                    indentation.spaces,
+                    indentation.indentation_width,
+                },
+            ),
         },
     }
 }
@@ -494,11 +525,20 @@ pub const Session = struct {
             parser.parseWithResult(context_value);
         const parsed = result catch |err| {
             if (context_value.input_read_failed) return error.ReadFailed;
+            if (comptime config.indentation_syntax) {
+                if (context_value.indentation_error) return error.IndentationError;
+            }
             return err;
         };
         if (context_value.input_read_failed) {
             @branchHint(.unlikely);
             return error.ReadFailed;
+        }
+        if (comptime config.indentation_syntax) {
+            if (context_value.indentation_error) {
+                @branchHint(.unlikely);
+                return error.IndentationError;
+            }
         }
         var session_result = parsed;
         session_result._session_generation = self.generation;
