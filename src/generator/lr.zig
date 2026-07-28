@@ -258,7 +258,7 @@ const Generator = struct {
             const symbol = self.symbols.items[symbol_index];
             if (symbol.kind == .variable) {
                 try self.firstsOfVariable(symbol_index, out, null);
-                if (self.nullableRule(symbol_index, null) == null) return;
+                if (try self.nullableRule(symbol_index, null) == null) return;
             } else {
                 try out.put(symbol_index, {});
                 return;
@@ -285,7 +285,7 @@ const Generator = struct {
                 const symbol = self.symbols.items[symbol_index];
                 if (symbol.kind == .variable) {
                     try self.firstsOfVariable(symbol_index, out, &local_visited);
-                    if (self.nullableRule(symbol_index, null) == null) break;
+                    if (try self.nullableRule(symbol_index, null) == null) break;
                 } else {
                     try out.put(symbol_index, {});
                     break;
@@ -294,7 +294,7 @@ const Generator = struct {
         }
     }
 
-    fn nullableRule(self: *Generator, variable: usize, visited: ?*std.AutoHashMap(usize, void)) ?usize {
+    fn nullableRule(self: *Generator, variable: usize, visited: ?*std.AutoHashMap(usize, void)) !?usize {
         if (visited) |set| {
             if (set.contains(variable)) return null;
         }
@@ -302,14 +302,14 @@ const Generator = struct {
         defer local_visited.deinit();
         if (visited) |set| {
             var it = set.keyIterator();
-            while (it.next()) |entry| local_visited.put(entry.*, {}) catch unreachable;
+            while (it.next()) |entry| try local_visited.put(entry.*, {});
         }
-        local_visited.put(variable, {}) catch unreachable;
+        try local_visited.put(variable, {});
 
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
             for (rule.rhs.items) |symbol_index| {
-                if (self.symbols.items[symbol_index].kind != .variable or self.nullableRule(symbol_index, &local_visited) == null) break;
+                if (self.symbols.items[symbol_index].kind != .variable or try self.nullableRule(symbol_index, &local_visited) == null) break;
             } else {
                 return rule_index;
             }
