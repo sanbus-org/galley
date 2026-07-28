@@ -92,6 +92,26 @@ test "generated_parser_api parse sentinel bytes" {
     try expectParsedAll(parsed.result, "parse sentinel bytes");
 }
 
+test "generated_parser_api reports AST capacity exhaustion" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime !parser.parser.is_ast_enabled) return error.SkipZigTest;
+    if (comptime sample_input.len == 0) return error.SkipZigTest;
+    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    const limited_allocator = try parser.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 0);
+    std.testing.allocator.free(session.node_allocator.memory);
+    session.node_allocator = limited_allocator;
+
+    try std.testing.expectError(
+        error.ASTCapacityExceeded,
+        session.parseBytes(sample_input, test_options.sample_path),
+    );
+    try std.testing.expectEqual(@as(parser.data_structures.ASTNode.Pointer, 0), session.node_allocator.counter);
+}
+
 test "generated_parser_api reusable session byte slices" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;

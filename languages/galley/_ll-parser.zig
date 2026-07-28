@@ -12,6 +12,8 @@ pub const is_ast_enabled = true;
 pub const are_procedures_enabled = true;
 pub const is_error_recovery_enabled = true;
 pub const error_recovery_mode: ErrorRecoveryMode = .explicit;
+pub const is_position_tracking_enabled = builtin.mode != .ReleaseFast;
+pub const is_input_refill_enabled = false;
 pub const input_size_cap = u16;
 pub const longest_terminal_length = 2;
 
@@ -874,7 +876,7 @@ pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(
 
 // Parser for Symbol "Start" with index 0
 fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 0);
+    var node_address = try context.node_allocator.create(context.pos(), 0);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -944,7 +946,7 @@ fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const E
 
 // Parser for Symbol "Rules" with index 1
 fn parse_Rules(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 1);
+    var node_address = try context.node_allocator.create(context.pos(), 1);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -1028,7 +1030,7 @@ fn parse_Rules(context: *data_structures.Context, occurrence_recovery: ?*const E
 
 // Parser for Symbol "Rule" with index 2
 fn parse_Rule(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 2);
+    var node_address = try context.node_allocator.create(context.pos(), 2);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
@@ -1167,7 +1169,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
                         std.debug.print("Rule expansion: RulesTail -> NewLines, Rule, RulesTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 3);
+                const temporary_address = try context.node_allocator.create(context.pos(), 3);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -1279,7 +1281,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
 
 // Parser for Symbol "RulesTail" with index 3
 fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 3);
+    var node_address = try context.node_allocator.create(context.pos(), 3);
 
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
@@ -1420,7 +1422,7 @@ fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*con
 
 // Parser for Symbol "NewLines" with index 4
 fn parse_NewLines(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 4);
+    var node_address = try context.node_allocator.create(context.pos(), 4);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -1530,7 +1532,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
                         std.debug.print("Rule expansion: NewLinesTail -> 'new_line', NewLinesTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 5);
+                const temporary_address = try context.node_allocator.create(context.pos(), 5);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -1641,7 +1643,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
                         std.debug.print("Rule expansion: NewLinesTail -> '#', AnyContent, 'new_line', NewLinesTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 5);
+                const temporary_address = try context.node_allocator.create(context.pos(), 5);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -1757,7 +1759,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
 
 // Parser for Symbol "NewLinesTail" with index 6
 fn parse_NewLinesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 5);
+    var node_address = try context.node_allocator.create(context.pos(), 5);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -1981,7 +1983,7 @@ inline fn parse_terminal__x35(context: *data_structures.Context, occurrence_reco
 
 // Parser for Symbol "AnyContent" with index 8
 fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 6);
+    var node_address = try context.node_allocator.create(context.pos(), 6);
 
     switch (context.head(u8, 0)) {
         1, 3, 4 => { // '\x01', '\x03', '\x04'
@@ -2131,7 +2133,7 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
 
 // Parser for Symbol "VariableSymbol" with index 9
 fn parse_VariableSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 7);
+    var node_address = try context.node_allocator.create(context.pos(), 7);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -2285,7 +2287,7 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
                         std.debug.print("Rule expansion: RecoveryTail -> RecoveryPoint, RecoveryTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 8);
+                const temporary_address = try context.node_allocator.create(context.pos(), 8);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -2383,7 +2385,7 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
 
 // Parser for Symbol "RecoveryTail" with index 10
 fn parse_RecoveryTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 8);
+    var node_address = try context.node_allocator.create(context.pos(), 8);
 
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'
@@ -2528,7 +2530,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
                         std.debug.print("Rule expansion: ProcedureTail -> '@', CamelCaseId, ProcedureTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 9);
+                const temporary_address = try context.node_allocator.create(context.pos(), 9);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -2635,7 +2637,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
 
 // Parser for Symbol "ProcedureTail" with index 11
 fn parse_ProcedureTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 9);
+    var node_address = try context.node_allocator.create(context.pos(), 9);
 
     switch (context.head(u8, 0)) {
         10, 32 => { // '\n', ' '
@@ -2771,7 +2773,7 @@ fn parse_ProcedureTail(context: *data_structures.Context, occurrence_recovery: ?
 
 // Parser for Symbol "RightHandSides" with index 12
 fn parse_RightHandSides(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 10);
+    var node_address = try context.node_allocator.create(context.pos(), 10);
 
     switch (context.head(u8, 0)) {
         35, 124 => { // '#', '|'
@@ -2855,7 +2857,7 @@ fn parse_RightHandSides(context: *data_structures.Context, occurrence_recovery: 
 
 // Parser for Symbol "RightHandSideLine" with index 13
 fn parse_RightHandSideLine(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 11);
+    var node_address = try context.node_allocator.create(context.pos(), 11);
 
     switch (context.head(u8, 0)) {
         35 => { // '#'
@@ -3064,7 +3066,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
                         std.debug.print("Rule expansion: RightHandSidesTail -> RightHandSideLine, RightHandSidesTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 12);
+                const temporary_address = try context.node_allocator.create(context.pos(), 12);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3162,7 +3164,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
 
 // Parser for Symbol "RightHandSidesTail" with index 14
 fn parse_RightHandSidesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 12);
+    var node_address = try context.node_allocator.create(context.pos(), 12);
 
     switch (context.head(u8, 0)) {
         0, 10 => { // '\x00', '\n'
@@ -3302,7 +3304,7 @@ inline fn parse_terminal__x124(context: *data_structures.Context, occurrence_rec
 
 // Parser for Symbol "RightHandSide" with index 16
 fn parse_RightHandSide(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 13);
+    var node_address = try context.node_allocator.create(context.pos(), 13);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -3479,7 +3481,7 @@ inline fn parse_generative_terminal_space(context: *data_structures.Context, occ
 
 // Parser for Symbol "Symbol" with index 18
 fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 14);
+    var node_address = try context.node_allocator.create(context.pos(), 14);
 
     switch (context.head(u8, 0)) {
         34, 39 => { // '\"', '''
@@ -3681,7 +3683,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
                         std.debug.print("Rule expansion: RightHandSideTail -> 'space', Symbol, RecoveryTail, ProcedureTail, RightHandSideTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 15);
+                const temporary_address = try context.node_allocator.create(context.pos(), 15);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -3816,7 +3818,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
 
 // Parser for Symbol "RightHandSideTail" with index 19
 fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 15);
+    var node_address = try context.node_allocator.create(context.pos(), 15);
 
     switch (context.head(u8, 0)) {
         10 => { // '\n'
@@ -3980,7 +3982,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recover
 
 // Parser for Symbol "TerminalSymbol" with index 20
 fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 16);
+    var node_address = try context.node_allocator.create(context.pos(), 16);
 
     switch (context.head(u8, 0)) {
         34 => { // '\"'
@@ -4143,7 +4145,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: 
 
 // Parser for Symbol "GenerativeTerminalSymbol" with index 21
 fn parse_GenerativeTerminalSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 17);
+    var node_address = try context.node_allocator.create(context.pos(), 17);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -4227,7 +4229,7 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context, occurrence_
 
 // Parser for Symbol "UppercaseId" with index 22
 fn parse_UppercaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 18);
+    var node_address = try context.node_allocator.create(context.pos(), 18);
 
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -4350,7 +4352,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
                         std.debug.print("Rule expansion: StringContent -> 'character', StringContent\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 19);
+                const temporary_address = try context.node_allocator.create(context.pos(), 19);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -4443,7 +4445,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
 
 // Parser for Symbol "StringContent" with index 25
 fn parse_StringContent(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 19);
+    var node_address = try context.node_allocator.create(context.pos(), 19);
 
     switch (context.head(u8, 0)) {
         3 => { // '\x03'
@@ -4609,7 +4611,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^'\"\\x03', SimpleStringContent\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 20);
+                const temporary_address = try context.node_allocator.create(context.pos(), 20);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -4702,7 +4704,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
 
 // Parser for Symbol "SimpleStringContent" with index 28
 fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 20);
+    var node_address = try context.node_allocator.create(context.pos(), 20);
 
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -4824,7 +4826,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
 
 // Parser for Symbol "LowercaseId" with index 29
 fn parse_LowercaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 21);
+    var node_address = try context.node_allocator.create(context.pos(), 21);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -4921,7 +4923,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 22);
+                const temporary_address = try context.node_allocator.create(context.pos(), 22);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -5028,7 +5030,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
 
 // Parser for Symbol "GenerativeTerminalExceptions" with index 30
 fn parse_GenerativeTerminalExceptions(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 22);
+    var node_address = try context.node_allocator.create(context.pos(), 22);
 
     switch (context.head(u8, 0)) {
         10, 32, 33, 64 => { // '\n', ' ', '!', '@'
@@ -5190,7 +5192,7 @@ inline fn parse_terminal__x64(context: *data_structures.Context, occurrence_reco
 
 // Parser for Symbol "CamelCaseId" with index 33
 fn parse_CamelCaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 23);
+    var node_address = try context.node_allocator.create(context.pos(), 23);
 
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
@@ -5269,7 +5271,7 @@ fn parse_CamelCaseId(context: *data_structures.Context, occurrence_recovery: ?*c
 
 // Parser for Symbol "RecoveryPoint" with index 34
 fn parse_RecoveryPoint(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 24);
+    var node_address = try context.node_allocator.create(context.pos(), 24);
 
     switch (context.head(u8, 0)) {
         33 => { // '!'
@@ -5361,7 +5363,7 @@ inline fn parse_terminal__x33(context: *data_structures.Context, occurrence_reco
 
 // Parser for Symbol "RecoveryPointBody" with index 36
 fn parse_RecoveryPointBody(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 25);
+    var node_address = try context.node_allocator.create(context.pos(), 25);
 
     switch (context.head(u8, 0)) {
         34, 39 => { // '\"', '''
@@ -5532,7 +5534,7 @@ inline fn parse_generative_terminal_character_x94_x39_x34_x92x03(context: *data_
 
 // Parser for Symbol "ControlCharacter" with index 39
 fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 26);
+    var node_address = try context.node_allocator.create(context.pos(), 26);
 
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
@@ -5758,7 +5760,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
                         std.debug.print("Rule expansion: AnyContentTail -> ControlCharacter, AnyContentTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 27);
+                const temporary_address = try context.node_allocator.create(context.pos(), 27);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -5874,7 +5876,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
                         std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\n\"', AnyContentTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 27);
+                const temporary_address = try context.node_allocator.create(context.pos(), 27);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -5967,7 +5969,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
 
 // Parser for Symbol "AnyContentTail" with index 43
 fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 27);
+    var node_address = try context.node_allocator.create(context.pos(), 27);
 
     switch (context.head(u8, 0)) {
         1, 3, 4 => { // '\x01', '\x03', '\x04'
@@ -6178,7 +6180,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 28);
+                const temporary_address = try context.node_allocator.create(context.pos(), 28);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -6289,7 +6291,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 28);
+                const temporary_address = try context.node_allocator.create(context.pos(), 28);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -6400,7 +6402,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 28);
+                const temporary_address = try context.node_allocator.create(context.pos(), 28);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -6493,7 +6495,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
 
 // Parser for Symbol "IdTail" with index 44
 fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 28);
+    var node_address = try context.node_allocator.create(context.pos(), 28);
 
     switch (context.head(u8, 0)) {
         10, 32, 33, 64, 94 => { // '\n', ' ', '!', '@', '^'
@@ -6817,7 +6819,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 29);
+                const temporary_address = try context.node_allocator.create(context.pos(), 29);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -6928,7 +6930,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
                 }
-                const temporary_address = context.node_allocator.create(context.pos(), 29);
+                const temporary_address = try context.node_allocator.create(context.pos(), 29);
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
@@ -7021,7 +7023,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
 
 // Parser for Symbol "CamelCaseIdTail" with index 49
 fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.ASTNode.Pointer {
-    var node_address = context.node_allocator.create(context.pos(), 29);
+    var node_address = try context.node_allocator.create(context.pos(), 29);
 
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'

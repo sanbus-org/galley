@@ -647,7 +647,7 @@ const Generator = struct {
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
             const is_var = self.options.with_procedures and self.options.with_ast and !skip_ast_construction;
-            try writer.print("    {s} node_address = context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
+            try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
         }
 
         var entries = std.ArrayList(SwitchEntry).empty;
@@ -776,7 +776,7 @@ const Generator = struct {
 
         if (returns_node) {
             try writer.print(
-                \\                const temporary_address = context.node_allocator.create(context.pos(), {d});
+                \\                const temporary_address = try context.node_allocator.create(context.pos(), {d});
                 \\                if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
@@ -909,7 +909,7 @@ const Generator = struct {
             try writer.writeAll("    _ = occurrence_procedures;\n");
         }
         if (returns_node) {
-            try writer.print("    {s} node_address = context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n", .{
+            try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n", .{
                 if (self.options.with_procedures and self.options.with_ast) "var" else "const",
             });
         }

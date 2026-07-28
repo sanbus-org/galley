@@ -92,9 +92,9 @@ test "dropChildren keeps the node and detaches its children" {
     var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const parent = node_allocator.create(0, 1);
-    const first = node_allocator.create(0, 2);
-    const last = node_allocator.create(0, 3);
+    const parent = try node_allocator.create(0, 1);
+    const first = try node_allocator.create(0, 2);
+    const last = try node_allocator.create(0, 3);
     try data_structures.ASTNode.appendChildren(parent, &node_allocator, first);
     try data_structures.ASTNode.appendChildren(parent, &node_allocator, last);
 
@@ -116,15 +116,15 @@ test "dropIfEmpty drops only empty nodes" {
     var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const non_empty = node_allocator.create(0, 1);
-    const child = node_allocator.create(0, 2);
+    const non_empty = try node_allocator.create(0, 1);
+    const child = try node_allocator.create(0, 2);
     try data_structures.ASTNode.appendChildren(non_empty, &node_allocator, child);
     var context = data_structures.Context{ .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node = non_empty };
     try dropIfEmpty(&args);
     try std.testing.expectEqual(non_empty, args.node.?);
 
-    const empty = node_allocator.create(0, 3);
+    const empty = try node_allocator.create(0, 3);
     args.node = empty;
     try dropIfEmpty(&args);
     try std.testing.expectEqual(@as(?data_structures.ASTNode.Pointer, null), args.node);
@@ -136,12 +136,12 @@ test "replaceWithChildren promotes a wrapper's children" {
     var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const parent = node_allocator.create(0, 1);
-    const before = node_allocator.create(0, 2);
-    const wrapper = node_allocator.create(0, 3);
-    const child_first = node_allocator.create(0, 4);
-    const child_last = node_allocator.create(0, 5);
-    const after = node_allocator.create(0, 6);
+    const parent = try node_allocator.create(0, 1);
+    const before = try node_allocator.create(0, 2);
+    const wrapper = try node_allocator.create(0, 3);
+    const child_first = try node_allocator.create(0, 4);
+    const child_last = try node_allocator.create(0, 5);
+    const after = try node_allocator.create(0, 6);
     try data_structures.ASTNode.appendChildren(wrapper, &node_allocator, child_first);
     try data_structures.ASTNode.appendChildren(wrapper, &node_allocator, child_last);
     try data_structures.ASTNode.appendChildren(parent, &node_allocator, before);
@@ -170,11 +170,11 @@ test "rightRecursiveReduction flattens a matching tail" {
     var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const parent = node_allocator.create(0, 1);
-    const first = node_allocator.create(0, 2);
-    const tail = node_allocator.create(0, 1);
-    const tail_first = node_allocator.create(0, 3);
-    const tail_last = node_allocator.create(0, 4);
+    const parent = try node_allocator.create(0, 1);
+    const first = try node_allocator.create(0, 2);
+    const tail = try node_allocator.create(0, 1);
+    const tail_first = try node_allocator.create(0, 3);
+    const tail_last = try node_allocator.create(0, 4);
     try data_structures.ASTNode.appendChildren(tail, &node_allocator, tail_first);
     try data_structures.ASTNode.appendChildren(tail, &node_allocator, tail_last);
     try data_structures.ASTNode.appendChildren(parent, &node_allocator, first);
@@ -197,11 +197,11 @@ test "leftRecursiveReduction flattens a matching head" {
     var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
     defer std.testing.allocator.free(node_allocator.memory);
 
-    const parent = node_allocator.create(0, 1);
-    const head = node_allocator.create(0, 1);
-    const head_first = node_allocator.create(0, 3);
-    const head_last = node_allocator.create(0, 4);
-    const last = node_allocator.create(0, 2);
+    const parent = try node_allocator.create(0, 1);
+    const head = try node_allocator.create(0, 1);
+    const head_first = try node_allocator.create(0, 3);
+    const head_last = try node_allocator.create(0, 4);
+    const last = try node_allocator.create(0, 2);
     try data_structures.ASTNode.appendChildren(head, &node_allocator, head_first);
     try data_structures.ASTNode.appendChildren(head, &node_allocator, head_last);
     try data_structures.ASTNode.appendChildren(parent, &node_allocator, head);
