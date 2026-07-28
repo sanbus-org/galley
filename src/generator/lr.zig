@@ -798,7 +798,7 @@ const Generator = struct {
                     try writer.print("{s}const start_pos = context.pos();\n", .{indent});
                     if (self.options.ast_for_terminals) {
                         try writer.print(
-                            \\{s}{s} node_address = context.node_allocator.create(start_pos, data_structures.ASTNode.invalid_variable);
+                            \\{s}{s} node_address = try context.node_allocator.create(start_pos, data_structures.ASTNode.invalid_variable);
                             \\{s}context.node_allocator.at(node_address).text_length = {d};
                             \\
                         , .{ indent, if (self.options.with_procedures) "var" else "const", indent, length });
@@ -870,7 +870,7 @@ const Generator = struct {
             }
 
             if (self.symbols.items[rule.header].ast_enabled) {
-                try writer.print("{s}const parent_address = context.node_allocator.create(start_pos, {d});\n", .{ indent, variable_index });
+                try writer.print("{s}const parent_address = try context.node_allocator.create(start_pos, {d});\n", .{ indent, variable_index });
                 for (rule.rhs.items, 0..) |sym, child_index| {
                     if (self.symbolReturnsStackNode(sym)) {
                         try writer.print(
