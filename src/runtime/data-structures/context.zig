@@ -74,20 +74,20 @@ pub const Context = struct {
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
 
-    // These fields are defined based on `builtin.mode`
+    // These fields are defined based on build mode and generated-parser options.
     verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
 
-    line: if (builtin.mode != .ReleaseFast) u32 else void = if (builtin.mode != .ReleaseFast) 1 else {},
-    column: if (builtin.mode != .ReleaseFast) u32 else void = if (builtin.mode != .ReleaseFast) 1 else {},
+    line: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
+    column: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
 
-    line_offsets: if (builtin.mode != .ReleaseFast)
+    line_offsets: if (root.position_tracking_enabled)
         data_structures.Offsets
     else
-        void = if (builtin.mode != .ReleaseFast) .{} else {},
-    column_offsets: if (builtin.mode != .ReleaseFast)
+        void = if (root.position_tracking_enabled) .{} else {},
+    column_offsets: if (root.position_tracking_enabled)
         data_structures.Offsets
     else
-        void = if (builtin.mode != .ReleaseFast) .{} else {},
+        void = if (root.position_tracking_enabled) .{} else {},
 
     const Self = @This();
 
@@ -116,8 +116,8 @@ pub const Context = struct {
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.token.items());
         self.runtime().last_diagnostic = .{
             .syntax = .{
-                .line = if (comptime builtin.mode != .ReleaseFast) self.line else 0,
-                .column = if (comptime builtin.mode != .ReleaseFast) self.column else 0,
+                .line = if (comptime root.position_tracking_enabled) self.line else 0,
+                .column = if (comptime root.position_tracking_enabled) self.column else 0,
                 .unexpected_token = unexpected_token,
                 .expected_tokens = expected_tokens,
                 .context = diagnostic_context,
@@ -284,7 +284,7 @@ pub const Context = struct {
     }
 
     pub fn releaseToken(self: *@This(), length: Size) void {
-        if (comptime builtin.mode != .ReleaseFast) {
+        if (comptime root.position_tracking_enabled) {
             if (comptime root.config.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
             }
@@ -343,7 +343,7 @@ pub const Context = struct {
             self.indent_width = 0;
             self.current_indent = 0;
         }
-        if (comptime builtin.mode != .ReleaseFast) {
+        if (comptime root.position_tracking_enabled) {
             self.line = 1;
             self.column = 1;
             self.line_offsets.reset();
@@ -403,7 +403,7 @@ pub const Context = struct {
                     self.indent_width = line_spaces;
                 } else if (line_spaces % self.indent_width != 0) {
                     std.log.err("\x1b[35mIndentationError at line {d}:\n\x1b[0mInvalid number of spaces {d} which is not divisible by previousely detected indentation width of \x1b[31m\"{d}\"\x1b[0m.", .{
-                        if (comptime builtin.mode != .ReleaseFast) self.line + 1 else 0,
+                        if (comptime root.position_tracking_enabled) self.line + 1 else 0,
                         line_spaces,
                         self.indent_width,
                     });
@@ -411,18 +411,18 @@ pub const Context = struct {
                     unreachable;
                 }
                 const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
-                if (comptime builtin.mode != .ReleaseFast and root.config.indentation_syntax) {
+                if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
                     self.line_offsets.append(1);
                 }
                 if (new_indent == self.current_indent) {
-                    if (comptime builtin.mode != .ReleaseFast) {
+                    if (comptime root.position_tracking_enabled) {
                         self.column_offsets.append(@intCast(line_spaces + 1));
                     }
                     self.token.append('\n');
                 } else {
                     if (new_indent > self.current_indent) {
                         for (0..new_indent - self.current_indent) |index| {
-                            if (comptime builtin.mode != .ReleaseFast) {
+                            if (comptime root.position_tracking_enabled) {
                                 if (comptime root.config.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
@@ -434,7 +434,7 @@ pub const Context = struct {
                         }
                     } else if (new_indent < self.current_indent) {
                         for (0..self.current_indent - new_indent) |index| {
-                            if (comptime builtin.mode != .ReleaseFast) {
+                            if (comptime root.position_tracking_enabled) {
                                 if (comptime root.config.indentation_syntax) {
                                     if (index != 0) {
                                         self.line_offsets.append(0);
@@ -450,7 +450,7 @@ pub const Context = struct {
             }
         }
 
-        if (comptime builtin.mode != .ReleaseFast) {
+        if (comptime root.position_tracking_enabled) {
             if (comptime root.config.indentation_syntax) {
                 self.line_offsets.append(0);
             }
@@ -466,8 +466,8 @@ pub const Context = struct {
         if (comptime builtin.mode == .Debug) {
             if (self.verbosityLevel() > 1) {
                 std.debug.print("\n{d}:{d}:\"{f}\"\n", .{
-                    if (comptime builtin.mode != .ReleaseFast) self.line else 0,
-                    if (comptime builtin.mode != .ReleaseFast) self.column else 0,
+                    if (comptime root.position_tracking_enabled) self.line else 0,
+                    if (comptime root.position_tracking_enabled) self.column else 0,
                     string_utilities.fmtString(self.token.items()),
                 });
             }

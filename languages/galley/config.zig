@@ -7,6 +7,8 @@ pub const cli_options = .{
     .{ .name = "--no-procedures", .takes_value = false },
     .{ .name = "--with-error-recovery", .takes_value = false },
     .{ .name = "--no-error-recovery", .takes_value = false },
+    .{ .name = "--with-position-tracking", .takes_value = false },
+    .{ .name = "--no-position-tracking", .takes_value = false },
     .{ .name = "--ast-for-terminals", .takes_value = false },
     .{ .name = "--no-ast-for-terminals", .takes_value = false },
     .{ .name = "--input-size", .takes_value = true },
@@ -19,6 +21,8 @@ pub const cli_help =
     \\      --no-procedures                Disable procedure hooks.
     \\      --with-error-recovery           Enable syntax-error recovery.
     \\      --no-error-recovery             Disable syntax-error recovery.
+    \\      --with-position-tracking        Enable line and column tracking.
+    \\      --no-position-tracking          Disable line and column tracking.
     \\      --ast-for-terminals             Enable AST nodes for terminals.
     \\      --no-ast-for-terminals          Disable AST nodes for terminals.
     \\      --input-size <BITS>             Number of bits required to fit input size.
@@ -31,6 +35,7 @@ pub const Options = struct {
     with_ast: bool = true,
     with_procedures: bool = true,
     with_error_recovery: bool = false,
+    with_position_tracking: ?bool = null,
     ast_for_terminals: bool = false,
     input_size: u16 = 16,
 };
@@ -52,6 +57,10 @@ pub fn optionsFromCliArgs(args: anytype) Options {
             result.with_error_recovery = true;
         } else if (std.mem.eql(u8, arg.name, "--no-error-recovery")) {
             result.with_error_recovery = false;
+        } else if (std.mem.eql(u8, arg.name, "--with-position-tracking")) {
+            result.with_position_tracking = true;
+        } else if (std.mem.eql(u8, arg.name, "--no-position-tracking")) {
+            result.with_position_tracking = false;
         } else if (std.mem.eql(u8, arg.name, "--ast-for-terminals")) {
             result.ast_for_terminals = true;
         } else if (std.mem.eql(u8, arg.name, "--no-ast-for-terminals")) {

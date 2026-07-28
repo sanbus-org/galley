@@ -7,6 +7,10 @@ pub const config = @import("config");
 pub const error_messages = @import("error_messages");
 pub const parser = @import("parser");
 pub const ast_memory_benchmark_enabled = runtime_options.ast_memory_benchmark;
+pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking_enabled"))
+    parser.is_position_tracking_enabled
+else
+    builtin.mode != .ReleaseFast;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
@@ -92,8 +96,8 @@ pub const SyntaxErrorMessageArgs = struct {
 
 pub const ParseResult = struct {
     parsed_bytes: usize,
-    line: if (builtin.mode != .ReleaseFast) u32 else void,
-    column: if (builtin.mode != .ReleaseFast) u32 else void,
+    line: if (position_tracking_enabled) u32 else void,
+    column: if (position_tracking_enabled) u32 else void,
     ast_root: ?data_structures.ASTNode.Pointer = null,
 };
 
