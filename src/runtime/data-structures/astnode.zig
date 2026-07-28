@@ -848,9 +848,11 @@ test "augmented iterate" {
 fn testContext(node_allocator: *TestASTAllocator, text: []u8) Context {
     var context = Context{};
     context.node_allocator = node_allocator;
-    context.token.reset(text);
     if (comptime root.config.indentation_syntax) {
+        context.token.resetBuffered();
         @memcpy(context.token.buffer[0..text.len], text);
+    } else {
+        context.token.resetInput(text);
     }
     context.token.head = @intCast(text.len);
     context.token.len = @intCast(text.len);

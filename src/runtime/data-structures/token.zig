@@ -11,10 +11,15 @@ pub const Token = struct {
 
     const Self = @This();
 
-    pub inline fn reset(self: *Self, buffer: []u8) void {
-        if (comptime !root.config.indentation_syntax) {
-            self.buffer = buffer;
-        }
+    pub inline fn resetBuffered(self: *Self) void {
+        comptime std.debug.assert(root.config.indentation_syntax);
+        self.head = 0;
+        self.len = 0;
+    }
+
+    pub inline fn resetInput(self: *Self, buffer: []u8) void {
+        comptime std.debug.assert(!root.config.indentation_syntax);
+        self.buffer = buffer;
         self.head = 0;
         self.len = 0;
     }

@@ -566,14 +566,15 @@ test "stack overflow diagnostic captures parser location and token" {
     var context: root.data_structures.Context = .{
         .chunk_buffer = &input,
     };
-    context.token.reset(&input);
 
     const expected_token = if (comptime root.config.indentation_syntax) token: {
+        context.token.resetBuffered();
         context.seek = 6;
         context.token.append('x');
         context.token.append('y');
         break :token "xy";
     } else token: {
+        context.token.resetInput(&input);
         context.token.head = 6;
         context.token.len = 2;
         break :token "45";
