@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const atomic_file = @import("atomic_file.zig");
+
 pub const Options = struct {
     with_ast: bool = true,
     with_procedures: bool = true,
