@@ -67,6 +67,73 @@ fn allocSentinelSample() ![:0]u8 {
     return input;
 }
 
+fn isJsonUnicodeCase() bool {
+    return std.mem.indexOf(u8, case_name, "-json-unicode-") != null;
+}
+
+test "JSON parser accepts valid UTF-8 scalar boundaries" {
+    if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
+
+    const input = "[\"\\u0000\",\"\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}\"]";
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
+}
+
+test "JSON parser rejects malformed UTF-8 and non-scalars" {
+    if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
+
+    const invalid_inputs = [_][]const u8{
+        &.{ '[', '"', 0x80, '"', ']' },
+        &.{ '[', '"', 0xc0, 0x80, '"', ']' },
+        &.{ '[', '"', 0xe0, 0x80, 0x80, '"', ']' },
+        &.{ '[', '"', 0xed, 0xa0, 0x80, '"', ']' },
+        &.{ '[', '"', 0xf0, 0x80, 0x80, 0x80, '"', ']' },
+        &.{ '[', '"', 0xf4, 0x90, 0x80, 0x80, '"', ']' },
+    };
+    for (invalid_inputs) |input| {
+        try std.testing.expectError(
+            parser.ParseError.SyntaxError,
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{}),
+        );
+    }
+}
+
+test "JSON string decoder handles Unicode escapes and surrogate pairs" {
+    if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
+
+    const decoded = try parser.procedures.decodeStringContent(
+        std.testing.allocator,
+        "سلام 😀\\u0000\\u007f\\u0080\\u07ff\\u0800\\uffff\\ud800\\udc00",
+    );
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(
+        u8,
+        "سلام 😀\x00\x7f\xc2\x80\xdf\xbf\xe0\xa0\x80\xef\xbf\xbf\xf0\x90\x80\x80",
+        decoded,
+    );
+}
+
+test "JSON string decoder rejects malformed Unicode escapes" {
+    if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
+
+    const cases = .{
+        .{ "\\q", error.InvalidJsonEscape },
+        .{ "\\u", error.InvalidJsonUnicodeEscape },
+        .{ "\\u123", error.InvalidJsonUnicodeEscape },
+        .{ "\\uxxxx", error.InvalidJsonUnicodeEscape },
+        .{ "\\ud800", error.InvalidJsonSurrogatePair },
+        .{ "\\ud800\\u0000", error.InvalidJsonSurrogatePair },
+        .{ "\\udc00", error.InvalidJsonSurrogatePair },
+    };
+    inline for (cases) |case| {
+        try std.testing.expectError(
+            case[1],
+            parser.procedures.decodeStringContent(std.testing.allocator, case[0]),
+        );
+    }
+}
+
 test "generated_parser_api parse bytes" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;

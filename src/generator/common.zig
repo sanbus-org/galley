@@ -376,6 +376,7 @@ pub fn headLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
 
 pub fn expandGenerativeTerminal(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), id: []const u8) !void {
     if (std.mem.eql(u8, id, "digit")) return appendChars(allocator, out, "0123456789");
+    if (std.mem.eql(u8, id, "hex_digit")) return appendChars(allocator, out, "0123456789abcdefABCDEF");
     if (std.mem.eql(u8, id, "letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
     if (std.mem.eql(u8, id, "lowercase_letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyz");
     if (std.mem.eql(u8, id, "uppercase_letter")) return appendChars(allocator, out, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
@@ -383,6 +384,17 @@ pub fn expandGenerativeTerminal(allocator: std.mem.Allocator, out: *std.ArrayLis
     if (std.mem.eql(u8, id, "space")) return out.append(allocator, " ");
     if (std.mem.eql(u8, id, "block_start")) return out.append(allocator, "\x01");
     if (std.mem.eql(u8, id, "block_end")) return out.append(allocator, "\x02");
+    if (std.mem.eql(u8, id, "utf8_lead_two")) return appendByteRange(allocator, out, 0xc2, 0xdf);
+    if (std.mem.eql(u8, id, "utf8_lead_three_general")) {
+        try appendByteRange(allocator, out, 0xe1, 0xec);
+        return appendByteRange(allocator, out, 0xee, 0xef);
+    }
+    if (std.mem.eql(u8, id, "utf8_lead_four_general")) return appendByteRange(allocator, out, 0xf1, 0xf3);
+    if (std.mem.eql(u8, id, "utf8_continuation")) return appendByteRange(allocator, out, 0x80, 0xbf);
+    if (std.mem.eql(u8, id, "utf8_continuation_80_8f")) return appendByteRange(allocator, out, 0x80, 0x8f);
+    if (std.mem.eql(u8, id, "utf8_continuation_80_9f")) return appendByteRange(allocator, out, 0x80, 0x9f);
+    if (std.mem.eql(u8, id, "utf8_continuation_90_bf")) return appendByteRange(allocator, out, 0x90, 0xbf);
+    if (std.mem.eql(u8, id, "utf8_continuation_a0_bf")) return appendByteRange(allocator, out, 0xa0, 0xbf);
     if (std.mem.startsWith(u8, id, "character")) return appendCharsExcept(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\x0b\x0c", id);
     if (std.mem.startsWith(u8, id, "whitespace")) return appendChars(allocator, out, " \t\n\r\x0b\x0c");
     if (std.mem.startsWith(u8, id, "punctuation")) return appendChars(allocator, out, "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
@@ -398,6 +410,66 @@ fn appendChars(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), ch
         const item = try allocator.alloc(u8, 1);
         item[0] = char;
         try out.append(allocator, item);
+    }
+}
+
+fn appendByteRange(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList([]const u8),
+    first: u8,
+    last: u8,
+) !void {
+    var byte = first;
+    while (true) : (byte += 1) {
+        const item = try allocator.alloc(u8, 1);
+        item[0] = byte;
+        try out.append(allocator, item);
+        if (byte == last) return;
+    }
+}
+
+test "UTF-8 generative terminals expand to their exact byte ranges" {
+    const Range = struct {
+        first: u8,
+        last: u8,
+    };
+    const Spec = struct {
+        id: []const u8,
+        ranges: []const Range,
+    };
+    const specs = [_]Spec{
+        .{ .id = "utf8_lead_two", .ranges = &.{.{ .first = 0xc2, .last = 0xdf }} },
+        .{ .id = "utf8_lead_three_general", .ranges = &.{
+            .{ .first = 0xe1, .last = 0xec },
+            .{ .first = 0xee, .last = 0xef },
+        } },
+        .{ .id = "utf8_lead_four_general", .ranges = &.{.{ .first = 0xf1, .last = 0xf3 }} },
+        .{ .id = "utf8_continuation", .ranges = &.{.{ .first = 0x80, .last = 0xbf }} },
+        .{ .id = "utf8_continuation_80_8f", .ranges = &.{.{ .first = 0x80, .last = 0x8f }} },
+        .{ .id = "utf8_continuation_80_9f", .ranges = &.{.{ .first = 0x80, .last = 0x9f }} },
+        .{ .id = "utf8_continuation_90_bf", .ranges = &.{.{ .first = 0x90, .last = 0xbf }} },
+        .{ .id = "utf8_continuation_a0_bf", .ranges = &.{.{ .first = 0xa0, .last = 0xbf }} },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for (specs) |spec| {
+        var expanded: std.ArrayList([]const u8) = .empty;
+        try expandGenerativeTerminal(arena.allocator(), &expanded, spec.id);
+
+        var index: usize = 0;
+        for (spec.ranges) |range| {
+            var expected = range.first;
+            while (true) : (expected += 1) {
+                try std.testing.expect(index < expanded.items.len);
+                try std.testing.expectEqual(@as(usize, 1), expanded.items[index].len);
+                try std.testing.expectEqual(expected, expanded.items[index][0]);
+                index += 1;
+                if (expected == range.last) break;
+            }
+        }
+        try std.testing.expectEqual(index, expanded.items.len);
     }
 }
 

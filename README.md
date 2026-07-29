@@ -22,7 +22,7 @@ Full user guides and architectural documentation are available online at:
 👉 **[sanbus-org.github.io/galley](https://sanbus-org.github.io/galley/)**
 
 * **[Getting Started](https://sanbus-org.github.io/galley/getting_started)** — Installation, requirements, and running your first parser.
-* **[Included Languages](https://sanbus-org.github.io/galley/languages)** — Reference implementations including JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
+* **[Included Languages](https://sanbus-org.github.io/galley/languages)** — Reference implementations including minimal and Unicode JSON, Augmented JSON, Lisp, Lua, and the self-hosting Galley grammar parser.
 * **[Configuration & Options](https://sanbus-org.github.io/galley/configuration)** — Generator CLI flags, language configuration, and runtime API options.
 * **[Writing a Language](https://sanbus-org.github.io/galley/writing_a_language)** — Creating grammars, generated sources, and parser API modules.
 * **[Using Galley from Another Project](docs/using-galley.md)** — Consuming the generator API and generated parser modules from Zig projects.

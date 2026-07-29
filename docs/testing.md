@@ -39,12 +39,12 @@ Bare filters such as `-Dtest-filter=ll-sanbus` are invalid. Use `case:ll-sanbus`
 | `suite:matrix` | All generated-parser matrix phases |
 | `suite:matrix-compile` | Parser generation and API benchmark-harness compilation |
 | `suite:matrix-api` | Generated-parser Zig API tests against language samples |
-| `suite:matrix-error` | Diagnostic and recovery tests for 16-bit JSON, augmented-JSON, and Sanbus variants |
+| `suite:matrix-error` | Diagnostic and recovery tests for 16-bit JSON, Unicode JSON, augmented-JSON, and Sanbus variants |
 | `suite:galley-parity` | LL-versus-LR Galley bootstrap output comparison |
 
 ### Cases
 
-A case is an exact parser-type and language pair, such as `case:ll-json`, `case:lr-json`, or `case:ll-lua`. A `case:` selector without a `suite:` selector runs every matrix phase for that case.
+A case is an exact parser-type and language pair, such as `case:ll-json`, `case:lr-json-unicode`, or `case:ll-lua`. A `case:` selector without a `suite:` selector runs every matrix phase for that case.
 
 Each selected case is tested across ten parser configurations covering AST, procedures, terminal AST nodes, and 16-bit versus 32-bit input sizes. Cases do not select `suite:galley-parity`; request that suite explicitly.
 
@@ -66,6 +66,7 @@ Run the generated-parser matrix or bootstrap parity directly when no other suite
 
 ```sh
 zig build test-generated-parser-matrix -Dtest-filter=case:ll-json
+zig build test-generated-parser-matrix -Dtest-filter=case:lr-json-unicode
 zig build test-galley-bootstrap-parity -Dtest-filter=suite:galley-parity
 ```
 
@@ -75,8 +76,9 @@ Typed filters apply directly to these dedicated steps and follow the same valida
 
 Zig test cases and build checks are reported separately:
 
-- API tests run five Zig test functions for every eligible variant/sample combination.
-- Error tests validate fail-fast diagnostics for every 16-bit JSON, augmented-JSON, or Sanbus variant. Focused recovery-enabled LL/LR variants additionally cover multiple diagnostics, limits, recovery windows, and reusable sessions.
+- API tests exercise byte, sentinel, file, reusable-session, capacity, concurrency, and language-specific behavior for every eligible variant/sample combination.
+- Error tests validate fail-fast diagnostics for every 16-bit JSON, Unicode JSON, augmented-JSON, or Sanbus variant. Focused recovery-enabled LL/LR variants additionally cover multiple diagnostics, limits, recovery windows, and reusable sessions.
+- The `ll-json-unicode` and `lr-json-unicode` API cases additionally validate raw UTF-8 scalar boundaries, malformed UTF-8 rejection, JSON Unicode escape decoding, and surrogate pairs.
 - Generation and benchmark-harness compilation validate that each selected parser configuration can be generated and consumed through its API; they are build steps, not additional Zig test cases.
 
 Samples that exceed a 16-bit parser's input limit run only on 32-bit configurations.

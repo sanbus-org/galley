@@ -1,0 +1,88 @@
+Value
+| "{" OptionalBlank ObjectMembers OptionalBlank
+| "[" OptionalBlank ArrayMembers OptionalBlank
+| IntegerNumber FloatTail OptionalBlank
+| '" _StringContent '" OptionalBlank
+| "null" OptionalBlank
+| "true" OptionalBlank
+| "false" OptionalBlank
+
+ObjectMembers
+| '" _StringContent '" OptionalBlank ":" OptionalBlank Value ObjectMembersTail "}"
+| "}"
+
+ObjectMembersTail
+| "," OptionalBlank '" _StringContent '" OptionalBlank ":" OptionalBlank Value ObjectMembersTail
+|
+
+ArrayMembers
+| Value ArrayMembersTail "]"
+| "]"
+
+ArrayMembersTail
+| "," OptionalBlank Value ArrayMembersTail
+|
+
+OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_StringContent
+| character^'"^"\\" _StringContent
+| _JsonEscape _StringContent
+| _Utf8Scalar _StringContent
+|
+
+_JsonEscape
+| "\\" _JsonEscapeBody
+
+_JsonEscapeBody
+| '"
+| "\\"
+| "/"
+| "b"
+| "f"
+| "n"
+| "r"
+| "t"
+| "u" hex_digit hex_digit hex_digit hex_digit
+
+_Utf8Scalar
+| _Utf8TwoByte
+| _Utf8ThreeByte
+| _Utf8FourByte
+
+_Utf8TwoByte
+| utf8_lead_two utf8_continuation
+
+_Utf8ThreeByte
+| "\xe0" utf8_continuation_a0_bf utf8_continuation
+| utf8_lead_three_general utf8_continuation utf8_continuation
+| "\xed" utf8_continuation_80_9f utf8_continuation
+
+_Utf8FourByte
+| "\xf0" utf8_continuation_90_bf utf8_continuation utf8_continuation
+| utf8_lead_four_general utf8_continuation utf8_continuation utf8_continuation
+| "\xf4" utf8_continuation_80_8f utf8_continuation utf8_continuation
+
+IntegerNumber
+| digit _PositiveIntegerNumberTail
+| "-" digit _PositiveIntegerNumberTail
+
+_PositiveIntegerNumberTail
+| digit _PositiveIntegerNumberTail
+|
+
+FloatTail
+| "." digit _PositiveIntegerNumberTail
+|

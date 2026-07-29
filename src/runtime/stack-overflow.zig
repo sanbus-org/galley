@@ -404,7 +404,7 @@ const Posix = if (is_supported) struct {
         return info.*.__si_fields.__sigfault.si_addr;
     }
 
-    export fn signalHandler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque) callconv(.c) void {
+    fn signalHandler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque) callconv(.c) void {
         _ = handlers_in_flight.fetchAdd(1, .acq_rel);
 
         if (active_scope) |scope| {

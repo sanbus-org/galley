@@ -627,14 +627,13 @@ def benchmark_variant(gen_opts):
     )
 
 
-def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
+def prepare_benchmark_suite(name, gen_opts, args):
     parser_types = get_parser_types_for_language(name, args)
     if not parser_types:
         print(f"\033[31mNo parser types found for '{name}'\033[0m")
         sys.exit(1)
 
-    if inputs is None:
-        inputs = sample_inputs(name)
+    inputs = sample_inputs(name)
 
     variant = benchmark_variant(gen_opts)
     cards = []
@@ -1063,34 +1062,15 @@ def sample_inputs(lang_name):
 
 
 def galley_benchmark(gen_opts, args):
-    inputs = [
-        "languages/galley/ll.grm",
-        "languages/galley/lr.grm",
-        "languages/json/ll.grm",
-        "languages/sanbus/ll.grm",
-        "languages/ll1/ll.grm",
-    ]
-    args.benchmark_plan.append(
-        prepare_benchmark_suite("galley", gen_opts, args, inputs)
-    )
+    args.benchmark_plan.append(prepare_benchmark_suite("galley", gen_opts, args))
 
 
 def json_benchmark(gen_opts, args):
     args.benchmark_plan.append(prepare_benchmark_suite("json", gen_opts, args))
 
 
-def json_structured_ast_benchmark(gen_opts, args):
-    inputs = sample_inputs("json")
-    args.benchmark_plan.append(
-        prepare_benchmark_suite("json-structured-ast", gen_opts, args, inputs)
-    )
-
-
-def augmented_json_benchmark(gen_opts, args):
-    inputs = sample_inputs("json") + sample_inputs("json-augmented")
-    args.benchmark_plan.append(
-        prepare_benchmark_suite("json-augmented", gen_opts, args, inputs)
-    )
+def json_unicode_benchmark(gen_opts, args):
+    args.benchmark_plan.append(prepare_benchmark_suite("json-unicode", gen_opts, args))
 
 
 def sanbus_benchmark(gen_opts, args):
@@ -1140,6 +1120,7 @@ def run_all_modes(benchmark_fn, args):
 BENCHMARKS = {
     "galley": galley_benchmark,
     "json": json_benchmark,
+    "json-unicode": json_unicode_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
     "sanbus": sanbus_benchmark,
