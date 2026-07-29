@@ -13,8 +13,6 @@ docgen_tmp/
 __pycache__/
 *.py[cod]
 sanbus-parse.log
-third_party/parser-benchmark/**/target/
-third_party/parser-benchmark/tree-sitter/lib/
 
 *-backup
 _*parser.zig

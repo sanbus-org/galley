@@ -78,6 +78,34 @@ python3 scripts/generate_benchmarks_doc.py
 
 ---
 
+## Third-Party Parser Comparison
+
+The cross-parser harness is maintained as the
+[`parser-benchmark`](https://github.com/sanbus-org/parser-benchmark)
+submodule. Initialize it and its pinned parser dependencies with:
+
+```sh
+git submodule update --init --recursive
+```
+
+Benchmark fixtures are external assets. Selecting one downloads it only when
+missing or invalid, verifies its pinned SHA-256 checksum, and keeps it ignored
+by Git. No benchmark input is stored in the repository.
+
+```sh
+cd third_party/parser-benchmark
+zig build -Doptimize=ReleaseFast run
+zig build -Doptimize=ReleaseFast run -- twitter
+zig build -Doptimize=ReleaseFast run -- canada
+zig build -Doptimize=ReleaseFast run -- citm_catalog
+```
+
+Third-party results are written below the submodule’s
+`benchmark_results/json/` directory. The documentation generator reads that
+location in addition to Galley’s own `benchmark_results/` tree.
+
+---
+
 ## Validation Without Benchmarking
 
 This is for correctness checks, not throughput reporting.
