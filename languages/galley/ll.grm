@@ -76,11 +76,31 @@ RecoveryPointBody
 
 StringContent
 | character StringContent
+| _Utf8Scalar StringContent
 |
 
 SimpleStringContent
 | character^'" SimpleStringContent
+| _Utf8Scalar SimpleStringContent
 |
+
+_Utf8Scalar
+| _Utf8TwoByte
+| _Utf8ThreeByte
+| _Utf8FourByte
+
+_Utf8TwoByte
+| utf8_lead_two utf8_continuation
+
+_Utf8ThreeByte
+| "\xe0" utf8_continuation_a0_bf utf8_continuation
+| utf8_lead_three_general utf8_continuation utf8_continuation
+| "\xed" utf8_continuation_80_9f utf8_continuation
+
+_Utf8FourByte
+| "\xf0" utf8_continuation_90_bf utf8_continuation utf8_continuation
+| utf8_lead_four_general utf8_continuation utf8_continuation utf8_continuation
+| "\xf4" utf8_continuation_80_8f utf8_continuation utf8_continuation
 
 ControlCharacter
 | "\x01"

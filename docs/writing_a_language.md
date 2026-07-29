@@ -100,7 +100,7 @@ The grammar file format is documented in detail in [Grammar Guidelines](grammar_
 - **Entry point:** The first rule defined in the file becomes the parser's start symbol.
 - **Parser type:** Choose `--parser-type ll` for top-down parsing or `--parser-type lr` for bottom-up parsing.
 - **AST allocation:** Variables starting with a capital letter allocate AST nodes; variables starting with `_` (CamelCase, e.g. `_WhiteSpace`) are skipped entirely.
-- **Terminals:** Exact string literals must be in double quotes (e.g. `"let"`). Unquoted lowercase identifiers match named character classes or generative terminals like `digit`, `letter`, `space`, `new_line` (these can optionally receive exception suffix chains like `character^"\n"` or `digit^"1"^"3"` to exclude specific characters, see [Grammar Guidelines](grammar_guidelines.md) for details).
+- **Terminals:** Exact strings can contain raw UTF-8 (e.g. `"سلام"`) or `\u{...}` scalar escapes (e.g. `"\u{1f600}"`). Unquoted lowercase identifiers match named character classes or generative terminals like `digit`, `letter`, `space`, and `new_line`. UTF-8 byte-class terminals can be composed when a language rule must validate arbitrary Unicode input. Generative terminals can optionally receive exception suffix chains like `character^"\n"` or `digit^"1"^"3"`; see [Grammar Guidelines](grammar_guidelines.md) for the complete syntax and terminal list.
 
 ### Example: Simple Arithmetic
 

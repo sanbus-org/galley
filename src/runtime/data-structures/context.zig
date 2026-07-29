@@ -124,7 +124,7 @@ pub const Context = struct {
         if (comptime root.config.indentation_syntax) {
             if (self.indentation_error) return error.IndentationError;
         }
-        const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.token.items());
+        const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.diagnosticTokenItems());
         self.runtime().last_diagnostic = .{
             .syntax = .{
                 .line = if (comptime root.position_tracking_enabled) self.line else 0,
@@ -135,6 +135,21 @@ pub const Context = struct {
             },
         };
         self.runtime().syntax_error_count += 1;
+    }
+
+    fn diagnosticTokenItems(self: *Self) []const u8 {
+        const original = self.token.items();
+        if (original.len == 0 or original[0] < 0x80) return original;
+
+        const sequence_length = std.unicode.utf8ByteSequenceLength(original[0]) catch return original;
+        if (sequence_length > original.len) {
+            _ = self.head(u8, @intCast(sequence_length - 1));
+        }
+
+        const loaded = self.token.items();
+        if (sequence_length > loaded.len) return original;
+        _ = std.unicode.utf8Decode(loaded[0..sequence_length]) catch return original;
+        return loaded[0..@max(original.len, sequence_length)];
     }
 
     pub inline fn syntaxErrorLimitReached(self: *const Self) bool {

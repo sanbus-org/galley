@@ -94,6 +94,25 @@ test "generated_parser_error parse sentinel bytes" {
     );
 }
 
+test "generated_parser_error preserves a complete Unicode unexpected token" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
+    defer session.deinit();
+
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("😀", null));
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    const syntax = switch (diagnostic) {
+        .syntax => |syntax| syntax,
+        .indentation => return error.ExpectedSyntaxDiagnostic,
+    };
+    try std.testing.expectEqualStrings("😀", syntax.unexpected_token);
+
+    const rendered = try parser.renderParseDiagnostic(std.testing.allocator, diagnostic, .plain);
+    defer std.testing.allocator.free(rendered);
+    try expectContains(rendered, "Unexpected token \"😀\"");
+}
+
 test "generated_parser_error reusable byte session recovers" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();

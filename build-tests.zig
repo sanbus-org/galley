@@ -91,6 +91,38 @@ pub fn add(b: *std.Build, options: Options) !void {
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tests.step);
         }
 
+        const generator_common_tests = b.addTest(.{
+            .name = "generator-common-tests",
+            .root_module = generator.generator_common_mod,
+            .filters = selection.names,
+        });
+        const run_generator_common_tests = b.addRunArtifact(generator_common_tests);
+        test_step.dependOn(&run_generator_common_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_common_tests.step);
+
+        const galley_grammar_procedure_tests = b.addTest(.{
+            .name = "galley-grammar-procedure-tests",
+            .root_module = generator.galley_grammar_procedures_mod,
+            .filters = selection.names,
+        });
+        const run_galley_grammar_procedure_tests = b.addRunArtifact(galley_grammar_procedure_tests);
+        test_step.dependOn(&run_galley_grammar_procedure_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_galley_grammar_procedure_tests.step);
+
+        const json_unicode_procedure_test_mod = b.createModule(.{
+            .root_source_file = b.path("languages/json-unicode/procedures.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const json_unicode_procedure_tests = b.addTest(.{
+            .name = "json-unicode-procedure-tests",
+            .root_module = json_unicode_procedure_test_mod,
+            .filters = selection.names,
+        });
+        const run_json_unicode_procedure_tests = b.addRunArtifact(json_unicode_procedure_tests);
+        test_step.dependOn(&run_json_unicode_procedure_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_unicode_procedure_tests.step);
+
         const generator_tests = b.addTest(.{
             .name = "generator-tests",
             .root_module = generator.galley_generator_mod,

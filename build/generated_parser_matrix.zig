@@ -98,6 +98,7 @@ const parser_type_specs = [_]ParserTypeSpec{
 const languages = [_][]const u8{
     "galley",
     "json",
+    "json-unicode",
     "json-recovery",
     "json-augmented",
     "json-structured-ast",
@@ -501,7 +502,10 @@ const ErrorInputs = struct {
 };
 
 fn errorInputs(language: []const u8) ?ErrorInputs {
-    if (std.mem.eql(u8, language, "json") or std.mem.eql(u8, language, "json-recovery")) {
+    if (std.mem.eql(u8, language, "json") or
+        std.mem.eql(u8, language, "json-unicode") or
+        std.mem.eql(u8, language, "json-recovery"))
+    {
         return .{
             .valid = "{}",
             .malformed = "{",
