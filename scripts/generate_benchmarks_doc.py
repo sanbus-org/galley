@@ -2,8 +2,9 @@
 """
 scripts/generate_benchmarks_doc.py
 
-Reads benchmark results from benchmark_results/galley/ and
-benchmark_results/third_party/, then produces a comprehensive BENCHMARKS.md.
+Reads Galley benchmark results from benchmark_results/ and third-party results
+from third_party/parser-benchmark/benchmark_results/, then produces a
+comprehensive BENCHMARKS.md.
 """
 
 from __future__ import annotations
@@ -487,7 +488,7 @@ specification with no JSON-specific optimisations.
     lines.append(
         "Galley is measured with the fastest `2^16` input-size configuration. "
         "Third-party tools run on "
-        "`third_party/parser-benchmark/large_dataset.json` (~50 MB). "
+        "the checksum-pinned external `twitter.json` fixture. "
         "Inputs differ; this is a directional comparison.\n"
     )
 
@@ -713,9 +714,11 @@ def section_methodology() -> str:
 - **LL** = generated LL parser; **LR** = generated LR parser.
 
 ### Third-party parsers
-- Benchmarks are run by `third_party/parser-benchmark/` (Zig project).
-- Results are written to `benchmark_results/third_party/json/{input_file}.txt`.
-- Input: `large_dataset.json` (~50 MB synthetic JSON array).
+- Benchmarks are run by the `third_party/parser-benchmark/` submodule.
+- Results are written below `third_party/parser-benchmark/benchmark_results/json/`.
+- The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
+  demand, checksum-verified, ignored external assets.
+- No benchmark input is stored in either repository.
 - Parsers included: Tree-sitter (C, CST), Bison/Flex (C, multiple AST modes),
   LALRPOP (Rust, Non-AST), simdjson (C++, Validate & DOM), Nom (Rust, AST),
   RapidJSON (C++/SIMD, DOM & SAX).
@@ -739,6 +742,11 @@ def main() -> None:
         sys.exit(1)
 
     files = collect_all(results_root)
+    third_party_results_root = (
+        repo_root / "third_party" / "parser-benchmark" / "benchmark_results"
+    )
+    if third_party_results_root.exists():
+        files.extend(collect_all(third_party_results_root))
     if not files:
         print("ERROR: No benchmark result files found", file=sys.stderr)
         sys.exit(1)

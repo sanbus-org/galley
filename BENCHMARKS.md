@@ -51,7 +51,7 @@ specification with no JSON-specific optimisations.
 
 ### Parser Generators & Tools — Head-to-Head
 
-Galley is measured with the fastest `2^16` input-size configuration. Third-party tools run on `third_party/parser-benchmark/large_dataset.json` (~50 MB). Inputs differ; this is a directional comparison.
+Galley is measured with the fastest `2^16` input-size configuration. Third-party tools run on the checksum-pinned external `twitter.json` fixture. Inputs differ; this is a directional comparison.
 
 | Parser / Mode              | Category           | Throughput |
 | -------------------------- | ------------------ | ---------- |
@@ -549,9 +549,11 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 ### Third-party parsers
 
-- Benchmarks are run by `third_party/parser-benchmark/` (Zig project).
-- Results are written to `benchmark_results/third_party/json/{input_file}.txt`.
-- Input: `large_dataset.json` (~50 MB synthetic JSON array).
+- Benchmarks are run by the `third_party/parser-benchmark/` submodule.
+- Results are written below `third_party/parser-benchmark/benchmark_results/json/`.
+- The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
+  demand, checksum-verified, ignored external assets.
+- No benchmark input is stored in either repository.
 - Parsers included: Tree-sitter (C, CST), Bison/Flex (C, multiple AST modes),
   LALRPOP (Rust, Non-AST), simdjson (C++, Validate & DOM), Nom (Rust, AST),
   RapidJSON (C++/SIMD, DOM & SAX).
