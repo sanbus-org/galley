@@ -5,6 +5,7 @@
 - [Overview](#overview)
 - [Bundled Grammars](#bundled-grammars)
   - [JSON (`languages/json`)](#json-languagesjson)
+  - [JSON Unicode (`languages/json-unicode`)](#json-unicode-languagesjson-unicode)
   - [JSON Recovery (`languages/json-recovery`)](#json-recovery-languagesjson-recovery)
   - [JSON Structured AST (`languages/json-structured-ast`)](#json-structured-ast-languagesjson-structured-ast)
   - [JSON Augmented (`languages/json-augmented`)](#json-augmented-languagesjson-augmented)
@@ -26,11 +27,19 @@ Galley ships with several ready-to-use grammar definitions located in the `langu
 
 ### JSON (`languages/json`)
 
-The standard RFC 8259 JSON implementation used for JSON benchmarking. It supports full recursive object and array structures, floating-point numbers, unicode escape sequences, and string content literals. Its grammar is written with fewer non-terminals so the generated parser has fewer calls and less intermediate AST structure.
+The minimal JSON benchmark implementation. It supports recursive object and array structures, floating-point numbers, and ASCII string content. Its grammar deliberately avoids Unicode scalar validation and JSON escape decoding so the generated parser has fewer calls and less intermediate structure.
 
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
 
-This is the minimal performance reference. Recovery-oriented grammar structure lives in `languages/json-recovery` so it cannot affect JSON benchmark topology or throughput.
+This is the minimal performance reference. Unicode validation lives in `languages/json-unicode`, and recovery-oriented grammar structure lives in `languages/json-recovery`, so neither feature changes the baseline grammar's topology or throughput.
+
+### JSON Unicode (`languages/json-unicode`)
+
+The Unicode-complete JSON reference grammar. It accepts valid raw UTF-8 scalar values, rejects malformed and non-scalar UTF-8 encodings, and validates standard JSON escapes including `\uXXXX`. Its string decoder combines UTF-16 surrogate pairs, preserves embedded `U+0000` in length-aware output slices, and returns decoded UTF-8.
+
+- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+- **Unicode grammar:** Single-byte UTF-8 generative terminals are composed into two-, three-, and four-byte scalar rules.
+- **Sample:** `samples/code-01.json` includes 20-scalar Unicode strings across every root object.
 
 ### JSON Recovery (`languages/json-recovery`)
 
@@ -109,6 +118,11 @@ zig build
 ./zig-out/bin/galley --parser-type ll languages/json
 zig build -Doptimize=ReleaseFast run-ll-json -- \
   languages/json/samples/code-01.json --iterations 100
+
+# Generate and benchmark the Unicode JSON parser
+./zig-out/bin/galley --parser-type ll languages/json-unicode
+zig build -Doptimize=ReleaseFast run-ll-json-unicode -- \
+  languages/json-unicode/samples/code-01.json --iterations 100
 
 # Generate and benchmark the LR parser for the Grammar specification itself
 ./zig-out/bin/galley --parser-type lr languages/galley

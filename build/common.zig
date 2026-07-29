@@ -8,6 +8,7 @@ pub const GeneratorModules = struct {
     generator_common_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
+    galley_grammar_procedures_mod: *std.Build.Module,
     galley_grammar_library_mod: *std.Build.Module,
     galley_generator_mod: *std.Build.Module,
 };
@@ -169,6 +170,7 @@ pub fn addGeneratorModules(
         .generator_common_mod = generator_common_mod,
         .ll_generator_mod = ll_generator_mod,
         .lr_generator_mod = lr_generator_mod,
+        .galley_grammar_procedures_mod = galley_grammar_procedures_mod,
         .galley_grammar_library_mod = galley_grammar_library_mod,
         .galley_generator_mod = galley_generator_mod,
     };

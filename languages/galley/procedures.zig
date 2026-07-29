@@ -414,10 +414,59 @@ fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
                 i += 4;
                 continue;
             },
+            'u' => {
+                if (i + 2 >= unquoted.len or unquoted[i + 2] != '{') return error.InvalidUnicodeEscape;
+                const end = std.mem.indexOfScalarPos(u8, unquoted, i + 3, '}') orelse
+                    return error.InvalidUnicodeEscape;
+                const digits = unquoted[i + 3 .. end];
+                if (digits.len == 0 or digits.len > 6) return error.InvalidUnicodeEscape;
+
+                const codepoint_value = std.fmt.parseInt(u21, digits, 16) catch
+                    return error.InvalidUnicodeEscape;
+                var buffer: [4]u8 = undefined;
+                const length = std.unicode.utf8Encode(codepoint_value, &buffer) catch
+                    return error.InvalidUnicodeEscape;
+                try decoded.appendSlice(allocator, buffer[0..length]);
+                i = end + 1;
+                continue;
+            },
             else => try decoded.append(allocator, escaped),
         }
         i += 2;
     }
 
     return decoded.toOwnedSlice(allocator);
+}
+
+test "grammar Unicode escapes decode every UTF-8 width" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const decoded = try decodeEscapes(
+        arena.allocator(),
+        "\"\\u{0}\\u{7f}\\u{80}\\u{7ff}\\u{800}\\u{ffff}\\u{10000}\\u{10ffff}\"",
+    );
+    try std.testing.expectEqualSlices(
+        u8,
+        "\x00\x7f\xc2\x80\xdf\xbf\xe0\xa0\x80\xef\xbf\xbf\xf0\x90\x80\x80\xf4\x8f\xbf\xbf",
+        decoded,
+    );
+}
+
+test "grammar Unicode escapes reject non-scalars and malformed forms" {
+    inline for (&.{
+        "\"\\u{}\"",
+        "\"\\u{1234567}\"",
+        "\"\\u{d800}\"",
+        "\"\\u{dfff}\"",
+        "\"\\u{110000}\"",
+        "\"\\u{xyz}\"",
+        "\"\\u{1234\"",
+        "\"\\u1234\"",
+    }) |encoded| {
+        try std.testing.expectError(
+            error.InvalidUnicodeEscape,
+            decodeEscapes(std.testing.allocator, encoded),
+        );
+    }
 }

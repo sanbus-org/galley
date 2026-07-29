@@ -14,7 +14,7 @@ const StringSliceFormatter = struct {
         try writer.writeAll("{ \"");
         for (self.slice, 0..) |str, i| {
             if (i > 0) try writer.writeAll("\", \"");
-            try std.zig.stringEscape(str, writer);
+            try writeHumanReadableString(str, writer);
         }
         try writer.writeAll("\" }");
     }
@@ -31,12 +31,69 @@ const StringFormatter = struct {
         self: @This(),
         writer: *std.Io.Writer,
     ) !void {
-        try std.zig.stringEscape(self.string, writer);
+        try writeHumanReadableString(self.string, writer);
     }
 };
 
 pub fn fmtString(string: []const u8) StringFormatter {
     return .{ .string = string };
+}
+
+test "string formatter preserves valid Unicode and escapes unsafe bytes" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+
+    try output.writer.print("{f}", .{fmtString("سلام 😀\n\xff\u{2028}")});
+    try std.testing.expectEqualStrings(
+        "سلام 😀\\n\\xff\\u{2028}",
+        output.written(),
+    );
+}
+
+fn writeHumanReadableString(string: []const u8, writer: *std.Io.Writer) !void {
+    var index: usize = 0;
+    while (index < string.len) {
+        const byte = string[index];
+        switch (byte) {
+            '\n' => try writer.writeAll("\\n"),
+            '\t' => try writer.writeAll("\\t"),
+            '\r' => try writer.writeAll("\\r"),
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            0x20...0x21, 0x23...0x5b, 0x5d...0x7e => try writer.writeByte(byte),
+            0x00...0x08, 0x0b...0x0c, 0x0e...0x1f, 0x7f => try writer.print("\\x{x:0>2}", .{byte}),
+            else => {
+                const sequence_length = std.unicode.utf8ByteSequenceLength(byte) catch {
+                    try writer.print("\\x{x:0>2}", .{byte});
+                    index += 1;
+                    continue;
+                };
+                if (sequence_length > string.len - index) {
+                    try writer.print("\\x{x:0>2}", .{byte});
+                    index += 1;
+                    continue;
+                }
+
+                const sequence = string[index..][0..sequence_length];
+                const codepoint = std.unicode.utf8Decode(sequence) catch {
+                    try writer.print("\\x{x:0>2}", .{byte});
+                    index += 1;
+                    continue;
+                };
+                if ((codepoint >= 0x80 and codepoint <= 0x9f) or
+                    codepoint == 0x2028 or
+                    codepoint == 0x2029)
+                {
+                    try writer.print("\\u{{{x}}}", .{codepoint});
+                } else {
+                    try writer.writeAll(sequence);
+                }
+                index += sequence_length;
+                continue;
+            },
+        }
+        index += 1;
+    }
 }
 
 const ASTNodeFormatter = struct {

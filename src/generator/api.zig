@@ -211,6 +211,72 @@ test generateParserAlloc {
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
 }
 
+test "grammar accepts raw Unicode terminals and Unicode scalar escapes" {
+    const source =
+        \\Start
+        \\| "\u{0}" "سلام" "\u{80}" "\u{7ff}" "\u{800}" "\u{ffff}" "\u{10000}" "\u{10ffff}"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const grammar = try parseGrammar(arena.allocator(), source);
+    const symbols = grammar.rules[0].right_hand_sides[0].symbols;
+    const expected = [_][]const u8{
+        "\x00",
+        "سلام",
+        "\xc2\x80",
+        "\xdf\xbf",
+        "\xe0\xa0\x80",
+        "\xef\xbf\xbf",
+        "\xf0\x90\x80\x80",
+        "\xf4\x8f\xbf\xbf",
+    };
+    try std.testing.expectEqual(expected.len, symbols.len);
+    for (symbols, expected) |symbol, terminal| {
+        try std.testing.expectEqual(.terminal, symbol.kind);
+        try std.testing.expectEqualStrings(terminal, symbol.id);
+    }
+}
+
+test "grammar rejects invalid Unicode scalar escapes" {
+    inline for (&.{
+        \\Start
+        \\| "\u{}"
+        \\
+        ,
+        \\Start
+        \\| "\u1234"
+        \\
+        ,
+        \\Start
+        \\| "\u{xyz}"
+        \\
+        ,
+        \\Start
+        \\| "\u{1234"
+        \\
+        ,
+        \\Start
+        \\| "\u{1234567}"
+        \\
+        ,
+        \\Start
+        \\| "\u{d800}"
+        \\
+        ,
+        \\Start
+        \\| "\u{110000}"
+        \\
+        ,
+    }) |source| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        try std.testing.expectError(error.InvalidUnicodeEscape, parseGrammar(arena.allocator(), source));
+    }
+}
+
 test "generator rejects procedures without AST construction" {
     const source =
         \\Start
@@ -679,7 +745,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 126), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 182), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());
