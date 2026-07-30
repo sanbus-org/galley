@@ -45,7 +45,6 @@ class BenchmarkFile:
     language: str        # "json", "galley", "augmented-json", etc.
     input_file: str      # e.g. "languages/json/samples/code-01.json"
     ast_mode: str        # "no-ast", "no-procedures", "" (third_party)
-    size_limit: str      # "size_16", "size_32", "" (third_party)
     terminal_ast: str    # "ast-for-terminals", "no-ast-for-terminals", ""
     results: List[ParserResult] = field(default_factory=list)
 
@@ -162,7 +161,6 @@ def parse_benchmark_file(path: Path) -> Optional[BenchmarkFile]:
         language=meta.get("Language", ""),
         input_file=meta.get("Input", ""),
         ast_mode=meta.get("AST Mode", ""),
-        size_limit=meta.get("Input Size Limit", ""),
         terminal_ast=meta.get("Terminal AST", ""),
         results=results,
     )
@@ -255,7 +253,6 @@ def best_galley_result(
     language: str,
     parser: str,
     ast_mode_pref: Optional[str] = None,
-    size_limit_pref: Optional[str] = None,
 ) -> Optional[ParserResult]:
     """Return the result for the largest measured input for a given galley parser."""
     candidates: List[Tuple[int, ParserResult]] = []
@@ -264,44 +261,15 @@ def best_galley_result(
             continue
         if ast_mode_pref and bf.ast_mode != ast_mode_pref:
             continue
-        if size_limit_pref and bf.size_limit != size_limit_pref:
-            continue
-        input_size = (
+        input_bytes = (
             os.path.getsize(bf.input_file) if os.path.exists(bf.input_file) else 0
         )
         for r in bf.results:
             if r.name == parser and not r.skipped and r.throughput > 0:
-                candidates.append((input_size, r))
+                candidates.append((input_bytes, r))
     if not candidates:
         return None
     return max(candidates, key=lambda item: (item[0], item[1].throughput))[1]
-
-
-def galley_results_for_input(
-    files: List[BenchmarkFile],
-    language: str,
-    input_basename: str,
-    ast_mode: str,
-    size_limit: str,
-    terminal_ast: str,
-) -> Dict[str, ParserResult]:
-    """Return {parser_name: result} for a specific galley input configuration."""
-    out: Dict[str, ParserResult] = {}
-    for bf in files:
-        if (
-            bf.source != "galley"
-            or bf.language != language
-            or bf.ast_mode != ast_mode
-            or bf.size_limit != size_limit
-            or bf.terminal_ast != terminal_ast
-        ):
-            continue
-        if os.path.basename(bf.input_file) != input_basename:
-            continue
-        for r in bf.results:
-            if not r.skipped:
-                out[r.name] = r
-    return out
 
 
 def third_party_results(files: List[BenchmarkFile]) -> Dict[str, ParserResult]:
@@ -371,16 +339,16 @@ def section_json_comparison(files: List[BenchmarkFile]) -> str:
 
     # Galley JSON — three meaningful modes
     g_ll_noast = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-ast", size_limit_pref="size_16"
+        files, "json", "LL", ast_mode_pref="no-ast"
     )
     g_lr_noast = best_galley_result(
-        files, "json", "LR", ast_mode_pref="no-ast", size_limit_pref="size_16"
+        files, "json", "LR", ast_mode_pref="no-ast"
     )
     g_ll_ast = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-procedures", size_limit_pref="size_16"
+        files, "json", "LL", ast_mode_pref="no-procedures"
     )
     g_lr_ast = best_galley_result(
-        files, "json", "LR", ast_mode_pref="no-procedures", size_limit_pref="size_16"
+        files, "json", "LR", ast_mode_pref="no-procedures"
     )
 
     # Classify third-party entries
@@ -486,7 +454,6 @@ specification with no JSON-specific optimisations.
     # ── Parser generators comparison (main table) ──────────────────────────
     lines.append("### Parser Generators & Tools — Head-to-Head\n")
     lines.append(
-        "Galley is measured with the fastest `2^16` input-size configuration. "
         "Third-party tools run on "
         "the checksum-pinned external `twitter.json` fixture. "
         "Inputs differ; this is a directional comparison.\n"
@@ -616,7 +583,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     if desc:
         lines.append(f"_{desc}_\n")
 
-    # Group by (ast_mode, size_limit, terminal_ast, input_file)
+    # Group by (ast_mode, terminal_ast, input_file)
     configs: Dict[Tuple, Dict[str, List[ParserResult]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -624,7 +591,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     for bf in files:
         if bf.source != "galley" or bf.language != grammar:
             continue
-        key = (bf.ast_mode, bf.size_limit, bf.terminal_ast, bf.input_file)
+        key = (bf.ast_mode, bf.terminal_ast, bf.input_file)
         for r in bf.results:
             if not r.skipped and r.throughput > 0:
                 configs[key][r.name].append(r)
@@ -633,13 +600,11 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         lines.append("_No results available._\n")
         return "\n".join(lines)
 
-    seen_configs: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
-    for (ast_mode, size_limit, terminal_ast, input_file), parsers in sorted(
-        configs.items()
-    ):
+    seen_configs: Dict[Tuple[str, str, str], Tuple[float, float]] = {}
+    for (ast_mode, terminal_ast, input_file), parsers in sorted(configs.items()):
         ll_best = max((r.throughput for r in parsers.get("LL", [])), default=0)
         lr_best = max((r.throughput for r in parsers.get("LR", [])), default=0)
-        seen_configs[(ast_mode, size_limit, terminal_ast, input_file)] = (
+        seen_configs[(ast_mode, terminal_ast, input_file)] = (
             ll_best,
             lr_best,
         )
@@ -650,16 +615,12 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     def term_sym(t: str) -> str:
         return "✓" if t == "ast-for-terminals" else "✗"
 
-    def size_short(s: str) -> str:
-        # "size_16" → "16", "size_32" → "32"
-        return s.replace("size_", "") if s else "—"
-
     lines.append(
-        "_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_\n"
+        "_AST = build syntax tree · Term. = include terminal nodes in tree_\n"
     )
 
-    inputs = sorted({input_file for (_, _, _, input_file) in seen_configs})
-    headers = ["AST", "Term.", "Limit", "LL", "LR", "LL/LR"]
+    inputs = sorted({input_file for (_, _, input_file) in seen_configs})
+    headers = ["AST", "Term.", "LL", "LR", "LL/LR"]
 
     for input_file in inputs:
         rel_input = input_file
@@ -668,28 +629,26 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         rows = []
         bar_entries: List[Tuple[str, float]] = []
         input_configs = [
-            (ast_mode, size_limit, terminal_ast, ll, lr)
-            for (ast_mode, size_limit, terminal_ast, cfg_input), (
+            (ast_mode, terminal_ast, ll, lr)
+            for (ast_mode, terminal_ast, cfg_input), (
                 ll,
                 lr,
             ) in seen_configs.items()
             if cfg_input == input_file
         ]
 
-        for ast_mode, size_limit, terminal_ast, ll, lr in sorted(input_configs):
+        for ast_mode, terminal_ast, ll, lr in sorted(input_configs):
             ratio = f"{ll / lr:.2f}×" if lr > 0 else "—"
             rows.append(
                 [
                     ast_sym(ast_mode),
                     term_sym(terminal_ast),
-                    size_short(size_limit),
                     fmt_throughput(ll),
                     fmt_throughput(lr),
                     ratio,
                 ]
             )
-            lim = size_short(size_limit)
-            label = f"{ast_sym(ast_mode)}ast {term_sym(terminal_ast)}term lim={lim}"
+            label = f"{ast_sym(ast_mode)}ast {term_sym(terminal_ast)}term"
             bar_entries.append((f"LL  {label}", ll))
             bar_entries.append((f"LR  {label}", lr))
 
@@ -709,7 +668,7 @@ def section_methodology() -> str:
 
 ### Galley (this compiler)
 - Benchmarks are run by `scripts/benchmark.py`.
-- Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{size_limit}/{terminal_ast}/{input_lang}/{input_file}.txt`.
+- Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{terminal_ast}/{input_lang}/{input_file}.txt`.
 - **Parsed bytes** reflects repeated parsing of the input until a stable total is reached.
 - **LL** = generated LL parser; **LR** = generated LR parser.
 
@@ -803,7 +762,7 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
     # Summary stats
     tp = third_party_results(files)
     galley_ll = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-ast", size_limit_pref="size_16"
+        files, "json", "LL", ast_mode_pref="no-ast"
     )
     if galley_ll:
         best_tp = max(tp.values(), key=lambda r: r.throughput) if tp else None

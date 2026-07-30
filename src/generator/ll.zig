@@ -260,8 +260,7 @@ const Generator = struct {
             \\pub const is_error_recovery_enabled = {};
             \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
             \\pub const is_position_tracking_enabled = {s};
-            \\pub const is_input_refill_enabled = {};
-            \\pub const input_size_cap = u{d};
+            \\pub const is_input_streaming_enabled = {};
             \\pub const longest_terminal_length = {d};
             \\
             \\
@@ -271,8 +270,7 @@ const Generator = struct {
             self.options.with_error_recovery,
             if (!self.options.with_error_recovery) "disabled" else if (self.uses_explicit_recovery) "explicit" else "automatic",
             if (self.options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
-            self.options.with_input_refill,
-            self.options.input_size,
+            self.options.with_input_streaming,
             self.longestTerminalLength(),
         });
 
@@ -738,9 +736,6 @@ const Generator = struct {
                 \\    _ = &node_address;
                 \\    var repeating_node_address = node_address;
                 \\    repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-                \\    var repeating_node: *data_structures.ASTNode = undefined;
-                \\    repeating_node = repeating_node; // dummy store for 0-repetition paths
-                \\    _ = &repeating_node;
                 \\
             );
         } else if (rule.rhs.items.len > self_index + 1) {
@@ -781,17 +776,16 @@ const Generator = struct {
                 \\                if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
-                \\                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
+                \\                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
                 \\                }}
                 \\                repeating_node_address = temporary_address;
-                \\                repeating_node = context.node_allocator.at(repeating_node_address);
                 \\
             , .{ self.variableIndex(variable), self_index });
         }
 
         const skip_ast_for_children = self.options.with_ast and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
         for (rule.rhs.items[0..self_index], 0..) |symbol_index, child_index| {
-            try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "repeating_node" else null, if (returns_node) "repeating_node_address" else null, "                ", skip_ast_for_children);
+            try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "node" else null, if (returns_node) "repeating_node_address" else null, "                ", skip_ast_for_children);
         }
         if (!returns_node and rule.rhs.items.len > self_index + 1) {
             try writer.writeAll("                counter += 1;\n");
@@ -819,22 +813,21 @@ const Generator = struct {
                 \\        if (node_address == data_structures.ASTNode.invalid_pointer) {{
                 \\            node_address = exit_node;
                 \\        }} else {{
-                \\            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                \\            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                 \\        }}
                 \\    }}
                 \\    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {{
-                \\        repeating_node = context.node_allocator.at(repeating_node_address);
             , .{self_index});
             try writer.writeByte('\n');
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "repeating_node", "repeating_node_address", "        ", skip_ast_for_children);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children);
             }
             try writer.writeByte('\n');
             try self.emitDebugReduction(writer, rule, variable, "        ");
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {
-                    try writer.writeAll("        const reduction_occurrence_procedures = if (repeating_node.parent == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
+                    try writer.writeAll("        const reduction_occurrence_procedures = if (context.node_allocator.at(repeating_node_address).parent == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
                     try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
                     try writer.writeAll(";\n");
                 }
@@ -862,7 +855,7 @@ const Generator = struct {
                     \\
                 );
             }
-            try writer.writeAll("        repeating_node_address = repeating_node.parent;\n");
+            try writer.writeAll("        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;\n");
             try writer.writeAll(
                 \\    }
                 \\    return node_address;

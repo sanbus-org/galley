@@ -33,9 +33,8 @@ zig build
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `!` annotations use explicit-only recovery. | `--no-error-recovery` |
 | `--with-position-tracking` / `--no-position-tracking` | Flag | Enables or disables generated line and column tracking. Without either flag, tracking is enabled except in `ReleaseFast`. | Build-mode dependent |
-| `--with-input-refill` / `--no-input-refill` | Flag | Selects refill-aware or fixed-buffer input advancement at generation time. Refill allows no-AST parsers to stream inputs larger than their cursor range. | `--no-input-refill` |
+| `--with-input-streaming` / `--no-input-streaming` | Flag | Streams files incrementally or loads them completely before parsing. No-AST streaming uses a bounded input window. | `--no-input-streaming` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
-| `--input-size` | `<BITS>` | Bit width used for generated input offsets and AST indices (for example `16` or `32`). | `16` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
 
 `--no-ast` and `--with-procedures` are mutually incompatible because procedure hooks operate on AST nodes.
@@ -104,7 +103,7 @@ defer parsed.deinit();
 
 ### High-Precision API Benchmark
 ```sh
-./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery --input-size 32 languages/json
+./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery languages/json
 zig build -Doptimize=ReleaseFast run-ll-json -- \
   languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```

@@ -89,7 +89,7 @@ test "dropSelf drops the current node" {
 test "dropChildren keeps the node and detaches its children" {
     if (comptime !root.parser.is_ast_enabled) return;
 
-    var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 3);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const parent = try node_allocator.create(0, 1);
@@ -113,7 +113,7 @@ test "dropChildren keeps the node and detaches its children" {
 test "dropIfEmpty drops only empty nodes" {
     if (comptime !root.parser.is_ast_enabled) return;
 
-    var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 3);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const non_empty = try node_allocator.create(0, 1);
@@ -133,7 +133,7 @@ test "dropIfEmpty drops only empty nodes" {
 test "replaceWithChildren promotes a wrapper's children" {
     if (comptime !root.parser.is_ast_enabled) return;
 
-    var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 6);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const parent = try node_allocator.create(0, 1);
@@ -167,7 +167,7 @@ test "replaceWithChildren promotes a wrapper's children" {
 test "rightRecursiveReduction flattens a matching tail" {
     if (comptime !root.parser.is_ast_enabled) return;
 
-    var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 5);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const parent = try node_allocator.create(0, 1);
@@ -194,7 +194,7 @@ test "rightRecursiveReduction flattens a matching tail" {
 test "leftRecursiveReduction flattens a matching head" {
     if (comptime !root.parser.is_ast_enabled) return;
 
-    var node_allocator = try data_structures.ASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 5);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const parent = try node_allocator.create(0, 1);

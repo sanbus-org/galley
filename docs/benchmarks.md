@@ -24,11 +24,9 @@ Use it when:
 Run it like this:
 
 ```sh
-./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery --input-size 32 languages/json
+./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery languages/json
 zig build -Doptimize=ReleaseFast run-ll-json -- languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```
-
-The 32-bit input size is required because `code-02.json` is larger than the default 16-bit cursor range.
 
 General form:
 
@@ -67,7 +65,7 @@ Use it when:
 Run it like this:
 
 ```sh
-python3 scripts/benchmark.py --language json --parser-type LL --no-ast --input-size 16 --no-ast-for-terminals
+python3 scripts/benchmark.py --language json --parser-type LL --no-ast --no-ast-for-terminals
 ```
 
 After collecting fresh result files, regenerate the benchmark markdown like this:

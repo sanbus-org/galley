@@ -1,13 +1,25 @@
 const builtin = @import("builtin");
 const std = @import("std");
-const Context = @import("context.zig").Context;
 const root = @import("galley");
+
+fn ByteAlignedUnsigned(comptime maximum: usize) type {
+    var bits: u16 = 8;
+    while (maximum > (@as(comptime_int, 1) << @intCast(bits)) - 1) {
+        bits += 8;
+    }
+    return std.meta.Int(.unsigned, bits);
+}
 
 pub const Token = struct {
     pub const max_length = 65500;
+    pub const Length = ByteAlignedUnsigned(root.parser.longest_terminal_length);
+    comptime {
+        std.debug.assert(root.parser.longest_terminal_length <= Token.max_length);
+    }
+
     buffer: if (root.config.indentation_syntax) [Token.max_length * 2]u8 else []u8 = undefined,
-    head: Context.Size = 0,
-    len: Context.Size = 0,
+    head: usize = 0,
+    len: Length = 0,
 
     const Self = @This();
 
@@ -37,7 +49,7 @@ pub const Token = struct {
         self.len += 1;
     }
 
-    pub inline fn pop(self: *Self, amount: Context.Size) void {
+    pub inline fn pop(self: *Self, amount: Length) void {
         std.debug.assert(self.len >= amount);
 
         self.len -= amount;
@@ -54,8 +66,17 @@ pub const Token = struct {
         return self.buffer[self.head - self.len .. self.head];
     }
 
-    pub inline fn at(self: *const Self, offset: Context.Size) u8 {
+    pub inline fn at(self: *const Self, offset: Length) u8 {
         std.debug.assert(offset < self.len);
         return self.buffer[self.head + offset - self.len];
     }
 };
+
+test "token length type is byte-aligned and fits the longest terminal" {
+    try std.testing.expectEqual(@as(usize, 8), @bitSizeOf(ByteAlignedUnsigned(0)));
+    try std.testing.expectEqual(@as(usize, 8), @bitSizeOf(ByteAlignedUnsigned(255)));
+    try std.testing.expectEqual(@as(usize, 16), @bitSizeOf(ByteAlignedUnsigned(256)));
+    try std.testing.expectEqual(@as(usize, 16), @bitSizeOf(ByteAlignedUnsigned(65500)));
+    try std.testing.expectEqual(@as(usize, 24), @bitSizeOf(ByteAlignedUnsigned(65536)));
+    try std.testing.expect(std.math.maxInt(Token.Length) >= root.parser.longest_terminal_length);
+}

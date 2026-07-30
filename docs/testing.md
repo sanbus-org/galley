@@ -46,7 +46,7 @@ Bare filters such as `-Dtest-filter=ll-sanbus` are invalid. Use `case:ll-sanbus`
 
 A case is an exact parser-type and language pair, such as `case:ll-json`, `case:lr-json-unicode`, or `case:ll-lua`. A `case:` selector without a `suite:` selector runs every matrix phase for that case.
 
-Each selected case is tested across ten parser configurations covering AST, procedures, terminal AST nodes, and 16-bit versus 32-bit input sizes. Cases do not select `suite:galley-parity`; request that suite explicitly.
+Each selected case is tested across five parser configurations covering AST, procedures, and terminal AST nodes. Cases do not select `suite:galley-parity`; request that suite explicitly.
 
 ### Test Names
 
@@ -81,4 +81,7 @@ Zig test cases and build checks are reported separately:
 - The `ll-json-unicode` and `lr-json-unicode` API cases additionally validate raw UTF-8 scalar boundaries, malformed UTF-8 rejection, JSON Unicode escape decoding, and surrogate pairs.
 - Generation and benchmark-harness compilation validate that each selected parser configuration can be generated and consumed through its API; they are build steps, not additional Zig test cases.
 
-Samples that exceed a 16-bit parser's input limit run only on 32-bit configurations.
+Samples up to 5 MiB run on every parser configuration. Larger samples run on
+the representative no-AST/no-procedures configuration for each LL/LR language
+case. Focused input-streaming tests separately cover large AST input, sliding
+windows, complete-file non-streaming input, and indentation boundaries.
