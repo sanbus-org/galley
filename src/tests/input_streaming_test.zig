@@ -68,19 +68,18 @@ fn parseFile(input: []const u8) !parser.ParseResult {
     return try session.parseFile(file, "input");
 }
 
-test "input refill generated capability" {
-    try std.testing.expectEqual(test_options.refill_enabled, parser.input_refill_enabled);
-    try std.testing.expectEqual(@as(usize, 16), @bitSizeOf(parser.parser.input_size_cap));
-    try std.testing.expectEqual(test_options.ast_limit, parser.parser.is_ast_enabled);
+test "input streaming generated capability" {
+    try std.testing.expectEqual(test_options.streaming_enabled, parser.input_streaming_enabled);
+    try std.testing.expectEqual(test_options.ast_large_input, parser.parser.is_ast_enabled);
     try std.testing.expectEqual(
-        test_options.refill_enabled and !test_options.ast_limit,
+        test_options.streaming_enabled and !test_options.ast_large_input,
         parser.sliding_input_enabled,
     );
     try std.testing.expectEqual(test_options.indentation, parser.config.indentation_syntax);
     try std.testing.expect(parser.position_tracking_enabled);
 }
 
-test "input refill file read failures propagate through the parser API" {
+test "file read failures propagate through the parser API" {
     if (!test_options.read_error) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
@@ -98,7 +97,17 @@ test "input refill file read failures propagate through the parser API" {
     try std.testing.expectEqual(null, read_guard.lastDiagnostic());
 }
 
-test "input refill sliding parses bytes, sentinel bytes, and files" {
+test "non-streaming file parsing loads the complete input" {
+    if (!test_options.non_streaming) return error.SkipZigTest;
+
+    const input = try makeWindowCrossingJson();
+    defer std.testing.allocator.free(input);
+    try std.testing.expect(input.len > parser.read_chunk_size);
+
+    try expectParsedAll(try parseFile(input), input);
+}
+
+test "input streaming sliding parses bytes, sentinel bytes, and files" {
     if (!test_options.sliding) return error.SkipZigTest;
 
     const input = try makeWindowCrossingJson();
@@ -118,7 +127,7 @@ test "input refill sliding parses bytes, sentinel bytes, and files" {
     try expectParsedAll(try parseFile(input), input);
 }
 
-test "input refill sliding preserves position across a boundary" {
+test "input streaming sliding preserves position across a boundary" {
     if (!test_options.sliding) return error.SkipZigTest;
 
     const short_input = try makePositionJson(4);
@@ -136,7 +145,7 @@ test "input refill sliding preserves position across a boundary" {
     try std.testing.expectEqual(short.result.column, long.result.column);
 }
 
-test "input refill sliding session is reusable" {
+test "input streaming sliding session is reusable" {
     if (!test_options.sliding) return error.SkipZigTest;
 
     const input = try makeWindowCrossingJson();
@@ -162,7 +171,7 @@ test "input refill sliding session is reusable" {
     }
 }
 
-test "input refill indentation parses beyond the offset type" {
+test "indentation parsing accepts input beyond a fixed chunk" {
     if (!test_options.indentation) return error.SkipZigTest;
 
     const input = try makeIndentationInput(4000);
@@ -182,7 +191,7 @@ test "input refill indentation parses beyond the offset type" {
     try expectParsedAll(try parseFile(input), input);
 }
 
-test "input refill invalid indentation returns a structured diagnostic" {
+test "input streaming invalid indentation returns a structured diagnostic" {
     if (!test_options.indentation) return error.SkipZigTest;
 
     const invalid = "Rule:\n  - field: int\n   - broken: int\n";
@@ -231,7 +240,7 @@ test "input refill invalid indentation returns a structured diagnostic" {
     try std.testing.expectError(parser.ParseError.IndentationError, parseFile(invalid));
 }
 
-test "input refill recovery handles EOF without reading beyond the window" {
+test "input streaming recovery handles EOF without reading beyond the window" {
     if (!test_options.recovery_eof) return error.SkipZigTest;
 
     const input = try makeRecoveryEofJson();
@@ -253,8 +262,8 @@ test "input refill recovery handles EOF without reading beyond the window" {
     try std.testing.expect(syntax.column >= 1);
 }
 
-test "input refill AST mode enforces the offset limit" {
-    if (!test_options.ast_limit) return error.SkipZigTest;
+test "input streaming AST mode accepts input beyond the former offset limit" {
+    if (!test_options.ast_large_input) return error.SkipZigTest;
 
     const small_input = "[]";
     var small = try parser.parseBytes(std.testing.io, std.testing.allocator, small_input, .{});
@@ -263,17 +272,15 @@ test "input refill AST mode enforces the offset limit" {
 
     const oversized = try makeWindowCrossingJson();
     defer std.testing.allocator.free(oversized);
-    try std.testing.expectError(
-        error.InputTooLarge,
-        parser.parseBytes(std.testing.io, std.testing.allocator, oversized, .{}),
-    );
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, oversized, .{});
+    defer parsed.deinit();
+    try expectParsedAll(parsed.result, oversized);
 
     const sentinel = try allocSentinel(oversized);
     defer std.testing.allocator.free(sentinel);
-    try std.testing.expectError(
-        error.InputTooLarge,
-        parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, .{}),
-    );
+    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, .{});
+    defer parsed_sentinel.deinit();
+    try expectParsedAll(parsed_sentinel.result, oversized);
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -284,5 +291,6 @@ test "input refill AST mode enforces the offset limit" {
     defer file.close(std.testing.io);
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
-    try std.testing.expectError(error.InputTooLarge, session.parseFile(file, "oversized"));
+    const result = try session.parseFile(file, "oversized");
+    try expectParsedAll(result, oversized);
 }

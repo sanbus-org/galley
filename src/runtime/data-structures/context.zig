@@ -46,8 +46,6 @@ fn lockRuntimeRegistry() void {
 }
 
 pub const Context = struct {
-    pub const Size = root.parser.input_size_cap;
-
     pub const BytesSource = struct {
         input: []const u8,
         offset: usize = 0,
@@ -63,10 +61,10 @@ pub const Context = struct {
     chunk_buffer: []u8 = undefined,
     input_read_failed: bool = false,
 
-    // These fields are defined only when non-indentation input refilling is enabled.
-    file_input: if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) []u8 else void = if (root.input_refill_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) &.{} else {},
-    input_end: if (root.input_refill_enabled and !root.config.indentation_syntax) usize else void = if (root.input_refill_enabled and !root.config.indentation_syntax) 0 else {},
-    loaded_end: if (root.input_refill_enabled and !root.config.indentation_syntax) usize else void = if (root.input_refill_enabled and !root.config.indentation_syntax) 0 else {},
+    // These fields are defined only when non-indentation input streaming is enabled.
+    file_input: if (root.input_streaming_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) []u8 else void = if (root.input_streaming_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) &.{} else {},
+    input_end: if (root.input_streaming_enabled and !root.config.indentation_syntax) usize else void = if (root.input_streaming_enabled and !root.config.indentation_syntax) 0 else {},
+    loaded_end: if (root.input_streaming_enabled and !root.config.indentation_syntax) usize else void = if (root.input_streaming_enabled and !root.config.indentation_syntax) 0 else {},
     window_base: if (root.sliding_input_enabled and !root.config.indentation_syntax) usize else void = if (root.sliding_input_enabled and !root.config.indentation_syntax) 0 else {},
     input_eof: if (root.sliding_input_enabled and !root.config.indentation_syntax) bool else void = if (root.sliding_input_enabled and !root.config.indentation_syntax) false else {},
 
@@ -74,11 +72,8 @@ pub const Context = struct {
     indent_width: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
     current_indent: if (root.config.indentation_syntax) u16 else void = if (root.config.indentation_syntax) 0 else {},
     indentation_error: if (root.config.indentation_syntax) bool else void = if (root.config.indentation_syntax) false else {},
-    seek: if (root.config.indentation_syntax) Size else void = if (root.config.indentation_syntax) 0 else {},
-    read_bytes: if (root.config.indentation_syntax)
-        if (root.sliding_input_enabled) usize else Size
-    else
-        void = if (root.config.indentation_syntax) 0 else {},
+    seek: if (root.config.indentation_syntax) usize else void = if (root.config.indentation_syntax) 0 else {},
+    read_bytes: if (root.config.indentation_syntax) usize else void = if (root.config.indentation_syntax) 0 else {},
 
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
@@ -255,20 +250,17 @@ pub const Context = struct {
     }
 
     pub fn recoveryLookahead(self: *Self) ![]const u8 {
-        const required = @min(
-            self.runtime().recovery_window +| root.parser.longest_terminal_length,
-            std.math.maxInt(Size),
-        );
+        const required = self.runtime().recovery_window +| root.parser.longest_terminal_length;
 
         if (comptime !root.config.indentation_syntax) {
-            if (comptime root.input_refill_enabled) {
+            if (comptime root.input_streaming_enabled) {
                 self.loadInputUpTo(if (comptime root.sliding_input_enabled)
                     @min(required, root.input_window_size)
                 else
                     required);
             }
             const start: usize = self.token.head - self.token.len;
-            const available_end = if (comptime root.input_refill_enabled)
+            const available_end = if (comptime root.input_streaming_enabled)
                 @min(self.loaded_end, self.input_end + 1)
             else
                 self.token.buffer.len;
@@ -320,7 +312,7 @@ pub const Context = struct {
         return output.items;
     }
 
-    pub fn releaseToken(self: *@This(), length: Size) void {
+    pub fn releaseToken(self: *@This(), length: data_structures.Token.Length) void {
         if (comptime root.position_tracking_enabled) {
             if (comptime root.config.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
@@ -391,14 +383,19 @@ pub const Context = struct {
         }
         if (comptime root.config.indentation_syntax) {
             self.token.resetBuffered();
-            self.read();
+            if (comptime root.input_streaming_enabled) {
+                self.read();
+            } else switch (self.source) {
+                .file => self.read(),
+                .bytes => |bytes| self.chunk_buffer = @constCast(bytes.input),
+            }
         } else if (comptime root.sliding_input_enabled) {
             self.input_end = 0;
             self.loaded_end = 0;
             self.window_base = 0;
             self.input_eof = false;
             self.token.resetInput(self.chunk_buffer);
-        } else if (comptime root.input_refill_enabled) switch (self.source) {
+        } else if (comptime root.input_streaming_enabled) switch (self.source) {
             .file => {
                 self.loaded_end = 0;
                 self.token.resetInput(self.file_input);
@@ -438,7 +435,7 @@ pub const Context = struct {
     pub inline fn advanceInput(self: *@This()) void {
         comptime std.debug.assert(root.config.indentation_syntax);
 
-        if (comptime root.input_refill_enabled) {
+        if (comptime root.input_streaming_enabled) {
             self.advanceInputWithCheck();
         } else {
             self.advanceInputWithoutCheck();
@@ -545,7 +542,7 @@ pub const Context = struct {
     }
 
     inline fn ensureInputLoaded(self: *@This(), needed_len: usize) void {
-        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+        comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
         self.loadInputUpTo(needed_len);
         const token_start: usize = self.token.head - self.token.len;
@@ -553,7 +550,7 @@ pub const Context = struct {
     }
 
     inline fn loadInputUpTo(self: *@This(), needed_len: usize) void {
-        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+        comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
         const token_start: usize = self.token.head - self.token.len;
         const required_end = token_start + needed_len;
@@ -583,7 +580,7 @@ pub const Context = struct {
 
     noinline fn refillInput(self: *@This(), needed_len: usize) void {
         @branchHint(.cold);
-        comptime std.debug.assert(root.input_refill_enabled and !root.config.indentation_syntax);
+        comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
         if (comptime root.sliding_input_enabled) {
             const token_start: usize = self.token.head - self.token.len;
@@ -648,10 +645,10 @@ pub const Context = struct {
         }
     }
 
-    pub fn head(self: *@This(), comptime T: type, offset: Size) T {
+    pub fn head(self: *@This(), comptime T: type, offset: data_structures.Token.Length) T {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
-        if (comptime root.input_refill_enabled and !root.config.indentation_syntax) {
+        if (comptime root.input_streaming_enabled and !root.config.indentation_syntax) {
             self.ensureInputLoaded(needed_len);
         }
         while (self.token.len < needed_len) {
@@ -668,7 +665,7 @@ pub const Context = struct {
         return std.mem.readInt(T, array_ptr, .big);
     }
 
-    pub inline fn pos(self: *Self) if (root.sliding_input_enabled) usize else Size {
+    pub inline fn pos(self: *Self) usize {
         if (comptime root.config.indentation_syntax) {
             return self.read_bytes + self.seek;
         }
@@ -678,13 +675,13 @@ pub const Context = struct {
         return self.token.head - self.token.len;
     }
 
-    pub inline fn getTextSlice(self: *const Self, start: Size, length: Size) []const u8 {
+    pub inline fn getTextSlice(self: *const Self, start: usize, length: usize) []const u8 {
         return self.token.buffer[start .. start + length];
     }
 
     pub inline fn diagnosticInput(self: *const Self) []const u8 {
         if (comptime root.config.indentation_syntax) return self.chunk_buffer;
-        if (comptime root.input_refill_enabled) {
+        if (comptime root.input_streaming_enabled) {
             return self.token.buffer[0..@min(self.loaded_end, self.input_end + 1)];
         }
         return self.token.buffer;

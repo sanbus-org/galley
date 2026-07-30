@@ -20,11 +20,8 @@ const ASTMemoryBenchmarkCounters = struct {
 pub fn ASTAllocator(comptime PayloadType: type) type {
     return struct {
         const ASTNodeType = ASTNode(PayloadType);
-        pub const preallocated_nodes = if (root.parser.is_ast_enabled)
-            (std.math.maxInt(std.math.Min(root.data_structures.Context.Size, u27)) - 1)
-        else
-            0;
-        const invalid_pointer = preallocated_nodes;
+        pub const max_node_capacity: usize = std.math.maxInt(ASTNodeType.Pointer) - 1;
+        const invalid_pointer: ASTNodeType.Pointer = std.math.maxInt(ASTNodeType.Pointer);
         const default: ASTNodeType = .{
             .text_start = 0,
             .text_length = 0,
@@ -38,6 +35,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             .payload = undefined,
         };
 
+        allocator: std.mem.Allocator,
         counter: ASTNodeType.Pointer = 0,
         memory: []ASTNodeType,
         memory_benchmark: if (root.ast_memory_benchmark_enabled) ASTMemoryBenchmarkCounters else void =
@@ -45,17 +43,40 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
         const Self = @This();
 
-        pub fn initCapacity(allocator: std.mem.Allocator) !ASTAllocator(PayloadType) {
-            return initWithCapacity(allocator, preallocated_nodes);
-        }
-
         pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocator(PayloadType) {
-            if (capacity > preallocated_nodes) return error.ASTCapacityTooLarge;
+            if (capacity > max_node_capacity) return error.ASTCapacityTooLarge;
             const memory = try allocator.alloc(ASTNodeType, capacity + 1);
 
             @memset(memory, default);
 
-            return .{ .memory = memory };
+            return .{
+                .allocator = allocator,
+                .memory = memory,
+            };
+        }
+
+        pub fn ensureCapacity(self: *Self, required_capacity: usize) !void {
+            if (required_capacity <= self.memory.len - 1) return;
+            if (required_capacity > max_node_capacity) return error.ASTCapacityTooLarge;
+            try self.resize(required_capacity);
+        }
+
+        fn grow(self: *Self) !void {
+            const current_capacity = self.memory.len - 1;
+            if (current_capacity >= max_node_capacity) return error.ASTCapacityExceeded;
+
+            const proportional_capacity = current_capacity +| current_capacity / 2;
+            const next_capacity = @min(
+                max_node_capacity,
+                @max(@as(usize, 16), @max(current_capacity + 1, proportional_capacity)),
+            );
+            try self.resize(next_capacity);
+        }
+
+        fn resize(self: *Self, capacity: usize) !void {
+            const old_len = self.memory.len;
+            self.memory = try self.allocator.realloc(self.memory, capacity + 1);
+            @memset(self.memory[old_len..], default);
         }
 
         pub fn reset(self: *Self) void {
@@ -74,10 +95,10 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
             return &self.memory[address];
         }
 
-        pub inline fn create(self: *Self, start: Context.Size, variable: u16) error{ASTCapacityExceeded}!ASTNodeType.Pointer {
+        pub inline fn create(self: *Self, start: usize, variable: u16) error{ ASTCapacityExceeded, OutOfMemory }!ASTNodeType.Pointer {
             if (@as(usize, self.counter) >= self.memory.len - 1) {
                 @branchHint(.unlikely);
-                return error.ASTCapacityExceeded;
+                try self.grow();
             }
 
             const address = self.counter;
@@ -137,7 +158,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
                 .final_counter = self.counter,
                 .peak_counter = self.memory_benchmark.peak_counter,
                 .total_create_calls = self.memory_benchmark.total_create_calls,
-                .usable_capacity = preallocated_nodes,
+                .usable_capacity = self.memory.len - 1,
                 .preallocated_vector_items = self.memory.len,
             };
         }
@@ -154,13 +175,13 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
 pub fn ASTNode(comptime PayloadType: type) type {
     return struct {
-        pub const Pointer = Context.Size;
+        pub const Pointer = usize;
         pub const NodeAllocator = *ASTAllocator(PayloadType);
-        pub const invalid_pointer: Context.Size = ASTAllocator(PayloadType).invalid_pointer;
+        pub const invalid_pointer: Pointer = ASTAllocator(PayloadType).invalid_pointer;
         pub const invalid_variable: u16 = std.math.maxInt(u16);
 
-        text_start: Context.Size = 0,
-        text_length: Context.Size = 0,
+        text_start: usize = 0,
+        text_length: usize = 0,
 
         first_child: Pointer = invalid_pointer,
         last_child: Pointer = invalid_pointer,
@@ -735,7 +756,7 @@ const TestASTAllocator = ASTAllocator(TestPayload);
 
 test "AST memory benchmark counts reachable nodes and allocator usage" {
     if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
-    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 4);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const ast_root = try node_allocator.create(0, 1);
@@ -752,7 +773,7 @@ test "AST memory benchmark counts reachable nodes and allocator usage" {
     try std.testing.expectEqual(@as(usize, 4), stats.final_counter);
     try std.testing.expectEqual(@as(usize, 4), stats.peak_counter);
     try std.testing.expectEqual(@as(usize, 4), stats.total_create_calls);
-    try std.testing.expectEqual(@as(usize, TestASTAllocator.preallocated_nodes), stats.usable_capacity);
+    try std.testing.expectEqual(@as(usize, 4), stats.usable_capacity);
     try std.testing.expectEqual(stats.usable_capacity + 1, stats.preallocated_vector_items);
 
     const no_root_stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
@@ -765,7 +786,7 @@ test "AST memory benchmark counts reachable nodes and allocator usage" {
 
 test "AST memory benchmark tracks allocation peak and resets counters" {
     if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
-    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 2);
     defer std.testing.allocator.free(node_allocator.memory);
 
     _ = try node_allocator.create(0, 1);
@@ -783,26 +804,26 @@ test "AST memory benchmark tracks allocation peak and resets counters" {
     try std.testing.expectEqual(@as(usize, 0), reset_stats.total_create_calls);
 }
 
-test "AST allocator reports exhaustion without wrapping or overwriting nodes" {
+test "AST allocator preserves nodes across cold-path growth" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 2);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
     defer std.testing.allocator.free(node_allocator.memory);
 
     const first = try node_allocator.create(3, 11);
+    node_allocator.at(first).text_length = 7;
     const second = try node_allocator.create(5, 13);
+
+    try std.testing.expect(node_allocator.memory.len > 2);
     try std.testing.expectEqual(@as(TestASTNode.Pointer, 0), first);
     try std.testing.expectEqual(@as(TestASTNode.Pointer, 1), second);
-    try std.testing.expectError(error.ASTCapacityExceeded, node_allocator.create(7, 17));
-    try std.testing.expectEqual(@as(TestASTNode.Pointer, 2), node_allocator.counter);
-    try std.testing.expectEqual(@as(Context.Size, 3), node_allocator.at(first).text_start);
+    try std.testing.expectEqual(@as(usize, 3), node_allocator.at(first).text_start);
+    try std.testing.expectEqual(@as(usize, 7), node_allocator.at(first).text_length);
     try std.testing.expectEqual(@as(u16, 11), node_allocator.at(first).variable);
-    try std.testing.expectEqual(@as(Context.Size, 5), node_allocator.at(second).text_start);
-    try std.testing.expectEqual(@as(u16, 13), node_allocator.at(second).variable);
 }
 
 test "zero length augmented node" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory;
 
@@ -819,7 +840,7 @@ test "zero length augmented node" {
 
 test "augmented length" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 20);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory[0..20];
 
@@ -844,7 +865,7 @@ test "augmented length" {
 
 test "augmented iterate" {
     if (comptime !root.parser.is_ast_enabled) return;
-    var node_allocator = try TestASTAllocator.initCapacity(std.testing.allocator);
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 20);
     defer std.testing.allocator.free(node_allocator.memory);
     const nodes = node_allocator.memory[0..20];
 
@@ -860,11 +881,11 @@ test "augmented iterate" {
         };
     }
 
-    const initial_node: Context.Size = 10;
+    const initial_node: TestASTNode.Pointer = 10;
     var iterator = TestASTNode.iterateAugmented(initial_node, &node_allocator);
     var counter: usize = 0;
     while (iterator.next()) |current| {
-        try std.testing.expectEqual(@as(Context.Size, @intCast(counter)), current);
+        try std.testing.expectEqual(@as(TestASTNode.Pointer, @intCast(counter)), current);
         counter += 1;
     }
 }
@@ -888,8 +909,8 @@ const TestFixture = struct {
     node_allocator: TestASTAllocator,
     text: []u8,
     nodes: []TestASTNode,
-    root: Context.Size,
-    free_nodes: []Context.Size,
+    root: TestASTNode.Pointer,
+    free_nodes: []TestASTNode.Pointer,
     runtime_context: *root.data_structures.RuntimeContext = undefined,
 
     pub fn allocator(self: *TestFixture) std.mem.Allocator {
@@ -904,7 +925,7 @@ const TestFixture = struct {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
         const alloc = arena.allocator();
 
-        var node_allocator = try TestASTAllocator.initCapacity(alloc);
+        var node_allocator = try TestASTAllocator.initWithCapacity(alloc, 30);
         node_allocator.counter = 30;
         const nodes = node_allocator.memory;
         for (nodes[0..30]) |*node| {
@@ -917,7 +938,7 @@ const TestFixture = struct {
 
         const text = try alloc.dupe(u8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
-        const root_node: Context.Size = 0;
+        const root_node: TestASTNode.Pointer = 0;
         nodes[root_node] = .{
             .text_start = 0,
             .text_length = 1,
@@ -926,7 +947,7 @@ const TestFixture = struct {
 
         // Append root's children (1..4)
         for (1..5) |index| {
-            const child_addr: Context.Size = @intCast(index);
+            const child_addr: TestASTNode.Pointer = @intCast(index);
             nodes[child_addr] = .{
                 .text_start = 0,
                 .text_length = 1,
@@ -936,9 +957,9 @@ const TestFixture = struct {
         }
 
         // For each of root's children, append 3 children
-        var counter: Context.Size = 5;
+        var counter: TestASTNode.Pointer = 5;
         for (1..5) |parent_index| {
-            const parent_addr: Context.Size = @intCast(parent_index);
+            const parent_addr: TestASTNode.Pointer = @intCast(parent_index);
             for (0..3) |_| {
                 const child_addr = counter;
                 counter += 1;
@@ -952,9 +973,9 @@ const TestFixture = struct {
         }
 
         // Remaining nodes are free nodes (17..29)
-        const free_nodes = try alloc.alloc(Context.Size, 30 - counter);
+        const free_nodes = try alloc.alloc(TestASTNode.Pointer, 30 - counter);
         for (free_nodes, 0..) |*fn_addr, idx| {
-            fn_addr.* = counter + @as(Context.Size, @intCast(idx));
+            fn_addr.* = counter + @as(TestASTNode.Pointer, @intCast(idx));
             nodes[fn_addr.*] = .{
                 .text_start = 0,
                 .text_length = 1,
@@ -1030,7 +1051,7 @@ fn testRemove(fixture: *TestFixture) !void {
     try std.testing.expectEqual(TestASTNode.invalid_pointer, fixture.nodes[3].next);
 }
 
-fn asSize(val: anytype) Context.Size {
+fn asSize(val: anytype) TestASTNode.Pointer {
     return @intCast(val);
 }
 
@@ -1054,7 +1075,7 @@ fn testInsertBefore(fixture: *TestFixture) !void {
     // Root should now have 6 children: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
     var curr = fixture.nodes[root_node].first_child;
-    var children_list: [6]Context.Size = undefined;
+    var children_list: [6]TestASTNode.Pointer = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
         count += 1;
@@ -1101,7 +1122,7 @@ fn testInsertAfter(fixture: *TestFixture) !void {
     // Root: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
     var curr = fixture.nodes[root_node].first_child;
-    var children_list: [6]Context.Size = undefined;
+    var children_list: [6]TestASTNode.Pointer = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
         count += 1;
@@ -1150,7 +1171,7 @@ fn testPromoteChildrenOverWrapper(fixture: *TestFixture) !void {
 
     var count: usize = 0;
     var curr = fixture.nodes[root_node].first_child;
-    var children_list: [6]Context.Size = undefined;
+    var children_list: [6]TestASTNode.Pointer = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
         count += 1;
@@ -1184,7 +1205,7 @@ fn testInsertChildren(fixture: *TestFixture) !void {
 
     var count: usize = 0;
     var curr = fixture.nodes[parent].first_child;
-    var children_list: [5]Context.Size = undefined;
+    var children_list: [5]TestASTNode.Pointer = undefined;
     while (curr != TestASTNode.invalid_pointer) {
         children_list[count] = curr;
         count += 1;

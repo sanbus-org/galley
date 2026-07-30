@@ -85,21 +85,15 @@ const options = generator.Options{
     .with_error_recovery = false,
     .ast_for_terminals = false,
     .with_position_tracking = null,
-    .with_input_refill = false,
-    .input_size = 16,
+    .with_input_streaming = false,
 };
 ```
 
 The defaults are shown above. A `null` position-tracking setting enables
 tracking except in `ReleaseFast`; set it explicitly to `true` or `false` to
-override that build-mode default. `with_input_refill` selects refill-aware input
-advancement at generation time.
-
-`input_size` is the bit width used for generated input offsets and AST indices.
-Without refill it must cover the complete input. A refill-enabled no-AST parser
-can stream inputs larger than this range because the offsets cover only its
-active window; an AST-enabled parser still requires offsets wide enough for the
-complete retained input.
+override that build-mode default. `with_input_streaming` selects incremental
+file input at generation time. When disabled, file inputs are loaded completely
+before parsing. No-AST streaming uses a bounded input window.
 
 When the destination is already represented by a `std.Io.Writer`, use `emitParserFromSource` to avoid allocating the complete generated file:
 

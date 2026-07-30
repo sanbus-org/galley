@@ -1,7 +1,7 @@
 const std = @import("std");
 const generator = @import("galley_generator");
 
-const max_input_size = 1024 * 1024 * 1024;
+const max_source_size = 1024 * 1024 * 1024;
 
 const CliOptions = struct {
     grammar_path: ?[]const u8 = null,
@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (options.label) |label| std.debug.print("generating {s}\n", .{label});
 
-    const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_input_size));
+    const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_source_size));
     defer init.gpa.free(source);
 
     try generator.atomic_file.write(
@@ -137,20 +137,14 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.with_position_tracking = true;
         } else if (std.mem.eql(u8, arg, "--no-position-tracking")) {
             result.generator_options.with_position_tracking = false;
-        } else if (std.mem.eql(u8, arg, "--with-input-refill")) {
-            result.generator_options.with_input_refill = true;
-        } else if (std.mem.eql(u8, arg, "--no-input-refill")) {
-            result.generator_options.with_input_refill = false;
+        } else if (std.mem.eql(u8, arg, "--with-input-streaming")) {
+            result.generator_options.with_input_streaming = true;
+        } else if (std.mem.eql(u8, arg, "--no-input-streaming")) {
+            result.generator_options.with_input_streaming = false;
         } else if (std.mem.eql(u8, arg, "--ast-for-terminals")) {
             result.generator_options.ast_for_terminals = true;
         } else if (std.mem.eql(u8, arg, "--no-ast-for-terminals")) {
             result.generator_options.ast_for_terminals = false;
-        } else if (std.mem.eql(u8, arg, "--input-size")) {
-            const value = args.next() orelse fatal("error: --input-size requires a bit width\n", .{});
-            result.generator_options.input_size = std.fmt.parseInt(u16, value, 10) catch fatal("error: invalid --input-size: {s}\n", .{value});
-        } else if (std.mem.startsWith(u8, arg, "--input-size=")) {
-            const value = arg["--input-size=".len..];
-            result.generator_options.input_size = std.fmt.parseInt(u16, value, 10) catch fatal("error: invalid --input-size: {s}\n", .{value});
         } else {
             fatal("error: unknown argument: {s}\n", .{arg});
         }
@@ -190,11 +184,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --with-position-tracking
         \\                             Enables line and column tracking.
         \\      --no-position-tracking Disables line and column tracking.
-        \\      --with-input-refill     Enables input-buffer refilling.
-        \\      --no-input-refill       Disables input-buffer refilling.
+        \\      --with-input-streaming Enables incremental file input.
+        \\      --no-input-streaming   Loads complete files before parsing.
         \\      --ast-for-terminals    Enables AST nodes for terminals.
         \\      --no-ast-for-terminals Disables AST nodes for terminals.
-        \\      --input-size <BITS>    Number of bits required to fit input size.
         \\
     );
     try stdout.flush();

@@ -19,7 +19,7 @@ class ProgressFormattingTests(unittest.TestCase):
         line = benchmark.format_progress_line(
             completed=18,
             total=42,
-            suite_label="JSON · No AST · 2^16",
+            suite_label="JSON · No AST",
             card_index=2,
             card_total=4,
             terminal_width=120,
@@ -27,7 +27,7 @@ class ProgressFormattingTests(unittest.TestCase):
 
         self.assertIn("Global [", line)
         self.assertIn("] 18/42 (42%)", line)
-        self.assertIn("JSON · No AST · 2^16", line)
+        self.assertIn("JSON · No AST", line)
         self.assertTrue(line.endswith("Card 2/4"))
         self.assertLessEqual(len(line), 120)
 
@@ -35,7 +35,7 @@ class ProgressFormattingTests(unittest.TestCase):
         line = benchmark.format_progress_line(
             completed=18,
             total=42,
-            suite_label="JSON · No AST · 2^16",
+            suite_label="JSON · No AST",
             card_index=2,
             card_total=4,
             terminal_width=18,
@@ -49,20 +49,16 @@ class ProgressFormattingTests(unittest.TestCase):
     def test_skipped_cards_stay_in_suite_total_but_not_global_total(self):
         variant = benchmark.BenchmarkVariant(
             ast_mode="no-ast",
-            input_size_dir="size16",
             term_ast="no-ast-for-terminals",
-            input_size=16,
             procedures_enabled=False,
-            variant_name="no-ast-no-procedures-size16",
+            variant_name="no-ast-no-procedures",
         )
         suite = benchmark.BenchmarkSuite(
             name="json",
             variant=variant,
             cards=(
                 benchmark.BenchmarkCard("small", "LL", 2, None, None),
-                benchmark.BenchmarkCard(
-                    "large", "LL", 2**16, ">= 2^16", "input size limit"
-                ),
+                benchmark.BenchmarkCard("large", "LL", 2**16, "> 1 MB", "procedures enabled"),
             ),
         )
 

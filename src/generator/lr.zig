@@ -396,8 +396,7 @@ const Generator = struct {
             \\pub const is_error_recovery_enabled = {};
             \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
             \\pub const is_position_tracking_enabled = {s};
-            \\pub const is_input_refill_enabled = {};
-            \\pub const input_size_cap = u{d};
+            \\pub const is_input_streaming_enabled = {};
             \\pub const longest_terminal_length = {d};
             \\
             \\
@@ -407,8 +406,7 @@ const Generator = struct {
             self.options.with_error_recovery,
             if (!self.options.with_error_recovery) "disabled" else if (self.uses_explicit_recovery) "explicit" else "automatic",
             if (self.options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
-            self.options.with_input_refill,
-            self.options.input_size,
+            self.options.with_input_streaming,
             self.longestTerminalLength(),
         });
         try self.emitGrammarTables(writer);
@@ -426,7 +424,7 @@ const Generator = struct {
             \\};
             \\
             \\const SemanticValue = struct {
-            \\    start_pos: data_structures.Context.Size,
+            \\    start_pos: usize,
             \\    node: data_structures.ASTNode.Pointer = data_structures.ASTNode.invalid_pointer,
             \\};
             \\
@@ -1151,7 +1149,7 @@ const Generator = struct {
         if (self.options.with_ast) {
             try writer.writeAll(
                 \\    {
-                \\        var start_pos: data_structures.Context.Size = @intCast(context.pos());
+                \\        var start_pos = context.pos();
                 \\        for (0..unwind_count) |_| {
                 \\            const discarded = stack.pop() orelse unreachable;
                 \\            start_pos = discarded.start_pos;

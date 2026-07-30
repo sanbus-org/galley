@@ -11,25 +11,18 @@ pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking
     parser.is_position_tracking_enabled
 else
     builtin.mode != .ReleaseFast;
-pub const input_refill_enabled = if (@hasDecl(parser, "is_input_refill_enabled"))
-    parser.is_input_refill_enabled
+pub const input_streaming_enabled = if (@hasDecl(parser, "is_input_streaming_enabled"))
+    parser.is_input_streaming_enabled
 else
     false;
-pub const sliding_input_enabled = input_refill_enabled and !parser.is_ast_enabled;
+pub const sliding_input_enabled = input_streaming_enabled and !parser.is_ast_enabled;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
 pub const standard_procedures = @import("standard-procedures.zig");
-const max_read_chunk_size = std.math.maxInt(std.math.Min(data_structures.Context.Size, u28));
-pub const read_chunk_size = if (input_refill_enabled)
-    @min(max_read_chunk_size, 64 * 1024)
-else
-    max_read_chunk_size;
+pub const read_chunk_size = 64 * 1024;
 pub const input_padding_size = @max(parser.longest_terminal_length, 1);
-pub const input_window_size = if (sliding_input_enabled)
-    @min(read_chunk_size, std.math.maxInt(data_structures.Context.Size) - input_padding_size)
-else
-    read_chunk_size;
+pub const input_window_size = read_chunk_size;
 pub const stack_overflow_recovery_available = stack_overflow_utilities.is_supported;
 
 pub const ParseError = error{
@@ -108,6 +101,8 @@ pub const ParseOptions = struct {
     max_errors: usize = 10,
     recovery_window: usize = 500,
     stack_overflow_recovery: bool = false,
+    ast_preallocation_ratio: f64 = 2,
+    ast_preallocation_cap: usize = 16_384,
 };
 
 pub const SyntaxErrorMessageArgs = struct {
@@ -306,6 +301,8 @@ pub const Session = struct {
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
     verbosity: if (builtin.mode == .Debug) usize else void,
     stack_overflow_recovery: bool,
+    ast_preallocation_ratio: if (parser.is_ast_enabled) f64 else void,
+    ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
     session_lock: std.Io.RwLock = .init,
     generation: usize = 0,
 
@@ -314,6 +311,11 @@ pub const Session = struct {
         if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
         if (options.stack_overflow_recovery and !stack_overflow_recovery_available) {
             return error.StackOverflowRecoveryUnsupported;
+        }
+        if (parser.is_ast_enabled and
+            (!std.math.isFinite(options.ast_preallocation_ratio) or options.ast_preallocation_ratio < 0))
+        {
+            return error.InvalidASTPreallocationRatio;
         }
 
         var arena = std.heap.ArenaAllocator.init(allocator);
@@ -330,7 +332,7 @@ pub const Session = struct {
         errdefer allocator.free(chunk_buffer);
 
         const node_allocator = if (parser.is_ast_enabled)
-            try data_structures.ASTAllocator.initCapacity(allocator)
+            try data_structures.ASTAllocator.initWithCapacity(allocator, 0)
         else {};
         errdefer if (parser.is_ast_enabled) allocator.free(node_allocator.memory);
 
@@ -351,6 +353,8 @@ pub const Session = struct {
             .node_allocator = node_allocator,
             .verbosity = if (builtin.mode == .Debug) options.verbosity else {},
             .stack_overflow_recovery = options.stack_overflow_recovery,
+            .ast_preallocation_ratio = if (parser.is_ast_enabled) options.ast_preallocation_ratio else {},
+            .ast_preallocation_cap = if (parser.is_ast_enabled) options.ast_preallocation_cap else {},
         };
     }
 
@@ -411,6 +415,21 @@ pub const Session = struct {
         return owned_input;
     }
 
+    fn prepareASTCapacity(self: *Session, input_length: usize) !void {
+        if (comptime !parser.is_ast_enabled) return;
+
+        const scaled_capacity = @ceil(
+            @as(f64, @floatFromInt(input_length)) * self.ast_preallocation_ratio,
+        );
+        const maximum_capacity = data_structures.ASTAllocator.max_node_capacity;
+        const capped_capacity = @min(maximum_capacity, self.ast_preallocation_cap);
+        const capacity = if (scaled_capacity >= @as(f64, @floatFromInt(capped_capacity)))
+            capped_capacity
+        else
+            @as(usize, @intFromFloat(scaled_capacity));
+        try self.node_allocator.ensureCapacity(capacity);
+    }
+
     pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
         try self.beginParse();
         defer self.session_lock.unlock(self.io);
@@ -418,10 +437,8 @@ pub const Session = struct {
     }
 
     fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
-        if (comptime input_refill_enabled and parser.is_ast_enabled) {
-            if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
-        }
-        const padding = if (input_refill_enabled) input_padding_size else 1;
+        try self.prepareASTCapacity(input.len);
+        const padding = if (input_streaming_enabled) input_padding_size else 1;
         const owned_input = try self.ensureOwnedInputCapacity(input.len + padding);
         @memcpy(owned_input[0..input.len], input);
         @memset(owned_input[input.len..], 0);
@@ -437,9 +454,7 @@ pub const Session = struct {
     }
 
     fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
-        if (comptime input_refill_enabled and parser.is_ast_enabled) {
-            if (input.len > std.math.maxInt(data_structures.Context.Size) - 1) return error.InputTooLarge;
-        }
+        try self.prepareASTCapacity(input.len);
         if (self.owned_input) |owned_input| {
             self.allocator.free(owned_input);
             self.owned_input = null;
@@ -456,20 +471,45 @@ pub const Session = struct {
     }
 
     fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
-        if (comptime input_refill_enabled and !config.indentation_syntax and parser.is_ast_enabled) {
-            const max_input_length = std.math.maxInt(data_structures.Context.Size) - 1;
-            const file_length_u64: ?u64 = file_length: {
-                const stat = file.stat(self.io) catch break :file_length null;
-                break :file_length if (stat.kind == .file) stat.size else null;
+        if (comptime !input_streaming_enabled) {
+            if (self.owned_input) |owned_input| {
+                self.allocator.free(owned_input);
+                self.owned_input = null;
+            }
+
+            var reader = file.reader(self.io, self.reader_buffer);
+            const input = input: {
+                var complete_input = try reader.interface.allocRemaining(self.allocator, .unlimited);
+                errdefer self.allocator.free(complete_input);
+
+                const input_length = complete_input.len;
+                try self.prepareASTCapacity(input_length);
+                complete_input = try self.allocator.realloc(complete_input, input_length + 1);
+                complete_input[input_length] = 0;
+                break :input complete_input;
             };
-            const known_file_length = file_length_u64 orelse {
+            self.owned_input = input;
+
+            var context_value = self._makeContext(.{ .bytes = .{ .input = input } }, input_path);
+            return try self._parseContextUnlocked(&context_value);
+        }
+
+        const known_ast_file_length: ?usize = if (comptime parser.is_ast_enabled) known: {
+            const stat = file.stat(self.io) catch break :known null;
+            if (stat.kind != .file) break :known null;
+
+            const file_length = std.math.cast(usize, stat.size) orelse return error.InputTooLarge;
+            try self.prepareASTCapacity(file_length);
+            break :known file_length;
+        } else null;
+
+        if (comptime input_streaming_enabled and !config.indentation_syntax and parser.is_ast_enabled) {
+            const file_length = known_ast_file_length orelse {
                 var reader = file.reader(self.io, self.reader_buffer);
-                const input = try reader.interface.allocRemaining(self.allocator, .limited(max_input_length));
+                const input = try reader.interface.allocRemaining(self.allocator, .unlimited);
                 defer self.allocator.free(input);
                 return try self.parseBytesUnlocked(input, input_path);
             };
-            const file_length = std.math.cast(usize, known_file_length) orelse return error.InputTooLarge;
-            if (file_length > max_input_length) return error.InputTooLarge;
 
             const input = try self.ensureOwnedInputCapacity(file_length + input_padding_size);
             @memset(input[file_length..], 0);
@@ -479,7 +519,6 @@ pub const Session = struct {
             context_value.input_end = file_length;
             return try self._parseContextUnlocked(&context_value);
         }
-
         var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
         return try self._parseContextUnlocked(&context_value);
     }

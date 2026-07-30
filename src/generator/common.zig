@@ -8,8 +8,7 @@ pub const Options = struct {
     with_error_recovery: bool = false,
     ast_for_terminals: bool = false,
     with_position_tracking: ?bool = null,
-    with_input_refill: bool = false,
-    input_size: u16 = 16,
+    with_input_streaming: bool = false,
 
     pub fn validate(self: Options) !void {
         if (!self.with_ast and self.with_procedures) return error.ProceduresRequireAst;

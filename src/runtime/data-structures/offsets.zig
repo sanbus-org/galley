@@ -1,12 +1,12 @@
 const root = @import("galley");
 const std = @import("std");
-const Context = @import("context.zig").Context;
+const Token = @import("token.zig").Token;
 
 pub const Offsets = struct {
     pub const max_length = @max(6, root.parser.longest_terminal_length);
     buffer: [Self.max_length * 2]u32 = undefined,
-    head: Context.Size = 0,
-    len: Context.Size = 0,
+    head: usize = 0,
+    len: usize = 0,
 
     const Self = @This();
 
@@ -23,7 +23,7 @@ pub const Offsets = struct {
         self.len += 1;
     }
 
-    pub inline fn pop(self: *Self, amount: Context.Size) void {
+    pub inline fn pop(self: *Self, amount: Token.Length) void {
         std.debug.assert(self.len >= amount);
 
         self.len -= amount;
@@ -33,7 +33,7 @@ pub const Offsets = struct {
         }
     }
 
-    pub inline fn sum(self: *const Self, start: Context.Size, end: Context.Size) u32 {
+    pub inline fn sum(self: *const Self, start: Token.Length, end: Token.Length) u32 {
         var sum_: u32 = 0;
         for (self.buffer[self.head - self.len + start .. self.head - self.len + end]) |item| {
             sum_ += item;

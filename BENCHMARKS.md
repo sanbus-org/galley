@@ -39,46 +39,48 @@ with SIMD intrinsics and two-pass parsing that is not generalisable to arbitrary
 grammars. They are reference points showing what a single-purpose native implementation
 can achieve, not direct competitors to a parser generator.
 
-> **Within the parser-generator category**, Galley LL is **3.8× faster
-> than LALRPOP** (Rust), **5.7× faster than Bison/Flex** (C), and
-> **7.2× faster than Nom** (Rust) — with full AST construction still
+> **Within the parser-generator category**, Galley LL is **4.2× faster
+> than LALRPOP** (Rust), **6.1× faster than Bison/Flex** (C), and
+> **3.6× faster than Nom** (Rust) — with full AST construction still
 > outpacing LALRPOP's non-AST mode.
 
-Notably, Galley's no-ast throughput of **788 MB/s** is within ~18% of
-RapidJSON's SAX mode (666 MB/s) — a hand-tuned C++ library with SIMD
+Notably, Galley's no-ast throughput of **840 MB/s** is within ~12% of
+RapidJSON's SAX mode (749 MB/s) — a hand-tuned C++ library with SIMD
 acceleration — despite Galley being a general-purpose parser generated from a grammar
 specification with no JSON-specific optimisations.
 
 ### Parser Generators & Tools — Head-to-Head
 
-Galley is measured with the fastest `2^16` input-size configuration. Third-party tools run on the checksum-pinned external `twitter.json` fixture. Inputs differ; this is a directional comparison.
+Third-party tools run on the checksum-pinned external `twitter.json` fixture. Inputs differ; this is a directional comparison.
 
 | Parser / Mode              | Category           | Throughput |
 | -------------------------- | ------------------ | ---------- |
-| Galley LL  (no-ast)        | Galley (generated) | 788.0 MB/s |
-| Galley LL  (with-ast)      | Galley (generated) | 477.2 MB/s |
-| Galley LR  (no-ast)        | Galley (generated) | 308.0 MB/s |
-| LALRPOP (Rust) — Non-AST   | LALRPOP (Rust)     | 206.4 MB/s |
-| Bison / Flex — Non-AST     | Bison / Flex       | 137.1 MB/s |
-| Bison / Flex — Simple AST  | Bison / Flex       | 133.1 MB/s |
-| Bison / Flex — Adv AST     | Bison / Flex       | 130.5 MB/s |
-| Bison / Flex — Payload AST | Bison / Flex       | 130.2 MB/s |
-| Galley LR  (with-ast)      | Galley (generated) | 113.5 MB/s |
-| Nom (Rust) — AST           | Nom (Rust)         | 108.9 MB/s |
-| Tree-sitter (C) — CST      | Tree-sitter (C)    | 19.3 MB/s  |
+| Galley LL  (no-ast)        | Galley (generated) | 840.3 MB/s |
+| LALRPOP (Rust) — No AST    | LALRPOP (Rust)     | 379.5 MB/s |
+| Galley LL  (with-ast)      | Galley (generated) | 346.9 MB/s |
+| Galley LR  (no-ast)        | Galley (generated) | 311.9 MB/s |
+| Nom (Rust) — AST           | Nom (Rust)         | 233.2 MB/s |
+| LALRPOP (Rust) — Non-AST   | LALRPOP (Rust)     | 201.0 MB/s |
+| Bison / Flex — Non-AST     | Bison / Flex       | 136.9 MB/s |
+| Bison / Flex — Simple AST  | Bison / Flex       | 132.0 MB/s |
+| Bison / Flex — Adv AST     | Bison / Flex       | 129.7 MB/s |
+| Bison / Flex — Payload AST | Bison / Flex       | 128.6 MB/s |
+| Tree-sitter (C) — CST      | Tree-sitter (C)    | 61.8 MB/s  |
+| Galley LR  (with-ast)      | Galley (generated) | 57.5 MB/s  |
 
 ```
-  Galley LL  (no-ast)         ████████████████████████████████████████     788.0 MB/s
-  Galley LL  (with-ast)       ████████████████████████░░░░░░░░░░░░░░░░     477.2 MB/s
-  Galley LR  (no-ast)         ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░     308.0 MB/s
-  LALRPOP (Rust) — Non-AST    ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     206.4 MB/s
-  Bison / Flex — Non-AST      ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     137.1 MB/s
-  Bison / Flex — Simple AST   ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     133.1 MB/s
-  Bison / Flex — Adv AST      ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     130.5 MB/s
-  Bison / Flex — Payload AST  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     130.2 MB/s
-  Galley LR  (with-ast)       █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     113.5 MB/s
-  Nom (Rust) — AST            █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     108.9 MB/s
-  Tree-sitter (C) — CST       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      19.3 MB/s
+  Galley LL  (no-ast)         ████████████████████████████████████████     840.3 MB/s
+  LALRPOP (Rust) — No AST     ██████████████████░░░░░░░░░░░░░░░░░░░░░░     379.5 MB/s
+  Galley LL  (with-ast)       ████████████████░░░░░░░░░░░░░░░░░░░░░░░░     346.9 MB/s
+  Galley LR  (no-ast)         ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     311.9 MB/s
+  Nom (Rust) — AST            ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     233.2 MB/s
+  LALRPOP (Rust) — Non-AST    █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     201.0 MB/s
+  Bison / Flex — Non-AST      ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     136.9 MB/s
+  Bison / Flex — Simple AST   ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     132.0 MB/s
+  Bison / Flex — Adv AST      ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     129.7 MB/s
+  Bison / Flex — Payload AST  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     128.6 MB/s
+  Tree-sitter (C) — CST       ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      61.8 MB/s
+  Galley LR  (with-ast)       ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.5 MB/s
 ```
 
 ### Specialised JSON Libraries — For Reference
@@ -87,16 +89,18 @@ These libraries are optimised exclusively for JSON using SIMD intrinsics and two
 
 | Library — Mode                          | Throughput     |
 | --------------------------------------- | -------------- |
-| simdjson (C++) — Validate               | **2,739 MB/s** |
-| simdjson (C++) — DOM (AST)              | **1,496 MB/s** |
-| RapidJSON (C++ / SIMD) — SAX (Validate) | 665.5 MB/s     |
-| RapidJSON (C++ / SIMD) — DOM (AST)      | 501.8 MB/s     |
+| simdjson (C++) — Validate               | **4,192 MB/s** |
+| simdjson (C++) — DOM AST                | **2,715 MB/s** |
+| simdjson (C++) — DOM (AST)              | **1,697 MB/s** |
+| RapidJSON (C++ / SIMD) — SAX (Validate) | 748.6 MB/s     |
+| RapidJSON (C++ / SIMD) — DOM (AST)      | 521.7 MB/s     |
 
 ```
-  simdjson (C++) — Validate                ████████████████████████████████████████    2738.5 MB/s
-  simdjson (C++) — DOM (AST)               █████████████████████░░░░░░░░░░░░░░░░░░░    1496.4 MB/s
-  RapidJSON (C++ / SIMD) — SAX (Validate)  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     665.5 MB/s
-  RapidJSON (C++ / SIMD) — DOM (AST)       ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     501.8 MB/s
+  simdjson (C++) — Validate                ████████████████████████████████████████    4191.5 MB/s
+  simdjson (C++) — DOM AST                 █████████████████████████░░░░░░░░░░░░░░░    2714.6 MB/s
+  simdjson (C++) — DOM (AST)               ████████████████░░░░░░░░░░░░░░░░░░░░░░░░    1697.2 MB/s
+  RapidJSON (C++ / SIMD) — SAX (Validate)  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     748.6 MB/s
+  RapidJSON (C++ / SIMD) — DOM (AST)       ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     521.7 MB/s
 ```
 
 ---
@@ -105,58 +109,40 @@ These libraries are optimised exclusively for JSON using SIMD intrinsics and two
 
 _A Lua grammar that exercises keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, comments, and keyed table constructors._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ### `languages/lua/samples/code-01.lua`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 16    | 264.3 MB/s | —  | —     |
-| ✗   | ✗     | 32    | 200.3 MB/s | —  | —     |
-| ✓   | ✓     | 16    | 71.9 MB/s  | —  | —     |
-| ✓   | ✗     | 16    | 98.7 MB/s  | —  | —     |
-| ✓   | ✓     | 32    | 74.1 MB/s  | —  | —     |
-| ✓   | ✗     | 32    | 100.9 MB/s | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 278.7 MB/s | —  | —     |
+| ✓   | ✓     | 69.1 MB/s  | —  | —     |
+| ✓   | ✗     | 104.1 MB/s | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     264.3 MB/s
-  LL  ✗ast ✗term lim=32  ██████████████████████████████░░░░░░░░░░     200.3 MB/s
-  LL  ✓ast ✗term lim=32  ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░     100.9 MB/s
-  LL  ✓ast ✗term lim=16  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░      98.7 MB/s
-  LL  ✓ast ✓term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      74.1 MB/s
-  LL  ✓ast ✓term lim=16  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      71.9 MB/s
-  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     278.7 MB/s
+  LL  ✓ast ✗term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     104.1 MB/s
+  LL  ✓ast ✓term  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      69.1 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
 ### `languages/lua/samples/code-02.lua`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 16    | 320.8 MB/s | —  | —     |
-| ✗   | ✗     | 32    | 246.8 MB/s | —  | —     |
-| ✓   | ✓     | 16    | 83.5 MB/s  | —  | —     |
-| ✓   | ✗     | 16    | 112.0 MB/s | —  | —     |
-| ✓   | ✓     | 32    | 80.8 MB/s  | —  | —     |
-| ✓   | ✗     | 32    | 108.2 MB/s | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 325.4 MB/s | —  | —     |
+| ✓   | ✓     | 76.2 MB/s  | —  | —     |
+| ✓   | ✗     | 97.6 MB/s  | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     320.8 MB/s
-  LL  ✗ast ✗term lim=32  ██████████████████████████████░░░░░░░░░░     246.8 MB/s
-  LL  ✓ast ✗term lim=16  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░     112.0 MB/s
-  LL  ✓ast ✗term lim=32  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░     108.2 MB/s
-  LL  ✓ast ✓term lim=16  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      83.5 MB/s
-  LL  ✓ast ✓term lim=32  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      80.8 MB/s
-  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     325.4 MB/s
+  LL  ✓ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░      97.6 MB/s
+  LL  ✓ast ✓term  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      76.2 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
 ---
@@ -165,58 +151,40 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 _A Lisp grammar that exercises lists, symbols, numbers, strings, reader macros, comments, vectors, arrays, and multiple top-level forms._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ### `languages/lisp/samples/code-01.lisp`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 16    | 508.8 MB/s | —  | —     |
-| ✗   | ✗     | 32    | 499.2 MB/s | —  | —     |
-| ✓   | ✓     | 16    | 209.2 MB/s | —  | —     |
-| ✓   | ✗     | 16    | 242.5 MB/s | —  | —     |
-| ✓   | ✓     | 32    | 187.7 MB/s | —  | —     |
-| ✓   | ✗     | 32    | 237.6 MB/s | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 486.5 MB/s | —  | —     |
+| ✓   | ✓     | 181.4 MB/s | —  | —     |
+| ✓   | ✗     | 216.5 MB/s | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     508.8 MB/s
-  LL  ✗ast ✗term lim=32  ███████████████████████████████████████░     499.2 MB/s
-  LL  ✓ast ✗term lim=16  ███████████████████░░░░░░░░░░░░░░░░░░░░░     242.5 MB/s
-  LL  ✓ast ✗term lim=32  ██████████████████░░░░░░░░░░░░░░░░░░░░░░     237.6 MB/s
-  LL  ✓ast ✓term lim=16  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░     209.2 MB/s
-  LL  ✓ast ✓term lim=32  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     187.7 MB/s
-  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     486.5 MB/s
+  LL  ✓ast ✗term  █████████████████░░░░░░░░░░░░░░░░░░░░░░░     216.5 MB/s
+  LL  ✓ast ✓term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     181.4 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
 ### `languages/lisp/samples/code-02.lisp`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 16    | 506.6 MB/s | —  | —     |
-| ✗   | ✗     | 32    | 522.6 MB/s | —  | —     |
-| ✓   | ✓     | 16    | 242.0 MB/s | —  | —     |
-| ✓   | ✗     | 16    | 278.1 MB/s | —  | —     |
-| ✓   | ✓     | 32    | 233.9 MB/s | —  | —     |
-| ✓   | ✗     | 32    | 206.3 MB/s | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 494.2 MB/s | —  | —     |
+| ✓   | ✓     | 230.6 MB/s | —  | —     |
+| ✓   | ✗     | 265.0 MB/s | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=32  ████████████████████████████████████████     522.6 MB/s
-  LL  ✗ast ✗term lim=16  ██████████████████████████████████████░░     506.6 MB/s
-  LL  ✓ast ✗term lim=16  █████████████████████░░░░░░░░░░░░░░░░░░░     278.1 MB/s
-  LL  ✓ast ✓term lim=16  ██████████████████░░░░░░░░░░░░░░░░░░░░░░     242.0 MB/s
-  LL  ✓ast ✓term lim=32  █████████████████░░░░░░░░░░░░░░░░░░░░░░░     233.9 MB/s
-  LL  ✓ast ✗term lim=32  ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░     206.3 MB/s
-  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ███████████████████████████████████████░     494.2 MB/s
+  LL  ✓ast ✗term  █████████████████████░░░░░░░░░░░░░░░░░░░     265.0 MB/s
+  LL  ✓ast ✓term  ██████████████████░░░░░░░░░░░░░░░░░░░░░░     230.6 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
 ---
@@ -225,49 +193,40 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 _Standard JSON (RFC 8259). This is the benchmark JSON grammar: it parses full recursive JSON while keeping the grammar factored with few non-terminals for maximum generated parser throughput._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ### `languages/json/samples/code-01.json`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 788.0 MB/s | 308.0 MB/s | 2.56× |
-| ✗   | ✗     | 32    | 667.7 MB/s | 241.2 MB/s | 2.77× |
-| ✓   | ✓     | 16    | 336.9 MB/s | 93.0 MB/s  | 3.62× |
-| ✓   | ✗     | 16    | 477.2 MB/s | 113.5 MB/s | 4.20× |
-| ✓   | ✓     | 32    | 324.2 MB/s | 88.2 MB/s  | 3.68× |
-| ✓   | ✗     | 32    | 475.0 MB/s | 109.6 MB/s | 4.33× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 870.9 MB/s | 319.7 MB/s | 2.72× |
+| ✓   | ✓     | 317.1 MB/s | 57.1 MB/s  | 5.55× |
+| ✓   | ✗     | 474.5 MB/s | 62.1 MB/s  | 7.64× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     788.0 MB/s
-  LL  ✗ast ✗term lim=32  █████████████████████████████████░░░░░░░     667.7 MB/s
-  LL  ✓ast ✗term lim=16  ████████████████████████░░░░░░░░░░░░░░░░     477.2 MB/s
-  LL  ✓ast ✗term lim=32  ████████████████████████░░░░░░░░░░░░░░░░     475.0 MB/s
-  LL  ✓ast ✓term lim=16  █████████████████░░░░░░░░░░░░░░░░░░░░░░░     336.9 MB/s
-  LL  ✓ast ✓term lim=32  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░     324.2 MB/s
-  LR  ✗ast ✗term lim=16  ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░     308.0 MB/s
-  LR  ✗ast ✗term lim=32  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     241.2 MB/s
-  LR  ✓ast ✗term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     113.5 MB/s
-  LR  ✓ast ✗term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     109.6 MB/s
-  LR  ✓ast ✓term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      93.0 MB/s
-  LR  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      88.2 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     870.9 MB/s
+  LL  ✓ast ✗term  █████████████████████░░░░░░░░░░░░░░░░░░░     474.5 MB/s
+  LR  ✗ast ✗term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     319.7 MB/s
+  LL  ✓ast ✓term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     317.1 MB/s
+  LR  ✓ast ✗term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      62.1 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.1 MB/s
 ```
 
 ### `languages/json/samples/code-02.json`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 32    | 644.6 MB/s | 235.2 MB/s | 2.74× |
-| ✓   | ✓     | 32    | 290.8 MB/s | 87.4 MB/s  | 3.33× |
-| ✓   | ✗     | 32    | 408.4 MB/s | 110.5 MB/s | 3.70× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 840.3 MB/s | 311.9 MB/s | 2.69× |
+| ✓   | ✓     | 174.4 MB/s | 44.1 MB/s  | 3.95× |
+| ✓   | ✗     | 346.9 MB/s | 57.5 MB/s  | 6.03× |
 
 ```
-  LL  ✗ast ✗term lim=32  ████████████████████████████████████████     644.6 MB/s
-  LL  ✓ast ✗term lim=32  █████████████████████████░░░░░░░░░░░░░░░     408.4 MB/s
-  LL  ✓ast ✓term lim=32  ██████████████████░░░░░░░░░░░░░░░░░░░░░░     290.8 MB/s
-  LR  ✗ast ✗term lim=32  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     235.2 MB/s
-  LR  ✓ast ✗term lim=32  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     110.5 MB/s
-  LR  ✓ast ✓term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      87.4 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     840.3 MB/s
+  LL  ✓ast ✗term  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░     346.9 MB/s
+  LR  ✗ast ✗term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     311.9 MB/s
+  LL  ✓ast ✓term  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     174.4 MB/s
+  LR  ✓ast ✗term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.5 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      44.1 MB/s
 ```
 
 ---
@@ -276,162 +235,91 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 _Galley's own grammar file format (`.grm`). This is the self-hosting grammar: Galley uses itself to parse the grammar files that define its languages, including this one. Exercises nested rules, procedure annotations, comment syntax, and indentation-sensitive constructs._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
-### `languages/galley/ll.grm`
+### `languages/galley/samples/galley-ll.grm`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 611.9 MB/s | 187.6 MB/s | 3.26× |
-| ✗   | ✗     | 32    | 567.1 MB/s | 172.8 MB/s | 3.28× |
-| ✓   | ✓     | 16    | 84.7 MB/s  | 56.0 MB/s  | 1.51× |
-| ✓   | ✗     | 16    | 120.8 MB/s | 72.3 MB/s  | 1.67× |
-| ✓   | ✓     | 32    | 77.0 MB/s  | 53.7 MB/s  | 1.43× |
-| ✓   | ✗     | 32    | 120.6 MB/s | 71.8 MB/s  | 1.68× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 597.8 MB/s | 194.0 MB/s | 3.08× |
+| ✓   | ✓     | 79.5 MB/s  | 41.8 MB/s  | 1.90× |
+| ✓   | ✗     | 116.9 MB/s | 48.1 MB/s  | 2.43× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     611.9 MB/s
-  LL  ✗ast ✗term lim=32  █████████████████████████████████████░░░     567.1 MB/s
-  LR  ✗ast ✗term lim=16  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     187.6 MB/s
-  LR  ✗ast ✗term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     172.8 MB/s
-  LL  ✓ast ✗term lim=16  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     120.8 MB/s
-  LL  ✓ast ✗term lim=32  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     120.6 MB/s
-  LL  ✓ast ✓term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      84.7 MB/s
-  LL  ✓ast ✓term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      77.0 MB/s
-  LR  ✓ast ✗term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      72.3 MB/s
-  LR  ✓ast ✗term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      71.8 MB/s
-  LR  ✓ast ✓term lim=16  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      56.0 MB/s
-  LR  ✓ast ✓term lim=32  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.7 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     597.8 MB/s
+  LR  ✗ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     194.0 MB/s
+  LL  ✓ast ✗term  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     116.9 MB/s
+  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      79.5 MB/s
+  LR  ✓ast ✗term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      48.1 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      41.8 MB/s
 ```
 
-### `languages/galley/lr.grm`
+### `languages/galley/samples/galley-lr.grm`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 617.9 MB/s | 189.7 MB/s | 3.26× |
-| ✗   | ✗     | 32    | 571.7 MB/s | 174.3 MB/s | 3.28× |
-| ✓   | ✓     | 16    | 84.2 MB/s  | 55.3 MB/s  | 1.52× |
-| ✓   | ✗     | 16    | 120.7 MB/s | 71.5 MB/s  | 1.69× |
-| ✓   | ✓     | 32    | 76.4 MB/s  | 53.3 MB/s  | 1.43× |
-| ✓   | ✗     | 32    | 121.0 MB/s | 71.2 MB/s  | 1.70× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 603.1 MB/s | 194.5 MB/s | 3.10× |
+| ✓   | ✓     | 79.5 MB/s  | 41.5 MB/s  | 1.92× |
+| ✓   | ✗     | 116.0 MB/s | 47.7 MB/s  | 2.43× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     617.9 MB/s
-  LL  ✗ast ✗term lim=32  █████████████████████████████████████░░░     571.7 MB/s
-  LR  ✗ast ✗term lim=16  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     189.7 MB/s
-  LR  ✗ast ✗term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     174.3 MB/s
-  LL  ✓ast ✗term lim=32  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     121.0 MB/s
-  LL  ✓ast ✗term lim=16  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     120.7 MB/s
-  LL  ✓ast ✓term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      84.2 MB/s
-  LL  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      76.4 MB/s
-  LR  ✓ast ✗term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      71.5 MB/s
-  LR  ✓ast ✗term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      71.2 MB/s
-  LR  ✓ast ✓term lim=16  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      55.3 MB/s
-  LR  ✓ast ✓term lim=32  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.3 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     603.1 MB/s
+  LR  ✗ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     194.5 MB/s
+  LL  ✓ast ✗term  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     116.0 MB/s
+  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      79.5 MB/s
+  LR  ✓ast ✗term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      47.7 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      41.5 MB/s
 ```
 
-### `languages/json/ll.grm`
+### `languages/galley/samples/json-ll.grm`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 595.9 MB/s | 218.3 MB/s | 2.73× |
-| ✗   | ✗     | 32    | 552.4 MB/s | 193.6 MB/s | 2.85× |
-| ✓   | ✓     | 16    | 86.6 MB/s  | 57.4 MB/s  | 1.51× |
-| ✓   | ✗     | 16    | 122.1 MB/s | 74.2 MB/s  | 1.65× |
-| ✓   | ✓     | 32    | 86.2 MB/s  | 57.9 MB/s  | 1.49× |
-| ✓   | ✗     | 32    | 122.4 MB/s | 74.1 MB/s  | 1.65× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 586.5 MB/s | 217.8 MB/s | 2.69× |
+| ✓   | ✓     | 80.1 MB/s  | 41.8 MB/s  | 1.92× |
+| ✓   | ✗     | 132.9 MB/s | 50.6 MB/s  | 2.63× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     595.9 MB/s
-  LL  ✗ast ✗term lim=32  █████████████████████████████████████░░░     552.4 MB/s
-  LR  ✗ast ✗term lim=16  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     218.3 MB/s
-  LR  ✗ast ✗term lim=32  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     193.6 MB/s
-  LL  ✓ast ✗term lim=32  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     122.4 MB/s
-  LL  ✓ast ✗term lim=16  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     122.1 MB/s
-  LL  ✓ast ✓term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      86.6 MB/s
-  LL  ✓ast ✓term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      86.2 MB/s
-  LR  ✓ast ✗term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      74.2 MB/s
-  LR  ✓ast ✗term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      74.1 MB/s
-  LR  ✓ast ✓term lim=32  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.9 MB/s
-  LR  ✓ast ✓term lim=16  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.4 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     586.5 MB/s
+  LR  ✗ast ✗term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░     217.8 MB/s
+  LL  ✓ast ✗term  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     132.9 MB/s
+  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      80.1 MB/s
+  LR  ✓ast ✗term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      50.6 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      41.8 MB/s
 ```
 
-### `languages/ll1/ll.grm`
+### `languages/galley/samples/ll1-ll.grm`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 596.3 MB/s | 182.6 MB/s | 3.27× |
-| ✗   | ✗     | 32    | 532.1 MB/s | 166.9 MB/s | 3.19× |
-| ✓   | ✓     | 16    | 78.7 MB/s  | 55.1 MB/s  | 1.43× |
-| ✓   | ✗     | 16    | 113.8 MB/s | 69.3 MB/s  | 1.64× |
-| ✓   | ✓     | 32    | 74.1 MB/s  | 53.1 MB/s  | 1.39× |
-| ✓   | ✗     | 32    | 107.7 MB/s | 68.2 MB/s  | 1.58× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 580.4 MB/s | 183.8 MB/s | 3.16× |
+| ✓   | ✓     | 75.6 MB/s  | 40.6 MB/s  | 1.86× |
+| ✓   | ✗     | 111.6 MB/s | 47.9 MB/s  | 2.33× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     596.3 MB/s
-  LL  ✗ast ✗term lim=32  ███████████████████████████████████░░░░░     532.1 MB/s
-  LR  ✗ast ✗term lim=16  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     182.6 MB/s
-  LR  ✗ast ✗term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     166.9 MB/s
-  LL  ✓ast ✗term lim=16  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     113.8 MB/s
-  LL  ✓ast ✗term lim=32  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     107.7 MB/s
-  LL  ✓ast ✓term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      78.7 MB/s
-  LL  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      74.1 MB/s
-  LR  ✓ast ✗term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      69.3 MB/s
-  LR  ✓ast ✗term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      68.2 MB/s
-  LR  ✓ast ✓term lim=16  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      55.1 MB/s
-  LR  ✓ast ✓term lim=32  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.1 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     580.4 MB/s
+  LR  ✗ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     183.8 MB/s
+  LL  ✓ast ✗term  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     111.6 MB/s
+  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      75.6 MB/s
+  LR  ✓ast ✗term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      47.9 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      40.6 MB/s
 ```
 
-### `languages/sanbus/ll.grm`
+### `languages/galley/samples/sanbus-ll.grm`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 608.0 MB/s | 185.3 MB/s | 3.28× |
-| ✗   | ✗     | 32    | 543.8 MB/s | 169.6 MB/s | 3.21× |
-| ✓   | ✓     | 16    | 77.7 MB/s  | 53.8 MB/s  | 1.44× |
-| ✓   | ✗     | 16    | 114.5 MB/s | 69.8 MB/s  | 1.64× |
-| ✓   | ✓     | 32    | 74.3 MB/s  | 53.4 MB/s  | 1.39× |
-| ✓   | ✗     | 32    | 107.4 MB/s | 68.7 MB/s  | 1.56× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 582.9 MB/s | 184.1 MB/s | 3.17× |
+| ✓   | ✓     | 76.4 MB/s  | 40.9 MB/s  | 1.87× |
+| ✓   | ✗     | 111.0 MB/s | 48.2 MB/s  | 2.30× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     608.0 MB/s
-  LL  ✗ast ✗term lim=32  ███████████████████████████████████░░░░░     543.8 MB/s
-  LR  ✗ast ✗term lim=16  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     185.3 MB/s
-  LR  ✗ast ✗term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     169.6 MB/s
-  LL  ✓ast ✗term lim=16  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     114.5 MB/s
-  LL  ✓ast ✗term lim=32  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     107.4 MB/s
-  LL  ✓ast ✓term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      77.7 MB/s
-  LL  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      74.3 MB/s
-  LR  ✓ast ✗term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      69.8 MB/s
-  LR  ✓ast ✗term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      68.7 MB/s
-  LR  ✓ast ✓term lim=16  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.8 MB/s
-  LR  ✓ast ✓term lim=32  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.4 MB/s
-```
-
-### `languages/test-ll/ll.grm`
-
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 16    | 539.3 MB/s | 181.6 MB/s | 2.97× |
-| ✗   | ✗     | 32    | 451.6 MB/s | 166.8 MB/s | 2.71× |
-| ✓   | ✓     | 16    | 83.0 MB/s  | 56.4 MB/s  | 1.47× |
-| ✓   | ✗     | 16    | 122.7 MB/s | 72.7 MB/s  | 1.69× |
-| ✓   | ✓     | 32    | 77.7 MB/s  | 54.6 MB/s  | 1.42× |
-| ✓   | ✗     | 32    | 113.9 MB/s | 68.6 MB/s  | 1.66× |
-
-```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     539.3 MB/s
-  LL  ✗ast ✗term lim=32  █████████████████████████████████░░░░░░░     451.6 MB/s
-  LR  ✗ast ✗term lim=16  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░     181.6 MB/s
-  LR  ✗ast ✗term lim=32  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     166.8 MB/s
-  LL  ✓ast ✗term lim=16  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     122.7 MB/s
-  LL  ✓ast ✗term lim=32  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     113.9 MB/s
-  LL  ✓ast ✓term lim=16  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      83.0 MB/s
-  LL  ✓ast ✓term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      77.7 MB/s
-  LR  ✓ast ✗term lim=16  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      72.7 MB/s
-  LR  ✓ast ✗term lim=32  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      68.6 MB/s
-  LR  ✓ast ✓term lim=16  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      56.4 MB/s
-  LR  ✓ast ✓term lim=32  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      54.6 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     582.9 MB/s
+  LR  ✗ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     184.1 MB/s
+  LL  ✓ast ✗term  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     111.0 MB/s
+  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      76.4 MB/s
+  LR  ✓ast ✗term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      48.2 MB/s
+  LR  ✓ast ✓term  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      40.9 MB/s
 ```
 
 ---
@@ -440,49 +328,40 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 _An indentation-sensitive structured data/schema language with declarations and embedded state, action, and effect logic. It exercises both LL and LR parsing together with semantic reduction procedures._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ### `languages/sanbus/samples/code-01`
 
-| AST | Term. | Limit | LL         | LR        | LL/LR |
-| --- | ----- | ----- | ---------- | --------- | ----- |
-| ✗   | ✗     | 16    | 188.1 MB/s | 99.6 MB/s | 1.89× |
-| ✗   | ✗     | 32    | 182.6 MB/s | 98.4 MB/s | 1.86× |
-| ✓   | ✓     | 16    | 82.0 MB/s  | 46.7 MB/s | 1.76× |
-| ✓   | ✗     | 16    | 99.7 MB/s  | 57.0 MB/s | 1.75× |
-| ✓   | ✓     | 32    | 79.5 MB/s  | 43.9 MB/s | 1.81× |
-| ✓   | ✗     | 32    | 84.1 MB/s  | 55.9 MB/s | 1.50× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 143.9 MB/s | 100.5 MB/s | 1.43× |
+| ✓   | ✓     | 72.8 MB/s  | 38.1 MB/s  | 1.91× |
+| ✓   | ✗     | 91.0 MB/s  | 44.1 MB/s  | 2.06× |
 
 ```
-  LL  ✗ast ✗term lim=16  ████████████████████████████████████████     188.1 MB/s
-  LL  ✗ast ✗term lim=32  ██████████████████████████████████████░░     182.6 MB/s
-  LL  ✓ast ✗term lim=16  █████████████████████░░░░░░░░░░░░░░░░░░░      99.7 MB/s
-  LR  ✗ast ✗term lim=16  █████████████████████░░░░░░░░░░░░░░░░░░░      99.6 MB/s
-  LR  ✗ast ✗term lim=32  ████████████████████░░░░░░░░░░░░░░░░░░░░      98.4 MB/s
-  LL  ✓ast ✗term lim=32  █████████████████░░░░░░░░░░░░░░░░░░░░░░░      84.1 MB/s
-  LL  ✓ast ✓term lim=16  █████████████████░░░░░░░░░░░░░░░░░░░░░░░      82.0 MB/s
-  LL  ✓ast ✓term lim=32  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░      79.5 MB/s
-  LR  ✓ast ✗term lim=16  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░      57.0 MB/s
-  LR  ✓ast ✗term lim=32  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      55.9 MB/s
-  LR  ✓ast ✓term lim=16  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      46.7 MB/s
-  LR  ✓ast ✓term lim=32  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      43.9 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     143.9 MB/s
+  LR  ✗ast ✗term  ███████████████████████████░░░░░░░░░░░░░     100.5 MB/s
+  LL  ✓ast ✗term  █████████████████████████░░░░░░░░░░░░░░░      91.0 MB/s
+  LL  ✓ast ✓term  ████████████████████░░░░░░░░░░░░░░░░░░░░      72.8 MB/s
+  LR  ✓ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░      44.1 MB/s
+  LR  ✓ast ✓term  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      38.1 MB/s
 ```
 
 ### `languages/sanbus/samples/code-02`
 
-| AST | Term. | Limit | LL         | LR         | LL/LR |
-| --- | ----- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 32    | 234.2 MB/s | 109.8 MB/s | 2.13× |
-| ✓   | ✓     | 32    | 81.0 MB/s  | 46.8 MB/s  | 1.73× |
-| ✓   | ✗     | 32    | 81.8 MB/s  | 56.0 MB/s  | 1.46× |
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 178.8 MB/s | 115.7 MB/s | 1.55× |
+| ✓   | ✓     | 75.8 MB/s  | 40.0 MB/s  | 1.90× |
+| ✓   | ✗     | 95.7 MB/s  | 46.3 MB/s  | 2.07× |
 
 ```
-  LL  ✗ast ✗term lim=32  ████████████████████████████████████████     234.2 MB/s
-  LR  ✗ast ✗term lim=32  ██████████████████░░░░░░░░░░░░░░░░░░░░░░     109.8 MB/s
-  LL  ✓ast ✗term lim=32  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░      81.8 MB/s
-  LL  ✓ast ✓term lim=32  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░      81.0 MB/s
-  LR  ✓ast ✗term lim=32  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      56.0 MB/s
-  LR  ✓ast ✓term lim=32  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      46.8 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     178.8 MB/s
+  LR  ✗ast ✗term  █████████████████████████░░░░░░░░░░░░░░░     115.7 MB/s
+  LL  ✓ast ✗term  █████████████████████░░░░░░░░░░░░░░░░░░░      95.7 MB/s
+  LL  ✓ast ✓term  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░      75.8 MB/s
+  LR  ✓ast ✗term  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      46.3 MB/s
+  LR  ✓ast ✓term  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      40.0 MB/s
 ```
 
 ---
@@ -491,49 +370,63 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 
 _A procedure-free indentation-sensitive grammar whose delimiter tokens make every decision point unambiguous with one token of lookahead. Used to exercise and benchmark the LL(1) fast path._
 
-_AST = build syntax tree · Term. = include terminal nodes in tree · Limit = token size limit_
+_AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ### `languages/ll1/samples/code-01`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 16    | 188.6 MB/s | —  | —     |
-| ✗   | ✗     | 32    | 188.8 MB/s | —  | —     |
-| ✓   | ✓     | 16    | 83.0 MB/s  | —  | —     |
-| ✓   | ✗     | 16    | 100.6 MB/s | —  | —     |
-| ✓   | ✓     | 32    | 80.7 MB/s  | —  | —     |
-| ✓   | ✗     | 32    | 83.8 MB/s  | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 146.8 MB/s | —  | —     |
+| ✓   | ✓     | 74.9 MB/s  | —  | —     |
+| ✓   | ✗     | 92.2 MB/s  | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=32  ████████████████████████████████████████     188.8 MB/s
-  LL  ✗ast ✗term lim=16  ███████████████████████████████████████░     188.6 MB/s
-  LL  ✓ast ✗term lim=16  █████████████████████░░░░░░░░░░░░░░░░░░░     100.6 MB/s
-  LL  ✓ast ✗term lim=32  █████████████████░░░░░░░░░░░░░░░░░░░░░░░      83.8 MB/s
-  LL  ✓ast ✓term lim=16  █████████████████░░░░░░░░░░░░░░░░░░░░░░░      83.0 MB/s
-  LL  ✓ast ✓term lim=32  █████████████████░░░░░░░░░░░░░░░░░░░░░░░      80.7 MB/s
-  LR  ✗ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=16  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     146.8 MB/s
+  LL  ✓ast ✗term  █████████████████████████░░░░░░░░░░░░░░░      92.2 MB/s
+  LL  ✓ast ✓term  ████████████████████░░░░░░░░░░░░░░░░░░░░      74.9 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
 ### `languages/ll1/samples/code-02`
 
-| AST | Term. | Limit | LL         | LR | LL/LR |
-| --- | ----- | ----- | ---------- | -- | ----- |
-| ✗   | ✗     | 32    | 252.6 MB/s | —  | —     |
-| ✓   | ✓     | 32    | 82.2 MB/s  | —  | —     |
-| ✓   | ✗     | 32    | 89.5 MB/s  | —  | —     |
+| AST | Term. | LL         | LR | LL/LR |
+| --- | ----- | ---------- | -- | ----- |
+| ✗   | ✗     | 188.0 MB/s | —  | —     |
+| ✓   | ✓     | 74.8 MB/s  | —  | —     |
+| ✓   | ✗     | 98.2 MB/s  | —  | —     |
 
 ```
-  LL  ✗ast ✗term lim=32  ████████████████████████████████████████     252.6 MB/s
-  LL  ✓ast ✗term lim=32  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░      89.5 MB/s
-  LL  ✓ast ✓term lim=32  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░      82.2 MB/s
-  LR  ✗ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✓term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
-  LR  ✓ast ✗term lim=32  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LL  ✗ast ✗term  ████████████████████████████████████████     188.0 MB/s
+  LL  ✓ast ✗term  ████████████████████░░░░░░░░░░░░░░░░░░░░      98.2 MB/s
+  LL  ✓ast ✓term  ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░      74.8 MB/s
+  LR  ✗ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✓term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+  LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
+```
+
+---
+
+## Json Unicode
+
+_AST = build syntax tree · Term. = include terminal nodes in tree_
+
+### `languages/json-unicode/samples/code-01.json`
+
+| AST | Term. | LL         | LR         | LL/LR |
+| --- | ----- | ---------- | ---------- | ----- |
+| ✗   | ✗     | 600.9 MB/s | 246.0 MB/s | 2.44× |
+| ✓   | ✓     | 290.8 MB/s | 55.3 MB/s  | 5.26× |
+| ✓   | ✗     | 398.9 MB/s | 60.8 MB/s  | 6.56× |
+
+```
+  LL  ✗ast ✗term  ████████████████████████████████████████     600.9 MB/s
+  LL  ✓ast ✗term  ██████████████████████████░░░░░░░░░░░░░░     398.9 MB/s
+  LL  ✓ast ✓term  ███████████████████░░░░░░░░░░░░░░░░░░░░░     290.8 MB/s
+  LR  ✗ast ✗term  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░     246.0 MB/s
+  LR  ✓ast ✗term  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      60.8 MB/s
+  LR  ✓ast ✓term  ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      55.3 MB/s
 ```
 
 ---
@@ -541,14 +434,12 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
 ## Methodology
 
 ### Galley (this compiler)
-
 - Benchmarks are run by `scripts/benchmark.py`.
-- Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{size_limit}/{terminal_ast}/{input_lang}/{input_file}.txt`.
+- Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{terminal_ast}/{input_lang}/{input_file}.txt`.
 - **Parsed bytes** reflects repeated parsing of the input until a stable total is reached.
 - **LL** = generated LL parser; **LR** = generated LR parser.
 
 ### Third-party parsers
-
 - Benchmarks are run by the `third_party/parser-benchmark/` submodule.
 - Results are written below `third_party/parser-benchmark/benchmark_results/json/`.
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
@@ -559,5 +450,4 @@ _AST = build syntax tree · Term. = include terminal nodes in tree · Limit = to
   RapidJSON (C++/SIMD, DOM & SAX).
 
 ### Environment
-
 Results will vary by machine. All numbers are from a single run on an Apple M1 Pro.

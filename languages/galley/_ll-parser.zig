@@ -13,8 +13,7 @@ pub const are_procedures_enabled = true;
 pub const is_error_recovery_enabled = true;
 pub const error_recovery_mode: ErrorRecoveryMode = .explicit;
 pub const is_position_tracking_enabled = builtin.mode != .ReleaseFast;
-pub const is_input_refill_enabled = false;
-pub const input_size_cap = u16;
+pub const is_input_streaming_enabled = false;
 pub const longest_terminal_length = 2;
 
 pub const symbols = &[_][]const u8{
@@ -1309,9 +1308,6 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -1325,10 +1321,9 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 {
                     const child_node = parse_NewLines(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
@@ -1374,11 +1369,10 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -1426,7 +1420,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -1672,9 +1666,6 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -1688,10 +1679,9 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_23(context, occurrence_recovery)) {
@@ -1718,11 +1708,10 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -1770,7 +1759,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -1783,9 +1772,6 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -1799,10 +1785,9 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_terminal__x35(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
@@ -1852,11 +1837,10 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 3 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -1904,7 +1888,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -2427,9 +2411,6 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2443,10 +2424,9 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 {
                     const child_node = parse_RecoveryPoint(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
@@ -2478,11 +2458,10 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -2530,7 +2509,7 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -2670,9 +2649,6 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -2686,10 +2662,9 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_terminal__x64(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_26(context, occurrence_recovery)) {
@@ -2730,11 +2705,10 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -2782,7 +2756,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -3206,9 +3180,6 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3222,10 +3193,9 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 {
                     const child_node = parse_RightHandSideLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
@@ -3257,11 +3227,10 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -3309,7 +3278,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -3823,9 +3792,6 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -3839,10 +3805,9 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 4
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 4
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_space(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_37(context, occurrence_recovery)) {
@@ -3911,11 +3876,10 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 4 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 4 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -3963,7 +3927,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -4492,9 +4456,6 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -4508,10 +4469,9 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_character(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
@@ -4538,11 +4498,10 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -4590,7 +4549,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -4603,9 +4562,6 @@ fn parse_StringContent_1_1(context: *data_structures.Context, occurrence_recover
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -4619,10 +4575,9 @@ fn parse_StringContent_1_1(context: *data_structures.Context, occurrence_recover
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
@@ -4649,11 +4604,10 @@ fn parse_StringContent_1_1(context: *data_structures.Context, occurrence_recover
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -4701,7 +4655,7 @@ fn parse_StringContent_1_1(context: *data_structures.Context, occurrence_recover
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -4928,9 +4882,6 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -4944,10 +4895,9 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_46(context, occurrence_recovery)) {
@@ -4974,11 +4924,10 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -5026,7 +4975,7 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -5039,9 +4988,6 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -5055,10 +5001,9 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_character_x94_x39_x34_x92x03(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
@@ -5085,11 +5030,10 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -5137,7 +5081,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -5417,9 +5361,6 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -5433,10 +5374,9 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_terminal__x94(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_14(context, occurrence_recovery)) {
@@ -5477,11 +5417,10 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 2 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -5529,7 +5468,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -6804,9 +6743,6 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -6820,10 +6756,9 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 {
                     const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
@@ -6855,11 +6790,10 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -6907,7 +6841,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -6920,9 +6854,6 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -6936,10 +6867,9 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_character_x94_x34_x92n_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
@@ -6966,11 +6896,10 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -7018,7 +6947,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -7224,9 +7153,6 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -7240,10 +7166,9 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_terminal__(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_17(context, occurrence_recovery)) {
@@ -7270,11 +7195,10 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -7322,7 +7246,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -7335,9 +7259,6 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -7351,10 +7272,9 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
@@ -7381,11 +7301,10 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -7433,7 +7352,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -7446,9 +7365,6 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -7462,10 +7378,9 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
@@ -7492,11 +7407,10 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -7544,7 +7458,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -7863,9 +7777,6 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -7879,10 +7790,9 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_7(context, occurrence_recovery)) {
@@ -7909,11 +7819,10 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -7961,7 +7870,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
@@ -7974,9 +7883,6 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
     _ = &node_address;
     var repeating_node_address = node_address;
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
-    var repeating_node: *data_structures.ASTNode = undefined;
-    repeating_node = repeating_node; // dummy store for 0-repetition paths
-    _ = &repeating_node;
 
     while (true) {
         switch (context.head(u8, 0)) {
@@ -7990,10 +7896,9 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
                 if (node_address == data_structures.ASTNode.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    repeating_node.immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                repeating_node = context.node_allocator.at(repeating_node_address);
                 parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_8(context, occurrence_recovery)) {
@@ -8020,11 +7925,10 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
         if (node_address == data_structures.ASTNode.invalid_pointer) {
             node_address = exit_node;
         } else {
-            repeating_node.immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
         }
     }
     while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {
-        repeating_node = context.node_allocator.at(repeating_node_address);
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
@@ -8072,7 +7976,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
                 node_address = data_structures.ASTNode.invalid_pointer;
             }
         }
-        repeating_node_address = repeating_node.parent;
+        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
     }
     return node_address;
 }
