@@ -14,9 +14,7 @@ BENCHMARK_COOLDOWN_SECONDS = 10
 @dataclass(frozen=True)
 class BenchmarkVariant:
     ast_mode: str
-    input_size_dir: str
     term_ast: str
-    input_size: int | None
     procedures_enabled: bool
     variant_name: str
 
@@ -586,16 +584,6 @@ def benchmark_variant(gen_opts):
     elif "--no-procedures" in gen_opts:
         ast_mode = "no-procedures"
 
-    input_size_dir = "default-size"
-    input_size = None
-    if "--input-size" in gen_opts:
-        try:
-            size_idx = gen_opts.index("--input-size")
-            input_size = int(gen_opts[size_idx + 1])
-            input_size_dir = f"size_{input_size}"
-        except (ValueError, IndexError):
-            pass
-
     term_ast = "default-term-ast"
     if "--no-ast-for-terminals" in gen_opts:
         term_ast = "no-ast-for-terminals"
@@ -607,21 +595,18 @@ def benchmark_variant(gen_opts):
     is_ast_for_terminals = "--ast-for-terminals" in gen_opts
     procedures_enabled = not is_no_ast and not is_no_procedures
 
-    variant_size = input_size if input_size is not None else 16
     if is_no_ast:
-        variant_name = f"no-ast-no-procedures-size{variant_size}"
+        variant_name = "no-ast-no-procedures"
     elif is_no_procedures:
         term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
-        variant_name = f"ast-no-procedures-{term_suffix}-size{variant_size}"
+        variant_name = f"ast-no-procedures-{term_suffix}"
     else:
         term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
-        variant_name = f"ast-procedures-{term_suffix}-size{variant_size}"
+        variant_name = f"ast-procedures-{term_suffix}"
 
     return BenchmarkVariant(
         ast_mode=ast_mode,
-        input_size_dir=input_size_dir,
         term_ast=term_ast,
-        input_size=input_size,
         procedures_enabled=procedures_enabled,
         variant_name=variant_name,
     )
@@ -644,9 +629,6 @@ def prepare_benchmark_suite(name, gen_opts, args):
         if variant.procedures_enabled and file_size > MAX_BENCHMARK_INPUT_BYTES:
             skip_limit = "> 1 MB"
             skip_cause = "procedures enabled"
-        elif variant.input_size is not None and file_size >= (2**variant.input_size):
-            skip_limit = f">= 2^{variant.input_size}"
-            skip_cause = "input size limit"
 
         for parser_type in parser_types:
             cards.append(
@@ -673,8 +655,6 @@ def suite_progress_label(suite):
         and suite.variant.ast_mode != "no-ast"
     ):
         details.append("No terminal AST")
-    if suite.variant.input_size is not None:
-        details.append(f"2^{suite.variant.input_size}")
     return " · ".join([suite.name.upper(), *details])
 
 
@@ -684,9 +664,7 @@ def run_benchmark_suite(suite, args, progress):
     """
     name = suite.name
     ast_mode = suite.variant.ast_mode
-    input_size_dir = suite.variant.input_size_dir
     term_ast = suite.variant.term_ast
-    input_size = suite.variant.input_size
     variant_name = suite.variant.variant_name
 
     RESET = "" if args.no_color else "\033[0m"
@@ -706,9 +684,6 @@ def run_benchmark_suite(suite, args, progress):
         header_details.append("Terminals in AST")
     elif term_ast == "no-ast-for-terminals":
         header_details.append("No Terminals in AST")
-
-    if input_size is not None:
-        header_details.append(f"Size Limit: 2^{input_size}")
 
     details_str = " | ".join(header_details)
     title_text = f" {name.upper()} BENCHMARKS ({details_str}) "
@@ -1004,7 +979,6 @@ def run_benchmark_suite(suite, args, progress):
             "galley",
             name,
             ast_mode,
-            input_size_dir,
             term_ast,
             rel_input + ".txt",
         )
@@ -1013,7 +987,6 @@ def run_benchmark_suite(suite, args, progress):
             f"Language: {name}",
             f"Input: {input_file}",
             f"AST Mode: {ast_mode}",
-            f"Input Size Limit: {input_size_dir}",
             f"Terminal AST: {term_ast}",
             "-" * 40,
         ]
@@ -1090,18 +1063,12 @@ def lua_benchmark(gen_opts, args):
 
 
 def run_all_modes(benchmark_fn, args):
-    """
-    Iterates through all feature modes, input sizes, and optimize modes.
-    """
+    """Iterates through all AST and terminal-AST feature modes."""
     ast_modes = ["--no-ast", "--no-procedures"]
     if args.no_ast:
         ast_modes = ["--no-ast"]
     elif args.with_ast or args.no_procedures:
         ast_modes = ["--no-procedures"]
-
-    sizes = [16, 32]
-    if args.input_size is not None:
-        sizes = [args.input_size]
 
     term_asts = ["--no-ast-for-terminals", "--ast-for-terminals"]
     if args.ast_for_terminals:
@@ -1110,11 +1077,10 @@ def run_all_modes(benchmark_fn, args):
         term_asts = ["--no-ast-for-terminals"]
 
     for ast_mode in ast_modes:
-        for size in sizes:
-            for term_ast in term_asts:
-                if ast_mode == "--no-ast" and term_ast == "--ast-for-terminals":
-                    continue
-                benchmark_fn([ast_mode, "--input-size", str(size), term_ast], args)
+        for term_ast in term_asts:
+            if ast_mode == "--no-ast" and term_ast == "--ast-for-terminals":
+                continue
+            benchmark_fn([ast_mode, term_ast], args)
 
 
 BENCHMARKS = {
@@ -1173,12 +1139,6 @@ def main():
         "--no-procedures",
         action="store_true",
         help="Fix AST mode to --no-procedures",
-    )
-    parser.add_argument(
-        "--input-size",
-        type=int,
-        choices=[16, 32],
-        help="Fix input size (16 or 32)",
     )
     parser.add_argument(
         "--ast-for-terminals",

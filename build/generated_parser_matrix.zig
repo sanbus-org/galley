@@ -23,66 +23,37 @@ pub const Work = struct {
 
 const MatrixVariant = struct {
     name: []const u8,
-    input_size: u16,
     args: []const []const u8,
+    large_sample_api_coverage: bool = false,
 };
 
 const matrix_variants = [_]MatrixVariant{
     .{
-        .name = "no-ast-no-procedures-size16",
-        .input_size = 16,
-        .args = &.{ "--no-ast", "--input-size", "16", "--no-ast-for-terminals" },
+        .name = "no-ast-no-procedures",
+        .args = &.{ "--no-ast", "--no-ast-for-terminals" },
+        .large_sample_api_coverage = true,
     },
     .{
-        .name = "no-ast-no-procedures-size32",
-        .input_size = 32,
-        .args = &.{ "--no-ast", "--input-size", "32", "--no-ast-for-terminals" },
+        .name = "ast-no-procedures-no-terminal-ast",
+        .args = &.{ "--with-ast", "--no-procedures", "--no-ast-for-terminals" },
     },
     .{
-        .name = "ast-no-procedures-no-terminal-ast-size16",
-        .input_size = 16,
-        .args = &.{ "--with-ast", "--no-procedures", "--input-size", "16", "--no-ast-for-terminals" },
+        .name = "ast-no-procedures-terminal-ast",
+        .args = &.{ "--with-ast", "--no-procedures", "--ast-for-terminals" },
     },
     .{
-        .name = "ast-no-procedures-terminal-ast-size16",
-        .input_size = 16,
-        .args = &.{ "--with-ast", "--no-procedures", "--input-size", "16", "--ast-for-terminals" },
+        .name = "ast-procedures-no-terminal-ast",
+        .args = &.{ "--with-ast", "--with-procedures", "--no-ast-for-terminals" },
     },
     .{
-        .name = "ast-no-procedures-no-terminal-ast-size32",
-        .input_size = 32,
-        .args = &.{ "--with-ast", "--no-procedures", "--input-size", "32", "--no-ast-for-terminals" },
-    },
-    .{
-        .name = "ast-no-procedures-terminal-ast-size32",
-        .input_size = 32,
-        .args = &.{ "--with-ast", "--no-procedures", "--input-size", "32", "--ast-for-terminals" },
-    },
-    .{
-        .name = "ast-procedures-no-terminal-ast-size16",
-        .input_size = 16,
-        .args = &.{ "--with-ast", "--with-procedures", "--input-size", "16", "--no-ast-for-terminals" },
-    },
-    .{
-        .name = "ast-procedures-terminal-ast-size16",
-        .input_size = 16,
-        .args = &.{ "--with-ast", "--with-procedures", "--input-size", "16", "--ast-for-terminals" },
-    },
-    .{
-        .name = "ast-procedures-no-terminal-ast-size32",
-        .input_size = 32,
-        .args = &.{ "--with-ast", "--with-procedures", "--input-size", "32", "--no-ast-for-terminals" },
-    },
-    .{
-        .name = "ast-procedures-terminal-ast-size32",
-        .input_size = 32,
-        .args = &.{ "--with-ast", "--with-procedures", "--input-size", "32", "--ast-for-terminals" },
+        .name = "ast-procedures-terminal-ast",
+        .args = &.{ "--with-ast", "--with-procedures", "--ast-for-terminals" },
     },
 };
 
 fn testsErrorRecovery(variant: MatrixVariant) bool {
-    return std.mem.eql(u8, variant.name, "no-ast-no-procedures-size16") or
-        std.mem.eql(u8, variant.name, "ast-procedures-no-terminal-ast-size16");
+    return std.mem.eql(u8, variant.name, "no-ast-no-procedures") or
+        std.mem.eql(u8, variant.name, "ast-procedures-no-terminal-ast");
 }
 
 const ParserTypeSpec = struct {
@@ -222,7 +193,7 @@ fn addCase(
     );
     const galley_parser_mod = generated_parser.runtime_mod;
 
-    if (options.selection.includes(.matrix_error) and variant.input_size == 16) if (errorInputs(language)) |inputs| {
+    if (options.selection.includes(.matrix_error)) if (errorInputs(language)) |inputs| {
         const run_parser_error_tests = addGeneratedParserErrorTest(
             b,
             options.target,
@@ -345,8 +316,7 @@ fn addCase(
         case_name,
         case_label,
         variant.name,
-        variant.args,
-        variant.input_size,
+        variant.large_sample_api_coverage,
         work,
     );
 
@@ -367,8 +337,7 @@ fn addLanguageSamples(
     case_name: []const u8,
     case_label: []const u8,
     config_label: []const u8,
-    variant_args: []const []const u8,
-    input_size: u16,
+    large_sample_api_coverage: bool,
     work: *Work,
 ) !void {
     const samples_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "samples" });
@@ -399,8 +368,7 @@ fn addLanguageSamples(
                 case_label,
                 config_label,
                 sample_path,
-                variant_args,
-                input_size,
+                large_sample_api_coverage,
                 work,
             );
         }
@@ -416,15 +384,12 @@ fn addValidationInput(
     case_label: []const u8,
     config_label: []const u8,
     input_path: []const u8,
-    variant_args: []const []const u8,
-    input_size: u16,
+    large_sample_api_coverage: bool,
     work: *Work,
 ) !void {
     const stat = try b.build_root.handle.statFile(b.graph.io, input_path, .{});
-    const max_size = (@as(u64, 1) << @intCast(input_size));
-    if (stat.size >= max_size) return;
 
-    if (options.selection.includes(.matrix_api) and !shouldSkipGeneratedParserApiTests(variant_args, stat.size)) {
+    if (options.selection.includes(.matrix_api) and shouldRunGeneratedParserApiTests(large_sample_api_coverage, stat.size)) {
         const sample_input = try b.build_root.handle.readFileAlloc(
             b.graph.io,
             input_path,
@@ -605,16 +570,8 @@ fn addGeneratedParserErrorTest(
 
 const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
 
-fn shouldSkipGeneratedParserApiTests(variant_args: []const []const u8, sample_size: u64) bool {
-    if (sample_size <= large_sample_api_test_skip_threshold) return false;
-
-    var procedures_enabled = false;
-    var terminal_ast_enabled = false;
-    for (variant_args) |arg| {
-        if (std.mem.eql(u8, arg, "--with-procedures")) procedures_enabled = true;
-        if (std.mem.eql(u8, arg, "--ast-for-terminals")) terminal_ast_enabled = true;
-    }
-    return procedures_enabled and terminal_ast_enabled;
+fn shouldRunGeneratedParserApiTests(large_sample_api_coverage: bool, sample_size: u64) bool {
+    return sample_size <= large_sample_api_test_skip_threshold or large_sample_api_coverage;
 }
 
 fn trackFilteredTestRun(b: *std.Build, options: Options, run_step: *std.Build.Step) void {

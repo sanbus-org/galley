@@ -162,10 +162,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             test_step.dependOn(&run_json_recovery_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_recovery_tests.step);
 
-            inline for (std.meta.tags(InputRefillTestKind)) |kind| {
-                const run_input_refill_tests = try addInputRefillTests(b, options, parser_type, kind, selection.names);
-                test_step.dependOn(&run_input_refill_tests.step);
-                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_input_refill_tests.step);
+            inline for (std.meta.tags(InputStreamingTestKind)) |kind| {
+                const run_input_streaming_tests = try addInputStreamingTests(b, options, parser_type, kind, selection.names);
+                test_step.dependOn(&run_input_streaming_tests.step);
+                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_input_streaming_tests.step);
             }
         }
     }
@@ -356,8 +356,6 @@ fn addGalleyRecoveryComparisonGeneration(
         "--no-ast",
         "--no-procedures",
         "--with-error-recovery",
-        "--input-size",
-        "16",
     });
     if (strip_recovery_annotations) generate_parser.addArg("--strip-recovery-annotations");
     return output;
@@ -417,8 +415,6 @@ fn addSymbolKindIdentityTests(
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
-        "--input-size",
-        "16",
     });
 
     const procedures_mod = b.createModule(.{
@@ -482,8 +478,6 @@ fn addProcedureHookTests(
     generate_parser.addArgs(&.{
         "--with-ast",
         "--with-procedures",
-        "--input-size",
-        "16",
         "--ast-for-terminals",
     });
     generate_parser.stdio = .inherit;
@@ -555,8 +549,6 @@ fn addExplicitRecoveryTests(
         "--with-ast",
         "--with-procedures",
         "--with-error-recovery",
-        "--input-size",
-        "16",
     });
     generate_parser.stdio = .inherit;
 
@@ -620,8 +612,6 @@ fn addGalleyRecoveryTests(
         "--no-ast",
         "--no-procedures",
         "--with-error-recovery",
-        "--input-size",
-        "16",
     });
 
     const procedures_mod = b.createModule(.{
@@ -682,8 +672,6 @@ fn addJsonRecoveryTests(
         "--no-ast",
         "--no-procedures",
         "--with-error-recovery",
-        "--input-size",
-        "16",
     });
 
     const procedures_mod = b.createModule(.{
@@ -727,24 +715,25 @@ fn addJsonRecoveryTests(
     return b.addRunArtifact(tests);
 }
 
-const InputRefillTestKind = enum {
+const InputStreamingTestKind = enum {
     sliding,
+    non_streaming,
     indentation,
+    indentation_no_streaming,
     recovery_eof,
-    ast_limit,
-    unbuffered_read_error,
+    ast_large_input,
 };
 
-fn addInputRefillTests(
+fn addInputStreamingTests(
     b: *std.Build,
     options: Options,
     parser_type: []const u8,
-    kind: InputRefillTestKind,
+    kind: InputStreamingTestKind,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const language = if (kind == .indentation) "sanbus" else "json";
+    const language = if (kind == .indentation or kind == .indentation_no_streaming) "sanbus" else "json";
     const label = @tagName(kind);
-    const parser_name = b.fmt("input-refill-{s}-{s}", .{ parser_type, label });
+    const parser_name = b.fmt("input-streaming-{s}-{s}", .{ parser_type, label });
 
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
     generate_parser.addArg("--grammar");
@@ -752,21 +741,19 @@ fn addInputRefillTests(
     generate_parser.addArg("--parser-type");
     generate_parser.addArg(parser_type);
     generate_parser.addArg("--label");
-    generate_parser.addArg(b.fmt("{s}/input-refill/{s}", .{ parser_type, label }));
+    generate_parser.addArg(b.fmt("{s}/input-streaming/{s}", .{ parser_type, label }));
     generate_parser.addArg("--output");
     const parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--no-procedures",
         "--with-position-tracking",
-        "--input-size",
-        "16",
     });
-    if (kind == .unbuffered_read_error) {
-        generate_parser.addArg("--no-input-refill");
+    if (kind == .non_streaming or kind == .indentation_no_streaming) {
+        generate_parser.addArg("--no-input-streaming");
     } else {
-        generate_parser.addArg("--with-input-refill");
+        generate_parser.addArg("--with-input-streaming");
     }
-    if (kind == .ast_limit) {
+    if (kind == .ast_large_input) {
         generate_parser.addArg("--with-ast");
     } else {
         generate_parser.addArg("--no-ast");
@@ -803,20 +790,22 @@ fn addInputRefillTests(
 
     const test_options = b.addOptions();
     test_options.addOption(bool, "sliding", kind == .sliding);
-    test_options.addOption(bool, "indentation", kind == .indentation);
+    test_options.addOption(bool, "non_streaming", kind == .non_streaming);
+    test_options.addOption(bool, "indentation", kind == .indentation or kind == .indentation_no_streaming);
     test_options.addOption(bool, "recovery_eof", kind == .recovery_eof);
-    test_options.addOption(bool, "ast_limit", kind == .ast_limit);
-    test_options.addOption(bool, "refill_enabled", kind != .unbuffered_read_error);
+    test_options.addOption(bool, "ast_large_input", kind == .ast_large_input);
+    test_options.addOption(bool, "streaming_enabled", kind != .non_streaming and kind != .indentation_no_streaming);
     test_options.addOption(
         bool,
         "read_error",
         kind == .sliding or
+            kind == .non_streaming or
             kind == .indentation or
-            kind == .recovery_eof or
-            kind == .unbuffered_read_error,
+            kind == .indentation_no_streaming or
+            kind == .recovery_eof,
     );
     const test_mod = b.createModule(.{
-        .root_source_file = b.path("src/tests/input_refill_test.zig"),
+        .root_source_file = b.path("src/tests/input_streaming_test.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .imports = &.{

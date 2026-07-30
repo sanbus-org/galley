@@ -81,10 +81,10 @@ installed handler instead of being reported as parser stack overflow.
 When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from contiguous, preallocated memory pools (`ASTAllocator`).
 
 Furthermore, AST nodes reference their parents, children, and siblings using
-compact integer indices (`u16` or the bit width defined by `--input-size`)
-rather than 64-bit pointers. This reduces AST memory consumption and keeps nodes
-dense for CPU caches. Session reuse retains the allocated pool, although reset
-currently clears the previously used node range before rewinding it.
+integer indices rather than memory pointers. Those indices remain valid when
+the contiguous pool grows and relocates. Session reuse retains the allocated
+pool, although reset currently clears the previously used node range before
+rewinding it.
 
 ---
 

@@ -7,18 +7,8 @@ const case_name = test_options.case_name;
 const suite = test_options.suite;
 const config_label = test_options.config_label;
 
-fn sampleFitsParserInputSize() bool {
-    const max_input_size = std.math.maxInt(parser.parser.input_size_cap);
-    if (sample_input.len > max_input_size) {
-        return false;
-    }
-    return true;
-}
-
 fn sampleSupportsSessionSafetyTests() bool {
-    return @bitSizeOf(parser.parser.input_size_cap) <= 16 and
-        sampleFitsParserInputSize() and
-        sample_input.len <= 1024 * 1024;
+    return sample_input.len <= 1024 * 1024;
 }
 
 fn expectParsedAll(result: parser.ParseResult, comptime test_label: []const u8) !void {
@@ -34,7 +24,6 @@ fn expectParsedAll(result: parser.ParseResult, comptime test_label: []const u8) 
             \\parser_type: {s}
             \\ast: {}
             \\procedures: {}
-            \\input_size_cap: {s}
             \\sample: {s}
             \\test: {s}
             \\parsed {d} of {d} bytes (stopped at line {d}, col {d})
@@ -48,7 +37,6 @@ fn expectParsedAll(result: parser.ParseResult, comptime test_label: []const u8) 
                 @tagName(parser.parser.parser_type),
                 parser.parser.is_ast_enabled,
                 parser.parser.are_procedures_enabled,
-                @typeName(parser.parser.input_size_cap),
                 test_options.sample_path,
                 test_label,
                 result.parsed_bytes,
@@ -137,8 +125,6 @@ test "JSON string decoder rejects malformed Unicode escapes" {
 test "generated_parser_api parse bytes" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
-
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, sample_input, .{ .input_path = test_options.sample_path });
     defer parsed.deinit();
 
@@ -148,8 +134,6 @@ test "generated_parser_api parse bytes" {
 test "generated_parser_api parse sentinel bytes" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
-
     const input = try allocSentinelSample();
     defer std.testing.allocator.free(input);
 
@@ -159,31 +143,24 @@ test "generated_parser_api parse sentinel bytes" {
     try expectParsedAll(parsed.result, "parse sentinel bytes");
 }
 
-test "generated_parser_api reports AST capacity exhaustion" {
+test "generated_parser_api grows AST capacity from zero" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime !parser.parser.is_ast_enabled) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return error.SkipZigTest;
-
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{
+        .ast_preallocation_ratio = 0,
+        .ast_preallocation_cap = 0,
+    });
     defer session.deinit();
 
-    const limited_allocator = try parser.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 0);
-    std.testing.allocator.free(session.node_allocator.memory);
-    session.node_allocator = limited_allocator;
-
-    try std.testing.expectError(
-        error.ASTCapacityExceeded,
-        session.parseBytes(sample_input, test_options.sample_path),
-    );
-    try std.testing.expectEqual(@as(parser.data_structures.ASTNode.Pointer, 0), session.node_allocator.counter);
+    const result = try session.parseBytes(sample_input, test_options.sample_path);
+    try expectParsedAll(result, "grow AST capacity from zero");
+    try std.testing.expect(session.node_allocator.memory.len > 1);
 }
 
 test "generated_parser_api reusable session byte slices" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return;
-
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
@@ -197,8 +174,6 @@ test "generated_parser_api reusable session byte slices" {
 test "generated_parser_api reusable session sentinel slices" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return;
-
     const input = try allocSentinelSample();
     defer std.testing.allocator.free(input);
 
@@ -286,8 +261,6 @@ test "generated_parser_api separate sessions parse concurrently" {
 test "generated_parser_api parse files" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_input.len == 0) return error.SkipZigTest;
-    if (!sampleFitsParserInputSize()) return;
-
     var file = try std.Io.Dir.cwd().openFile(std.testing.io, test_options.sample_path, .{
         .mode = .read_only,
     });

@@ -672,24 +672,24 @@ test "generateParserAlloc configures position tracking" {
     _ = try expectContains(untracked_ll, "pub const is_position_tracking_enabled = false;");
 }
 
-test "generateParserAlloc configures input refilling" {
+test "generateParserAlloc configures input streaming" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
     const default_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
-    _ = try expectContains(default_ll, "pub const is_input_refill_enabled = false;");
+    _ = try expectContains(default_ll, "pub const is_input_streaming_enabled = false;");
 
-    const refill_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{
+    const streaming_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{
         .with_procedures = false,
-        .with_input_refill = true,
+        .with_input_streaming = true,
     });
-    _ = try expectContains(refill_ll, "pub const is_input_refill_enabled = true;");
+    _ = try expectContains(streaming_ll, "pub const is_input_streaming_enabled = true;");
 
-    const refill_lr = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{
+    const streaming_lr = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{
         .with_procedures = false,
-        .with_input_refill = true,
+        .with_input_streaming = true,
     });
-    _ = try expectContains(refill_lr, "pub const is_input_refill_enabled = true;");
+    _ = try expectContains(streaming_lr, "pub const is_input_streaming_enabled = true;");
 }
 
 test "disabled recovery annotations are inert in LL and LR generation" {
