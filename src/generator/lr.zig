@@ -428,7 +428,26 @@ const Generator = struct {
             \\    node: data_structures.ASTNode.Pointer = data_structures.ASTNode.invalid_pointer,
             \\};
             \\
-            \\const SemanticStack = std.ArrayList(SemanticValue);
+            \\const SemanticStack = struct {
+            \\    storage: std.ArrayList(SemanticValue) = .empty,
+            \\    allocator: std.mem.Allocator,
+            \\
+            \\    inline fn append(self: *SemanticStack, value: SemanticValue) !void {
+            \\        if (self.storage.items.len == self.storage.capacity) {
+            \\            @branchHint(.unlikely);
+            \\            try self.storage.ensureUnusedCapacity(self.allocator, 1);
+            \\        }
+            \\        self.storage.appendAssumeCapacity(value);
+            \\    }
+            \\
+            \\    inline fn pop(self: *SemanticStack) ?SemanticValue {
+            \\        return self.storage.pop();
+            \\    }
+            \\
+            \\    fn deinit(self: *SemanticStack) void {
+            \\        self.storage.deinit(self.allocator);
+            \\    }
+            \\};
             \\
         );
         if (self.uses_explicit_recovery) try self.emitExplicitRecoverySupport(writer);
@@ -443,8 +462,8 @@ const Generator = struct {
 
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
-            \\    var stack: SemanticStack = .empty;
-            \\    defer stack.deinit(context.runtime().arena_allocator);
+            \\    var stack = SemanticStack{ .allocator = context.runtime().arena_allocator };
+            \\    defer stack.deinit();
             \\
         );
         if (self.uses_explicit_recovery) {
@@ -477,7 +496,7 @@ const Generator = struct {
             \\    }
             \\
             \\    const ast_root = if (comptime is_ast_enabled) root: {
-            \\        const node = stack.items[stack.items.len - 1].node;
+            \\        const node = stack.storage.items[stack.storage.items.len - 1].node;
             \\        break :root if (node != data_structures.ASTNode.invalid_pointer) node else null;
             \\    } else null;
             \\    return .{
@@ -811,7 +830,7 @@ const Generator = struct {
                     try writer.print("{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n", .{indent});
                 }
                 if (self.options.with_ast) {
-                    try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos, .node = node_address }});\n", .{indent});
+                    try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = node_address }});\n", .{indent});
                 }
                 try writer.print(
                     \\{s}if (comptime builtin.mode == .Debug) {{
@@ -884,9 +903,9 @@ const Generator = struct {
                     try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_address", indent);
                 }
                 const stack_value = if (self.options.with_procedures) "args.node orelse data_structures.ASTNode.invalid_pointer" else "parent_address";
-                try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
+                try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
             } else {
-                try writer.print("{s}try stack.append(context.runtime().arena_allocator, .{{ .start_pos = start_pos }});\n", .{indent});
+                try writer.print("{s}try stack.append(.{{ .start_pos = start_pos }});\n", .{indent});
             }
         }
 
@@ -1154,7 +1173,7 @@ const Generator = struct {
                 \\            const discarded = stack.pop() orelse unreachable;
                 \\            start_pos = discarded.start_pos;
                 \\        }
-                \\        try stack.append(context.runtime().arena_allocator, .{ .start_pos = start_pos });
+                \\        try stack.append(.{ .start_pos = start_pos });
                 \\    }
             );
         } else {
