@@ -79,7 +79,7 @@ fn cloneStringSlice(allocator: std.mem.Allocator, source: []const []const u8) ![
     return cloned;
 }
 
-fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar {
+pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar {
     const rules = try allocator.alloc(Rule, source.rules.len);
     for (source.rules, rules) |source_rule, *rule| {
         const right_hand_sides = try allocator.alloc(RightHandSide, source_rule.right_hand_sides.len);

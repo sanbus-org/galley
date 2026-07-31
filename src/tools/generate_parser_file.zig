@@ -49,43 +49,13 @@ const ParserEmission = struct {
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
         if (self.strip_recovery_annotations) {
             const grammar = try generator.parseGrammar(self.allocator, self.source);
-            const automatic_grammar = try grammarWithoutRecoveryAnnotations(self.allocator, grammar);
+            const automatic_grammar = try generator.grammarWithoutRecoveryAnnotations(self.allocator, grammar);
             try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, self.options);
         } else {
             try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, self.options);
         }
     }
 };
-
-fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *const generator.Grammar) !*generator.Grammar {
-    const rules = try allocator.alloc(generator.Rule, source.rules.len);
-    for (source.rules, rules) |source_rule, *rule| {
-        const right_hand_sides = try allocator.alloc(generator.RightHandSide, source_rule.right_hand_sides.len);
-        for (source_rule.right_hand_sides, right_hand_sides) |source_rhs, *rhs| {
-            const symbols = try allocator.alloc(generator.SymbolRef, source_rhs.symbols.len);
-            for (source_rhs.symbols, symbols) |source_symbol, *symbol| {
-                symbol.* = .{
-                    .id = source_symbol.id,
-                    .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures },
-                };
-            }
-            rhs.* = .{
-                .symbols = symbols,
-                .annotations = .{ .procedures = source_rhs.annotations.procedures },
-            };
-        }
-        rule.* = .{
-            .header = source_rule.header,
-            .annotations = .{ .procedures = source_rule.annotations.procedures },
-            .right_hand_sides = right_hand_sides,
-        };
-    }
-
-    const grammar = try allocator.create(generator.Grammar);
-    grammar.* = .{ .rules = rules };
-    return grammar;
-}
 
 fn parseArgs(init: std.process.Init) !CliOptions {
     var result = CliOptions{};
