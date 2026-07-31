@@ -18,8 +18,12 @@ const ASTMemoryBenchmarkCounters = struct {
 };
 
 pub fn ASTAllocator(comptime PayloadType: type) type {
+    return ASTAllocatorWithPointer(PayloadType, usize);
+}
+
+fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: type) type {
     return struct {
-        const ASTNodeType = ASTNode(PayloadType);
+        const ASTNodeType = ASTNodeWithPointer(PayloadType, PointerType);
         pub const max_node_capacity: usize = std.math.maxInt(ASTNodeType.Pointer) - 1;
         const invalid_pointer: ASTNodeType.Pointer = std.math.maxInt(ASTNodeType.Pointer);
         const default: ASTNodeType = .{
@@ -43,7 +47,7 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 
         const Self = @This();
 
-        pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocator(PayloadType) {
+        pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocatorWithPointer(PayloadType, PointerType) {
             if (capacity > max_node_capacity) return error.ASTCapacityTooLarge;
             const memory = try allocator.alloc(ASTNodeType, capacity + 1);
 
@@ -174,10 +178,14 @@ pub fn ASTAllocator(comptime PayloadType: type) type {
 }
 
 pub fn ASTNode(comptime PayloadType: type) type {
+    return ASTNodeWithPointer(PayloadType, usize);
+}
+
+fn ASTNodeWithPointer(comptime PayloadType: type, comptime PointerType: type) type {
     return struct {
-        pub const Pointer = usize;
-        pub const NodeAllocator = *ASTAllocator(PayloadType);
-        pub const invalid_pointer: Pointer = ASTAllocator(PayloadType).invalid_pointer;
+        pub const Pointer = PointerType;
+        pub const NodeAllocator = *ASTAllocatorWithPointer(PayloadType, PointerType);
+        pub const invalid_pointer: Pointer = ASTAllocatorWithPointer(PayloadType, PointerType).invalid_pointer;
         pub const invalid_variable: u16 = std.math.maxInt(u16);
 
         text_start: usize = 0,
@@ -819,6 +827,36 @@ test "AST allocator preserves nodes across cold-path growth" {
     try std.testing.expectEqual(@as(usize, 3), node_allocator.at(first).text_start);
     try std.testing.expectEqual(@as(usize, 7), node_allocator.at(first).text_length);
     try std.testing.expectEqual(@as(u16, 11), node_allocator.at(first).variable);
+}
+
+test "AST allocator reports exhaustion without corrupting state" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    const ExhaustionASTNode = ASTNodeWithPointer(TestPayload, u8);
+    const ExhaustionASTAllocator = ASTAllocatorWithPointer(TestPayload, u8);
+    var node_allocator = try ExhaustionASTAllocator.initWithCapacity(
+        std.testing.allocator,
+        ExhaustionASTAllocator.max_node_capacity,
+    );
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    var index: usize = 0;
+    while (index < ExhaustionASTAllocator.max_node_capacity) : (index += 1) {
+        const address = try node_allocator.create(index, @intCast(index));
+        try std.testing.expectEqual(@as(ExhaustionASTNode.Pointer, @intCast(index)), address);
+    }
+
+    const final_node = node_allocator.at(@intCast(ExhaustionASTAllocator.max_node_capacity - 1));
+    final_node.text_length = 17;
+    try std.testing.expectError(
+        error.ASTCapacityExceeded,
+        node_allocator.create(index, 99),
+    );
+    try std.testing.expectEqual(
+        @as(ExhaustionASTNode.Pointer, @intCast(ExhaustionASTAllocator.max_node_capacity)),
+        node_allocator.counter,
+    );
+    try std.testing.expectEqual(@as(usize, 17), final_node.text_length);
 }
 
 test "zero length augmented node" {
