@@ -723,17 +723,41 @@ fn ASTNodeWithPointer(comptime PayloadType: type, comptime PointerType: type) ty
             return count;
         }
 
+        /// Returns source text directly for leaves. For non-leaves, returns text rebuilt in the
+        /// session arena from descendant leaves, valid until the session arena is reset.
         pub fn augmentedText(self_address: Pointer, context: *Context) ![]const u8 {
-            const self = context.node_allocator.at(self_address);
+            const node_allocator = context.node_allocator;
+            const self = node_allocator.at(self_address);
             if (self.first_child == invalid_pointer) {
                 return context.getTextSlice(self.text_start, self.text_length);
             }
 
-            var combined_text = try std.ArrayList(u8).initCapacity(context.runtime().arena_allocator, 256 * 256);
-            var current_child = self.first_child;
-            while (current_child != invalid_pointer) {
-                try combined_text.appendSlice(context.runtime().arena_allocator, try Self.augmentedText(current_child, context));
-                current_child = context.node_allocator.at(current_child).next;
+            const allocator = context.runtime().arena_allocator;
+            var combined_text: std.ArrayList(u8) = .empty;
+            var current = self.first_child;
+
+            traversal: while (true) {
+                const current_node = node_allocator.at(current);
+                if (current_node.first_child != invalid_pointer) {
+                    current = current_node.first_child;
+                    continue;
+                }
+
+                try combined_text.appendSlice(
+                    allocator,
+                    context.getTextSlice(current_node.text_start, current_node.text_length),
+                );
+
+                while (current != self_address) {
+                    const completed_node = node_allocator.at(current);
+                    if (completed_node.next != invalid_pointer) {
+                        current = completed_node.next;
+                        continue :traversal;
+                    }
+                    current = completed_node.parent;
+                }
+
+                break;
             }
             return combined_text.items;
         }
@@ -1293,20 +1317,77 @@ fn testAugmentedText(fixture: *TestFixture) !void {
     const leaf_text = try TestASTNode.augmentedText(5, ctx);
     try std.testing.expectEqualStrings("A", leaf_text);
 
-    // Set distinguishable leaf texts on child1's children (5, 6, 7)
+    // Build a mixed-depth subtree under child 1. Child 1 has siblings, so this also proves
+    // traversal stops at the requested subtree rather than following its next sibling.
     fixture.nodes[5].text_start = 0;
     fixture.nodes[5].text_length = 1; // "A"
-    fixture.nodes[6].text_start = 1;
-    fixture.nodes[6].text_length = 1; // "B"
-    fixture.nodes[7].text_start = 2;
-    fixture.nodes[7].text_length = 1; // "C"
+    fixture.nodes[7].text_start = 3;
+    fixture.nodes[7].text_length = 1; // "D"
+
+    const nested_b = fixture.free_nodes[0];
+    const nested_empty = fixture.free_nodes[1];
+    const nested_c = fixture.free_nodes[2];
+    fixture.nodes[nested_b].text_start = 1;
+    fixture.nodes[nested_b].text_length = 1; // "B"
+    fixture.nodes[nested_empty].text_start = 2;
+    fixture.nodes[nested_empty].text_length = 0;
+    fixture.nodes[nested_c].text_start = 2;
+    fixture.nodes[nested_c].text_length = 1; // "C"
+    try TestASTNode.appendChildren(6, &fixture.node_allocator, nested_b);
+    try TestASTNode.appendChildren(6, &fixture.node_allocator, nested_empty);
+    try TestASTNode.appendChildren(6, &fixture.node_allocator, nested_c);
+
+    // Child 2 is child 1's next sibling. Its text must not be included.
+    fixture.nodes[8].text_start = 23;
+    fixture.nodes[8].text_length = 1; // "X"
 
     const combined = try TestASTNode.augmentedText(1, ctx);
-    try std.testing.expectEqualStrings("ABC", combined);
+    try std.testing.expectEqualStrings("ABCD", combined);
+
+    // This used to fail because every non-leaf allocated 64 KiB before recursion.
+    var output_storage: [1024]u8 = undefined;
+    var output_allocator = std.heap.FixedBufferAllocator.init(&output_storage);
+    const original_allocator = fixture.runtime_context.arena_allocator;
+    fixture.runtime_context.arena_allocator = output_allocator.allocator();
+    defer fixture.runtime_context.arena_allocator = original_allocator;
+
+    const compact_combined = try TestASTNode.augmentedText(1, ctx);
+    try std.testing.expectEqualStrings("ABCD", compact_combined);
 }
 
 test "augmentedText" {
     try runWithContext(testAugmentedText);
+}
+
+test "augmentedText traverses deep trees iteratively" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    const depth = 16 * 1024;
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, depth);
+    defer std.testing.allocator.free(node_allocator.memory);
+
+    var input = [_]u8{'Z'};
+    var context = testContext(&node_allocator, input[0..]);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var runtime_context = root.data_structures.RuntimeContext{
+        .io = undefined,
+        .arena_allocator = arena.allocator(),
+    };
+    var runtime_registration = root.data_structures.RuntimeContextRegistration.init(&context, &runtime_context);
+    runtime_registration.register();
+    defer runtime_registration.unregister();
+
+    const root_node = try node_allocator.create(0, 0);
+    var parent = root_node;
+    for (1..depth) |_| {
+        const child = try node_allocator.create(0, 0);
+        node_allocator.at(parent).immediateInsertChild(parent, child, &node_allocator);
+        parent = child;
+    }
+    node_allocator.at(parent).text_length = 1;
+
+    try std.testing.expectEqualStrings("Z", try TestASTNode.augmentedText(root_node, &context));
 }
 
 fn testRemoveCountExceeds(fixture: *TestFixture) !void {
