@@ -6,6 +6,7 @@ pub const GeneratorModules = struct {
     runtime_options_mod: *std.Build.Module,
     ast_memory_benchmark: bool,
     generator_common_mod: *std.Build.Module,
+    generator_switch_plan_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
     galley_grammar_procedures_mod: *std.Build.Module,
@@ -111,18 +112,34 @@ pub fn addGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
+    const generator_emitter_common_mod = b.addModule("generator_emitter_common", .{
+        .root_source_file = b.path("src/generator/emitter_common.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generator_emitter_common_mod.addImport("generator_common", generator_common_mod);
+    const generator_switch_plan_mod = b.addModule("generator_switch_plan", .{
+        .root_source_file = b.path("src/generator/switch_plan.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generator_switch_plan_mod.addImport("generator_common", generator_common_mod);
     const ll_generator_mod = b.addModule("ll_generator", .{
         .root_source_file = b.path("src/generator/ll.zig"),
         .target = target,
         .optimize = optimize,
     });
     ll_generator_mod.addImport("generator_common", generator_common_mod);
+    ll_generator_mod.addImport("generator_emitter_common", generator_emitter_common_mod);
+    ll_generator_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
     const lr_generator_mod = b.addModule("lr_generator", .{
         .root_source_file = b.path("src/generator/lr.zig"),
         .target = target,
         .optimize = optimize,
     });
     lr_generator_mod.addImport("generator_common", generator_common_mod);
+    lr_generator_mod.addImport("generator_emitter_common", generator_emitter_common_mod);
+    lr_generator_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
     const galley_grammar_procedures_mod = b.addModule("galley_grammar_procedures", .{
         .root_source_file = b.path("languages/galley/procedures.zig"),
         .target = target,
@@ -168,6 +185,7 @@ pub fn addGeneratorModules(
         .runtime_options_mod = runtime_options_mod,
         .ast_memory_benchmark = ast_memory_benchmark,
         .generator_common_mod = generator_common_mod,
+        .generator_switch_plan_mod = generator_switch_plan_mod,
         .ll_generator_mod = ll_generator_mod,
         .lr_generator_mod = lr_generator_mod,
         .galley_grammar_procedures_mod = galley_grammar_procedures_mod,
