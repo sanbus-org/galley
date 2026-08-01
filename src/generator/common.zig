@@ -1,6 +1,16 @@
 const std = @import("std");
 
 pub const atomic_file = @import("atomic_file.zig");
+pub const names = @import("names.zig");
+
+pub const readableSymbolName = names.readableSymbolName;
+pub const safeIdentifier = names.safeIdentifier;
+pub const syntaxErrorFunctionName = names.syntaxErrorFunctionName;
+pub const headLessThan = names.lessThan;
+
+test {
+    _ = names;
+}
 
 pub const Options = struct {
     with_ast: bool = true,
@@ -48,6 +58,185 @@ pub const Rule = struct {
     annotations: Annotations = .{},
     rhs_index: []const u8,
 };
+
+pub const RecoveryScopeTarget = enum { lhs, production, occurrence };
+
+pub const RecoveryScope = struct {
+    id: usize,
+    target: RecoveryScopeTarget,
+    variable: usize,
+    rule: ?usize = null,
+    position: ?usize = null,
+};
+
+/// Recovery metadata is planned independently of Zig source emission. Scope
+/// IDs intentionally retain the historical numbering scheme used by both
+/// backends so generated output remains unchanged.
+pub const RecoveryPlan = struct {
+    scopes: std.ArrayList(RecoveryScope) = .empty,
+
+    pub fn findLhs(self: RecoveryPlan, variable: usize) ?RecoveryScope {
+        for (self.scopes.items) |scope| {
+            if (scope.target == .lhs and scope.variable == variable) return scope;
+        }
+        return null;
+    }
+
+    pub fn findProduction(self: RecoveryPlan, rule: usize) ?RecoveryScope {
+        for (self.scopes.items) |scope| {
+            if (scope.target == .production and scope.rule.? == rule) return scope;
+        }
+        return null;
+    }
+
+    pub fn findOccurrence(self: RecoveryPlan, rule: usize, position: usize) ?RecoveryScope {
+        for (self.scopes.items) |scope| {
+            if (scope.target == .occurrence and scope.rule.? == rule and scope.position.? == position) return scope;
+        }
+        return null;
+    }
+};
+
+pub fn prepareRecoveryPlan(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    variables: []const usize,
+    rules: []const Rule,
+) !RecoveryPlan {
+    var result = RecoveryPlan{};
+    for (variables) |variable| {
+        if (symbols[variable].annotations.recovery_points.items.len == 0) continue;
+        try result.scopes.append(allocator, .{
+            .id = variable,
+            .target = .lhs,
+            .variable = variable,
+        });
+    }
+    for (rules, 0..) |rule, rule_index| {
+        if (rule.annotations.recovery_points.items.len == 0) continue;
+        try result.scopes.append(allocator, .{
+            .id = symbols.len + rule_index,
+            .target = .production,
+            .variable = rule.header,
+            .rule = rule_index,
+        });
+    }
+    for (rules, 0..) |rule, rule_index| {
+        for (rule.rhs_annotations.items, 0..) |annotations, position| {
+            if (annotations.recovery_points.items.len == 0) continue;
+            try result.scopes.append(allocator, .{
+                .id = recoveryOccurrenceTargetId(symbols.len, rules, rule_index, position),
+                .target = .occurrence,
+                .variable = rule.header,
+                .rule = rule_index,
+                .position = position,
+            });
+        }
+    }
+    return result;
+}
+
+pub const PreparedGrammar = struct {
+    symbols: std.ArrayList(Symbol) = .empty,
+    variables: std.ArrayList(usize) = .empty,
+    rules: std.ArrayList(Rule) = .empty,
+    augmented_start: usize,
+    eof: usize,
+    generative_terminal: ?usize = null,
+    has_occurrence_procedures: bool = false,
+    has_recovery_annotations: bool = false,
+    uses_explicit_recovery: bool = false,
+};
+
+pub fn prepareGrammar(
+    allocator: std.mem.Allocator,
+    grammar: anytype,
+    options: Options,
+    add_generative_terminal: bool,
+) !PreparedGrammar {
+    try validateGrammar(grammar);
+
+    var result = PreparedGrammar{
+        .augmented_start = undefined,
+        .eof = undefined,
+        .has_recovery_annotations = grammarHasRecoveryPoints(grammar),
+    };
+    result.uses_explicit_recovery = options.with_error_recovery and result.has_recovery_annotations;
+
+    var rhs_counts = std.AutoHashMap(usize, usize).init(allocator);
+    defer rhs_counts.deinit();
+
+    for (grammar.rules) |rule| {
+        const header = try addSymbol(allocator, &result.symbols, &result.variables, rule.header, .variable);
+        try appendAnnotations(allocator, &result.symbols.items[header].annotations, rule.annotations);
+
+        for (rule.right_hand_sides) |rhs| {
+            const rhs_index = rhs_counts.get(header) orelse 0;
+            try rhs_counts.put(header, rhs_index + 1);
+
+            var generated_rule = Rule{
+                .header = header,
+                .rhs_index = try std.fmt.allocPrint(allocator, "{d}", .{rhs_index}),
+            };
+            try appendAnnotations(allocator, &generated_rule.annotations, rhs.annotations);
+
+            for (rhs.symbols) |symbol| {
+                const kind: SymbolKind = switch (symbol.kind) {
+                    .variable => .variable,
+                    .terminal => .terminal,
+                    .generative_terminal => .generative_terminal,
+                };
+                const symbol_index = try addSymbol(allocator, &result.symbols, &result.variables, symbol.id, kind);
+                try generated_rule.rhs.append(allocator, symbol_index);
+                try generated_rule.rhs_annotations.append(
+                    allocator,
+                    try cloneAnnotations(allocator, symbol.annotations),
+                );
+                if (options.with_procedures and
+                    symbol.annotations.procedures.len != 0 and
+                    symbolReturnsNode(result.symbols.items[symbol_index], options))
+                {
+                    result.has_occurrence_procedures = true;
+                }
+            }
+            try result.rules.append(allocator, generated_rule);
+        }
+    }
+
+    const original_start = result.rules.items[0].header;
+    result.augmented_start = try addSymbol(allocator, &result.symbols, &result.variables, "_AugmentedStart", .variable);
+    result.eof = try addSymbol(allocator, &result.symbols, &result.variables, "\x00", .end);
+    var augmented_rule = Rule{ .header = result.augmented_start, .rhs_index = "0" };
+    try augmented_rule.rhs.append(allocator, original_start);
+    try augmented_rule.rhs_annotations.append(allocator, .{});
+    try augmented_rule.rhs.append(allocator, result.eof);
+    try augmented_rule.rhs_annotations.append(allocator, .{});
+    try result.rules.append(allocator, augmented_rule);
+
+    if (add_generative_terminal) {
+        const generative_terminal = try addSymbol(
+            allocator,
+            &result.symbols,
+            &result.variables,
+            "GenerativeTerminal",
+            .variable,
+        );
+        result.generative_terminal = generative_terminal;
+        try result.rules.append(allocator, .{ .header = generative_terminal, .rhs_index = "0" });
+    }
+
+    std.mem.sort(Rule, result.rules.items, result.symbols.items, ruleLessThan);
+    return result;
+}
+
+pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
+    if (!options.with_ast) return false;
+    return switch (symbol.kind) {
+        .variable => symbol.ast_enabled,
+        .terminal, .generative_terminal => options.ast_for_terminals,
+        .end => false,
+    };
+}
 
 pub fn addSymbol(
     allocator: std.mem.Allocator,
@@ -106,8 +295,49 @@ test "symbol identity includes kind" {
     try std.testing.expectEqualSlices(usize, &.{ variable_first, variable_second }, variables.items);
 }
 
-pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList([]const u8), names: []const []const u8) !void {
-    for (names) |name| try target.append(allocator, try allocator.dupe(u8, name));
+test "prepared grammar preserves annotations and stable synthetic symbols" {
+    const SourceAnnotations = struct {
+        procedures: []const []const u8 = &.{},
+        recovery_points: []const struct { terminal: []const u8, @"resume": enum { before, after } } = &.{},
+    };
+    const SourceSymbol = struct {
+        id: []const u8,
+        kind: enum { variable, terminal, generative_terminal },
+        annotations: SourceAnnotations = .{},
+    };
+    const SourceRhs = struct {
+        symbols: []const SourceSymbol,
+        annotations: SourceAnnotations = .{},
+    };
+    const SourceRule = struct {
+        header: []const u8,
+        right_hand_sides: []const SourceRhs,
+        annotations: SourceAnnotations = .{},
+    };
+
+    const source = .{ .rules = &[_]SourceRule{
+        .{
+            .header = "Root",
+            .annotations = .{ .procedures = &.{"root_hook"} },
+            .right_hand_sides = &.{.{ .symbols = &.{.{ .id = "x", .kind = .terminal }} }},
+        },
+    } };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const prepared = try prepareGrammar(arena.allocator(), source, .{}, true);
+
+    try std.testing.expectEqualStrings("_AugmentedStart", prepared.symbols.items[prepared.augmented_start].id);
+    try std.testing.expectEqual(SymbolKind.end, prepared.symbols.items[prepared.eof].kind);
+    try std.testing.expect(prepared.generative_terminal != null);
+    for (prepared.rules.items) |rule| {
+        if (!std.mem.eql(u8, prepared.symbols.items[rule.header].id, "Root")) continue;
+        try std.testing.expectEqualStrings("root_hook", prepared.symbols.items[rule.header].annotations.procedures.items[0]);
+        break;
+    } else return error.RootRuleMissing;
+}
+
+pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList([]const u8), procedure_names: []const []const u8) !void {
+    for (procedure_names) |name| try target.append(allocator, try allocator.dupe(u8, name));
 }
 
 pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotations {
@@ -231,6 +461,36 @@ test "recovery occurrence target ids use cumulative production lengths" {
     try std.testing.expectEqual(base + 10, recoveryOccurrenceTargetId(4, &rules, 1, 0));
 }
 
+test "recovery planning preserves stable scope numbering and source order" {
+    var symbols = [_]Symbol{
+        .{ .id = "Root", .kind = .variable },
+        .{ .id = "Child", .kind = .variable },
+        .{ .id = ";", .kind = .terminal },
+    };
+    try symbols[0].annotations.recovery_points.append(std.testing.allocator, .{ .terminal = ";", .@"resume" = .after });
+    defer symbols[0].annotations.recovery_points.deinit(std.testing.allocator);
+
+    var rule = Rule{ .header = 0, .rhs_index = "0" };
+    defer rule.rhs.deinit(std.testing.allocator);
+    defer rule.rhs_annotations.deinit(std.testing.allocator);
+    try rule.rhs.append(std.testing.allocator, 1);
+    try rule.rhs_annotations.append(std.testing.allocator, .{});
+    try rule.rhs_annotations.items[0].recovery_points.append(std.testing.allocator, .{ .terminal = ";", .@"resume" = .before });
+    defer rule.rhs_annotations.items[0].recovery_points.deinit(std.testing.allocator);
+    const rules = [_]Rule{rule};
+    const variables = [_]usize{ 0, 1 };
+    var plan = try prepareRecoveryPlan(std.testing.allocator, &symbols, &variables, &rules);
+    defer plan.scopes.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), plan.scopes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), plan.scopes.items[0].id);
+    try std.testing.expectEqual(RecoveryScopeTarget.lhs, plan.scopes.items[0].target);
+    try std.testing.expectEqual(@as(usize, 4), plan.scopes.items[1].id);
+    try std.testing.expectEqual(RecoveryScopeTarget.occurrence, plan.scopes.items[1].target);
+    try std.testing.expectEqual(@as(usize, 0), plan.findLhs(0).?.id);
+    try std.testing.expectEqual(@as(usize, 4), plan.findOccurrence(0, 0).?.id);
+}
+
 pub fn emitStringLiteral(writer: *std.Io.Writer, bytes: []const u8) !void {
     try writer.writeByte('"');
     try std.zig.stringEscape(bytes, writer);
@@ -258,39 +518,6 @@ pub fn emitFormatToken(writer: *std.Io.Writer, bytes: []const u8) !void {
     }
 }
 
-pub fn readableSymbolName(allocator: std.mem.Allocator, bytes: []const u8) ![]const u8 {
-    var out = std.ArrayList(u8).empty;
-    for (bytes) |byte| {
-        switch (byte) {
-            '\n' => try out.appendSlice(allocator, "\\n"),
-            '\t' => try out.appendSlice(allocator, "\\t"),
-            '\r' => try out.appendSlice(allocator, "\\r"),
-            '\\' => try out.appendSlice(allocator, "\\\\"),
-            0x0b => try out.appendSlice(allocator, "\\x0b"),
-            0x0c => try out.appendSlice(allocator, "\\x0c"),
-            0x00...0x08, 0x0e...0x1f, 0x7f...0xff => {
-                const escaped = try std.fmt.allocPrint(allocator, "\\x{x:0>2}", .{byte});
-                try out.appendSlice(allocator, escaped);
-            },
-            else => try out.append(allocator, byte),
-        }
-    }
-    return out.toOwnedSlice(allocator);
-}
-
-pub fn safeIdentifier(allocator: std.mem.Allocator, bytes: []const u8) ![]const u8 {
-    var out = std.ArrayList(u8).empty;
-    for (bytes) |byte| {
-        if (std.ascii.isAlphanumeric(byte) or byte == '_') {
-            try out.append(allocator, byte);
-        } else {
-            const escaped = try std.fmt.allocPrint(allocator, "_x{d}", .{byte});
-            try out.appendSlice(allocator, escaped);
-        }
-    }
-    return out.toOwnedSlice(allocator);
-}
-
 pub fn bytesToInt(bytes: []const u8) u128 {
     var value: u128 = 0;
     for (bytes) |byte| {
@@ -304,73 +531,6 @@ pub fn indented(allocator: std.mem.Allocator, indent: []const u8, extra: usize) 
     try result.appendSlice(allocator, indent);
     try result.appendNTimes(allocator, ' ', extra);
     return result.toOwnedSlice(allocator);
-}
-
-pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const u8) !void {
-    try writer.print(
-        \\fn {s}(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {{
-        \\    const lookahead = try context.recoveryLookahead();
-        \\    if (candidates.len == 0) {{
-        \\        if (lookahead[0] == 0) context.finishSyntaxRecovery();
-        \\        return null;
-        \\    }}
-        \\    const upper = @min(context.recoveryWindow(), lookahead.len);
-        \\    var offset = start;
-        \\    while (offset < upper) : (offset += 1) {{
-        \\        for (candidates) |candidate| {{
-        \\            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {{
-        \\                context.finishSyntaxRecovery();
-        \\                return offset;
-        \\            }}
-        \\        }}
-        \\        if (lookahead[offset] == 0) break;
-        \\    }}
-        \\    if (lookahead[0] == 0) context.finishSyntaxRecovery();
-        \\    return null;
-        \\}}
-        \\
-    , .{function_name});
-}
-
-pub fn syntaxErrorFunctionName(
-    allocator: std.mem.Allocator,
-    comptime prefix: []const u8,
-    stem: []const u8,
-    site_index: usize,
-) ![]const u8 {
-    return std.fmt.allocPrint(allocator, "syntax_error_" ++ prefix ++ "{s}_{d}", .{ stem, site_index });
-}
-
-pub fn emitErrorMessageFunction(writer: *std.Io.Writer, name: []const u8) !void {
-    try writer.print(
-        \\pub fn {s}(args: root.SyntaxErrorMessageArgs) ![]const u8 {{
-        \\    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
-        \\}}
-        \\
-        \\
-    , .{name});
-}
-
-pub fn emitErrorMessageFile(
-    writer: *std.Io.Writer,
-    parser_label: []const u8,
-    specs: []const ErrorMessageSpec,
-) !void {
-    try writer.print(
-        \\const root = @import("galley");
-        \\
-        \\// Default {s} syntax error messages generated by Galley.
-        \\// Edit any function body to customize that error site.
-        \\
-        \\
-    , .{parser_label});
-    for (specs) |spec| {
-        try emitErrorMessageFunction(writer, spec.name);
-    }
-}
-
-pub fn headLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
-    return std.mem.order(u8, lhs, rhs) == .lt;
 }
 
 pub fn expandGenerativeTerminal(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), id: []const u8) !void {

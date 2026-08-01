@@ -100,6 +100,21 @@ pub fn add(b: *std.Build, options: Options) !void {
         test_step.dependOn(&run_generator_common_tests.step);
         trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_common_tests.step);
 
+        inline for (.{
+            .{ "generator-switch-plan-tests", generator.generator_switch_plan_mod },
+            .{ "ll-generator-internal-tests", generator.ll_generator_mod },
+            .{ "lr-generator-internal-tests", generator.lr_generator_mod },
+        }) |internal_test| {
+            const tests = b.addTest(.{
+                .name = internal_test[0],
+                .root_module = internal_test[1],
+                .filters = selection.names,
+            });
+            const run_tests = b.addRunArtifact(tests);
+            test_step.dependOn(&run_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tests.step);
+        }
+
         const galley_grammar_procedure_tests = b.addTest(.{
             .name = "galley-grammar-procedure-tests",
             .root_module = generator.galley_grammar_procedures_mod,
