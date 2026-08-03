@@ -175,9 +175,9 @@ const Builder = struct {
                     defer child_firsts.deinit();
                     try self.firsts(symbol_index, &child_firsts, &local_visited);
                     var child_iterator = child_firsts.iterator();
-                    while (child_iterator.next()) |entry| try putUnique(out, entry.key_ptr.*, rule_index);
+                    while (child_iterator.next()) |entry| try self.putUnique(out, variable, entry.key_ptr.*, rule_index);
                 } else {
-                    try putUnique(out, symbol_index, rule_index);
+                    try self.putUnique(out, variable, symbol_index, rule_index);
                 }
                 if (symbol.kind != .variable or self.nullableRule(symbol_index) == null) break;
             }
@@ -237,10 +237,25 @@ const Builder = struct {
     fn addParseEntry(self: *Builder, entry: ParseEntry) !void {
         for (self.plan.parse_table.items) |existing| {
             if (existing.variable != entry.variable or existing.terminal != entry.terminal) continue;
-            if (existing.rule != entry.rule) return error.AmbiguousGrammar;
+            if (existing.rule != entry.rule) {
+                try self.reportAmbiguity(entry.variable, entry.terminal, existing.rule, entry.rule);
+                return error.AmbiguousGrammar;
+            }
             return;
         }
         try self.plan.parse_table.append(self.allocator, entry);
+    }
+
+    fn reportAmbiguity(self: *Builder, variable: usize, terminal: usize, rule_a: usize, rule_b: usize) !void {
+        const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
+        defer self.allocator.free(variable_name);
+        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, terminal);
+        defer self.allocator.free(terminal_name);
+        const rule_a_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_a]);
+        defer self.allocator.free(rule_a_text);
+        const rule_b_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_b]);
+        defer self.allocator.free(rule_b_text);
+        std.log.warn("ambiguous grammar: variable {s}, terminal {s} matches two productions:\n  {s}\n  {s}", .{ variable_name, terminal_name, rule_a_text, rule_b_text });
     }
 
     fn hasParseEntries(self: *Builder, variable: usize) bool {
@@ -443,15 +458,18 @@ const Builder = struct {
         for (self.plan.error_message_specs.items) |spec| if (std.mem.eql(u8, spec.name, name)) return;
         try self.plan.error_message_specs.append(self.allocator, .{ .name = name });
     }
-};
 
-fn putUnique(map: *std.AutoHashMap(usize, usize), key: usize, value: usize) !void {
-    if (map.get(key)) |existing| {
-        if (existing != value) return error.AmbiguousGrammar;
-        return;
+    fn putUnique(self: *Builder, map: *std.AutoHashMap(usize, usize), variable: usize, key: usize, value: usize) !void {
+        if (map.get(key)) |existing| {
+            if (existing != value) {
+                try self.reportAmbiguity(variable, key, existing, value);
+                return error.AmbiguousGrammar;
+            }
+            return;
+        }
+        try map.put(key, value);
     }
-    try map.put(key, value);
-}
+};
 
 fn byteContains(items: []const u8, byte: u8) bool {
     for (items) |item| if (item == byte) return true;
@@ -527,4 +545,29 @@ test "LL planning completes analysis recovery switches and suppressed closure" {
     for (plan.parser_decisions.items) |decision| {
         if (decision.tree.fallback == null) try std.testing.expect(decision.tree.diagnostic != null);
     }
+}
+
+fn testAmbiguousGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    const b = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "b", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+    return grammar;
+}
+
+test "LL planning reports ambiguous first sets" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = try testAmbiguousGrammar(allocator);
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
 }
