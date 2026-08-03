@@ -531,6 +531,9 @@ const Generator = struct {
             }
             try writer.writeByte('\n');
             try self.emitDebugReduction(writer, rule, variable, "        ");
+            if (self.options.with_ast) {
+                try writer.writeAll("        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;\n");
+            }
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {

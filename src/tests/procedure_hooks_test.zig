@@ -295,3 +295,37 @@ test "procedure-hooks keep concurrent session runtime contexts separate" {
     if (first.parse_error) |err| return err;
     if (second.parse_error) |err| return err;
 }
+
+test "procedure-hooks AST nodes retain source text lengths" {
+    if (comptime !parser.parser.is_ast_enabled) return;
+
+    const input = "rre";
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    var context = session._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, null);
+    const result = try session._parseContext(&context);
+
+    const root = result.ast_root orelse return error.MissingAstRoot;
+    const allocator = &session.node_allocator;
+
+    var zero_length_nodes: usize = 0;
+    var stack: std.ArrayList(parser.data_structures.Node.Pointer) = .empty;
+    defer stack.deinit(std.testing.allocator);
+    try stack.append(std.testing.allocator, root);
+    while (stack.pop()) |addr| {
+        const node = allocator.at(addr);
+        if (node.text_length == 0) zero_length_nodes += 1;
+        var child = node.first_child;
+        while (child != parser.data_structures.Node.invalid_pointer) {
+            try stack.append(std.testing.allocator, child);
+            child = allocator.at(child).next;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), zero_length_nodes);
+
+    var registration = parser.data_structures.RuntimeContextRegistration.init(&context, &session.runtime_context);
+    registration.register();
+    defer registration.unregister();
+    const text = try parser.data_structures.Node.augmentedText(root, &context);
+    try std.testing.expectEqualStrings(input, text);
+}
