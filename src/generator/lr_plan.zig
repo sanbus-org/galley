@@ -166,11 +166,45 @@ const Builder = struct {
             }
             if (existing.kind == action.kind and existing.state == action.state and existing.rule == action.rule) {
                 if (self.occurrencesEquivalent(existing.occurrence, action.occurrence)) return;
+                try self.reportProcedureHooksConflict(state, existing.*);
                 return error.AmbiguousProcedureHooks;
             }
+            try self.reportActionConflict(state, existing.*, action);
             return error.AmbiguousGrammar;
         }
         try state.actions.append(self.allocator, action);
+    }
+
+    fn reportProcedureHooksConflict(self: *Builder, state: *State, existing: Action) !void {
+        const state_index = self.stateIndex(state.*) orelse 0;
+        const existing_rule = self.grammar.rules.items[existing.rule];
+        const existing_rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, existing_rule);
+        defer self.allocator.free(existing_rule_text);
+        std.log.warn("ambiguous grammar: state {d} has multiple procedure hooks on the same reduction:\n  {s}", .{ state_index, existing_rule_text });
+    }
+
+    fn reportActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action) !void {
+        const state_index = self.stateIndex(state.*) orelse return;
+        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, existing.terminal);
+        defer self.allocator.free(terminal_name);
+        const existing_text = try self.describeAction(existing);
+        defer self.allocator.free(existing_text);
+        const incoming_text = try self.describeAction(incoming);
+        defer self.allocator.free(incoming_text);
+        std.log.warn("ambiguous grammar: state {d}, terminal {s} has conflicting actions:\n  {s}\n  {s}", .{ state_index, terminal_name, existing_text, incoming_text });
+    }
+
+    fn describeAction(self: *Builder, action: Action) ![]const u8 {
+        return switch (action.kind) {
+            .shift => std.fmt.allocPrint(self.allocator, "shift to state {d}", .{action.state}),
+            .accept => self.allocator.dupe(u8, "accept"),
+            .reduce => blk: {
+                const rule = self.grammar.rules.items[action.rule];
+                const text = try common.ruleText(self.allocator, self.grammar.symbols.items, rule);
+                defer self.allocator.free(text);
+                break :blk try std.fmt.allocPrint(self.allocator, "reduce by {s}", .{text});
+            },
+        };
     }
 
     fn closeState(self: *Builder, state: *State) !void {
@@ -460,4 +494,29 @@ test "LR planning completes canonical topology decisions and recovery metadata" 
     for (plan.state_decisions.items) |decision| {
         if (decision.action_tree.fallback == null) try std.testing.expect(decision.action_tree.diagnostic != null);
     }
+}
+
+fn testAmbiguousGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const value = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Value", .variable);
+    const plus = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "+", .terminal);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{value});
+    try appendTestRule(allocator, &grammar.rules, value, "0", &.{ value, plus, value });
+    try appendTestRule(allocator, &grammar.rules, value, "1", &.{a});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+    return grammar;
+}
+
+test "LR planning reports conflicting actions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const grammar = try testAmbiguousGrammar(allocator);
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar, options));
 }
