@@ -35,7 +35,7 @@ Bare filters such as `-Dtest-filter=ll-sanbus` are invalid. Use `case:ll-sanbus`
 | --- | --- |
 | `suite:build` | Test-selector and build-logic unit tests |
 | `suite:generator` | Parser-generator unit tests |
-| `suite:runtime` | Configuration-independent runtime, ASTNode, and standard-procedure tests |
+| `suite:runtime` | Configuration-independent runtime, Node, and standard-procedure tests |
 | `suite:matrix` | All generated-parser matrix phases |
 | `suite:matrix-compile` | Parser generation and API benchmark-harness compilation |
 | `suite:matrix-api` | Generated-parser Zig API tests against language samples |

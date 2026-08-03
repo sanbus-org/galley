@@ -194,16 +194,6 @@ StringContent
 | character^'" StringContent
 |
 
-LogicCondition
-| Condition WrappedLogicBody ElsePart
-
-ElsePart
-| "else" WrappedLogicBody
-|
-
-Condition
-| Id Operator Id
-
 Operator
 | operator
 | "{" Expression "}"

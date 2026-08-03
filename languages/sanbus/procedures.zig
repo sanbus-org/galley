@@ -1,6 +1,6 @@
 const std = @import("std");
 const ProcedureArguments = @import("galley").data_structures.ProcedureArguments;
-const ASTNode = @import("galley").data_structures.ASTNode;
+const Node = @import("galley").data_structures.Node;
 const string_utilities = @import("galley").string_utilities;
 const parser = @import("galley").parser;
 const standard_procedures = @import("galley").standard_procedures;
@@ -19,10 +19,10 @@ const block_start_id = 1;
 const block_end_id = 2;
 
 pub fn reduction(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
-        var block_start: ?ASTNode.Pointer = null;
-        while (if (node.first_child != ASTNode.invalid_pointer and
+        var block_start: ?Node.Pointer = null;
+        while (if (node.first_child != Node.invalid_pointer and
             args.context.node_allocator.at(node.first_child).payload.parse_id == block_start_id)
             node.first_child
         else
@@ -30,20 +30,20 @@ pub fn reduction(args: *ProcedureArguments) !void {
         {
             // We need last BlockStart which is the last when iterating from
             // start of the array and has most indentation
-            block_start = try ASTNode.removeSelf(child_address, args.context.node_allocator);
+            block_start = try Node.removeSelf(child_address, args.context.node_allocator);
         }
         if (block_start) |to_prepend| {
-            try ASTNode.insertBefore(node_address, args.context.node_allocator, to_prepend);
+            try Node.insertBefore(node_address, args.context.node_allocator, to_prepend);
         }
 
-        var block_end: ?ASTNode.Pointer = null;
-        while (if (node.last_child != ASTNode.invalid_pointer and
+        var block_end: ?Node.Pointer = null;
+        while (if (node.last_child != Node.invalid_pointer and
             args.context.node_allocator.at(node.last_child).payload.parse_id == block_end_id)
             node.last_child
         else
             null) |child_address|
         {
-            const new_block_end = try ASTNode.removeSelf(child_address, args.context.node_allocator);
+            const new_block_end = try Node.removeSelf(child_address, args.context.node_allocator);
             // We need last BlockEnd which is the first when iterating from
             // the end of the array and has least indenation
             if (block_end == null) {
@@ -51,10 +51,10 @@ pub fn reduction(args: *ProcedureArguments) !void {
             }
         }
         if (block_end) |to_append| {
-            try ASTNode.insertAfter(node_address, args.context.node_allocator, to_append);
+            try Node.insertAfter(node_address, args.context.node_allocator, to_append);
         }
 
-        var iterator = ASTNode.iterateAugmented(node.first_child, args.context.node_allocator);
+        var iterator = Node.iterateAugmented(node.first_child, args.context.node_allocator);
         while (iterator.next()) |child_address| {
             const child = args.context.node_allocator.at(child_address);
             node.payload.rules += child.payload.rules;
@@ -65,8 +65,8 @@ pub fn reduction(args: *ProcedureArguments) !void {
 }
 
 fn summerize(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        _ = try ASTNode.cleanChildren(node_address, args.context.node_allocator);
+    if (args.node_address) |node_address| {
+        _ = try Node.cleanChildren(node_address, args.context.node_allocator);
         // node.label = try std.fmt.allocPrint(args.allocator, "{s} ('{s}')", .{
         //     node.label,
         //     node.text,
@@ -104,7 +104,7 @@ pub const reduction_text = dropChildren;
 fn blockEdge(parse_id: comptime_int) type {
     return struct {
         fn function(args: *ProcedureArguments) !void {
-            if (args.node) |node_address| {
+            if (args.node_address) |node_address| {
                 const node = args.context.node_allocator.at(node_address);
                 node.payload.parse_id = parse_id;
             }
@@ -123,15 +123,15 @@ pub const reduction_OperandAndNumber = replaceWithChildren;
 pub const reduction_ActionBody = replaceWithChildren;
 
 pub fn reduction_ActionOutcomeEntry(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
-        const removed_address = try ASTNode.removeChild(node_address, args.context.node_allocator, 0);
+    if (args.node_address) |node_address| {
+        const removed_address = try Node.removeChild(node_address, args.context.node_allocator, 0);
         args.context.node_allocator.at(removed_address).payload.outcomes = 1;
-        args.node = removed_address;
+        args.node_address = removed_address;
     }
 }
 
 pub fn reduction_FieldRow(args: *ProcedureArguments) void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         const node = args.context.node_allocator.at(node_address);
         node.payload.fields = 1;
     }
@@ -146,7 +146,7 @@ pub const reduction_InstantiationParameters_0 = rightRecursiveReduction;
 pub const reduction_Parameters_0 = rightRecursiveReduction;
 
 pub fn reduction_Rule(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         const node = args.context.node_allocator.at(node_address);
         if (args.context.verbosityLevel() > 0) {
             std.debug.print("{f}({d}) -> |", .{
@@ -170,9 +170,9 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
             std.debug.print("\n", .{});
         }
 
-        // args.node.?.label = try std.fmt.allocPrint(args.allocator, "{s} '{s}'", .{
-        //     args.node.?.label,
-        //     args.node.?.children[0].text,
+        // args.node_address.?.label = try std.fmt.allocPrint(args.allocator, "{s} '{s}'", .{
+        //     args.node_address.?.label,
+        //     args.node_address.?.children[0].text,
         // });
 
         node.payload.rules = 1;
@@ -180,8 +180,8 @@ pub fn reduction_Rule(args: *ProcedureArguments) !void {
 }
 
 pub fn reduction_Start(args: *ProcedureArguments) !void {
-    if (if (args.context.verbosityLevel() > 0) args.node else null) |node_address| {
-        std.debug.print("\nProgram text:\n{s}\n", .{try ASTNode.augmentedText(node_address, args.context)});
+    if (if (args.context.verbosityLevel() > 0) args.node_address else null) |node_address| {
+        std.debug.print("\nProgram text:\n{s}\n", .{try Node.augmentedText(node_address, args.context)});
     }
 
     const log_file = try std.Io.Dir.cwd().createFile(args.context.runtime().io, "sanbus-parse.log", .{
@@ -193,14 +193,14 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
     var buffered_writer: std.Io.File.Writer = .init(log_file, args.context.runtime().io, &buffer);
     const writer = &buffered_writer.interface;
 
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         const node = args.context.node_allocator.at(node_address);
         const child = args.context.node_allocator.at(node.first_child);
         try writer.print("{d} rules, {d} fields, {d} outcomes!\n\n{f}\n", .{
             child.payload.rules,
             child.payload.fields,
             child.payload.outcomes,
-            string_utilities.fmtASTNode(node_address, args.context),
+            string_utilities.fmtNode(node_address, args.context),
         });
     }
 

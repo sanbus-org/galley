@@ -3,18 +3,18 @@ const root = @import("galley");
 pub const Payload = struct {};
 
 var mark_count: usize = 0;
-var captured_root = root.data_structures.ASTNode.invalid_pointer;
+var captured_root = root.data_structures.Node.invalid_pointer;
 
 pub fn reset() void {
     mark_count = 0;
-    captured_root = root.data_structures.ASTNode.invalid_pointer;
+    captured_root = root.data_structures.Node.invalid_pointer;
 }
 
 pub fn marks() usize {
     return mark_count;
 }
 
-pub fn capturedRoot() root.data_structures.ASTNode.Pointer {
+pub fn capturedRoot() root.data_structures.Node.Pointer {
     return captured_root;
 }
 
@@ -24,5 +24,5 @@ pub fn mark(args: *root.data_structures.ProcedureArguments) void {
 }
 
 pub fn capture(args: *root.data_structures.ProcedureArguments) void {
-    captured_root = args.node orelse root.data_structures.ASTNode.invalid_pointer;
+    captured_root = args.node_address orelse root.data_structures.Node.invalid_pointer;
 }

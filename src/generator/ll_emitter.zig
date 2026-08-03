@@ -59,6 +59,13 @@ const Generator = struct {
         );
 
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
+        try writer.writeAll(
+            \\const RootReduction = struct {
+            \\    ast_root: ?data_structures.Node.Pointer = null,
+            \\    semantic_root: if (are_procedures_enabled) ?data_structures.Payload else void = if (are_procedures_enabled) null else {},
+            \\};
+            \\
+        );
         if (self.options.with_error_recovery) {
             if (self.uses_explicit_recovery) {
                 try self.emitExplicitRecoverySupport(writer);
@@ -66,17 +73,19 @@ const Generator = struct {
                 try self.emitRecoverySupport(writer);
             }
         }
-        if (self.options.with_procedures and self.options.with_ast) try self.emitProcedureBoilerplate(writer);
+        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(writer, self.rules.items, self.symbols.items, self.variables.items);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);
         if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
         try writer.writeAll(
             \\pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
+            \\    var root_reduction: RootReduction = .{};
             \\    _ = parse__AugmentedStart(context
         );
         if (self.has_occurrence_procedures) try writer.writeAll(", null");
         if (self.uses_explicit_recovery) try writer.writeAll(", null");
+        try writer.writeAll(", &root_reduction");
         if (self.uses_explicit_recovery) {
             try writer.writeAll(
                 \\) catch |err| switch (err) {
@@ -95,6 +104,7 @@ const Generator = struct {
                 \\    };
             );
         }
+        try writer.writeByte('\n');
         if (self.options.with_error_recovery) {
             try writer.writeAll("    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;\n");
         }
@@ -105,17 +115,13 @@ const Generator = struct {
             \\    }
             \\
         );
-        if (self.options.with_ast) {
-            try writer.writeAll("    const ast_root: ?data_structures.ASTNode.Pointer = if (context.node_allocator.counter > 0) 0 else null;\n");
-        } else {
-            try writer.writeAll("    const ast_root = null;\n");
-        }
         try writer.writeAll(
             \\    return .{
             \\        .parsed_bytes = context.pos() - 1,
             \\        .line = context.line,
             \\        .column = context.column,
-            \\        .ast_root = ast_root,
+            \\        .ast_root = root_reduction.ast_root,
+            \\        .semantic_root = root_reduction.semantic_root,
             \\    };
             \\}
             \\
@@ -221,98 +227,6 @@ const Generator = struct {
         try writer.writeAll(" }");
     }
 
-    fn emitProcedureBoilerplate(self: *Generator, writer: *std.Io.Writer) !void {
-        try writer.print(
-            \\const ProcedureSequenceNode = struct {{
-            \\    procedure: *const data_structures.Procedure,
-            \\    next: ?*const ProcedureSequenceNode,
-            \\}};
-            \\
-            \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
-            \\    if (procedure_names.len == 0) return null;
-            \\    const procedure_name = procedure_names[0];
-            \\    return &ProcedureSequenceNode{{
-            \\        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
-            \\        .next = makeProcedureSequence(procedure_names[1..]),
-            \\    }};
-            \\}}
-            \\
-            \\fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_structures.ProcedureArguments) !void {{
-            \\    var current = sequence;
-            \\    while (current) |entry| {{
-            \\        const procedure = @as(*data_structures.Procedure, @constCast(entry.procedure));
-            \\        try procedure(args);
-            \\        current = entry.next;
-            \\    }}
-            \\}}
-            \\
-            \\pub const rule_procedures = rule_procedures: {{
-            \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
-            \\
-            \\    for (rules, 0..) |rule, index| {{
-            \\        const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
-            \\        if (@hasDecl(procedures, procedure_name)) {{
-            \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name);
-            \\        }}
-            \\    }}
-            \\
-            \\    break :rule_procedures arr;
-            \\}};
-            \\
-            \\pub const symbol_procedures = symbol_procedures: {{
-            \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
-            \\
-            \\    for (symbols, 0..) |symbol, index| {{
-            \\        const procedure_name = "reduction_" ++ symbol;
-            \\        if (@hasDecl(procedures, procedure_name)) {{
-            \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), symbol);
-            \\        }}
-            \\    }}
-            \\
-            \\    break :symbol_procedures arr;
-            \\}};
-            \\
-            \\const variable_procedure_names = &[_][]const []const u8{{
-            \\
-        , .{ self.rules.items.len, self.rules.items.len, self.symbols.items.len, self.symbols.items.len });
-        for (self.variables.items) |symbol_index| {
-            const symbol = self.symbols.items[symbol_index];
-            try writer.writeAll("    &[_][]const u8{");
-            for (symbol.annotations.procedures.items, 0..) |procedure, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try emitStringLiteral(writer, procedure);
-            }
-            try writer.writeAll("},\n");
-        }
-        try writer.print(
-            \\}};
-            \\
-            \\pub const variable_procedures = variable_procedures: {{
-            \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
-            \\
-            \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
-            \\        arr[index] = makeProcedureSequence(procedure_names);
-            \\    }}
-            \\
-            \\    break :variable_procedures arr;
-            \\}};
-            \\
-            \\pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
-            \\
-            \\
-        , .{ self.variables.items.len, self.variables.items.len });
-    }
-
-    fn emitProcedureSequenceExpression(self: *Generator, writer: *std.Io.Writer, procedures_: []const []const u8) !void {
-        _ = self;
-        try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
-        for (procedures_, 0..) |procedure, index| {
-            if (index != 0) try writer.writeAll(", ");
-            try emitStringLiteral(writer, procedure);
-        }
-        try writer.writeAll("})");
-    }
-
     fn emitParserFunctions(self: *Generator, writer: *std.Io.Writer) !void {
         for (self.plan.emitted_symbols) |symbol_index| {
             const symbol = self.symbols.items[symbol_index];
@@ -357,14 +271,24 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
         }
-        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        if (variable == self.plan.augmented_start) {
+            try writer.writeAll(", root_reduction: *RootReduction");
+        }
+        try writer.print(") anyerror!{s} {{\n", .{self.nodeReturnType(returns_node)});
         if (self.has_occurrence_procedures and !returns_node) {
             try writer.writeAll("    _ = occurrence_procedures;\n");
         }
+        if (variable == self.plan.augmented_start) {
+            try writer.writeAll("    root_reduction.* = .{};\n");
+        }
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
-            const is_var = self.options.with_procedures and self.options.with_ast and !skip_ast_construction;
-            try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
+            if (self.options.with_ast) {
+                const is_var = self.options.with_procedures and !skip_ast_construction;
+                try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
+            } else {
+                try writer.print("    var node = data_structures.Node{{ .text_start = context.pos(), .variable = {d}, .payload = .{{}} }};\n\n", .{variable_index});
+            }
         }
 
         const decision = self.plan.parserDecision(variable, skip_ast_construction);
@@ -381,7 +305,7 @@ const Generator = struct {
             try writer.writeByte('\n');
         }
         if (returns_node) {
-            try writer.writeAll("    return node_address;\n");
+            try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
         }
         try writer.writeAll("}\n");
     }
@@ -399,6 +323,15 @@ const Generator = struct {
 
     fn symbolReturnsNode(self: *Generator, symbol_index: usize, skip_ast_construction: bool) bool {
         return !skip_ast_construction and self.plan.symbol_returns_node[symbol_index];
+    }
+
+    fn nodeReturnType(self: *Generator, returns_node: bool) []const u8 {
+        if (!returns_node) return "void";
+        return if (self.options.with_ast) "data_structures.Node.Pointer" else "?data_structures.Node";
+    }
+
+    fn missingNode(self: *Generator) []const u8 {
+        return if (self.options.with_ast) "data_structures.Node.invalid_pointer" else "null";
     }
 
     fn hasParseEntries(self: *Generator, variable: usize) bool {
@@ -425,14 +358,94 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
         }
-        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        try writer.print(") anyerror!{s} {{\n", .{self.nodeReturnType(returns_node)});
         if (self.has_occurrence_procedures and !returns_node) {
             try writer.writeAll("    _ = occurrence_procedures;\n");
         }
 
+        if (returns_node and !self.options.with_ast) {
+            try writer.print(
+                \\    const SemanticReductionFrame = struct {{
+                \\        node: data_structures.Node,
+                \\        children: [{d}]?data_structures.Node,
+                \\    }};
+                \\    const semantic_allocator = context.runtime().arena_allocator;
+                \\    var frames: std.ArrayList(SemanticReductionFrame) = .empty;
+                \\    defer frames.deinit(semantic_allocator);
+                \\
+            , .{rule.rhs.items.len});
+            if (self.has_occurrence_procedures) {
+                try writer.writeAll("    const recursive_occurrence_procedures = ");
+                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                try writer.writeAll(";\n");
+            }
+
+            const cases = self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).cases;
+            try writer.writeAll("\n    while (true) {\n        switch (context.head(u8, 0)) {\n            ");
+            for (cases, 0..) |byte, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.print("{d}", .{byte});
+            }
+            try writer.writeAll(" => { // ");
+            for (cases, 0..) |byte, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.writeByte('\'');
+                try emitEscapedForComment(writer, &.{byte});
+                try writer.writeByte('\'');
+            }
+            try writer.writeByte('\n');
+            try self.emitDebugRuleExpansion(writer, rule, variable, "                ");
+            try writer.print(
+                \\                try frames.append(semantic_allocator, undefined);
+                \\                const frame = &frames.items[frames.items.len - 1];
+                \\                frame.* = .{{
+                \\                    .node = .{{ .text_start = context.pos(), .variable = {d}, .payload = .{{}} }},
+                \\                    .children = .{{null}} ** {d},
+                \\                }};
+                \\
+            , .{ self.variableIndex(variable), rule.rhs.items.len });
+            const skip_ast_for_children = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
+            for (rule.rhs.items[0..self_index], 0..) |symbol_index, child_index| {
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "                ", skip_ast_for_children);
+            }
+            try writer.writeAll("            },\n            else => break,\n        }\n    }\n");
+
+            const explicit_recovery = self.uses_explicit_recovery;
+            try writer.print("    var reduced_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
+            if (self.has_occurrence_procedures) {
+                try writer.writeAll(", if (frames.items.len == 0) occurrence_procedures else recursive_occurrence_procedures");
+            }
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+            } else {
+                try writer.writeByte(')');
+            }
+            try writer.writeAll(";\n    var frame_index = frames.items.len;\n    while (frame_index > 0) {\n        frame_index -= 1;\n        const frame = &frames.items[frame_index];\n        if (reduced_node) |value| {\n");
+            try writer.print("            frame.children[{d}] = value;\n", .{self_index});
+            try writer.print("            frame.node.appendTemporaryChild(&frame.children[{d}].?);\n", .{self_index});
+            try writer.writeAll("        }\n");
+            for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children);
+            }
+            try writer.writeAll("        frame.node.text_length = context.pos() - frame.node.text_start;\n");
+            try self.emitDebugReduction(writer, rule, variable, "        ");
+            try self.emitProcedureBlock(
+                writer,
+                rule_index,
+                variable,
+                "frame.node",
+                if (self.has_occurrence_procedures) "if (frame_index == 0) occurrence_procedures else recursive_occurrence_procedures" else "null",
+                "        ",
+                false,
+            );
+            try writer.writeAll("        frame.node.clearTemporaryChildren();\n        reduced_node = frame.node;\n    }\n    return reduced_node;\n}\n");
+            return;
+        }
+
         if (returns_node) {
             try writer.writeAll(
-                \\    var node_address = data_structures.ASTNode.invalid_pointer;
+                \\    var node_address = data_structures.Node.invalid_pointer;
                 \\    node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
                 \\    _ = &node_address;
                 \\    var repeating_node_address = node_address;
@@ -467,7 +480,7 @@ const Generator = struct {
         if (returns_node) {
             try writer.print(
                 \\                const temporary_address = try context.node_allocator.create(context.pos(), {d});
-                \\                if (node_address == data_structures.ASTNode.invalid_pointer) {{
+                \\                if (node_address == data_structures.Node.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
                 \\                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
@@ -490,8 +503,8 @@ const Generator = struct {
             const explicit_recovery = self.uses_explicit_recovery;
             try writer.print("    const exit_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
             if (self.has_occurrence_procedures) {
-                try writer.writeAll(", if (node_address == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
-                try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                try writer.writeAll(", if (node_address == data_structures.Node.invalid_pointer) occurrence_procedures else ");
+                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
             }
             if (self.uses_explicit_recovery) {
                 try writer.writeAll(", occurrence_recovery");
@@ -503,14 +516,14 @@ const Generator = struct {
             }
             try writer.print(
                 \\;
-                \\    if (exit_node != data_structures.ASTNode.invalid_pointer) {{
-                \\        if (node_address == data_structures.ASTNode.invalid_pointer) {{
+                \\    if (exit_node != data_structures.Node.invalid_pointer) {{
+                \\        if (node_address == data_structures.Node.invalid_pointer) {{
                 \\            node_address = exit_node;
                 \\        }} else {{
                 \\            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                 \\        }}
                 \\    }}
-                \\    while (repeating_node_address != data_structures.ASTNode.invalid_pointer) {{
+                \\    while (repeating_node_address != data_structures.Node.invalid_pointer) {{
             , .{self_index});
             try writer.writeByte('\n');
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
@@ -521,8 +534,8 @@ const Generator = struct {
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {
-                    try writer.writeAll("        const reduction_occurrence_procedures = if (context.node_allocator.at(repeating_node_address).parent == data_structures.ASTNode.invalid_pointer) occurrence_procedures else ");
-                    try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                    try writer.writeAll("        const reduction_occurrence_procedures = if (context.node_allocator.at(repeating_node_address).parent == data_structures.Node.invalid_pointer) occurrence_procedures else ");
+                    try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
                     try writer.writeAll(";\n");
                 }
                 try self.emitProcedureBlock(
@@ -536,14 +549,14 @@ const Generator = struct {
                 );
                 try writer.writeByte('\n');
                 try writer.writeAll(
-                    \\        if (args.node) |effective| {
+                    \\        if (args.node_address) |effective| {
                     \\            if (node_address == repeating_node_address) {
                     \\                node_address = effective;
                     \\            }
                     \\        } else {
-                    \\            data_structures.ASTNode.unlinkWrapper(repeating_node_address, context.node_allocator);
+                    \\            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
                     \\            if (node_address == repeating_node_address) {
-                    \\                node_address = data_structures.ASTNode.invalid_pointer;
+                    \\                node_address = data_structures.Node.invalid_pointer;
                     \\            }
                     \\        }
                     \\
@@ -591,31 +604,40 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
         }
-        try writer.print(") anyerror!{s} {{\n", .{if (returns_node) "data_structures.ASTNode.Pointer" else "void"});
+        try writer.print(") anyerror!{s} {{\n", .{self.nodeReturnType(returns_node)});
         if (self.has_occurrence_procedures and !returns_node) {
             try writer.writeAll("    _ = occurrence_procedures;\n");
         }
         if (returns_node) {
-            try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), data_structures.ASTNode.invalid_variable);\n\n", .{
-                if (self.options.with_procedures and self.options.with_ast) "var" else "const",
-            });
+            if (self.options.with_ast) {
+                try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), data_structures.Node.invalid_variable);\n\n", .{
+                    if (self.options.with_procedures) "var" else "const",
+                });
+            } else {
+                try writer.writeAll("    var node = data_structures.Node{ .text_start = context.pos(), .payload = .{} };\n\n");
+            }
         }
 
         const decision = self.plan.parserDecision(terminal_index, skip_ast_construction);
         try self.emitRuleSwitch(writer, terminal_index, decision.tree, 0, "    ", skip_ast_construction, false);
         try writer.writeByte('\n');
         if (returns_node) {
-            if (self.options.with_procedures and self.options.with_ast) {
+            if (self.options.with_ast) {
+                try writer.writeAll("    context.node_allocator.at(node_address).text_length = context.pos() - context.node_allocator.at(node_address).text_start;\n");
+            } else {
+                try writer.writeAll("    node.text_length = context.pos() - node.text_start;\n");
+            }
+            if (self.options.with_procedures) {
                 try self.emitTerminalProcedureBlock(
                     writer,
                     terminal_index,
-                    "node_address",
+                    if (self.options.with_ast) "node_address" else "node",
                     if (self.has_occurrence_procedures) "occurrence_procedures" else "null",
                     "    ",
                 );
-                try writer.writeAll("    node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n\n");
+                if (self.options.with_ast) try writer.writeAll("    node_address = args.node_address orelse data_structures.Node.invalid_pointer;\n\n");
             }
-            try writer.writeAll("    return node_address;\n");
+            try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
         }
 
         try writer.writeAll("}\n");
@@ -723,7 +745,9 @@ const Generator = struct {
         handler_name: []const u8,
         indent: []const u8,
     ) !void {
-        const can_tail_call = !self.has_occurrence_procedures and (!self.options.with_ast or
+        const can_tail_call = symbol_index != self.plan.augmented_start and
+            self.symbols.items[symbol_index].kind != .end and
+            !self.has_occurrence_procedures and (!self.options.with_ast or
             (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
             try writer.print("{s}if (comptime builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64) {{\n", .{indent});
@@ -747,7 +771,7 @@ const Generator = struct {
             });
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
             try writer.print(") anyerror!{s} {{\n", .{
-                if (returns_node) "data_structures.ASTNode.Pointer" else "void",
+                self.nodeReturnType(returns_node),
             });
             try writer.writeAll("    @branchHint(.cold);\n");
             if (!self.options.with_error_recovery) {
@@ -769,7 +793,7 @@ const Generator = struct {
                 if (symbol.kind == .variable) {
                     try writer.print("    if (try llTryRecoverySelection_{d}(context, occurrence_recovery)) {{\n", .{spec.symbol_index});
                     if (returns_node) {
-                        try writer.writeAll("        return data_structures.ASTNode.invalid_pointer;\n");
+                        try writer.print("        return {s};\n", .{self.missingNode()});
                     } else {
                         try writer.writeAll("        return;\n");
                     }
@@ -799,7 +823,7 @@ const Generator = struct {
             try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
             try writer.writeAll("    }\n");
             if (returns_node) {
-                try writer.writeAll("    return data_structures.ASTNode.invalid_pointer;\n");
+                try writer.print("    return {s};\n", .{self.missingNode()});
             }
             try writer.writeAll("}\n");
         }
@@ -913,9 +937,21 @@ const Generator = struct {
     fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
+        const captures_root = if (parent_variable == self.plan.augmented_start) captures: {
+            const start_symbol = rule.rhs.items[0];
+            const start_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and
+                (skip_ast_construction or !self.symbols.items[start_symbol].ast_enabled);
+            break :captures self.symbolReturnsNode(start_symbol, start_skips_ast_construction);
+        } else false;
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
         if (rule.rhs.items.len != 0) {
+            if (!self.options.with_ast and parent_returns_node) {
+                try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = .{{null}} ** {d};\n", .{ indent, rule.rhs.items.len, rule.rhs.items.len });
+            }
+            if (captures_root) {
+                try writer.print("{s}var root_node: {s} = {s};\n", .{ indent, self.nodeReturnType(true), self.missingNode() });
+            }
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
                 try self.emitChildParseLine(
                     writer,
@@ -923,14 +959,30 @@ const Generator = struct {
                     parent_variable,
                     rule,
                     child_index,
-                    if (parent_returns_node) "node_address" else null,
-                    if (parent_returns_node) "node_address" else null,
+                    if (parent_returns_node) if (self.options.with_ast) "node_address" else "node" else null,
+                    if (captures_root and child_index == 0)
+                        "root_node"
+                    else if (parent_returns_node)
+                        if (self.options.with_ast) "node_address" else "child_nodes"
+                    else
+                        null,
                     indent,
                     skip_ast_construction,
                 );
             }
         }
 
+        if (captures_root) {
+            if (self.options.with_ast) {
+                try writer.print("{s}if (root_node != data_structures.Node.invalid_pointer) {{\n{s}    root_reduction.ast_root = root_node;\n", .{ indent, indent });
+                if (self.options.with_procedures) {
+                    try writer.print("{s}    root_reduction.semantic_root = context.node_allocator.at(root_node).payload;\n", .{indent});
+                }
+                try writer.print("{s}}}\n", .{indent});
+            } else {
+                try writer.print("{s}if (root_node) |node| root_reduction.semantic_root = node.payload;\n", .{indent});
+            }
+        }
         try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction);
     }
 
@@ -938,28 +990,41 @@ const Generator = struct {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
 
-        if (self.options.with_procedures and self.options.with_ast and parent_returns_node) {
+        if (parent_returns_node) {
+            if (self.options.with_ast) {
+                try writer.print("{s}context.node_allocator.at(node_address).text_length = context.pos() - context.node_allocator.at(node_address).text_start;\n", .{indent});
+            } else {
+                try writer.print("{s}node.text_length = context.pos() - node.text_start;\n", .{indent});
+            }
+        }
+
+        if (self.options.with_procedures and parent_returns_node) {
             try self.emitProcedureBlock(
                 writer,
                 rule_index,
                 parent_variable,
-                "node_address",
+                if (self.options.with_ast) "node_address" else "node",
                 if (self.has_occurrence_procedures) "occurrence_procedures" else "null",
                 indent,
                 true,
             );
-            try writer.print("{s}node_address = args.node orelse data_structures.ASTNode.invalid_pointer;\n", .{indent});
+            if (self.options.with_ast) {
+                try writer.print("{s}node_address = args.node_address orelse data_structures.Node.invalid_pointer;\n", .{indent});
+            }
         }
 
-        if (self.options.with_procedures and self.options.with_ast and parent_returns_node) try writer.writeByte('\n');
+        if (self.options.with_procedures and parent_returns_node) try writer.writeByte('\n');
         try self.emitDebugReduction(writer, rule, parent_variable, indent);
+        if (!self.options.with_ast and parent_returns_node) {
+            try writer.print("{s}node.clearTemporaryChildren();\n", .{indent});
+        }
     }
 
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool) !void {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
-        const child_skips_ast_construction = self.options.with_ast and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
+        const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         const call_name = if (symbol_index == parent_variable)
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
@@ -967,6 +1032,25 @@ const Generator = struct {
             name;
         if (parent != null) {
             if (child_returns_node) {
+                if (!self.options.with_ast) {
+                    try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
+                    try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
+                    if (explicit_recovery) {
+                        try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                    } else {
+                        try writer.writeByte(')');
+                    }
+                    try writer.print(
+                        \\;
+                        \\{s}    if (child_node) |value| {{
+                        \\{s}        {s}[{d}] = value;
+                        \\{s}        {s}.appendTemporaryChild(&{s}[{d}].?);
+                        \\{s}    }}
+                        \\{s}}}
+                        \\
+                    , .{ indent, indent, parent_address.?, child_index, indent, parent.?, parent_address.?, child_index, indent, indent });
+                    return;
+                }
                 try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                 if (explicit_recovery) {
@@ -976,7 +1060,7 @@ const Generator = struct {
                 }
                 try writer.print(
                     \\;
-                    \\{s}    if (child_node != data_structures.ASTNode.invalid_pointer) {{
+                    \\{s}    if (child_node != data_structures.Node.invalid_pointer) {{
                     \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                     \\{s}    }}
                     \\{s}}}
@@ -993,7 +1077,7 @@ const Generator = struct {
                 try writer.print("; // child {d}\n", .{child_index});
             }
         } else if (child_returns_node) {
-            try writer.print("{s}_ = {s}parse_{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name });
+            try writer.print("{s}{s} = {s}parse_{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", call_name });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
             if (explicit_recovery) {
                 try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
@@ -1019,7 +1103,7 @@ const Generator = struct {
         try writer.print("{s}        error.ExplicitSyntaxRecovery => {{\n", .{indent});
         try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, occurrence_recovery)) {{\n", .{ indent, rule_index });
         if (self.symbolReturnsNode(parent_variable, skip_ast_construction)) {
-            try writer.print("{s}                return data_structures.ASTNode.invalid_pointer;\n", .{indent});
+            try writer.print("{s}                return {s};\n", .{ indent, self.missingNode() });
         } else {
             try writer.print("{s}                return;\n", .{indent});
         }
@@ -1031,7 +1115,7 @@ const Generator = struct {
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", ");
             if (child_returns_node) {
-                try self.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[child_index].procedures.items);
+                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[child_index].procedures.items);
             } else {
                 try writer.writeAll("null");
             }
@@ -1052,23 +1136,30 @@ const Generator = struct {
     fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, node_expr: []const u8, occurrence_expr: []const u8, indent: []const u8, include_outcome: bool) !void {
         const rule = self.rules.items[rule_index];
         const variable_index = self.variableIndex(parent_variable);
-        try writer.print(
-            \\{s}var args = data_structures.ProcedureArguments{{
-            \\{s}    .context = context,
-            \\{s}    .rule = rules[{d}],
-            \\{s}    .node = {s},
-            \\{s}}};
-            \\{s}_ = &args;
-            \\{s}args = args; // dummy store so Zig sees mutation (only fields mutated via pointer)
-            \\
-        , .{
-            indent, indent, indent, rule_index, indent, node_expr, indent, indent, indent,
-        });
+        if (self.options.with_ast) {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = rules[{d}],
+                \\{s}    .node_address = {s},
+                \\{s}}};
+                \\
+            , .{ indent, indent, indent, rule_index, indent, node_expr, indent });
+        } else {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = rules[{d}],
+                \\{s}    ._temp_node = &{s},
+                \\{s}}};
+                \\
+            , .{ indent, indent, indent, rule_index, indent, node_expr, indent });
+        }
         if (self.has_occurrence_procedures) {
             try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
         }
         try writer.print("{s}try runProcedureSequence(", .{indent});
-        try self.emitProcedureSequenceExpression(writer, rule.annotations.procedures.items);
+        try emitter_common.emitProcedureSequenceExpression(writer, rule.annotations.procedures.items);
         try writer.writeAll(", &args);\n");
         try writer.print(
             \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
@@ -1091,7 +1182,7 @@ const Generator = struct {
             indent, indent,         indent, indent,          indent,
             indent,
         });
-        if (include_outcome) {
+        if (include_outcome and self.options.with_ast) {
             try writer.print(
                 \\
                 \\{s}if (comptime builtin.mode == .Debug) {{
@@ -1102,7 +1193,7 @@ const Generator = struct {
             try emitFormatToken(writer, self.symbols.items[parent_variable].id);
             try writer.print(
                 \\: {{f}}\n", .{{
-                \\{s}            string_utilities.fmtASTNode(args.node, context),
+                \\{s}            string_utilities.fmtNode(args.node_address, context),
                 \\{s}        }});
                 \\{s}    }}
                 \\{s}}}
@@ -1112,13 +1203,23 @@ const Generator = struct {
     }
 
     fn emitTerminalProcedureBlock(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, node_expr: []const u8, occurrence_expr: []const u8, indent: []const u8) !void {
-        try writer.print(
-            \\{s}var args = data_structures.ProcedureArguments{{
-            \\{s}    .context = context,
-            \\{s}    .rule = null,
-            \\{s}    .node = {s},
-            \\{s}}};
-        , .{ indent, indent, indent, indent, node_expr, indent });
+        if (self.options.with_ast) {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = null,
+                \\{s}    .node_address = {s},
+                \\{s}}};
+            , .{ indent, indent, indent, indent, node_expr, indent });
+        } else {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = null,
+                \\{s}    ._temp_node = &{s},
+                \\{s}}};
+            , .{ indent, indent, indent, indent, node_expr, indent });
+        }
         if (self.has_occurrence_procedures) {
             try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
         }

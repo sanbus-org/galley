@@ -21,7 +21,7 @@ pub const Options = struct {
     with_input_streaming: bool = false,
 
     pub fn validate(self: Options) !void {
-        if (!self.with_ast and self.with_procedures) return error.ProceduresRequireAst;
+        _ = self;
     }
 };
 
@@ -230,7 +230,7 @@ pub fn prepareGrammar(
 }
 
 pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
-    if (!options.with_ast) return false;
+    if (!options.with_ast and !options.with_procedures) return false;
     return switch (symbol.kind) {
         .variable => symbol.ast_enabled,
         .terminal, .generative_terminal => options.ast_for_terminals,

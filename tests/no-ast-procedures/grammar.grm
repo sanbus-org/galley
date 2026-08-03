@@ -1,0 +1,15 @@
+Start@lhsHook
+|@productionHook Sequence!"x"^@occurrenceHook Empty _Hidden
+
+Sequence
+| Item Sequence
+|
+
+Item
+| "a"@terminalOccurrence
+
+Empty
+|
+
+_Hidden@hiddenHook
+| "x"

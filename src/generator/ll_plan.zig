@@ -254,7 +254,7 @@ const Builder = struct {
     }
 
     fn planAstSuppressedParsers(self: *Builder) !void {
-        if (!self.options.with_ast) return;
+        if (!self.options.with_ast and !self.options.with_procedures) return;
         for (self.grammar.variables.items) |variable| {
             if (self.hasParseEntries(variable)) try self.planAstSuppressedChildren(variable, false);
         }

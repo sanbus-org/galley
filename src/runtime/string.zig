@@ -1,7 +1,7 @@
 const std = @import("std");
 const root = @import("galley");
 const parser = root.parser;
-const ASTNode = root.data_structures.ASTNode;
+const Node = root.data_structures.Node;
 const Context = root.data_structures.Context;
 
 const StringSliceFormatter = struct {
@@ -96,20 +96,20 @@ fn writeHumanReadableString(string: []const u8, writer: *std.Io.Writer) !void {
     }
 }
 
-const ASTNodeFormatter = struct {
-    ast_node_address: ?ASTNode.Pointer,
+const NodeFormatter = struct {
+    ast_node_address: ?Node.Pointer,
     context: *Context,
     indentation: usize = 0,
     indent_status: []bool = &[0]bool{},
 
     const Frame = struct {
-        node: ASTNode.Pointer,
+        node: Node.Pointer,
         depth: usize,
         is_last: bool,
     };
 
     const Child = struct {
-        node: ASTNode.Pointer,
+        node: Node.Pointer,
         is_last: bool,
     };
 
@@ -175,12 +175,12 @@ const ASTNodeFormatter = struct {
             });
 
             children.items.len = 0;
-            var iterator = ASTNode.iterateAugmented(ast_node.first_child, self.context.node_allocator);
+            var iterator = Node.iterateAugmented(ast_node.first_child, self.context.node_allocator);
             while (iterator.next()) |node_address| {
                 const node = self.context.node_allocator.at(node_address);
                 children.append(allocator, .{
                     .node = node_address,
-                    .is_last = node.next == ASTNode.invalid_pointer,
+                    .is_last = node.next == Node.invalid_pointer,
                 }) catch return error.WriteFailed;
             }
 
@@ -198,11 +198,11 @@ const ASTNodeFormatter = struct {
     }
 };
 
-fn formattedChildrenCount(ast_node: *const ASTNode) u32 {
+fn formattedChildrenCount(ast_node: *const Node) u32 {
     return ast_node.children_count;
 }
 
-pub fn fmtASTNode(ast_node_address: ?ASTNode.Pointer, context: *Context) ASTNodeFormatter {
+pub fn fmtNode(ast_node_address: ?Node.Pointer, context: *Context) NodeFormatter {
     return .{
         .ast_node_address = ast_node_address,
         .context = context,
@@ -219,9 +219,9 @@ test "AST formatter reports the current node child count" {
     const first_child = try node_allocator.create(0, 0);
     const second_child = try node_allocator.create(0, 0);
     const grandchild = try node_allocator.create(0, 0);
-    try ASTNode.appendChildren(parent, &node_allocator, first_child);
-    try ASTNode.appendChildren(parent, &node_allocator, second_child);
-    try ASTNode.appendChildren(first_child, &node_allocator, grandchild);
+    try Node.appendChildren(parent, &node_allocator, first_child);
+    try Node.appendChildren(parent, &node_allocator, second_child);
+    try Node.appendChildren(first_child, &node_allocator, grandchild);
 
     try std.testing.expectEqual(@as(u32, 2), formattedChildrenCount(node_allocator.at(parent)));
     try std.testing.expectEqual(@as(u32, 1), node_allocator.at(first_child).children_count);

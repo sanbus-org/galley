@@ -83,10 +83,7 @@ fn parseArgs(init: std.process.Init) !CliOptions {
     }
 
     if (!result.generator_options.with_ast) {
-        if (procedures_mode == true) {
-            fatal("error: --no-ast cannot be combined with --with-procedures\n", .{});
-        }
-        result.generator_options.with_procedures = false;
+        if (procedures_mode == null) result.generator_options.with_procedures = false;
     }
     return result;
 }
@@ -106,7 +103,7 @@ fn printUsage(init: std.process.Init) !void {
         \\  -h, --help                 Display this help and exit.
         \\      --parser-type ll|lr    Generate only one parser type.
         \\      --with-ast             Enables AST construction.
-        \\      --no-ast               Disables AST construction and procedures.
+        \\      --no-ast               Disables AST construction; also disables procedures unless explicitly enabled.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
         \\      --with-error-recovery  Enables syntax-error recovery.
