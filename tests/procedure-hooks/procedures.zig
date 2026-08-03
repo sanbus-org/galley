@@ -64,7 +64,7 @@ fn record(hook: Hook, args: *ProcedureArguments) !void {
     if (!trace_enabled) return;
     if (event_count == event_buffer.len) return error.ProcedureHookTraceOverflow;
 
-    const node = if (args.node) |node_address| args.context.node_allocator.at(node_address) else null;
+    const node = args.currentNode();
     event_buffer[event_count] = .{
         .hook = hook,
         .node_variable = if (node) |value| value.variable else null,
@@ -140,7 +140,7 @@ pub fn hiddenHook(args: *ProcedureArguments) !void {
 
 pub fn dropOccurrence(args: *ProcedureArguments) !void {
     try record(.drop_occurrence, args);
-    args.node = null;
+    args.node_address = null;
 }
 
 pub fn afterDropProduction(args: *ProcedureArguments) !void {

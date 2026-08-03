@@ -2,7 +2,7 @@ const std = @import("std");
 const root = @import("galley");
 const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
-const ASTNode = data_structures.ASTNode;
+const Node = data_structures.Node;
 const standard_procedures = root.standard_procedures;
 
 pub const SymbolKind = enum {
@@ -65,13 +65,13 @@ const MutableRule = struct {
 };
 
 pub fn reduction(args: *ProcedureArguments) void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
     }
 }
 
 pub fn reduction_Start(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
         const grammar = try grammarFromAst(args.context, node_address);
         const node = args.context.node_allocator.at(node_address);
@@ -83,7 +83,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
         std.debug.print("Parsed Galley grammar successfully.\n", .{});
 }
 
-fn updateTextLength(context: *data_structures.Context, node_address: ASTNode.Pointer) void {
+fn updateTextLength(context: *data_structures.Context, node_address: Node.Pointer) void {
     const node = context.node_allocator.at(node_address);
     const end = context.pos();
     if (end >= node.text_start) {
@@ -92,7 +92,7 @@ fn updateTextLength(context: *data_structures.Context, node_address: ASTNode.Poi
 }
 
 fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
         try standard_procedures.rightRecursiveReduction(args);
     }
@@ -101,19 +101,19 @@ fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
 fn absorbLastChildNamed(comptime child_name: []const u8) type {
     return struct {
         fn function(args: *ProcedureArguments) !void {
-            if (args.node) |node_address| {
+            if (args.node_address) |node_address| {
                 updateTextLength(args.context, node_address);
                 const node = args.context.node_allocator.at(node_address);
-                if (node.last_child == ASTNode.invalid_pointer) return;
+                if (node.last_child == Node.invalid_pointer) return;
 
                 const tail_address = node.last_child;
                 if (!nodeIs(args.context, tail_address, child_name)) return;
 
-                _ = try ASTNode.removeSelf(tail_address, args.context.node_allocator);
-                if (args.context.node_allocator.at(tail_address).first_child != ASTNode.invalid_pointer) {
-                    const tail_children = try ASTNode.cleanChildren(tail_address, args.context.node_allocator);
-                    if (tail_children != ASTNode.invalid_pointer) {
-                        try ASTNode.appendChildren(node_address, args.context.node_allocator, tail_children);
+                _ = try Node.removeSelf(tail_address, args.context.node_allocator);
+                if (args.context.node_allocator.at(tail_address).first_child != Node.invalid_pointer) {
+                    const tail_children = try Node.cleanChildren(tail_address, args.context.node_allocator);
+                    if (tail_children != Node.invalid_pointer) {
+                        try Node.appendChildren(node_address, args.context.node_allocator, tail_children);
                     }
                 }
             }
@@ -122,7 +122,7 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
 }
 
 fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
         try standard_procedures.leftRecursiveReduction(args);
     }
@@ -155,13 +155,13 @@ pub const reduction_ProcedureTail = normalizeList(null).function;
 pub const reduction_RecoveryTail = normalizeList(null).function;
 pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
 
-fn grammarFromAst(context: *data_structures.Context, start_address: ASTNode.Pointer) !*Grammar {
+fn grammarFromAst(context: *data_structures.Context, start_address: Node.Pointer) !*Grammar {
     const allocator = context.runtime().arena_allocator;
     const rules_address = firstChildNamed(context, start_address, "Rules") orelse return error.MissingRules;
 
     var mutable_rules = std.ArrayList(MutableRule).empty;
     var child_address = context.node_allocator.at(rules_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "Rule")) {
             const rule = try mutableRuleFromAst(context, child_address);
@@ -206,7 +206,7 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
     return grammar;
 }
 
-fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.Pointer) !MutableRule {
+fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Pointer) !MutableRule {
     const allocator = context.runtime().arena_allocator;
     const header_address = firstChildNamed(context, rule_address, "VariableSymbol") orelse return error.MissingRuleHeader;
     const right_hand_sides_address = firstChildNamed(context, rule_address, "RightHandSides") orelse return error.MissingRightHandSides;
@@ -220,7 +220,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.P
     }
 
     var child_address = context.node_allocator.at(right_hand_sides_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "RightHandSideLine")) {
             if (try rightHandSideFromAst(context, child_address)) |rhs| {
@@ -233,7 +233,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: ASTNode.P
     return rule;
 }
 
-fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode.Pointer) !?MutableRightHandSide {
+fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Pointer) !?MutableRightHandSide {
     const allocator = context.runtime().arena_allocator;
     const line_procedures_address = firstChildNamed(context, line_address, "ProcedureTail") orelse return null;
     const rhs_address = firstChildNamed(context, line_address, "RightHandSide") orelse
@@ -247,7 +247,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode
     const symbols_parent_address = rhs_address orelse return rhs;
 
     var child_address = context.node_allocator.at(symbols_parent_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         if (!nodeIs(context, child_address, "Symbol")) {
             child_address = context.node_allocator.at(child_address).next;
             continue;
@@ -264,9 +264,9 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: ASTNode
 
 fn symbolFromAst(
     context: *data_structures.Context,
-    symbol_address: ASTNode.Pointer,
-    recovery_tail_address: ?ASTNode.Pointer,
-    procedure_tail_address: ASTNode.Pointer,
+    symbol_address: Node.Pointer,
+    recovery_tail_address: ?Node.Pointer,
+    procedure_tail_address: Node.Pointer,
 ) !SymbolRef {
     const allocator = context.runtime().arena_allocator;
     const concrete_address = firstChild(context, symbol_address) orelse return error.MissingSymbol;
@@ -294,10 +294,10 @@ fn symbolFromAst(
     };
 }
 
-fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: ASTNode.Pointer) !void {
+fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: Node.Pointer) !void {
     const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(recovery_tail_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "RecoveryPoint")) {
             const body_address = firstDescendantNamed(context, child_address, "RecoveryPointBody") orelse return error.MissingRecoveryPointBody;
@@ -314,10 +314,10 @@ fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(
     }
 }
 
-fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList([]const u8), procedure_tail_address: ASTNode.Pointer) !void {
+fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList([]const u8), procedure_tail_address: Node.Pointer) !void {
     const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(procedure_tail_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "CamelCaseId")) {
             try target.append(allocator, try allocator.dupe(u8, nodeText(context, child_address)));
@@ -326,15 +326,15 @@ fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList
     }
 }
 
-fn firstChild(context: *data_structures.Context, node_address: ASTNode.Pointer) ?ASTNode.Pointer {
+fn firstChild(context: *data_structures.Context, node_address: Node.Pointer) ?Node.Pointer {
     const node = context.node_allocator.at(node_address);
-    if (node.first_child == ASTNode.invalid_pointer) return null;
+    if (node.first_child == Node.invalid_pointer) return null;
     return node.first_child;
 }
 
-fn firstChildNamed(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) ?ASTNode.Pointer {
+fn firstChildNamed(context: *data_structures.Context, node_address: Node.Pointer, name: []const u8) ?Node.Pointer {
     var child_address = context.node_allocator.at(node_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, name)) return child_address;
         child_address = next_address;
@@ -342,9 +342,9 @@ fn firstChildNamed(context: *data_structures.Context, node_address: ASTNode.Poin
     return null;
 }
 
-fn firstDescendantNamed(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) ?ASTNode.Pointer {
+fn firstDescendantNamed(context: *data_structures.Context, node_address: Node.Pointer, name: []const u8) ?Node.Pointer {
     var child_address = context.node_allocator.at(node_address).first_child;
-    while (child_address != ASTNode.invalid_pointer) {
+    while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, name)) return child_address;
         if (firstDescendantNamed(context, child_address, name)) |found| return found;
@@ -353,9 +353,9 @@ fn firstDescendantNamed(context: *data_structures.Context, node_address: ASTNode
     return null;
 }
 
-fn nextSiblingNamed(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) ?ASTNode.Pointer {
+fn nextSiblingNamed(context: *data_structures.Context, node_address: Node.Pointer, name: []const u8) ?Node.Pointer {
     var sibling_address = context.node_allocator.at(node_address).next;
-    while (sibling_address != ASTNode.invalid_pointer) {
+    while (sibling_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(sibling_address).next;
         if (nodeIs(context, sibling_address, name)) return sibling_address;
         sibling_address = next_address;
@@ -363,13 +363,13 @@ fn nextSiblingNamed(context: *data_structures.Context, node_address: ASTNode.Poi
     return null;
 }
 
-fn nodeIs(context: *data_structures.Context, node_address: ASTNode.Pointer, name: []const u8) bool {
+fn nodeIs(context: *data_structures.Context, node_address: Node.Pointer, name: []const u8) bool {
     const node = context.node_allocator.at(node_address);
     if (node.variable >= root.parser.variables.len) return false;
     return std.mem.eql(u8, root.parser.variables[node.variable], name);
 }
 
-fn nodeText(context: *data_structures.Context, node_address: ASTNode.Pointer) []const u8 {
+fn nodeText(context: *data_structures.Context, node_address: Node.Pointer) []const u8 {
     const node = context.node_allocator.at(node_address);
     return context.getTextSlice(node.text_start, node.text_length);
 }

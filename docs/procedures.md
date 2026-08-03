@@ -4,7 +4,7 @@
 
 - [Overview](#overview)
 - [How Procedures Work](#how-procedures-work)
-- [AST Generation Requirement](#ast-generation-requirement)
+- [AST and No-AST Modes](#ast-and-no-ast-modes)
 - [Explicit Hook Annotations](#explicit-hook-annotations)
   - [1. LHS Variable Hooks](#1-lhs-variable-hooks)
   - [2. RHS Symbol Hooks](#2-rhs-symbol-hooks)
@@ -21,7 +21,11 @@
 
 ## Overview
 
-Reduction procedures in Galley are user-defined semantic hooks written in Zig (`procedures.zig`). They execute during parsing when the parser matches and reduces grammar rules, allowing you to manipulate the Abstract Syntax Tree (AST), inspect parsed symbols, track state, or perform custom semantic validation.
+Reduction procedures in Galley are user-defined semantic hooks written in Zig
+(`procedures.zig`). They execute during parsing when the parser matches and
+reduces grammar rules. Hooks can inspect spans and children, propagate typed
+payloads, perform validation, and—with AST construction enabled—manipulate the
+persistent syntax tree.
 
 ---
 
@@ -35,16 +39,30 @@ Reduction procedures in Galley are user-defined semantic hooks written in Zig (`
 
 ---
 
-## AST Generation Requirement
+## AST and No-AST Modes
 
 > [!IMPORTANT]
-> Hooks are strictly tied to AST node generation. If AST construction is disabled (using the `--no-ast` generator flag), all reduction procedures are automatically disabled and compiled out to maximize raw syntax validation speed.
+> `--no-ast` alone disables procedures. Pass `--no-ast --with-procedures`
+> explicitly to run semantic procedures without allocating an AST.
 >
-> Furthermore, for a specific symbol to trigger a hook, an AST node must be generated for it:
+> Hook eligibility is identical in AST and no-AST procedure modes:
 >
-> - Capitalized variables (PascalCase) generate AST nodes by default, so they can always trigger hooks.
-> - Helper variables starting with an underscore (e.g. `_OptionalBlank`) do *not* generate AST nodes, so hooks attached to them will not execute.
-> - Terminals do *not* generate AST nodes unless the `--ast-for-terminals` generator flag is active.
+> - Capitalized variables are visible and trigger hooks.
+> - Helper variables starting with an underscore (for example,
+>   `_OptionalBlank`) and their suppressed subtrees produce no visible node or
+>   hook.
+> - Terminals are visible and trigger hooks only with `--ast-for-terminals`.
+
+Both modes use the same `Node` type and the same `procedures.zig`. AST mode
+stores persistent nodes in `ASTAllocator`. No-AST mode uses temporary nodes
+whose child links are valid only during the current hook call. Payload values
+may be copied into later reductions, and the start symbol's final payload is
+returned as `ParseResult.semantic_root`.
+
+Procedure-enabled parsers retain complete source input so hooks can read a
+node's matched text from `args.context.getTextSlice(node.text_start,
+node.text_length)`. The bounded sliding input window is used only when both AST
+construction and procedures are disabled.
 
 ---
 
@@ -109,8 +127,8 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 | Procedure Name | Execution Trigger |
 | :--- | :--- |
 | `reduction_<SymbolName>_<RhsIndex>` | Executes when the zero-based right-hand-side production `<RhsIndex>` of `<SymbolName>` is reduced (e.g. `reduction_Expr_0` runs only for the first `Expr` production). Indices follow the consecutive `|` lines beneath the variable's unique LHS header. |
-| `reduction_<SymbolName>` | Executes whenever `<SymbolName>` produces an AST node, either by reducing a variable or matching an AST-enabled terminal. |
-| `reduction` | Executes as the general hook for every eligible variable reduction and AST-enabled terminal match. |
+| `reduction_<SymbolName>` | Executes whenever `<SymbolName>` produces a visible node, either by reducing a variable or matching an enabled terminal. |
+| `reduction` | Executes as the general hook for every eligible variable reduction and visible terminal match. |
 
 ---
 
@@ -127,13 +145,19 @@ For each eligible variable reduction, hooks execute from the most specific conte
 
 Each phase receives the node resulting from the preceding phase. An RHS occurrence hook belongs to the child variable's reduction and runs only when that child is reached through the annotated parent position. A child completes this sequence before its parent variable is reduced. The start variable has no parent RHS occurrence, and `reduction` runs once and last for each eligible reduction.
 
-For an AST-enabled terminal match, only the applicable phases run:
+For a terminal match enabled by `--ast-for-terminals`, only the applicable phases run:
 
 1. Hooks attached to that terminal occurrence, in left-to-right chain order.
 2. The automatic terminal hook `reduction_<SymbolName>`, if exported.
 3. The general `reduction` hook, if exported.
 
-Variable hooks receive the selected variable rule in `args.rule`. Terminals do not have a reduction rule, so terminal hooks receive `args.rule = null`. All phases share the same mutable `args.node`; dropping or replacing it is visible to every later hook.
+Variable hooks receive the selected variable rule in `args.rule`. Terminals do
+not have a reduction rule, so terminal hooks receive `args.rule = null`.
+`args.currentNode()` returns a direct pointer to the current `Node`; ordinary
+hooks mutate its span or payload in place. In AST mode, tree helpers may replace
+or remove the stable allocator address through `args.node_address`; `currentNode()`
+resolves from that address, so it reflects any drop or replacement performed by
+an earlier hook phase.
 
 An LR parser must know the parent occurrence when a variable reduces or terminal matches. If the active LR state and lookahead correspond to multiple occurrences with different hook chains, generation fails with `error.AmbiguousProcedureHooks` rather than running a hook for the wrong position. Identical chains may share the action.
 
@@ -152,13 +176,17 @@ const data_structures = @import("galley").data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 
 pub fn myHook(args: *ProcedureArguments) !void {
-    // If the node was allocated, inspect or modify it
-    if (args.node) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        // Inspect the node or update its custom payload.
+    if (args.currentNode()) |node| {
+        const text = args.context.getTextSlice(node.text_start, node.text_length);
+        _ = node.variable;
+        _ = text;
     }
 }
 ```
+
+`args.node_address` and `args.context.node_allocator` exist only when AST
+construction is enabled. Code that allocates or restructures tree nodes must
+use those fields and intentionally fails to compile in no-AST mode.
 
 ### Standard Helper Procedures
 
@@ -168,8 +196,8 @@ Many language implementations leverage standard tree-cleanup procedures:
 
   ```zig
   pub fn dropChildren(args: *ProcedureArguments) !void {
-      if (args.node) |node_address| {
-          _ = try data_structures.ASTNode.cleanChildren(node_address, args.context.node_allocator);
+      if (args.node_address) |node_address| {
+          _ = try data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
       }
   }
   ```
@@ -184,7 +212,7 @@ Many language implementations leverage standard tree-cleanup procedures:
 
   ```zig
   pub fn dropSelf(args: *ProcedureArguments) !void {
-      args.node = null;
+      args.node_address = null;
   }
   ```
 
@@ -198,8 +226,8 @@ Many language implementations leverage standard tree-cleanup procedures:
 
   ```zig
   pub fn replaceWithChildren(args: *ProcedureArguments) !void {
-      if (args.node) |node_address| {
-          args.node = data_structures.ASTNode.promoteChildrenOverWrapper(
+      if (args.node_address) |node_address| {
+          args.node_address = data_structures.Node.promoteChildrenOverWrapper(
               node_address,
               args.context.node_allocator,
           );
@@ -218,12 +246,12 @@ pub const Payload = struct {
 };
 ```
 
-Within a hook, access the payload through the current AST node:
+Within a hook, access the payload through the direct current node pointer in
+either mode:
 
 ```zig
 pub fn countVariable(args: *ProcedureArguments) void {
-    if (args.node) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
+    if (args.currentNode()) |node| {
         node.payload.variable_count += 1;
     }
 }

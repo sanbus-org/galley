@@ -11,9 +11,9 @@ pub const Payload = struct {
 };
 
 pub fn reduction(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
-        var iterator = data_structures.ASTNode.iterateAugmented(node.first_child, args.context.node_allocator);
+        var iterator = data_structures.Node.iterateAugmented(node.first_child, args.context.node_allocator);
         while (iterator.next()) |child_address| {
             const child = args.context.node_allocator.at(child_address);
             node.payload.objects += child.payload.objects;
@@ -24,21 +24,21 @@ pub fn reduction(args: *ProcedureArguments) !void {
 }
 
 pub fn reduction_Object(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
         node.payload.objects += 1;
     }
 }
 
 pub fn reduction_Array(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
         node.payload.arrays += 1;
     }
 }
 
 pub fn reduction_null(args: *ProcedureArguments) !void {
-    if (args.node) |node_address| {
+    if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
         node.payload.nulls += 1;
     }
@@ -49,8 +49,8 @@ pub const dropChildren = standard_procedures.dropChildren;
 pub const replaceWithChildren = standard_procedures.replaceWithChildren;
 
 pub fn reduction_Start(args: *ProcedureArguments) !void {
-    if (if (args.context.verbosityLevel() > 0) args.node else null) |node_address| {
-        std.debug.print("\nProgram text:\n{s}\n", .{try data_structures.ASTNode.augmentedText(node_address, args.context)});
+    if (if (args.context.verbosityLevel() > 0) args.node_address else null) |node_address| {
+        std.debug.print("\nProgram text:\n{s}\n", .{try data_structures.Node.augmentedText(node_address, args.context)});
 
         const log_file = try std.Io.Dir.cwd().createFile(args.context.runtime().io, "sanbus-parse.log", .{
             .lock = .exclusive,
@@ -67,7 +67,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
             child.payload.objects,
             child.payload.arrays,
             child.payload.nulls,
-            string_utilities.fmtASTNode(node_address, args.context),
+            string_utilities.fmtNode(node_address, args.context),
         });
 
         try writer.flush();

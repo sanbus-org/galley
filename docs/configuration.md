@@ -29,15 +29,18 @@ zig build
 | :--- | :--- | :--- | :--- |
 | `<LANGUAGE_DIR>` | `<PATH>` | Directory containing `ll.grm` and/or `lr.grm`. | None |
 | `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
-| `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. Disabling AST construction also disables procedures and maximizes raw syntax validation speed. | `--with-ast` |
+| `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. `--no-ast` disables procedures unless `--with-procedures` is also supplied explicitly. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `!` annotations use explicit-only recovery. | `--no-error-recovery` |
 | `--with-position-tracking` / `--no-position-tracking` | Flag | Enables or disables generated line and column tracking. Without either flag, tracking is enabled except in `ReleaseFast`. | Build-mode dependent |
-| `--with-input-streaming` / `--no-input-streaming` | Flag | Streams files incrementally or loads them completely before parsing. No-AST streaming uses a bounded input window. | `--no-input-streaming` |
+| `--with-input-streaming` / `--no-input-streaming` | Flag | Streams files incrementally or loads them completely before parsing. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. | `--no-input-streaming` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
 
-`--no-ast` and `--with-procedures` are mutually incompatible because procedure hooks operate on AST nodes.
+`--no-ast --with-procedures` enables semantic procedures without constructing
+an AST. The same `procedures.zig` module works in both modes. In no-AST mode,
+hooks receive temporary `Node` values containing source spans, symbol identity,
+payload, and direct-child links; tree mutation APIs are unavailable.
 
 Parser files named `_ll-parser.zig` and `_lr-parser.zig` are underscore-prefixed because Galley overwrites them on every generation. User-owned support files such as `config.zig`, `procedures.zig`, and `ll_error_messages.zig` / `lr_error_messages.zig` are not underscore-prefixed because Galley preserves existing content.
 

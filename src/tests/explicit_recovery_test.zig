@@ -62,10 +62,10 @@ fn expectRecovery(
 
 fn astContainsVariable(
     context: *parser.data_structures.Context,
-    address: parser.data_structures.ASTNode.Pointer,
+    address: parser.data_structures.Node.Pointer,
     variable: []const u8,
 ) bool {
-    if (address == parser.data_structures.ASTNode.invalid_pointer) return false;
+    if (address == parser.data_structures.Node.invalid_pointer) return false;
     const node = context.node_allocator.at(address);
     if (node.variable < parser.parser.variables.len and
         std.mem.eql(u8, parser.parser.variables[node.variable], variable))
@@ -73,7 +73,7 @@ fn astContainsVariable(
         return true;
     }
     var child = node.first_child;
-    while (child != parser.data_structures.ASTNode.invalid_pointer) {
+    while (child != parser.data_structures.Node.invalid_pointer) {
         const next = context.node_allocator.at(child).next;
         if (astContainsVariable(context, child, variable)) return true;
         child = next;
@@ -171,7 +171,7 @@ test "explicit recovery omits the damaged AST value and completes its parent" {
     try std.testing.expectError(parser.ParseError.SyntaxError, session._parseContext(&context));
 
     const root_address = parser.procedures.capturedRoot();
-    try std.testing.expect(root_address != parser.data_structures.ASTNode.invalid_pointer);
+    try std.testing.expect(root_address != parser.data_structures.Node.invalid_pointer);
     try std.testing.expect(astContainsVariable(&context, root_address, "Occurrence"));
     try std.testing.expect(!astContainsVariable(&context, root_address, "Damaged"));
     try std.testing.expectEqual(@as(usize, 0), parser.procedures.marks());
