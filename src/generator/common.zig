@@ -229,6 +229,37 @@ pub fn prepareGrammar(
     return result;
 }
 
+/// Renders a symbol the way it is written in a grammar: variables bare,
+/// terminals and generative terminals double-quoted, and end-of-input as EOF.
+pub fn symbolText(allocator: std.mem.Allocator, symbols: []const Symbol, symbol_index: usize) ![]const u8 {
+    const symbol = symbols[symbol_index];
+    return switch (symbol.kind) {
+        .variable => allocator.dupe(u8, symbol.id),
+        .end => allocator.dupe(u8, "EOF"),
+        .terminal, .generative_terminal => blk: {
+            const escaped = try readableSymbolName(allocator, symbol.id);
+            defer allocator.free(escaped);
+            break :blk try std.fmt.allocPrint(allocator, "\"{s}\"", .{escaped});
+        },
+    };
+}
+
+/// Renders a production as `Header -> symbol symbol ...` for diagnostics.
+pub fn ruleText(allocator: std.mem.Allocator, symbols: []const Symbol, rule: Rule) ![]const u8 {
+    var out = std.ArrayList(u8).empty;
+    const header = try symbolText(allocator, symbols, rule.header);
+    defer allocator.free(header);
+    try out.appendSlice(allocator, header);
+    try out.appendSlice(allocator, " ->");
+    for (rule.rhs.items) |symbol_index| {
+        const text = try symbolText(allocator, symbols, symbol_index);
+        defer allocator.free(text);
+        try out.append(allocator, ' ');
+        try out.appendSlice(allocator, text);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
     if (!options.with_ast and !options.with_procedures) return false;
     return switch (symbol.kind) {
@@ -650,4 +681,41 @@ fn appendCharsExcept(allocator: std.mem.Allocator, out: *std.ArrayList([]const u
             try out.append(allocator, item);
         }
     }
+}
+
+test "diagnostic symbol and rule text renders productions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+    const expression = try addSymbol(allocator, &symbols, &variables, "Expression", .variable);
+    const plus = try addSymbol(allocator, &symbols, &variables, "+", .terminal);
+    const term = try addSymbol(allocator, &symbols, &variables, "Term", .variable);
+    const eof = try addSymbol(allocator, &symbols, &variables, "\x00", .end);
+
+    const expression_text = try symbolText(allocator, symbols.items, expression);
+    defer allocator.free(expression_text);
+    try std.testing.expectEqualStrings("Expression", expression_text);
+
+    const plus_text = try symbolText(allocator, symbols.items, plus);
+    defer allocator.free(plus_text);
+    try std.testing.expectEqualStrings("\"+\"", plus_text);
+
+    const eof_text = try symbolText(allocator, symbols.items, eof);
+    defer allocator.free(eof_text);
+    try std.testing.expectEqualStrings("EOF", eof_text);
+
+    var rule = Rule{ .header = expression, .rhs_index = "0" };
+    try rule.rhs.append(allocator, term);
+    try rule.rhs_annotations.append(allocator, .{});
+    try rule.rhs.append(allocator, plus);
+    try rule.rhs_annotations.append(allocator, .{});
+    try rule.rhs.append(allocator, term);
+    try rule.rhs_annotations.append(allocator, .{});
+
+    const rule_text = try ruleText(allocator, symbols.items, rule);
+    defer allocator.free(rule_text);
+    try std.testing.expectEqualStrings("Expression -> Term \"+\" Term", rule_text);
 }
