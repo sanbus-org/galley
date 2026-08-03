@@ -1380,6 +1380,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
                 std.debug.print("Reduction: RulesTail <~ NewLines, Rule, RulesTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -1714,6 +1715,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
                 std.debug.print("Reduction: NewLinesTail <~ 'new_line', NewLinesTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -1841,6 +1843,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
                 std.debug.print("Reduction: NewLinesTail <~ '#', AnyContent, 'new_line', NewLinesTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2453,6 +2456,7 @@ fn parse_RecoveryTail_0_1(context: *data_structures.Context, occurrence_recovery
                 std.debug.print("Reduction: RecoveryTail <~ RecoveryPoint, RecoveryTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2696,6 +2700,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
                 std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -3211,6 +3216,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
                 std.debug.print("Reduction: RightHandSidesTail <~ RightHandSideLine, RightHandSidesTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -3851,6 +3857,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
                 std.debug.print("Reduction: RightHandSideTail <~ 'space', Symbol, RecoveryTail, ProcedureTail, RightHandSideTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4465,6 +4472,7 @@ fn parse_StringContent_0_1(context: *data_structures.Context, occurrence_recover
                 std.debug.print("Reduction: StringContent <~ 'character', StringContent\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4569,6 +4577,7 @@ fn parse_StringContent_1_1(context: *data_structures.Context, occurrence_recover
                 std.debug.print("Reduction: StringContent <~ _Utf8Scalar, StringContent\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4884,6 +4893,7 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4988,6 +4998,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^'\"\\x03', SimpleStringContent\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -5369,6 +5380,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6731,6 +6743,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
                 std.debug.print("Reduction: AnyContentTail <~ ControlCharacter, AnyContentTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6835,6 +6848,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
                 std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7129,6 +7143,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7233,6 +7248,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7337,6 +7353,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7743,6 +7760,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7847,6 +7865,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
         }
+        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
