@@ -4,7 +4,7 @@ const ProcedureArguments = galley.data_structures.ProcedureArguments;
 
 comptime {
     _ = @import("standard-procedures.zig");
-    _ = @import("data-structures/astnode.zig");
+    _ = @import("data-structures/node.zig");
     _ = @import("data-structures/context.zig");
     _ = @import("data-structures/offsets.zig");
     _ = @import("string.zig");
@@ -17,7 +17,7 @@ fn zeroArgumentHandler() void {
 }
 
 fn procedureArgumentsHandler(args: *ProcedureArguments) !void {
-    args.node = null;
+    args.node_address = null;
 }
 
 test "wrapProcedure invokes a zero-argument handler" {
@@ -29,7 +29,7 @@ test "wrapProcedure invokes a zero-argument handler" {
     );
 
     var context: galley.data_structures.Context = .{};
-    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node = null };
+    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
     try wrapped(&args);
 
     try std.testing.expect(zero_argument_handler_called);
@@ -42,9 +42,12 @@ test "wrapProcedure forwards ProcedureArguments" {
         "procedureArgumentsHandler",
     );
 
-    var context: galley.data_structures.Context = .{};
-    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node = 1 };
+    var node_allocator = try galley.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 1);
+    defer std.testing.allocator.free(node_allocator.memory);
+    const address = try node_allocator.create(0, 1);
+    var context: galley.data_structures.Context = .{ .node_allocator = &node_allocator };
+    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = address };
     try wrapped(&args);
 
-    try std.testing.expectEqual(@as(?galley.data_structures.ASTNode.Pointer, null), args.node);
+    try std.testing.expectEqual(@as(?galley.data_structures.Node.Pointer, null), args.node_address);
 }

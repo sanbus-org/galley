@@ -290,7 +290,7 @@ const Builder = struct {
         const rule = self.grammar.rules.items[rule_index];
         if (position >= rule.rhs.items.len) return null;
         const annotations = rule.rhs_annotations.items[position];
-        if (!self.options.with_ast or !self.options.with_procedures or annotations.procedures.items.len == 0) return null;
+        if (!self.options.with_procedures or annotations.procedures.items.len == 0) return null;
         const symbol = self.grammar.symbols.items[rule.rhs.items[position]];
         const has_node = switch (symbol.kind) {
             .variable => symbol.ast_enabled,
@@ -320,7 +320,7 @@ const Builder = struct {
                     state.uses_semantic_stack = true;
                     break;
                 },
-                .reduce => if (self.options.with_ast) {
+                .reduce => if (self.options.with_ast or self.options.with_procedures) {
                     state.uses_semantic_stack = true;
                     break;
                 },
@@ -377,11 +377,7 @@ const Builder = struct {
         @memset(self.plan.variable_indices, null);
         for (self.grammar.variables.items, 0..) |symbol_index, variable_index| self.plan.variable_indices[symbol_index] = variable_index;
         for (self.grammar.symbols.items, 0..) |symbol, symbol_index| {
-            self.plan.symbol_returns_stack_node[symbol_index] = switch (symbol.kind) {
-                .variable => symbol.ast_enabled,
-                .terminal, .generative_terminal => self.options.ast_for_terminals,
-                .end => false,
-            };
+            self.plan.symbol_returns_stack_node[symbol_index] = common.symbolReturnsNode(symbol, self.options);
         }
         const grammar_longest = common.longestTerminalLength(self.grammar.symbols.items);
         self.plan.longest_terminal_length = if (self.grammar.uses_explicit_recovery)

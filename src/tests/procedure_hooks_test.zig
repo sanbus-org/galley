@@ -60,7 +60,7 @@ fn expectHookTargets(hook: procedures.Hook, expected: []const []const u8) !void 
     for (procedures.trace()) |event| {
         if (event.hook != hook) continue;
         const variable = event.node_variable orelse return error.ExpectedProcedureNode;
-        if (variable == parser.data_structures.ASTNode.invalid_variable) continue;
+        if (variable == parser.data_structures.Node.invalid_variable) continue;
         if (matched == expected.len) return error.UnexpectedExtraProcedureHook;
         try std.testing.expectEqualStrings(expected[matched], parser.parser.variables[variable]);
         matched += 1;
@@ -72,7 +72,7 @@ fn expectOrderedTrace(expected: []const procedures.Hook, node_name: []const u8) 
     var matched: usize = 0;
     for (procedures.trace()) |event| {
         const variable = event.node_variable orelse continue;
-        if (variable == parser.data_structures.ASTNode.invalid_variable) continue;
+        if (variable == parser.data_structures.Node.invalid_variable) continue;
         if (!std.mem.eql(u8, node_name, parser.parser.variables[variable])) continue;
         if (matched == expected.len) return error.UnexpectedExtraProcedureHook;
         try std.testing.expectEqual(expected[matched], event.hook);
@@ -85,7 +85,7 @@ fn expectFilteredHookOrder(expected: []const procedures.Hook, node_name: []const
     var matched: usize = 0;
     for (procedures.trace()) |event| {
         const variable = event.node_variable orelse continue;
-        if (variable == parser.data_structures.ASTNode.invalid_variable) continue;
+        if (variable == parser.data_structures.Node.invalid_variable) continue;
         if (!std.mem.eql(u8, node_name, parser.parser.variables[variable])) continue;
 
         var belongs_to_sequence = false;
@@ -235,7 +235,7 @@ test "procedure-hooks terminal phases run local to global" {
     };
     var matched: usize = 0;
     for (procedures.trace()) |event| {
-        if (event.node_variable != parser.data_structures.ASTNode.invalid_variable) continue;
+        if (event.node_variable != parser.data_structures.Node.invalid_variable) continue;
         if (matched == expected.len) return error.UnexpectedExtraProcedureHook;
         try std.testing.expectEqual(expected[matched], event.hook);
         try std.testing.expect(!event.has_rule);

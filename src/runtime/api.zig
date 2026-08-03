@@ -15,7 +15,9 @@ pub const input_streaming_enabled = if (@hasDecl(parser, "is_input_streaming_ena
     parser.is_input_streaming_enabled
 else
     false;
-pub const sliding_input_enabled = input_streaming_enabled and !parser.is_ast_enabled;
+pub const procedures_enabled = if (@hasDecl(parser, "are_procedures_enabled")) parser.are_procedures_enabled else true;
+pub const source_retention_enabled = parser.is_ast_enabled or procedures_enabled;
+pub const sliding_input_enabled = input_streaming_enabled and !source_retention_enabled;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
@@ -116,7 +118,8 @@ pub const ParseResult = struct {
     parsed_bytes: usize,
     line: if (position_tracking_enabled) u32 else void,
     column: if (position_tracking_enabled) u32 else void,
-    ast_root: ?data_structures.ASTNode.Pointer = null,
+    ast_root: ?data_structures.Node.Pointer = null,
+    semantic_root: if (procedures_enabled) ?data_structures.Payload else void = if (procedures_enabled) null else {},
     _session_generation: usize = 0,
     _session_identity: ?*const anyopaque = null,
 };
@@ -494,17 +497,17 @@ pub const Session = struct {
             return try self._parseContextUnlocked(&context_value);
         }
 
-        const known_ast_file_length: ?usize = if (comptime parser.is_ast_enabled) known: {
+        const known_retained_file_length: ?usize = if (comptime source_retention_enabled) known: {
             const stat = file.stat(self.io) catch break :known null;
             if (stat.kind != .file) break :known null;
 
             const file_length = std.math.cast(usize, stat.size) orelse return error.InputTooLarge;
-            try self.prepareASTCapacity(file_length);
+            if (comptime parser.is_ast_enabled) try self.prepareASTCapacity(file_length);
             break :known file_length;
         } else null;
 
-        if (comptime input_streaming_enabled and !config.indentation_syntax and parser.is_ast_enabled) {
-            const file_length = known_ast_file_length orelse {
+        if (comptime input_streaming_enabled and !config.indentation_syntax and source_retention_enabled) {
+            const file_length = known_retained_file_length orelse {
                 var reader = file.reader(self.io, self.reader_buffer);
                 const input = try reader.interface.allocRemaining(self.allocator, .unlimited);
                 defer self.allocator.free(input);

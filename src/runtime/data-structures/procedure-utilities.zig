@@ -5,7 +5,27 @@ const data_structures = root.data_structures;
 pub const ProcedureArguments = struct {
     context: *data_structures.Context,
     rule: ?data_structures.Rule,
-    node: ?data_structures.ASTNode.Pointer,
+
+    /// AST mode: the sole structural drop/replace channel; `null` means the
+    /// node was dropped. `void` when AST construction is disabled.
+    node_address: if (root.parser.is_ast_enabled) ?data_structures.Node.Pointer else void =
+        if (root.parser.is_ast_enabled) null else {},
+
+    /// No-AST mode: internal direct pointer to the temporary node. `void`
+    /// when AST construction is enabled; not a drop/replace channel.
+    _temp_node: if (root.parser.is_ast_enabled) void else ?*data_structures.Node =
+        if (root.parser.is_ast_enabled) {} else null,
+
+    /// Resolves the current node for reading and in-place mutation. In AST
+    /// mode the pointer is derived live from `node_address`, so it reflects
+    /// any drop or replacement performed by an earlier hook phase and never
+    /// goes stale after allocator growth within a single phase.
+    pub fn currentNode(self: *const @This()) ?*data_structures.Node {
+        if (comptime root.parser.is_ast_enabled) {
+            return if (self.node_address) |address| self.context.node_allocator.at(address) else null;
+        }
+        return self._temp_node;
+    }
 };
 
 pub const Procedure = fn (args: *ProcedureArguments) anyerror!void;

@@ -148,3 +148,102 @@ fn variableIndex(variables: []const usize, symbol_index: usize) usize {
     }
     unreachable;
 }
+
+/// Emits the procedure support declarations shared verbatim by the LL and LR
+/// generators. The current node is resolved through the `ProcedureArguments`
+/// accessor on each hook phase, so no refresh pass is needed between calls.
+pub fn emitProcedureSupport(
+    writer: *std.Io.Writer,
+    rules: []const common.Rule,
+    symbols: []const common.Symbol,
+    variables: []const usize,
+) !void {
+    try writer.print(
+        \\const ProcedureSequenceNode = struct {{
+        \\    procedure: *const data_structures.Procedure,
+        \\    next: ?*const ProcedureSequenceNode,
+        \\}};
+        \\
+        \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
+        \\    if (procedure_names.len == 0) return null;
+        \\    const procedure_name = procedure_names[0];
+        \\    return &ProcedureSequenceNode{{
+        \\        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
+        \\        .next = makeProcedureSequence(procedure_names[1..]),
+        \\    }};
+        \\}}
+        \\
+        \\fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_structures.ProcedureArguments) !void {{
+        \\    var current = sequence;
+        \\    while (current) |entry| {{
+        \\        const procedure = @as(*data_structures.Procedure, @constCast(entry.procedure));
+        \\        try procedure(args);
+        \\        current = entry.next;
+        \\    }}
+        \\}}
+        \\
+        \\pub const rule_procedures = rule_procedures: {{
+        \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
+        \\
+        \\    for (rules, 0..) |rule, index| {{
+        \\        const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
+        \\        if (@hasDecl(procedures, procedure_name)) {{
+        \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name);
+        \\        }}
+        \\    }}
+        \\
+        \\    break :rule_procedures arr;
+        \\}};
+        \\
+        \\pub const symbol_procedures = symbol_procedures: {{
+        \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
+        \\
+        \\    for (symbols, 0..) |symbol, index| {{
+        \\        const procedure_name = "reduction_" ++ symbol;
+        \\        if (@hasDecl(procedures, procedure_name)) {{
+        \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), symbol);
+        \\        }}
+        \\    }}
+        \\
+        \\    break :symbol_procedures arr;
+        \\}};
+        \\
+        \\const variable_procedure_names = &[_][]const []const u8{{
+        \\
+    , .{ rules.len, rules.len, symbols.len, symbols.len });
+    for (variables) |symbol_index| {
+        const symbol = symbols[symbol_index];
+        try writer.writeAll("    &[_][]const u8{");
+        for (symbol.annotations.procedures.items, 0..) |procedure, i| {
+            if (i != 0) try writer.writeAll(", ");
+            try common.emitStringLiteral(writer, procedure);
+        }
+        try writer.writeAll("},\n");
+    }
+    try writer.print(
+        \\}};
+        \\
+        \\pub const variable_procedures = variable_procedures: {{
+        \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
+        \\
+        \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
+        \\        arr[index] = makeProcedureSequence(procedure_names);
+        \\    }}
+        \\
+        \\    break :variable_procedures arr;
+        \\}};
+        \\
+        \\pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
+        \\
+        \\
+    , .{ variables.len, variables.len });
+}
+
+pub fn emitProcedureSequenceExpression(writer: *std.Io.Writer, procedures_: []const []const u8) !void {
+    try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
+    for (procedures_, 0..) |procedure, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try common.emitStringLiteral(writer, procedure);
+    }
+    try writer.writeAll("})");
+}

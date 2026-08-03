@@ -277,7 +277,7 @@ test "grammar rejects invalid Unicode scalar escapes" {
     }
 }
 
-test "generator rejects procedures without AST construction" {
+test "generator supports procedures without AST construction" {
     const source =
         \\Start
         \\| "a"
@@ -287,10 +287,13 @@ test "generator rejects procedures without AST construction" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    try std.testing.expectError(error.ProceduresRequireAst, generateParserAlloc(arena.allocator(), source, .ll, .{
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{
         .with_ast = false,
         .with_procedures = true,
-    }));
+    });
+    try std.testing.expect(std.mem.indexOf(u8, output, "pub const is_ast_enabled = false;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "pub const are_procedures_enabled = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "var node = data_structures.Node") != null);
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {

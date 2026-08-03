@@ -62,7 +62,7 @@ pub const Context = struct {
     input_read_failed: bool = false,
 
     // These fields are defined only when non-indentation input streaming is enabled.
-    file_input: if (root.input_streaming_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) []u8 else void = if (root.input_streaming_enabled and !root.config.indentation_syntax and root.parser.is_ast_enabled) &.{} else {},
+    file_input: if (root.input_streaming_enabled and !root.config.indentation_syntax and root.source_retention_enabled) []u8 else void = if (root.input_streaming_enabled and !root.config.indentation_syntax and root.source_retention_enabled) &.{} else {},
     input_end: if (root.input_streaming_enabled and !root.config.indentation_syntax) usize else void = if (root.input_streaming_enabled and !root.config.indentation_syntax) 0 else {},
     loaded_end: if (root.input_streaming_enabled and !root.config.indentation_syntax) usize else void = if (root.input_streaming_enabled and !root.config.indentation_syntax) 0 else {},
     window_base: if (root.sliding_input_enabled and !root.config.indentation_syntax) usize else void = if (root.sliding_input_enabled and !root.config.indentation_syntax) 0 else {},

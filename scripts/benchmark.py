@@ -7,7 +7,6 @@ import sys
 import time
 from dataclasses import dataclass
 
-MAX_BENCHMARK_INPUT_BYTES = 1024 * 1024
 BENCHMARK_COOLDOWN_SECONDS = 7
 
 
@@ -15,7 +14,6 @@ BENCHMARK_COOLDOWN_SECONDS = 7
 class BenchmarkVariant:
     ast_mode: str
     term_ast: str
-    procedures_enabled: bool
     variant_name: str
 
 
@@ -578,11 +576,7 @@ def write_result_to_file(filepath, content):
 
 
 def benchmark_variant(gen_opts):
-    ast_mode = "default-ast"
-    if "--no-ast" in gen_opts:
-        ast_mode = "no-ast"
-    elif "--no-procedures" in gen_opts:
-        ast_mode = "no-procedures"
+    ast_mode = "no-ast" if "--no-ast" in gen_opts else "no-procedures"
 
     term_ast = "default-term-ast"
     if "--no-ast-for-terminals" in gen_opts:
@@ -591,34 +585,28 @@ def benchmark_variant(gen_opts):
         term_ast = "ast-for-terminals"
 
     is_no_ast = "--no-ast" in gen_opts
-    is_no_procedures = "--no-procedures" in gen_opts
     is_ast_for_terminals = "--ast-for-terminals" in gen_opts
-    procedures_enabled = not is_no_ast and not is_no_procedures
 
     if is_no_ast:
         variant_name = "no-ast-no-procedures"
-    elif is_no_procedures:
-        term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
-        variant_name = f"ast-no-procedures-{term_suffix}"
     else:
         term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
-        variant_name = f"ast-procedures-{term_suffix}"
+        variant_name = f"ast-no-procedures-{term_suffix}"
 
     return BenchmarkVariant(
         ast_mode=ast_mode,
         term_ast=term_ast,
-        procedures_enabled=procedures_enabled,
         variant_name=variant_name,
     )
 
 
-def prepare_benchmark_suite(name, gen_opts, args):
+def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
     parser_types = get_parser_types_for_language(name, args)
     if not parser_types:
         print(f"\033[31mNo parser types found for '{name}'\033[0m")
         sys.exit(1)
 
-    inputs = sample_inputs(name)
+    inputs = sample_inputs(name) if inputs is None else inputs
 
     variant = benchmark_variant(gen_opts)
     cards = []
@@ -626,9 +614,6 @@ def prepare_benchmark_suite(name, gen_opts, args):
         file_size = os.path.getsize(input_file) if os.path.exists(input_file) else 0
         skip_limit = None
         skip_cause = None
-        if variant.procedures_enabled and file_size > MAX_BENCHMARK_INPUT_BYTES:
-            skip_limit = "> 1 MB"
-            skip_cause = "procedures enabled"
 
         for parser_type in parser_types:
             cards.append(
@@ -677,7 +662,7 @@ def run_benchmark_suite(suite, args, progress):
     header_details = []
     if ast_mode == "no-ast":
         header_details.append("No AST")
-    elif ast_mode == "no-procedures":
+    else:
         header_details.append("AST")
 
     if term_ast == "ast-for-terminals":
@@ -1064,11 +1049,12 @@ def lua_benchmark(gen_opts, args):
 
 def run_all_modes(benchmark_fn, args):
     """Iterates through all AST and terminal-AST feature modes."""
-    ast_modes = ["--no-ast", "--no-procedures"]
     if args.no_ast:
         ast_modes = ["--no-ast"]
-    elif args.with_ast or args.no_procedures:
+    elif args.with_ast:
         ast_modes = ["--no-procedures"]
+    else:
+        ast_modes = ["--no-ast", "--no-procedures"]
 
     term_asts = ["--no-ast-for-terminals", "--ast-for-terminals"]
     if args.ast_for_terminals:
@@ -1133,12 +1119,7 @@ def main():
     parser.add_argument(
         "--with-ast",
         action="store_true",
-        help="Fix AST mode to --no-procedures (AST enabled)",
-    )
-    parser.add_argument(
-        "--no-procedures",
-        action="store_true",
-        help="Fix AST mode to --no-procedures",
+        help="Fix AST mode to AST enabled",
     )
     parser.add_argument(
         "--ast-for-terminals",

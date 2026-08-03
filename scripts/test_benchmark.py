@@ -4,6 +4,7 @@ import os
 import pathlib
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -50,7 +51,6 @@ class ProgressFormattingTests(unittest.TestCase):
         variant = benchmark.BenchmarkVariant(
             ast_mode="no-ast",
             term_ast="no-ast-for-terminals",
-            procedures_enabled=False,
             variant_name="no-ast-no-procedures",
         )
         suite = benchmark.BenchmarkSuite(
@@ -74,6 +74,78 @@ class ProgressFormattingTests(unittest.TestCase):
         )
         self.assertIn("1/1 (100%)", line)
         self.assertTrue(line.endswith("Card 2/2"))
+
+
+class BenchmarkPlanningTests(unittest.TestCase):
+    @staticmethod
+    def args(**overrides):
+        values = {
+            "no_ast": False,
+            "with_ast": False,
+            "ast_for_terminals": False,
+            "no_ast_for_terminals": False,
+            "parser_type": None,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_default_matrix_covers_ast_and_no_ast_without_procedures(self):
+        configurations = []
+        benchmark.run_all_modes(
+            lambda gen_opts, _: configurations.append(tuple(gen_opts)), self.args()
+        )
+
+        self.assertEqual(
+            [
+                ("--no-ast", "--no-ast-for-terminals"),
+                ("--no-procedures", "--no-ast-for-terminals"),
+                ("--no-procedures", "--ast-for-terminals"),
+            ],
+            configurations,
+        )
+        self.assertFalse(
+            any("--with-procedures" in options for options in configurations)
+        )
+
+    def test_ast_mode_flags_restrict_the_matrix(self):
+        no_ast = []
+        benchmark.run_all_modes(
+            lambda gen_opts, _: no_ast.append(tuple(gen_opts)),
+            self.args(no_ast=True),
+        )
+        self.assertEqual(
+            [("--no-ast", "--no-ast-for-terminals")],
+            no_ast,
+        )
+
+        with_ast = []
+        benchmark.run_all_modes(
+            lambda gen_opts, _: with_ast.append(tuple(gen_opts)),
+            self.args(with_ast=True),
+        )
+        self.assertEqual(
+            [
+                ("--no-procedures", "--no-ast-for-terminals"),
+                ("--no-procedures", "--ast-for-terminals"),
+            ],
+            with_ast,
+        )
+
+    def test_explicit_inputs_replace_language_samples(self):
+        inputs = ["custom/first.input", "custom/second.input"]
+        with mock.patch.object(
+            benchmark, "get_parser_types_for_language", return_value=["LL"]
+        ), mock.patch.object(
+            benchmark, "sample_inputs", side_effect=AssertionError("samples consulted")
+        ):
+            suite = benchmark.prepare_benchmark_suite(
+                "custom",
+                ["--no-ast", "--no-ast-for-terminals"],
+                self.args(),
+                inputs,
+            )
+
+        self.assertEqual(inputs, [card.input_file for card in suite.cards])
 
 
 class InteractiveProgressTests(unittest.TestCase):
