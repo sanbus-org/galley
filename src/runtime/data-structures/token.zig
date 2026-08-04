@@ -18,6 +18,10 @@ pub const Token = struct {
     }
 
     buffer: if (root.config.indentation_syntax) [Token.max_length * 2]u8 else []u8 = undefined,
+    /// Parallel to `buffer` in indentation mode: the source offset each buffered
+    /// byte was lexed from. Source offsets are independent of the cleaned/rewritten
+    /// token stream, so node text spans can be resolved back to the original input.
+    sources: if (root.config.indentation_syntax) [Token.max_length * 2]usize else void = undefined,
     head: usize = 0,
     len: Length = 0,
 
@@ -43,6 +47,17 @@ pub const Token = struct {
         self.len += 1;
     }
 
+    /// Appends a token together with the source offset it was lexed from
+    /// (indentation mode only).
+    pub inline fn appendSource(self: *Self, char: u8, source: usize) void {
+        comptime std.debug.assert(root.config.indentation_syntax);
+        std.debug.assert(self.len < Self.max_length);
+        self.buffer[self.head] = char;
+        self.sources[self.head] = source;
+        self.head += 1;
+        self.len += 1;
+    }
+
     pub inline fn appendNoCopy(self: *Self) void {
         std.debug.assert(self.len < Self.max_length);
         self.head += 1;
@@ -57,6 +72,7 @@ pub const Token = struct {
             if (self.head - self.len >= Self.max_length) {
                 const remaining = self.len;
                 @memcpy(self.buffer[0..remaining], self.items());
+                @memcpy(self.sources[0..remaining], self.sources[self.head - self.len .. self.head]);
                 self.head = remaining;
             }
         }
@@ -64,6 +80,13 @@ pub const Token = struct {
 
     pub inline fn items(self: *const Self) []const u8 {
         return self.buffer[self.head - self.len .. self.head];
+    }
+
+    /// Source offset of the first un-released token, i.e. the offset the next
+    /// released token begins at (indentation mode only).
+    pub inline fn firstSourceOffset(self: *const Self) usize {
+        comptime std.debug.assert(root.config.indentation_syntax);
+        return self.sources[self.head - self.len];
     }
 
     pub inline fn at(self: *const Self, offset: Length) u8 {

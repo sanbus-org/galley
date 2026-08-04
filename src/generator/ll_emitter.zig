@@ -285,9 +285,9 @@ const Generator = struct {
             const variable_index = self.variableIndex(variable);
             if (self.options.with_ast) {
                 const is_var = self.options.with_procedures and !skip_ast_construction;
-                try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
+                try writer.print("    {s} node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), {d});\n\n", .{ if (is_var) "var" else "const", variable_index });
             } else {
-                try writer.print("    var node = data_structures.Node{{ .text_start = context.pos(), .variable = {d}, .payload = .{{}} }};\n\n", .{variable_index});
+                try writer.print("    var node = data_structures.Node{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }};\n\n", .{variable_index});
             }
         }
 
@@ -409,7 +409,7 @@ const Generator = struct {
                 \\                try frames.append(semantic_allocator, undefined);
                 \\                const frame = &frames.items[frames.items.len - 1];
                 \\                frame.* = .{{
-                \\                    .node = .{{ .text_start = context.pos(), .variable = {d}, .payload = .{{}} }},
+                \\                    .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }},
                 \\                    .children = .{{null}} ** {d},
                 \\                }};
                 \\
@@ -438,7 +438,7 @@ const Generator = struct {
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
                 try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children);
             }
-            try writer.writeAll("        frame.node.text_length = context.pos() - frame.node.text_start;\n");
+            try writer.writeAll("        frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;\n");
             try self.emitDebugReduction(writer, rule, variable, "        ");
             try self.emitProcedureBlock(
                 writer,
@@ -489,7 +489,7 @@ const Generator = struct {
 
         if (returns_node) {
             try writer.print(
-                \\                const temporary_address = try context.node_allocator.create(context.pos(), {d});
+                \\                const temporary_address = try context.node_allocator.create(context.currentTokenSourceOffset(), {d});
                 \\                if (node_address == data_structures.Node.invalid_pointer) {{
                 \\                    node_address = temporary_address;
                 \\                }} else {{
@@ -542,7 +542,7 @@ const Generator = struct {
             try writer.writeByte('\n');
             try self.emitDebugReduction(writer, rule, variable, "        ");
             if (self.options.with_ast) {
-                try writer.writeAll("        context.node_allocator.at(repeating_node_address).text_length = context.pos() - context.node_allocator.at(repeating_node_address).text_start;\n");
+                try writer.writeAll("        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;\n");
             }
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
@@ -623,11 +623,11 @@ const Generator = struct {
         }
         if (returns_node) {
             if (self.options.with_ast) {
-                try writer.print("    {s} node_address = try context.node_allocator.create(context.pos(), data_structures.Node.invalid_variable);\n\n", .{
+                try writer.print("    {s} node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);\n\n", .{
                     if (self.options.with_procedures) "var" else "const",
                 });
             } else {
-                try writer.writeAll("    var node = data_structures.Node{ .text_start = context.pos(), .payload = .{} };\n\n");
+                try writer.writeAll("    var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };\n\n");
             }
         }
 
@@ -636,9 +636,9 @@ const Generator = struct {
         try writer.writeByte('\n');
         if (returns_node) {
             if (self.options.with_ast) {
-                try writer.writeAll("    context.node_allocator.at(node_address).text_length = context.pos() - context.node_allocator.at(node_address).text_start;\n");
+                try writer.writeAll("    context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;\n");
             } else {
-                try writer.writeAll("    node.text_length = context.pos() - node.text_start;\n");
+                try writer.writeAll("    node.text_length = context.currentTokenSourceOffset() - node.text_start;\n");
             }
             if (self.options.with_procedures) {
                 try self.emitTerminalProcedureBlock(
@@ -1005,9 +1005,9 @@ const Generator = struct {
 
         if (parent_returns_node) {
             if (self.options.with_ast) {
-                try writer.print("{s}context.node_allocator.at(node_address).text_length = context.pos() - context.node_allocator.at(node_address).text_start;\n", .{indent});
+                try writer.print("{s}context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;\n", .{indent});
             } else {
-                try writer.print("{s}node.text_length = context.pos() - node.text_start;\n", .{indent});
+                try writer.print("{s}node.text_length = context.currentTokenSourceOffset() - node.text_start;\n", .{indent});
             }
         }
 
