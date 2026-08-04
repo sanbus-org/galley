@@ -29,7 +29,7 @@ zig build
 | :--- | :--- | :--- | :--- |
 | `<LANGUAGE_DIR>` | `<PATH>` | Directory containing `ll.grm` and/or `lr.grm`. | None |
 | `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
-| `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. `--no-ast` disables procedures unless `--with-procedures` is also supplied explicitly. | `--with-ast` |
+| `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. | `--with-ast` |
 | `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
 | `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `!` annotations use explicit-only recovery. | `--no-error-recovery` |
 | `--with-position-tracking` / `--no-position-tracking` | Flag | Enables or disables generated line and column tracking. Without either flag, tracking is enabled except in `ReleaseFast`. | Build-mode dependent |
