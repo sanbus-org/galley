@@ -42,8 +42,7 @@ persistent syntax tree.
 ## AST and No-AST Modes
 
 > [!IMPORTANT]
-> `--no-ast` alone disables procedures. Pass `--no-ast --with-procedures`
-> explicitly to run semantic procedures without allocating an AST.
+> With `--no-ast`, semantic procedures still run without allocating an AST.
 >
 > Hook eligibility is identical in AST and no-AST procedure modes:
 >

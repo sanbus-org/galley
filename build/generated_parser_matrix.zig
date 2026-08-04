@@ -30,7 +30,7 @@ const MatrixVariant = struct {
 const matrix_variants = [_]MatrixVariant{
     .{
         .name = "no-ast-no-procedures",
-        .args = &.{ "--no-ast", "--no-ast-for-terminals" },
+        .args = &.{ "--no-ast", "--no-procedures", "--no-ast-for-terminals" },
         .large_sample_api_coverage = true,
     },
     .{

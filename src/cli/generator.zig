@@ -29,7 +29,6 @@ pub fn main(init: std.process.Init) !void {
 
 fn parseArgs(init: std.process.Init) !CliOptions {
     var result = CliOptions{};
-    var procedures_mode: ?bool = null;
 
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
@@ -51,10 +50,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.with_ast = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
             result.generator_options.with_procedures = true;
-            procedures_mode = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.generator_options.with_procedures = false;
-            procedures_mode = false;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.generator_options.with_error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
@@ -82,9 +79,6 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         }
     }
 
-    if (!result.generator_options.with_ast) {
-        if (procedures_mode == null) result.generator_options.with_procedures = false;
-    }
     return result;
 }
 
@@ -103,7 +97,7 @@ fn printUsage(init: std.process.Init) !void {
         \\  -h, --help                 Display this help and exit.
         \\      --parser-type ll|lr    Generate only one parser type.
         \\      --with-ast             Enables AST construction.
-        \\      --no-ast               Disables AST construction; also disables procedures unless explicitly enabled.
+        \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
         \\      --with-error-recovery  Enables syntax-error recovery.
