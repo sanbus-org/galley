@@ -1,0 +1,9 @@
+Program
+| UppercaseId block_start UppercaseId block_end UppercaseId
+
+UppercaseId
+| uppercase_letter IdTail
+
+IdTail
+| lowercase_letter IdTail
+|

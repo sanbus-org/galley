@@ -325,7 +325,7 @@ const Generator = struct {
             },
             .shift => {
                 if (self.options.with_ast or self.options.with_procedures) {
-                    try writer.print("{s}const start_pos = context.pos();\n", .{indent});
+                    try writer.print("{s}const start_pos = context.currentTokenSourceOffset();\n", .{indent});
                     if (self.options.with_ast and self.options.ast_for_terminals) {
                         try writer.print(
                             \\{s}{s} node_address = try context.node_allocator.create(start_pos, data_structures.Node.invalid_variable);
@@ -400,7 +400,7 @@ const Generator = struct {
             if (rhs_len > 0) {
                 try writer.print("{s}const start_pos = child_1.start_pos;\n", .{indent});
             } else {
-                try writer.print("{s}const start_pos = context.pos();\n", .{indent});
+                try writer.print("{s}const start_pos = context.currentTokenSourceOffset();\n", .{indent});
             }
 
             if (self.symbols.items[rule.header].ast_enabled) {
@@ -416,12 +416,12 @@ const Generator = struct {
                             , .{ indent, child_index + 1, indent, child_index + 1, child_index, indent });
                         }
                     }
-                    try writer.print("{s}context.node_allocator.at(parent_address).text_length = context.pos() - start_pos;\n", .{indent});
+                    try writer.print("{s}context.node_allocator.at(parent_address).text_length = context.currentTokenSourceOffset() - start_pos;\n", .{indent});
                     if (self.options.with_procedures) try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_address", indent);
                     const stack_value = if (self.options.with_procedures) "args.node_address orelse data_structures.Node.invalid_pointer" else "parent_address";
                     try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
                 } else {
-                    try writer.print("{s}var parent_node = data_structures.Node{{ .text_start = start_pos, .text_length = context.pos() - start_pos, .variable = {d}, .payload = .{{}} }};\n", .{ indent, variable_index });
+                    try writer.print("{s}var parent_node = data_structures.Node{{ .text_start = start_pos, .text_length = context.currentTokenSourceOffset() - start_pos, .variable = {d}, .payload = .{{}} }};\n", .{ indent, variable_index });
                     for (rule.rhs.items, 0..) |sym, child_index| {
                         if (self.symbolReturnsStackNode(sym)) {
                             try writer.print(
@@ -697,7 +697,7 @@ const Generator = struct {
         if (self.options.with_ast or self.options.with_procedures) {
             try writer.writeAll(
                 \\    {
-                \\        var start_pos = context.pos();
+                \\        var start_pos = context.currentTokenSourceOffset();
                 \\        for (0..unwind_count) |_| {
                 \\            const discarded = stack.pop() orelse unreachable;
                 \\            start_pos = discarded.start_pos;
