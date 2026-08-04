@@ -442,10 +442,17 @@ pub const Context = struct {
         }
     }
 
+    /// Appends a token to the indentation-mode token stream, recording the
+    /// source offset the token was lexed from.
+    inline fn appendToken(self: *@This(), char: u8, source_offset: usize) void {
+        self.token.appendSource(char, source_offset);
+    }
+
     pub inline fn advanceLexer(self: *@This()) void {
         if (comptime root.config.indentation_syntax) {
             const chunk_buffer = self.chunk_buffer;
             while (chunk_buffer[self.seek] == '\n') {
+                const boundary_source = self.read_bytes + self.seek;
                 self.advanceInput();
                 var line_spaces: u16 = 0;
 
@@ -459,7 +466,7 @@ pub const Context = struct {
                 } else if (line_spaces % self.indent_width != 0) {
                     self.recordIndentationDiagnostic(line_spaces);
                     while (self.token.len < @max(root.parser.longest_terminal_length, 1)) {
-                        self.token.append(0);
+                        self.appendToken(0, self.read_bytes + self.seek);
                     }
                     return;
                 }
@@ -471,7 +478,7 @@ pub const Context = struct {
                     if (comptime root.position_tracking_enabled) {
                         self.column_offsets.append(@as(u32, line_spaces) + 1);
                     }
-                    self.token.append('\n');
+                    self.appendToken('\n', boundary_source);
                 } else {
                     if (new_indent > self.current_indent) {
                         for (0..new_indent - self.current_indent) |index| {
@@ -483,7 +490,7 @@ pub const Context = struct {
                                 }
                                 self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
-                            self.token.append('\x01');
+                            self.appendToken('\x01', boundary_source);
                         }
                     } else if (new_indent < self.current_indent) {
                         for (0..self.current_indent - new_indent) |index| {
@@ -495,7 +502,7 @@ pub const Context = struct {
                                 }
                                 self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
-                            self.token.append('\x02');
+                            self.appendToken('\x02', boundary_source);
                         }
                     }
                     self.current_indent = new_indent;
@@ -510,7 +517,7 @@ pub const Context = struct {
             self.column_offsets.append(1);
         }
         if (comptime root.config.indentation_syntax) {
-            self.token.append(self.chunk_buffer[self.seek]);
+            self.appendToken(self.chunk_buffer[self.seek], self.read_bytes + self.seek);
             self.advanceInput();
         } else {
             self.token.appendNoCopy();
@@ -665,7 +672,7 @@ pub const Context = struct {
         return std.mem.readInt(T, array_ptr, .big);
     }
 
-    pub inline fn pos(self: *Self) usize {
+    pub inline fn pos(self: *const Self) usize {
         if (comptime root.config.indentation_syntax) {
             return self.read_bytes + self.seek;
         }
@@ -675,7 +682,51 @@ pub const Context = struct {
         return self.token.head - self.token.len;
     }
 
+    /// Source offset of the token the parser is about to consume, or of the
+    /// byte it is about to lex when no front-run token is buffered. This is the
+    /// source position where the next consumed token begins (equivalently, where
+    /// the previously consumed token ended), and is the coordinate space node
+    /// text spans should be captured in.
+    pub inline fn currentTokenSourceOffset(self: *const Self) usize {
+        if (comptime root.config.indentation_syntax) {
+            if (self.token.len == 0) return self.read_bytes + self.seek;
+            return self.token.firstSourceOffset();
+        }
+        return self.pos();
+    }
+
+    /// Reads the raw source bytes of a source-coordinate span. In indentation
+    /// mode the token stream is a cleaned/rewritten view of the input, so node
+    /// text spans cannot be resolved against it; this reads the original
+    /// source instead.
+    fn readSourceSlice(self: *const Self, start: usize, length: usize) []const u8 {
+        const end = start + length;
+        switch (self.source) {
+            .bytes => |bytes| return bytes.input[start..end],
+            .file => {
+                if (comptime !root.input_streaming_enabled) {
+                    return self.chunk_buffer[start..end];
+                }
+                const mutable = @constCast(self);
+                const span = self.runtimeConst().arena_allocator.alloc(u8, length) catch return &[_]u8{};
+                const frontier = self.read_bytes + self.seek;
+                mutable.source.file.interface.seekTo(start) catch return span[0..0];
+                var filled: usize = 0;
+                while (filled < length) {
+                    const n = mutable.source.file.interface.readSliceShort(span[filled..]) catch break;
+                    if (n == 0) break;
+                    filled += n;
+                }
+                mutable.source.file.interface.seekTo(frontier) catch {};
+                return span[0..filled];
+            },
+        }
+    }
+
     pub inline fn getTextSlice(self: *const Self, start: usize, length: usize) []const u8 {
+        if (comptime root.config.indentation_syntax) {
+            return self.readSourceSlice(start, length);
+        }
         return self.token.buffer[start .. start + length];
     }
 

@@ -8,7 +8,6 @@
 - When committing from the command line, use exactly one `-m` for the subject and one additional `-m` for the full body. Do not split body lines across multiple `-m` flags.
   - Example: `git commit -m "test(generator): add generated parser matrix validation" -m "Generate parser variants through the galley_generator API.\nRun parser API and error-path validation.\nFold benchmark compilation into zig build test."`
 - Commit bodies should be concise, typically 1-4 lines.
-- Never commit unless explicitly instructed by the user.
 
 ## Testing
 
