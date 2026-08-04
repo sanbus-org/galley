@@ -1,0 +1,13 @@
+Start
+| Separator List
+
+List
+| Item List
+|
+
+Item
+| "a"
+
+Separator
+| "+"
+| "-"

@@ -325,6 +325,16 @@ const Generator = struct {
         return !skip_ast_construction and self.plan.symbol_returns_node[symbol_index];
     }
 
+    fn ruleHasNodeChildren(self: *Generator, rule: Rule, skip_ast_construction: bool) bool {
+        for (rule.rhs.items) |symbol_index| {
+            const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and
+                (skip_ast_construction or
+                    (self.symbols.items[symbol_index].kind == .variable and !self.symbols.items[symbol_index].ast_enabled));
+            if (self.symbolReturnsNode(symbol_index, child_skips_ast_construction)) return true;
+        }
+        return false;
+    }
+
     fn nodeReturnType(self: *Generator, returns_node: bool) []const u8 {
         if (!returns_node) return "void";
         return if (self.options.with_ast) "data_structures.Node.Pointer" else "?data_structures.Node";
@@ -949,7 +959,7 @@ const Generator = struct {
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
         if (rule.rhs.items.len != 0) {
-            if (!self.options.with_ast and parent_returns_node) {
+            if (!self.options.with_ast and parent_returns_node and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
                 try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = .{{null}} ** {d};\n", .{ indent, rule.rhs.items.len, rule.rhs.items.len });
             }
             if (captures_root) {
