@@ -63,6 +63,35 @@ node's matched text from `args.context.getTextSlice(node.text_start,
 node.text_length)`. The bounded sliding input window is used only when both AST
 construction and procedures are disabled.
 
+### No-AST Reduction Channel
+
+In no-AST mode a node's children remain readable during its hook call, and
+payloads accumulate into the start symbol's final payload. `currentNode()`
+returns a pointer to the temporary node; iterate its children with
+`node.childIterator(context)`, reading each child's `payload`:
+
+```zig
+pub fn reduction_List(args: *ProcedureArguments) !void {
+    const node = args.currentNode() orelse return;
+    var iterator = node.childIterator(args.context);
+    var sum: usize = 0;
+    while (iterator.next()) |child| sum += child.payload.value;
+    node.payload.value = sum;
+}
+```
+
+Payload values begin at the struct defaults and are copied into later
+reductions as each hook runs. After parsing, the start symbol's payload is
+available as `ParseResult.semantic_root`:
+
+```zig
+var parsed = try parser.parseBytes(io, allocator, input, .{});
+defer parsed.deinit();
+if (parsed.result.semantic_root) |root| {
+    std.debug.print("value = {d}\n", .{root.value});
+}
+```
+
 ---
 
 ## Explicit Hook Annotations
