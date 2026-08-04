@@ -4,76 +4,96 @@ const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 
 fn requireAst() void {
-    if (comptime !root.parser.is_ast_enabled) {
-        @compileError("standard tree-manipulation procedures require AST construction");
+    if (comptime !root.parser.is_ast_enabled and !root.parser.allow_no_ast_tree_procedures) {
+        @compileError("standard tree-manipulation procedures require AST construction; generate with --allow-no-ast-tree-procedures to treat them as no-ops");
     }
 }
 
 /// Discards the current node itself by setting `args.node_address = null`.
 /// This is typically attached to symbols that should not contribute a node
 /// to the final AST (e.g. via `@dropSelf` in the grammar).
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropSelf(args: *ProcedureArguments) !void {
     requireAst();
-    args.node_address = null;
+    if (comptime root.parser.is_ast_enabled) {
+        args.node_address = null;
+    }
 }
 
 /// Discards all children of the current node (but keeps the node itself).
 /// Useful for symbols whose only purpose was grouping/syntax but whose
 /// children should be dropped (e.g. whitespace or certain wrappers).
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropChildren(args: *ProcedureArguments) !void {
     requireAst();
-    if (args.node_address) |node_address| {
-        _ = try data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
+    if (comptime root.parser.is_ast_enabled) {
+        if (args.node_address) |node_address| {
+            _ = try data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
+        }
     }
 }
 
 /// Discards the current node when it has no children.
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropIfEmpty(args: *ProcedureArguments) !void {
     requireAst();
-    if (args.node_address) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        if (node.first_child == data_structures.Node.invalid_pointer) {
-            args.node_address = null;
+    if (comptime root.parser.is_ast_enabled) {
+        if (args.node_address) |node_address| {
+            const node = args.context.node_allocator.at(node_address);
+            if (node.first_child == data_structures.Node.invalid_pointer) {
+                args.node_address = null;
+            }
         }
     }
 }
 
 /// Flattens one level of a right-recursive node when its last child is the
 /// same grammar variable.
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn rightRecursiveReduction(args: *ProcedureArguments) !void {
     requireAst();
-    if (args.node_address) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        if (node.last_child == data_structures.Node.invalid_pointer) return;
+    if (comptime root.parser.is_ast_enabled) {
+        if (args.node_address) |node_address| {
+            const node = args.context.node_allocator.at(node_address);
+            if (node.last_child == data_structures.Node.invalid_pointer) return;
 
-        const tail_address = node.last_child;
-        const tail = args.context.node_allocator.at(tail_address);
-        if (tail.variable != node.variable) return;
+            const tail_address = node.last_child;
+            const tail = args.context.node_allocator.at(tail_address);
+            if (tail.variable != node.variable) return;
 
-        _ = try data_structures.Node.removeSelf(tail_address, args.context.node_allocator);
-        const children = try data_structures.Node.cleanChildren(tail_address, args.context.node_allocator);
-        if (children != data_structures.Node.invalid_pointer) {
-            try data_structures.Node.appendChildren(node_address, args.context.node_allocator, children);
+            _ = try data_structures.Node.removeSelf(tail_address, args.context.node_allocator);
+            const children = try data_structures.Node.cleanChildren(tail_address, args.context.node_allocator);
+            if (children != data_structures.Node.invalid_pointer) {
+                try data_structures.Node.appendChildren(node_address, args.context.node_allocator, children);
+            }
         }
     }
 }
 
 /// Flattens one level of a left-recursive node when its first child is the
 /// same grammar variable.
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn leftRecursiveReduction(args: *ProcedureArguments) !void {
     requireAst();
-    if (args.node_address) |node_address| {
-        const node = args.context.node_allocator.at(node_address);
-        if (node.first_child == data_structures.Node.invalid_pointer) return;
+    if (comptime root.parser.is_ast_enabled) {
+        if (args.node_address) |node_address| {
+            const node = args.context.node_allocator.at(node_address);
+            if (node.first_child == data_structures.Node.invalid_pointer) return;
 
-        const head_address = node.first_child;
-        const head = args.context.node_allocator.at(head_address);
-        if (head.variable != node.variable) return;
+            const head_address = node.first_child;
+            const head = args.context.node_allocator.at(head_address);
+            if (head.variable != node.variable) return;
 
-        _ = try data_structures.Node.removeSelf(head_address, args.context.node_allocator);
-        const children = try data_structures.Node.cleanChildren(head_address, args.context.node_allocator);
-        if (children != data_structures.Node.invalid_pointer) {
-            try data_structures.Node.insertChildren(node_address, args.context.node_allocator, 0, children);
+            _ = try data_structures.Node.removeSelf(head_address, args.context.node_allocator);
+            const children = try data_structures.Node.cleanChildren(head_address, args.context.node_allocator);
+            if (children != data_structures.Node.invalid_pointer) {
+                try data_structures.Node.insertChildren(node_address, args.context.node_allocator, 0, children);
+            }
         }
     }
 }
@@ -84,10 +104,14 @@ pub fn leftRecursiveReduction(args: *ProcedureArguments) !void {
 /// Commonly used with `@replaceWithChildren` on list tails and member containers
 /// so that e.g. an `ArrayMembers` node disappears and its `Value` children
 /// become direct children of `Array`.
+/// Without AST construction these helpers are no-ops unless generation opted
+/// in with `--allow-no-ast-tree-procedures`.
 pub fn replaceWithChildren(args: *ProcedureArguments) !void {
     requireAst();
-    if (args.node_address) |node_address| {
-        args.node_address = data_structures.Node.promoteChildrenOverWrapper(node_address, args.context.node_allocator);
+    if (comptime root.parser.is_ast_enabled) {
+        if (args.node_address) |node_address| {
+            args.node_address = data_structures.Node.promoteChildrenOverWrapper(node_address, args.context.node_allocator);
+        }
     }
 }
 

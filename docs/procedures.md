@@ -191,6 +191,10 @@ use those fields and intentionally fails to compile in no-AST mode.
 
 Many language implementations leverage standard tree-cleanup procedures:
 
+The helpers below manipulate AST nodes and require AST construction. In no-AST
+mode they fail to compile unless the parser is generated with
+`--allow-no-ast-tree-procedures`, in which case each becomes a no-op.
+
 - **`dropChildren`**: Discards all child nodes of the current node to save memory:
 
   ```zig
