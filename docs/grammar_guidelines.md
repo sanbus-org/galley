@@ -7,6 +7,8 @@
 - [3. Terminal Symbols](#3-terminal-symbols)
 - [4. Procedure Hooks (`@procedure_name`)](#4-procedure-hooks-procedure_name)
 - [5. Explicit Syntax Recovery (`!`)](#5-explicit-syntax-recovery-)
+- [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
+- [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
 
 ---
 
@@ -155,3 +157,145 @@ When error recovery generation is enabled and the grammar has no annotations, Ga
 After a mismatch, Galley tries committed scopes from the most specific to the most general: the active RHS occurrence, its selected production, its LHS variable, then enclosing reductions. Within one target it chooses the earliest candidate in the input, then the longest terminal, then source order. A successful recovery preserves the original mismatch diagnostic, adds structured recovery context, neutral-completes the damaged variable, and skips hooks belonging to the damaged occurrence, production, and variable.
 
 Galley's own [LL grammar](https://github.com/sanbus-org/galley/blob/main/languages/galley/ll.grm) and [LR grammar](https://github.com/sanbus-org/galley/blob/main/languages/galley/lr.grm) are maintained examples. They recover a damaged `Symbol` before its newline, discard a damaged `RightHandSideLine` after its newline, and fall back from a damaged `Rule` to the blank line before the next rule. Run `zig build compare-galley-recovery` to see the annotated LL grammar and an annotation-free clone parse the same malformed grammar in explicit and automatic modes.
+
+---
+
+## 6. Indentation-Sensitive Grammars
+
+Set `pub const indentation_syntax = true;` in `config.zig` to make the generated
+lexer translate line indentation into explicit block tokens. Grammar rules then
+match them through three generative terminals:
+
+| Terminal | Byte | Meaning |
+| :--- | :--- | :--- |
+| `block_start` | `\x01` | One level of indentation was opened. |
+| `block_end` | `\x02` | One level of indentation was closed. |
+| `new_line` | `\n` | A line boundary at the same indentation level. |
+
+Galley's `languages/ll1/ll.grm` is a maintained example: blocks are written as
+`block_start Fields block_end`, and a sequence of same-level rows joins them with
+`new_line`.
+
+### Tokenization Rules
+
+- Indentation is measured **only on lines that follow a newline**. The very
+  first line of a file has no preceding newline, so its leading spaces are
+  ordinary `' '` tokens, not indentation.
+- Only literal ASCII spaces count. Leading tabs are not indentation; a line
+  that begins with a tab is treated as being at level 0, and the tab itself is
+  tokenized normally.
+- `indent_width` snaps to the leading-space count of the first line that follows
+  a newline. Every later line's leading spaces must be an integer multiple of
+  that width; otherwise parsing fails with a structured `IndentationError`
+  ("N spaces are not divisible by the detected indentation width of M").
+- Each line's indentation level is `leading_spaces / indent_width`. Compared
+  with the previous line's level:
+  - same level → one `new_line` token;
+  - `k` levels deeper → `k` `block_start` tokens;
+  - `k` levels shallower → `k` `block_end` tokens.
+
+  The leading spaces themselves are consumed and never appear as tokens.
+- A blank line (zero leading spaces) closes every open block with one
+  `block_end` each, snapping the level to 0; the next indented line re-opens the
+  blocks with `block_start` tokens. So blocks that must survive blank lines
+  cannot be written directly — the grammar must accept the close/reopen pair.
+- End of input emits no implicit closing tokens. A grammar that expects a block
+  to be closed must match the trailing `block_end`s itself.
+
+---
+
+## 7. Operator Precedence & Ambiguity-Free Expression Extraction
+
+The most common source of grammar ambiguity is a **shared operator nonterminal**
+used by more than one precedence level:
+
+```
+Expression
+| Expression Operator Expression
+| "(" Expression ")"
+| Number
+
+Operator
+| "+"
+| "*"
+```
+
+Because both `+` and `*` collapse into one `Operator` symbol, the parser cannot
+tell them apart at a single decision point: the LL planner reports
+`ambiguous grammar: variable <X>, terminal "<t>" matches two productions`, and
+the LR planner reports conflicting shift/reduce actions. There is no grammar
+annotation that rescues this shape — the fix is structural.
+
+### Rule 1: Give each precedence level its own operator
+
+Split the shared `Operator` into one nonterminal per precedence level and
+nest the levels so the tighter-binding operators are lower:
+
+```
+Expression
+| Expression "+" Term
+| Term
+
+Term
+| Term "*" Factor
+| Factor
+
+Factor
+| "(" Expression ")"
+| Number
+```
+
+Now `+` and `*` are distinct terminals at distinct levels, and the nesting
+(`Expression` → `Term` → `Factor`) encodes precedence directly.
+
+### Rule 2: LL(1) additionally requires the grammar to be left-factored
+
+The LR generator accepts the left-recursive form above. The LL generator does
+not: productions sharing a prefix — including `Expression | Expression "+" Term
+| Term`, which both start with `Expression` — conflict in their FIRST sets. For
+LL, hoist the recursion into a tail nonterminal and factor shared prefixes:
+
+```
+Expression
+| Term ExpressionTail
+
+ExpressionTail
+| "+" Term ExpressionTail
+|
+
+Term
+| Factor TermTail
+
+TermTail
+| "*" Factor TermTail
+|
+
+Factor
+| "(" Expression ")"
+| Number
+```
+
+When two productions of a variable do share a nonempty prefix, generation warns
+with a suggested left-factored rewrite (a fresh `<Variable>_Tail` production),
+as in:
+
+```
+warning: ambiguous grammar: variable Root, terminal ":" matches two productions:
+  Root -> ":" Fields ActionTail
+  Root -> ":" ActionTail
+warning:   suggestion: left-factor the shared prefix
+  Root -> ":" Root_Tail
+  Root_Tail -> Fields ActionTail
+  Root_Tail -> ActionTail
+```
+
+### Rule 3: Keep mixed-associativity operators at separate levels
+
+Operators that associate differently (e.g. left-associative `-`, right-associative `^`)
+must live at different precedence levels, each with its own recursion direction
+(right recursion for right-associativity in LL, left recursion for
+left-associativity in LR).
+
+Galley's `languages/ll1/ll.grm` demonstrates the per-level pattern with
+`Expression` / `ExpressionTail`, `OperandAndNumber`, and `Operand`/`OperandTail`
+for suffix calls, list gets, and casts.
