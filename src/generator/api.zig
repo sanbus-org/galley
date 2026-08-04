@@ -423,6 +423,35 @@ test "programmatic grammar validation rejects duplicate headers and terminal occ
     ));
 }
 
+test "generation rejects variables referenced but never defined" {
+    const undefined_variable_rules = [_]Rule{
+        .{
+            .header = "Start",
+            .right_hand_sides = &.{.{ .symbols = &.{
+                .{ .id = "ExpressionTail", .kind = .variable },
+                .{ .id = "_MissingHelper", .kind = .variable },
+            } }},
+        },
+    };
+
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expectError(error.UndefinedVariable, emitParser(
+        std.testing.allocator,
+        &.{ .rules = &undefined_variable_rules },
+        &output.writer,
+        .ll,
+        .{},
+    ));
+    try std.testing.expectError(error.UndefinedVariable, emitParser(
+        std.testing.allocator,
+        &.{ .rules = &undefined_variable_rules },
+        &output.writer,
+        .lr,
+        .{},
+    ));
+}
+
 test "LR rejects indistinguishable variable and terminal occurrence hooks" {
     const variable_source =
         \\Start
