@@ -19,6 +19,7 @@ pub const Options = struct {
     ast_for_terminals: bool = false,
     with_position_tracking: ?bool = null,
     with_input_streaming: bool = false,
+    allow_no_ast_tree_procedures: bool = false,
 
     pub fn validate(self: Options) !void {
         _ = self;

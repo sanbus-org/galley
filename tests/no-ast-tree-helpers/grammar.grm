@@ -1,0 +1,12 @@
+Start
+| Items
+
+Items@dropIfEmpty
+| Item ItemsTail
+
+ItemsTail
+| "," Item ItemsTail
+|
+
+Item
+| "a"
