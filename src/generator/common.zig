@@ -428,6 +428,20 @@ pub fn validateGrammar(grammar: anytype) !void {
             }
         }
     }
+    for (grammar.rules) |rule| {
+        for (rule.right_hand_sides) |rhs| {
+            for (rhs.symbols) |symbol| {
+                if (symbol.kind != .variable) continue;
+                const defined = for (grammar.rules) |candidate| {
+                    if (std.mem.eql(u8, candidate.header, symbol.id)) break true;
+                } else false;
+                if (!defined) {
+                    std.debug.print("undefined variable \"{s}\" referenced in rule \"{s}\"\n", .{ symbol.id, rule.header });
+                    return error.UndefinedVariable;
+                }
+            }
+        }
+    }
 }
 
 fn validateRecoveryPoints(points: anytype) !void {
