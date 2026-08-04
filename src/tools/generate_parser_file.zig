@@ -96,6 +96,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.with_procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.generator_options.with_procedures = false;
+        } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
+            result.generator_options.allow_no_ast_tree_procedures = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.generator_options.with_error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
@@ -140,6 +142,9 @@ fn printUsage(init: std.process.Init) !void {
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
+        \\      --allow-no-ast-tree-procedures
+        \\                             Treats standard tree-manipulation helpers as
+        \\                             no-ops in no-AST mode instead of a compile error.
         \\      --with-error-recovery  Enables syntax-error recovery.
         \\      --no-error-recovery    Disables syntax-error recovery.
         \\      --with-position-tracking

@@ -36,6 +36,7 @@ zig build
 | `--with-input-streaming` / `--no-input-streaming` | Flag | Streams files incrementally or loads them completely before parsing. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. | `--no-input-streaming` |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
+| `--allow-no-ast-tree-procedures` | Flag | In no-AST mode, treats standard tree-manipulation procedures as no-ops instead of failing to compile. Has no effect when AST construction is enabled. | Off |
 
 `--no-ast --with-procedures` enables semantic procedures without constructing
 an AST. The same `procedures.zig` module works in both modes. In no-AST mode,

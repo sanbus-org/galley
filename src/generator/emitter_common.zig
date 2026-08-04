@@ -76,6 +76,7 @@ pub fn emitParserMetadata(
         \\pub const ErrorRecoveryMode = enum {{ disabled, automatic, explicit }};
         \\pub const is_ast_enabled = {};
         \\pub const are_procedures_enabled = {};
+        \\pub const allow_no_ast_tree_procedures = {};
         \\pub const is_error_recovery_enabled = {};
         \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
         \\pub const is_position_tracking_enabled = {s};
@@ -87,6 +88,7 @@ pub fn emitParserMetadata(
         parser_type,
         options.with_ast,
         options.with_procedures,
+        options.allow_no_ast_tree_procedures,
         options.with_error_recovery,
         if (!options.with_error_recovery) "disabled" else if (uses_explicit_recovery) "explicit" else "automatic",
         if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
