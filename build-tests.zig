@@ -175,6 +175,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             test_step.dependOn(&run_no_ast_tree_helpers_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_tree_helpers_tests.step);
 
+            const run_no_ast_terminal_tests = try addNoAstTerminalTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_no_ast_terminal_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_terminal_tests.step);
+
             const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_explicit_recovery_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_explicit_recovery_tests.step);
@@ -663,6 +667,67 @@ fn addNoAstTreeHelpersTests(
 
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/no_ast_tree_helpers_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addNoAstTerminalTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const parser_name = try std.fmt.allocPrint(b.allocator, "no-ast-terminal-{s}", .{parser_type});
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/no-ast-terminal/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(parser_name);
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArgs(&.{ "--no-ast", "--with-procedures" });
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/no-ast-terminal/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = b.path("tests/no-ast-terminal/config.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/no-ast-terminal/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/no_ast_terminal_test.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
