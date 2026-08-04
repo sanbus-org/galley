@@ -260,6 +260,20 @@ pub fn ruleText(allocator: std.mem.Allocator, symbols: []const Symbol, rule: Rul
     return out.toOwnedSlice(allocator);
 }
 
+/// Renders a slice of symbol indices joined by spaces, or "<empty>" when the
+/// slice is empty, for left-factoring diagnostics.
+pub fn symbolsText(allocator: std.mem.Allocator, symbols: []const Symbol, symbol_indices: []const usize) ![]const u8 {
+    if (symbol_indices.len == 0) return allocator.dupe(u8, "<empty>");
+    var out = std.ArrayList(u8).empty;
+    for (symbol_indices, 0..) |symbol_index, index| {
+        if (index != 0) try out.append(allocator, ' ');
+        const text = try symbolText(allocator, symbols, symbol_index);
+        defer allocator.free(text);
+        try out.appendSlice(allocator, text);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
     if (!options.with_ast and !options.with_procedures) return false;
     return switch (symbol.kind) {

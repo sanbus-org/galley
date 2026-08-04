@@ -256,6 +256,57 @@ const Builder = struct {
         const rule_b_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_b]);
         defer self.allocator.free(rule_b_text);
         std.log.warn("ambiguous grammar: variable {s}, terminal {s} matches two productions:\n  {s}\n  {s}", .{ variable_name, terminal_name, rule_a_text, rule_b_text });
+        if (try self.leftFactorSuggestion(variable, rule_a, rule_b)) |suggestion| {
+            defer self.allocator.free(suggestion);
+            std.log.warn("  suggestion: left-factor the shared prefix\n  {s}", .{suggestion});
+        }
+    }
+
+    /// When two productions of the same variable share a nonempty RHS prefix,
+    /// returns a suggested left-factored rewrite hoisting that prefix into a
+    /// new tail variable. Returns null when the conflict has no syntactic
+    /// prefix to hoist (e.g. a FIRST/FOLLOW clash through a nullable rule).
+    fn leftFactorSuggestion(self: *Builder, variable: usize, rule_a: usize, rule_b: usize) !?[]const u8 {
+        const rhs_a = self.grammar.rules.items[rule_a].rhs.items;
+        const rhs_b = self.grammar.rules.items[rule_b].rhs.items;
+        var prefix_len: usize = 0;
+        while (prefix_len < rhs_a.len and prefix_len < rhs_b.len and rhs_a[prefix_len] == rhs_b[prefix_len]) : (prefix_len += 1) {}
+        if (prefix_len == 0) return null;
+
+        const prefix_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_a[0..prefix_len]);
+        defer self.allocator.free(prefix_text);
+        const suffix_a_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_a[prefix_len..]);
+        defer self.allocator.free(suffix_a_text);
+        const suffix_b_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_b[prefix_len..]);
+        defer self.allocator.free(suffix_b_text);
+
+        const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
+        defer self.allocator.free(variable_name);
+        const tail_name = try self.freshTailName(variable_name);
+        defer self.allocator.free(tail_name);
+
+        return try std.fmt.allocPrint(
+            self.allocator,
+            "{s} -> {s} {s}\n  {s} -> {s}\n  {s} -> {s}",
+            .{ variable_name, prefix_text, tail_name, tail_name, suffix_a_text, tail_name, suffix_b_text },
+        );
+    }
+
+    fn freshTailName(self: *Builder, variable_name: []const u8) ![]const u8 {
+        var candidate = try std.fmt.allocPrint(self.allocator, "{s}_Tail", .{variable_name});
+        var suffix: usize = 0;
+        while (self.grammar.symbols.items.len != 0 and self.symbolIdTaken(candidate)) : (suffix += 1) {
+            self.allocator.free(candidate);
+            candidate = try std.fmt.allocPrint(self.allocator, "{s}_Tail{d}", .{ variable_name, suffix });
+        }
+        return candidate;
+    }
+
+    fn symbolIdTaken(self: *Builder, id: []const u8) bool {
+        for (self.grammar.symbols.items) |symbol| {
+            if (std.mem.eql(u8, symbol.id, id)) return true;
+        }
+        return false;
     }
 
     fn hasParseEntries(self: *Builder, variable: usize) bool {
@@ -570,4 +621,92 @@ test "LL planning reports ambiguous first sets" {
     var grammar = try testAmbiguousGrammar(allocator);
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "left-factor suggestion hoists a shared RHS prefix" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const colon = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, ":", .terminal);
+    const fields = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Fields", .variable);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Tail", .variable);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ colon, fields, tail });
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{ colon, tail });
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var root_index: usize = undefined;
+    for (grammar.symbols.items, 0..) |symbol, index| {
+        if (std.mem.eql(u8, symbol.id, "Root")) root_index = index;
+    }
+    var rule_a: usize = undefined;
+    var rule_b: usize = undefined;
+    var found: usize = 0;
+    for (grammar.rules.items, 0..) |rule, index| {
+        if (rule.header != root_index) continue;
+        if (found == 0) rule_a = index else rule_b = index;
+        found += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), found);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+
+    const suggestion = (try builder.leftFactorSuggestion(root_index, rule_a, rule_b)).?;
+    defer allocator.free(suggestion);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root -> \":\" Root_Tail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> Fields Tail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> Tail") != null);
+}
+
+test "left-factorization yields no suggestion without a shared prefix" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const via_var = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Via", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{via_var});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
+    try appendTestRule(allocator, &grammar.rules, via_var, "0", &.{a});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var root_index: usize = undefined;
+    for (grammar.symbols.items, 0..) |symbol, index| {
+        if (std.mem.eql(u8, symbol.id, "Root")) root_index = index;
+    }
+    var rule_a: usize = undefined;
+    var rule_b: usize = undefined;
+    var found: usize = 0;
+    for (grammar.rules.items, 0..) |rule, index| {
+        if (rule.header != root_index) continue;
+        if (found == 0) rule_a = index else rule_b = index;
+        found += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), found);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try std.testing.expect(try builder.leftFactorSuggestion(root_index, rule_a, rule_b) == null);
 }
