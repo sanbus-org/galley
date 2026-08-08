@@ -16,7 +16,8 @@ pub const input_streaming_enabled = if (@hasDecl(parser, "is_input_streaming_ena
 else
     false;
 pub const procedures_enabled = if (@hasDecl(parser, "are_procedures_enabled")) parser.are_procedures_enabled else true;
-pub const source_retention_enabled = parser.is_ast_enabled or procedures_enabled;
+pub const uses_verbatim = if (@hasDecl(parser, "uses_verbatim")) parser.uses_verbatim else false;
+pub const source_retention_enabled = parser.is_ast_enabled or procedures_enabled or uses_verbatim;
 pub const sliding_input_enabled = input_streaming_enabled and !source_retention_enabled;
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
@@ -32,6 +33,7 @@ pub const ParseError = error{
     IndentationError,
     StackOverflow,
     ASTCapacityExceeded,
+    UnterminatedRawString,
 };
 
 pub const SyntaxDiagnosticContext = union(enum) {

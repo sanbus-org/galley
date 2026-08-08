@@ -249,6 +249,114 @@ pub const Context = struct {
         }
     }
 
+    /// Captures raw source bytes from the current source position through the
+    /// next occurrence of `terminator`, consuming them without lexing,
+    /// indentation processing, or escape decoding. On success the parser
+    /// resumes immediately after the terminator with line and column advanced
+    /// over the captured bytes. When `terminator` never reappears the parse
+    /// fails with `error.UnterminatedRawString`, mirroring recovery points by
+    /// carrying the expected terminator bytes in the recorded diagnostic.
+    ///
+    /// `!verbatim` capture requires retained source, so the generated parser
+    /// disables input streaming and every token buffer already holds the
+    /// complete input.
+    pub fn captureVerbatim(self: *Self, terminator: []const u8) !void {
+        const body_start = self.currentTokenSourceOffset();
+        const body_end = if (comptime root.config.indentation_syntax)
+            findVerbatimTerminatorEnd(self.chunk_buffer, body_start, terminator) orelse {
+                try self.recordUnterminatedVerbatim(terminator);
+                return error.UnterminatedRawString;
+            }
+        else
+            findVerbatimTerminatorEnd(self.token.buffer, body_start, terminator) orelse {
+                try self.recordUnterminatedVerbatim(terminator);
+                return error.UnterminatedRawString;
+            };
+
+        if (comptime root.config.indentation_syntax) {
+            // Any cleaned tokens already buffered from the captured region are
+            // part of the opaque raw body; discard them (together with their
+            // line/column offsets) and resume lexing from the terminator end.
+            self.indentation_error = false;
+            if (comptime root.position_tracking_enabled) {
+                const discard = @min(self.token.len, self.line_offsets.len);
+                if (discard != 0) {
+                    self.line_offsets.pop(@intCast(discard));
+                    self.column_offsets.pop(@intCast(discard));
+                }
+            }
+            self.token.resetBuffered();
+            self.seek = body_end;
+            self.current_indent = @intCast(lineIndentOf(self.chunk_buffer, body_start) / @max(self.indent_width, 1));
+            if (comptime root.position_tracking_enabled) {
+                advanceVerbatimPositions(&self.line, &self.column, self.chunk_buffer[body_start..body_end]);
+            }
+        } else {
+            const discard = self.token.len;
+            self.token.head = body_end;
+            self.token.len = 0;
+            if (comptime root.position_tracking_enabled) {
+                if (discard != 0) self.column_offsets.pop(discard);
+                advanceVerbatimPositions(&self.line, &self.column, self.token.buffer[body_start..body_end]);
+            }
+        }
+    }
+
+    /// Reports an unterminated `!verbatim` capture with the expected terminator
+    /// bytes as the diagnostic's expected tokens.
+    fn recordUnterminatedVerbatim(self: *Self, terminator: []const u8) !void {
+        if (self.input_read_failed) return error.ReadFailed;
+        if (comptime root.config.indentation_syntax) {
+            if (self.indentation_error) return error.IndentationError;
+        }
+        const arena = self.runtime().arena_allocator;
+        const unexpected_token = try arena.dupe(u8, self.diagnosticTokenItems());
+        const expected_tokens = try arena.alloc([]const u8, 1);
+        expected_tokens[0] = try arena.dupe(u8, terminator);
+        self.runtime().last_diagnostic = .{
+            .syntax = .{
+                .line = if (comptime root.position_tracking_enabled) self.line else 0,
+                .column = if (comptime root.position_tracking_enabled) self.column else 0,
+                .unexpected_token = unexpected_token,
+                .expected_tokens = expected_tokens,
+                .context = .none,
+            },
+        };
+        self.runtime().syntax_error_count += 1;
+    }
+
+    fn advanceVerbatimPositions(line: *u32, column: *u32, captured: []const u8) void {
+        var newlines: u32 = 0;
+        var last_newline: ?usize = null;
+        for (captured, 0..) |byte, index| {
+            if (byte == '\n') {
+                newlines += 1;
+                last_newline = index;
+            }
+        }
+        line.* += newlines;
+        if (last_newline) |suffix_start| {
+            column.* = @intCast(captured.len - suffix_start);
+        } else {
+            column.* += @intCast(captured.len);
+        }
+    }
+
+    fn findVerbatimTerminatorEnd(buffer: []const u8, start: usize, terminator: []const u8) ?usize {
+        const region_end = std.mem.indexOfScalarPos(u8, buffer, start, 0) orelse buffer.len;
+        const terminator_at = std.mem.indexOf(u8, buffer[start..region_end], terminator) orelse return null;
+        return start + terminator_at + terminator.len;
+    }
+
+    /// Number of leading spaces on the line containing `offset`.
+    fn lineIndentOf(buffer: []const u8, offset: usize) usize {
+        var line_start = offset;
+        while (line_start > 0 and buffer[line_start - 1] != '\n' and buffer[line_start - 1] != 0) : (line_start -= 1) {}
+        var indent: usize = 0;
+        while (line_start + indent < buffer.len and buffer[line_start + indent] == ' ') : (indent += 1) {}
+        return indent;
+    }
+
     pub fn recoveryLookahead(self: *Self) ![]const u8 {
         const required = self.runtime().recovery_window +| root.parser.longest_terminal_length;
 

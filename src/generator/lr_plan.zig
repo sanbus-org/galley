@@ -69,6 +69,7 @@ pub const LRPlan = struct {
         };
         try builder.buildStates();
         try builder.buildParseTable();
+        try builder.validateVerbatimSymbols();
         builder.planSemanticStackRequirements();
         builder.plan.recovery = try recovery_planning.build(allocator, grammar, options, builder.plan.states.items);
         try builder.planStateDecisionsAndDiagnostics();
@@ -293,6 +294,22 @@ const Builder = struct {
         return null;
     }
 
+    fn validateVerbatimSymbols(self: *Builder) !void {
+        if (!self.grammar.uses_verbatim) return;
+        for (self.grammar.rules.items) |rule| {
+            for (rule.rhs.items, 0..) |symbol_index, position| {
+                if (!rule.rhs_annotations.items[position].verbatim) continue;
+                const symbol = self.grammar.symbols.items[symbol_index];
+                const empty_matchable = switch (symbol.kind) {
+                    .terminal, .generative_terminal => symbol.id.len == 0,
+                    .variable => try self.nullableRule(symbol_index, null) != null,
+                    .end => false,
+                };
+                if (empty_matchable) return error.EmptyVerbatimSymbol;
+            }
+        }
+    }
+
     fn gotoState(self: *Builder, state: State, symbol: usize) !State {
         var next = State{};
         for (state.items.items) |item| {
@@ -324,6 +341,7 @@ const Builder = struct {
         const rule = self.grammar.rules.items[rule_index];
         if (position >= rule.rhs.items.len) return null;
         const annotations = rule.rhs_annotations.items[position];
+        if (annotations.verbatim) return .{ .rule = rule_index, .position = position };
         if (!self.options.with_procedures or annotations.procedures.items.len == 0) return null;
         const symbol = self.grammar.symbols.items[rule.rhs.items[position]];
         const has_node = switch (symbol.kind) {
@@ -336,11 +354,21 @@ const Builder = struct {
 
     fn occurrencesEquivalent(self: *Builder, lhs: ?Occurrence, rhs: ?Occurrence) bool {
         if (lhs == null or rhs == null) return lhs == null and rhs == null;
-        const lhs_names = self.grammar.rules.items[lhs.?.rule].rhs_annotations.items[lhs.?.position].procedures.items;
-        const rhs_names = self.grammar.rules.items[rhs.?.rule].rhs_annotations.items[rhs.?.position].procedures.items;
+        const lhs_annotations = self.grammar.rules.items[lhs.?.rule].rhs_annotations.items[lhs.?.position];
+        const rhs_annotations = self.grammar.rules.items[rhs.?.rule].rhs_annotations.items[rhs.?.position];
+        if (lhs_annotations.verbatim != rhs_annotations.verbatim) return false;
+        const lhs_names = lhs_annotations.procedures.items;
+        const rhs_names = rhs_annotations.procedures.items;
         if (lhs_names.len != rhs_names.len) return false;
         for (lhs_names, rhs_names) |lhs_name, rhs_name| if (!std.mem.eql(u8, lhs_name, rhs_name)) return false;
         return true;
+    }
+
+    fn occurrenceIsVerbatim(self: *Builder, occurrence: ?Occurrence) bool {
+        if (occurrence) |value| {
+            return self.grammar.rules.items[value.rule].rhs_annotations.items[value.position].verbatim;
+        }
+        return false;
     }
 
     fn planSemanticStackRequirements(self: *Builder) void {
@@ -367,6 +395,10 @@ const Builder = struct {
         for (self.plan.states.items, 0..) |state, state_index| {
             var entries = std.ArrayList(switch_planning.Entry).empty;
             for (state.actions.items, 0..) |action, action_index| {
+                if (action.kind == .reduce and self.occurrenceIsVerbatim(action.occurrence)) {
+                    try entries.append(self.allocator, .{ .terminal = "", .target = action_index });
+                    continue;
+                }
                 for (self.grammar.symbols.items[action.terminal].terminals.items) |terminal| try entries.append(self.allocator, .{
                     .terminal = terminal,
                     .target = action_index,
