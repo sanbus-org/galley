@@ -380,7 +380,7 @@ const Generator = struct {
                 \\        children: [{d}]?data_structures.Node,
                 \\    }};
                 \\    const semantic_allocator = context.runtime().arena_allocator;
-                \\    var frames: std.ArrayList(SemanticReductionFrame) = .empty;
+                \\    var frames: std.ArrayList(*SemanticReductionFrame) = .empty;
                 \\    defer frames.deinit(semantic_allocator);
                 \\
             , .{rule.rhs.items.len});
@@ -406,12 +406,12 @@ const Generator = struct {
             try writer.writeByte('\n');
             try self.emitDebugRuleExpansion(writer, rule, variable, "                ");
             try writer.print(
-                \\                try frames.append(semantic_allocator, undefined);
-                \\                const frame = &frames.items[frames.items.len - 1];
+                \\                const frame = try semantic_allocator.create(SemanticReductionFrame);
                 \\                frame.* = .{{
                 \\                    .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }},
                 \\                    .children = .{{null}} ** {d},
                 \\                }};
+                \\                try frames.append(semantic_allocator, frame);
                 \\
             , .{ self.variableIndex(variable), rule.rhs.items.len });
             const skip_ast_for_children = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
@@ -431,7 +431,7 @@ const Generator = struct {
             } else {
                 try writer.writeByte(')');
             }
-            try writer.writeAll(";\n    var frame_index = frames.items.len;\n    while (frame_index > 0) {\n        frame_index -= 1;\n        const frame = &frames.items[frame_index];\n        if (reduced_node) |value| {\n");
+            try writer.writeAll(";\n    var frame_index = frames.items.len;\n    while (frame_index > 0) {\n        frame_index -= 1;\n        const frame = frames.items[frame_index];\n        if (reduced_node) |value| {\n");
             try writer.print("            frame.children[{d}] = value;\n", .{self_index});
             try writer.print("            frame.node.appendTemporaryChild(&frame.children[{d}].?);\n", .{self_index});
             try writer.writeAll("        }\n");
@@ -583,7 +583,7 @@ const Generator = struct {
             );
         } else {
             const explicit_recovery = self.uses_explicit_recovery;
-            try writer.print("    {s}parse_{s}{s}(context", .{ if (explicit_recovery) "" else "try ", name, if (self.options.with_ast) "_" else "" });
+            try writer.print("    {s}parse_{s}{s}(context", .{ if (explicit_recovery) "" else "try ", name, if (skip_ast_construction) "_" else "" });
             if (self.has_occurrence_procedures) try writer.writeAll(", null");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             if (explicit_recovery) {

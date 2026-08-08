@@ -25,6 +25,7 @@ const MatrixVariant = struct {
     name: []const u8,
     args: []const []const u8,
     large_sample_api_coverage: bool = false,
+    excluded_languages: []const []const u8 = &.{},
 };
 
 const matrix_variants = [_]MatrixVariant{
@@ -32,6 +33,12 @@ const matrix_variants = [_]MatrixVariant{
         .name = "no-ast-no-procedures",
         .args = &.{ "--no-ast", "--no-procedures", "--no-ast-for-terminals" },
         .large_sample_api_coverage = true,
+    },
+    .{
+        .name = "no-ast-procedures-no-terminal-ast",
+        .args = &.{ "--no-ast", "--with-procedures", "--no-ast-for-terminals" },
+        .large_sample_api_coverage = true,
+        .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast", "sanbus" },
     },
     .{
         .name = "ast-no-procedures-no-terminal-ast",
@@ -54,6 +61,13 @@ const matrix_variants = [_]MatrixVariant{
 fn testsErrorRecovery(variant: MatrixVariant) bool {
     return std.mem.eql(u8, variant.name, "no-ast-no-procedures") or
         std.mem.eql(u8, variant.name, "ast-procedures-no-terminal-ast");
+}
+
+fn isExcluded(variant: MatrixVariant, language: []const u8) bool {
+    for (variant.excluded_languages) |excluded| {
+        if (std.mem.eql(u8, excluded, language)) return true;
+    }
+    return false;
 }
 
 const ParserTypeSpec = struct {
@@ -101,6 +115,7 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !Work 
             matched_cases.append(b.allocator, selected_case) catch @panic("OOM");
 
             for (matrix_variants) |variant| {
+                if (isExcluded(variant, language)) continue;
                 try addCase(
                     b,
                     matrix_step,

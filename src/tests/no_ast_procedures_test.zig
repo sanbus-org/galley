@@ -82,6 +82,15 @@ test "no-AST procedures preserve hook order, children, spans, and payloads" {
     try std.testing.expectEqualSlices(procedures.Hook, &.{ .production, .automatic_production, .lhs, .automatic_symbol, .general }, start_hooks[0..start_hook_count]);
 }
 
+test "no-AST procedures survive long right-recursive self-repeating parses" {
+    procedures.reset();
+    var parsed = try parse("aaaaaaaaaax");
+    defer parsed.deinit();
+
+    try std.testing.expectEqual(@as(usize, 11), parsed.result.parsed_bytes);
+    try std.testing.expectEqual(@as(usize, 15), parsed.result.semantic_root.?.value);
+}
+
 test "no-AST procedures propagate errors without publishing a result" {
     procedures.reset();
     procedures.setFailProduction(true);
