@@ -31,6 +31,7 @@ const Generator = struct {
     rules: std.ArrayList(Rule),
     plan: *const LRPlan,
     uses_explicit_recovery: bool,
+    uses_verbatim: bool,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LRPlan) Generator {
         return .{
@@ -41,6 +42,7 @@ const Generator = struct {
             .rules = grammar.rules,
             .plan = plan,
             .uses_explicit_recovery = grammar.uses_explicit_recovery,
+            .uses_verbatim = grammar.uses_verbatim,
         };
     }
 
@@ -62,6 +64,7 @@ const Generator = struct {
             self.options,
             self.uses_explicit_recovery,
             self.longestTerminalLength(),
+            self.uses_verbatim,
         );
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
         if (self.options.with_error_recovery and !self.uses_explicit_recovery) try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
@@ -339,6 +342,9 @@ const Generator = struct {
                     }
                 }
                 try writer.print("{s}context.releaseToken({d});\n", .{ indent, length });
+                if (self.occurrenceIsVerbatim(action.occurrence)) {
+                    try self.emitVerbatimShiftCapture(writer, action.terminal, indent);
+                }
                 if (self.options.with_procedures and self.options.ast_for_terminals) {
                     try self.emitTerminalProcedureBlock(writer, action.terminal, action.occurrence, if (self.options.with_ast) "node_address" else "terminal_node", indent);
                     if (self.options.with_ast) try writer.print("{s}node_address = args.node_address orelse data_structures.Node.invalid_pointer;\n", .{indent});
@@ -402,6 +408,9 @@ const Generator = struct {
             } else {
                 try writer.print("{s}const start_pos = context.currentTokenSourceOffset();\n", .{indent});
             }
+            if (self.occurrenceIsVerbatim(occurrence)) {
+                try self.emitVerbatimReduceCapture(writer, occurrence, indent);
+            }
 
             if (self.symbols.items[rule.header].ast_enabled) {
                 if (self.options.with_ast) {
@@ -416,12 +425,12 @@ const Generator = struct {
                             , .{ indent, child_index + 1, indent, child_index + 1, child_index, indent });
                         }
                     }
-                    try writer.print("{s}context.node_allocator.at(parent_address).text_length = context.currentTokenSourceOffset() - start_pos;\n", .{indent});
+                    try writer.print("{s}context.node_allocator.at(parent_address).text_length = {s} - start_pos;\n", .{ indent, if (self.occurrenceIsVerbatim(occurrence)) "verbatim_end" else "context.currentTokenSourceOffset()" });
                     if (self.options.with_procedures) try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_address", indent);
                     const stack_value = if (self.options.with_procedures) "args.node_address orelse data_structures.Node.invalid_pointer" else "parent_address";
                     try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
                 } else {
-                    try writer.print("{s}var parent_node = data_structures.Node{{ .text_start = start_pos, .text_length = context.currentTokenSourceOffset() - start_pos, .variable = {d}, .payload = .{{}} }};\n", .{ indent, variable_index });
+                    try writer.print("{s}var parent_node = data_structures.Node{{ .text_start = start_pos, .text_length = {s} - start_pos, .variable = {d}, .payload = .{{}} }};\n", .{ indent, if (self.occurrenceIsVerbatim(occurrence)) "verbatim_end" else "context.currentTokenSourceOffset()", variable_index });
                     for (rule.rhs.items, 0..) |sym, child_index| {
                         if (self.symbolReturnsStackNode(sym)) {
                             try writer.print(
@@ -546,6 +555,34 @@ const Generator = struct {
         } else {
             try writer.writeAll("null");
         }
+    }
+
+    fn occurrenceIsVerbatim(self: *Generator, occurrence: ?Occurrence) bool {
+        if (occurrence) |value| {
+            return self.rules.items[value.rule].rhs_annotations.items[value.position].verbatim;
+        }
+        return false;
+    }
+
+    fn emitVerbatimShiftCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
+        const symbol = self.symbols.items[symbol_index];
+        if (symbol.kind == .terminal) {
+            try writer.print("{s}try context.captureVerbatim(", .{indent});
+            try common.emitStringLiteral(writer, symbol.id);
+            try writer.writeAll(");\n");
+        } else {
+            try writer.print("{s}const verbatim_terminator = context.getTextSlice(start_pos, context.currentTokenSourceOffset() - start_pos);\n", .{indent});
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+        }
+    }
+
+    fn emitVerbatimReduceCapture(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence, indent: []const u8) !void {
+        const value = occurrence.?;
+        const symbol_index = self.rules.items[value.rule].rhs.items[value.position];
+        if (self.symbols.items[symbol_index].kind != .variable) return;
+        try writer.print("{s}const verbatim_terminator = context.getTextSlice(start_pos, context.currentTokenSourceOffset() - start_pos);\n", .{indent});
+        try writer.print("{s}const verbatim_end = context.currentTokenSourceOffset();\n", .{indent});
+        try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
     }
 
     fn emitDebugReduction(self: *Generator, writer: *std.Io.Writer, rule: Rule, indent: []const u8) !void {
@@ -1585,6 +1622,9 @@ pub fn emit(
     writer: *std.Io.Writer,
     options: Options,
 ) !void {
+    if (grammar.uses_verbatim and !options.with_ast and !options.with_procedures) {
+        return error.VerbatimRequiresNodeTracking;
+    }
     var generator = Generator.init(allocator, options, grammar, plan);
     try generator.emit(writer);
 }

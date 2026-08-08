@@ -154,6 +154,7 @@ const Planner = struct {
         const rule = self.grammar.rules.items[rule_index];
         if (position >= rule.rhs.items.len) return null;
         const annotations = rule.rhs_annotations.items[position];
+        if (annotations.verbatim) return .{ .rule = rule_index, .position = position };
         if (!self.options.with_procedures or annotations.procedures.items.len == 0) return null;
         const symbol = self.grammar.symbols.items[rule.rhs.items[position]];
         const has_node = switch (symbol.kind) {

@@ -124,6 +124,23 @@ const Builder = struct {
             try self.follows(variable, &follow_map, null);
             self.plan.follow_sets[variable] = try self.terminalRulesFromMap(follow_map);
         }
+        try self.validateVerbatimSymbols();
+    }
+
+    fn validateVerbatimSymbols(self: *Builder) !void {
+        if (!self.grammar.uses_verbatim) return;
+        for (self.grammar.rules.items) |rule| {
+            for (rule.rhs.items, 0..) |symbol_index, position| {
+                if (!rule.rhs_annotations.items[position].verbatim) continue;
+                const symbol = self.grammar.symbols.items[symbol_index];
+                const empty_matchable = switch (symbol.kind) {
+                    .terminal, .generative_terminal => symbol.id.len == 0,
+                    .variable => self.plan.nullable_rules[symbol_index] != null,
+                    .end => false,
+                };
+                if (empty_matchable) return error.EmptyVerbatimSymbol;
+            }
+        }
     }
 
     fn terminalRulesFromMap(self: *Builder, map: std.AutoHashMap(usize, usize)) ![]const TerminalRule {

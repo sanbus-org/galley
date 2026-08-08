@@ -25,6 +25,7 @@ const Generator = struct {
     plan: *const LLPlan,
     has_occurrence_procedures: bool,
     uses_explicit_recovery: bool,
+    uses_verbatim: bool,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -36,6 +37,7 @@ const Generator = struct {
             .plan = plan,
             .has_occurrence_procedures = grammar.has_occurrence_procedures,
             .uses_explicit_recovery = grammar.uses_explicit_recovery,
+            .uses_verbatim = grammar.uses_verbatim,
         };
     }
 
@@ -56,6 +58,7 @@ const Generator = struct {
             self.options,
             self.uses_explicit_recovery,
             self.longestTerminalLength(),
+            self.uses_verbatim,
         );
 
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
@@ -1037,24 +1040,30 @@ const Generator = struct {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
+        const verbatim = rule.rhs_annotations.items[child_index].verbatim;
         const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         const call_name = if (symbol_index == parent_variable)
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
             name;
+        if (verbatim) try self.emitVerbatimTerminatorStart(writer, symbol_index, indent);
         if (parent != null) {
             if (child_returns_node) {
                 if (!self.options.with_ast) {
-                    try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
+                    try writer.print("{s}{{\n{s}    {s} child_node = {s}parse_{s}(context", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try ", call_name });
                     try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                     if (explicit_recovery) {
                         try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
                     } else {
                         try writer.writeByte(')');
                     }
+                    try writer.print("; // child {d}\n", .{child_index});
+                    if (verbatim) {
+                        try self.emitVerbatimCapture(writer, symbol_index, indent);
+                        try writer.print("{s}    if (child_node) |*verbatim_node| verbatim_node.text_length = context.currentTokenSourceOffset() - verbatim_node.text_start;\n", .{indent});
+                    }
                     try writer.print(
-                        \\;
                         \\{s}    if (child_node) |value| {{
                         \\{s}        {s}[{d}] = value;
                         \\{s}        {s}.appendTemporaryChild(&{s}[{d}].?);
@@ -1071,8 +1080,17 @@ const Generator = struct {
                 } else {
                     try writer.writeByte(')');
                 }
+                try writer.print("; // child {d}\n", .{child_index});
+                if (verbatim) {
+                    try self.emitVerbatimCapture(writer, symbol_index, indent);
+                    try writer.print(
+                        \\{s}    if (child_node != data_structures.Node.invalid_pointer) {{
+                        \\{s}        context.node_allocator.at(child_node).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(child_node).text_start;
+                        \\{s}    }}
+                        \\
+                    , .{ indent, indent, indent });
+                }
                 try writer.print(
-                    \\;
                     \\{s}    if (child_node != data_structures.Node.invalid_pointer) {{
                     \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
                     \\{s}    }}
@@ -1088,6 +1106,7 @@ const Generator = struct {
                     try writer.writeByte(')');
                 }
                 try writer.print("; // child {d}\n", .{child_index});
+                if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
             }
         } else if (child_returns_node) {
             try writer.print("{s}{s} = {s}parse_{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", call_name });
@@ -1098,6 +1117,14 @@ const Generator = struct {
                 try writer.writeByte(')');
             }
             try writer.print("; // child {d}\n", .{child_index});
+            if (verbatim) {
+                try self.emitVerbatimCapture(writer, symbol_index, indent);
+                if (parent_address) |address| {
+                    if (!std.mem.eql(u8, address, "_")) {
+                        try writer.print("{s}if ({s}) |*verbatim_node| verbatim_node.text_length = context.currentTokenSourceOffset() - verbatim_node.text_start;\n", .{ indent, address });
+                    }
+                }
+            }
         } else {
             try writer.print("{s}{s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
@@ -1107,6 +1134,24 @@ const Generator = struct {
                 try writer.writeByte(')');
             }
             try writer.print("; // child {d}\n", .{child_index});
+            if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
+        }
+    }
+
+    fn emitVerbatimTerminatorStart(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
+        if (self.symbols.items[symbol_index].kind == .terminal) return;
+        try writer.print("{s}const verbatim_start = context.currentTokenSourceOffset();\n", .{indent});
+    }
+
+    fn emitVerbatimCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
+        const child = self.symbols.items[symbol_index];
+        if (child.kind == .terminal) {
+            try writer.print("{s}try context.captureVerbatim(", .{indent});
+            try common.emitStringLiteral(writer, child.id);
+            try writer.writeAll(");\n");
+        } else {
+            try writer.print("{s}const verbatim_terminator = context.getTextSlice(verbatim_start, context.currentTokenSourceOffset() - verbatim_start);\n", .{indent});
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
         }
     }
 

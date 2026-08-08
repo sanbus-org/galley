@@ -42,6 +42,7 @@ pub const RecoveryPoint = struct {
 pub const Annotations = struct {
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
+    verbatim: bool = false,
 };
 
 pub const Symbol = struct {
@@ -147,6 +148,7 @@ pub const PreparedGrammar = struct {
     has_occurrence_procedures: bool = false,
     has_recovery_annotations: bool = false,
     uses_explicit_recovery: bool = false,
+    uses_verbatim: bool = false,
 };
 
 pub fn prepareGrammar(
@@ -193,6 +195,7 @@ pub fn prepareGrammar(
                     allocator,
                     try cloneAnnotations(allocator, symbol.annotations),
                 );
+                if (@hasField(@TypeOf(symbol.annotations), "verbatim") and symbol.annotations.verbatim) result.uses_verbatim = true;
                 if (options.with_procedures and
                     symbol.annotations.procedures.len != 0 and
                     symbolReturnsNode(result.symbols.items[symbol_index], options))
@@ -387,7 +390,9 @@ pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList
 }
 
 pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotations {
-    var result = Annotations{};
+    var result = Annotations{
+        .verbatim = if (@hasField(@TypeOf(source), "verbatim")) source.verbatim else false,
+    };
     try appendProcedureNames(allocator, &result.procedures, source.procedures);
     for (source.recovery_points) |point| {
         try result.recovery_points.append(allocator, .{
@@ -402,6 +407,7 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
 }
 
 pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, source: anytype) !void {
+    target.verbatim = target.verbatim or (@hasField(@TypeOf(source), "verbatim") and source.verbatim);
     try appendProcedureNames(allocator, &target.procedures, source.procedures);
     for (source.recovery_points) |point| {
         try target.recovery_points.append(allocator, .{
