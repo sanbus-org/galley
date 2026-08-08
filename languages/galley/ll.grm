@@ -64,15 +64,19 @@ ProcedureTail
 |
 
 RecoveryTail
-| RecoveryPoint RecoveryTail
+| "!" RecoveryPoint RecoveryTail
 |
 
 RecoveryPoint
-| "!" RecoveryPointBody
+| RecoveryPointBody
+| VerbatimMarker
 
 RecoveryPointBody
 | "^" TerminalSymbol
 | TerminalSymbol "^"
+
+VerbatimMarker
+| LowercaseId
 
 StringContent
 | character StringContent

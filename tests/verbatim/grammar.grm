@@ -1,0 +1,13 @@
+Program
+| "<<<" UpperPair!verbatim LowerTail
+| "]]]" "%%"!verbatim LowerTail
+
+UpperPair
+| uppercase_letter uppercase_letter
+
+LowerTail
+| lowercase_letter LowerTailTail
+
+LowerTailTail
+| lowercase_letter LowerTailTail
+|

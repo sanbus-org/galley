@@ -9,6 +9,7 @@
 - [5. Explicit Syntax Recovery (`!`)](#5-explicit-syntax-recovery-)
 - [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
+- [8. Verbatim Raw Capture (`!verbatim`)](#8-verbatim-raw-capture-verbatim)
 
 ---
 
@@ -299,3 +300,53 @@ left-associativity in LR).
 Galley's `languages/ll1/ll.grm` demonstrates the per-level pattern with
 `Expression` / `ExpressionTail`, `OperandAndNumber`, and `Operand`/`OperandTail`
 for suffix calls, list gets, and casts.
+
+---
+
+## 8. Verbatim Raw Capture (`!verbatim`)
+
+Annotate an RHS occurrence with the bare marker `!verbatim` to consume a raw
+block of source bytes opaquely. The occurrence still matches normally; the
+bytes it matched become a terminator, and the parser captures every raw byte
+from just after the terminator until the terminator reappears in the input,
+then resumes the remaining RHS.
+
+```text
+Program
+| "<<<" UpperPair!verbatim LowerTail
+| "]]]" "%%"!verbatim LowerTail
+```
+
+- The marker is a bareword: `!verbatim` only. Any other marker text is rejected
+  during parsing (`error.InvalidVerbatimMarker`).
+- The annotated symbol may be a variable occurrence (`UpperPair!verbatim`) or a
+  terminal occurrence (`"%%"!verbatim`). For a variable, the terminator is the
+  exact source bytes the variable matched; for a terminal, the terminal's literal
+  bytes.
+- The captured body is not lexed: no tokenization, indentation translation, or
+  escape decoding applies inside it. The search for the reappearing terminator
+  is byte-exact and case-sensitive, and stops at the first occurrence.
+- The terminator must be non-empty and non-nullable, otherwise generation fails
+  with `error.EmptyVerbatimSymbol`.
+- An unterminated capture raises `error.UnterminatedRawString`, reporting the
+  terminator bytes as the expected tokens.
+
+Semantic span: the annotated symbol's node covers only the terminator symbol's
+own matched bytes (for example `EN`); the captured body is consumed but does not
+extend the symbol's span. The enclosing rule's node still spans the entire
+production, body included.
+
+Parser notes:
+
+- The LL generator supports `!verbatim` with or without AST and procedures.
+- The LR generator requires node tracking for verbatim capture (AST or
+  procedures enabled), otherwise generation fails with
+  `error.VerbatimRequiresNodeTracking`. At runtime, LR parses a variable
+  terminator by reducing it as a default action, because the captured body may
+  begin with any byte.
+- Verbatim capture keeps the entire input in memory: source retention is
+  enabled automatically and input streaming is disabled for parsers that use
+  `!verbatim`.
+
+Galley's own grammar demonstrates the syntax; `tests/verbatim/grammar.grm` is a
+maintained example with plain and indentation-mode test fixtures.

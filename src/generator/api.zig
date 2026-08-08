@@ -68,6 +68,7 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotati
     return .{
         .procedures = try cloneStringSlice(allocator, source.procedures),
         .recovery_points = recovery_points,
+        .verbatim = source.verbatim,
     };
 }
 
@@ -452,6 +453,91 @@ test "generation rejects variables referenced but never defined" {
     ));
 }
 
+test "generation rejects empty-matchable verbatim symbols" {
+    const empty_literal_source =
+        \\Start
+        \\| ""!verbatim "x"
+        \\
+    ;
+
+    const nullable_variable_source =
+        \\Start
+        \\| Body!verbatim "x"
+        \\
+        \\Body
+        \\| "a" Body
+        \\|
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var output: std.Io.Writer.Allocating = .init(arena.allocator());
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        try std.testing.expectError(error.EmptyVerbatimSymbol, emitParserFromSource(
+            arena.allocator(),
+            empty_literal_source,
+            &output.writer,
+            parser_type,
+            .{ .with_ast = true, .with_procedures = true },
+        ));
+        try std.testing.expectError(error.EmptyVerbatimSymbol, emitParserFromSource(
+            arena.allocator(),
+            nullable_variable_source,
+            &output.writer,
+            parser_type,
+            .{ .with_ast = true, .with_procedures = true },
+        ));
+    }
+}
+
+test "grammar rejects verbatim markers other than the verbatim marker" {
+    const source =
+        \\Start
+        \\| Word!foo "x"
+        \\
+        \\Word
+        \\| "w"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.InvalidVerbatimMarker, parseGrammar(arena.allocator(), source));
+}
+
+test "LR requires AST or procedures for verbatim capture" {
+    const source =
+        \\Start
+        \\| Body!verbatim "x"
+        \\
+        \\Body
+        \\| "b"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var output: std.Io.Writer.Allocating = .init(arena.allocator());
+
+    try std.testing.expectError(error.VerbatimRequiresNodeTracking, emitParserFromSource(
+        arena.allocator(),
+        source,
+        &output.writer,
+        .lr,
+        .{ .with_ast = false, .with_procedures = false },
+    ));
+
+    const ll_output = try generateParserAlloc(
+        arena.allocator(),
+        source,
+        .ll,
+        .{ .with_ast = false, .with_procedures = false },
+    );
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "captureVerbatim") != null);
+}
+
 test "LR rejects indistinguishable variable and terminal occurrence hooks" {
     const variable_source =
         \\Start
@@ -777,7 +863,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 182), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 194), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

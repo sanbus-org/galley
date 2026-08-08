@@ -69,6 +69,7 @@ pub fn emitParserMetadata(
     options: common.Options,
     uses_explicit_recovery: bool,
     longest_terminal_length: usize,
+    uses_verbatim: bool,
 ) !void {
     try writer.print(
         \\
@@ -81,7 +82,7 @@ pub fn emitParserMetadata(
         \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
         \\pub const is_position_tracking_enabled = {s};
         \\pub const is_input_streaming_enabled = {};
-        \\pub const longest_terminal_length = {d};
+        \\{s}pub const longest_terminal_length = {d};
         \\
         \\
     , .{
@@ -92,7 +93,8 @@ pub fn emitParserMetadata(
         options.with_error_recovery,
         if (!options.with_error_recovery) "disabled" else if (uses_explicit_recovery) "explicit" else "automatic",
         if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
-        options.with_input_streaming,
+        options.with_input_streaming and !uses_verbatim,
+        if (uses_verbatim) "pub const uses_verbatim = true;\n" else "",
         longest_terminal_length,
     });
 }
