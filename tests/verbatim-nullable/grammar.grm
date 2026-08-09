@@ -1,0 +1,33 @@
+Program
+| First block_start VerbatimItem block_end EndWord
+
+First
+| lowercase_letter FirstTail
+
+FirstTail
+| lowercase_letter FirstTail
+|
+
+VerbatimItem
+| "<<<" Tag!verbatim block_start LowercaseWord
+
+Tag
+| uppercase_letter TagTail
+
+TagTail
+| uppercase_letter
+|
+
+LowercaseWord
+| lowercase_letter LowercaseWordTail
+
+LowercaseWordTail
+| lowercase_letter LowercaseWordTail
+|
+
+EndWord
+| lowercase_letter EndWordTail
+
+EndWordTail
+| lowercase_letter EndWordTail
+|

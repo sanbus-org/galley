@@ -287,6 +287,7 @@ pub const Context = struct {
             }
             self.token.resetBuffered();
             self.seek = body_end;
+            self.current_indent = @intCast(lineIndentOf(self.chunk_buffer, body_start) / @max(self.indent_width, 1));
             if (comptime root.position_tracking_enabled) {
                 advanceVerbatimPositions(&self.line, &self.column, self.chunk_buffer[body_start..body_end]);
             }
@@ -345,6 +346,15 @@ pub const Context = struct {
         const region_end = std.mem.indexOfScalarPos(u8, buffer, start, 0) orelse buffer.len;
         const terminator_at = std.mem.indexOf(u8, buffer[start..region_end], terminator) orelse return null;
         return start + terminator_at + terminator.len;
+    }
+
+    /// Number of leading spaces on the line containing `offset`.
+    fn lineIndentOf(buffer: []const u8, offset: usize) usize {
+        var line_start = offset;
+        while (line_start > 0 and buffer[line_start - 1] != '\n' and buffer[line_start - 1] != 0) : (line_start -= 1) {}
+        var indent: usize = 0;
+        while (line_start + indent < buffer.len and buffer[line_start + indent] == ' ') : (indent += 1) {}
+        return indent;
     }
 
     pub fn recoveryLookahead(self: *Self) ![]const u8 {
