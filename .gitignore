@@ -25,3 +25,8 @@ _*parser.zig
 docs/node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+
+# Large sample fixtures fetched from release assets (scripts/fetch-large-samples.sh)
+languages/json/samples/code-02.json
+languages/json-augmented/samples/code-02-recursive-stress.json
+

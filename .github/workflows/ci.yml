@@ -16,8 +16,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          lfs: true
 
       - name: Install Zig
         run: |
@@ -64,8 +62,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          lfs: true
+
+      - name: Fetch large sample fixtures
+        run: |
+          case="${{ matrix.case }}"
+          bash scripts/fetch-large-samples.sh "${case#*-}"
 
       - name: Install Zig
         run: |

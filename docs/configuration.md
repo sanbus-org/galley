@@ -108,9 +108,13 @@ defer parsed.deinit();
 ### High-Precision API Benchmark
 ```sh
 ./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery languages/json
+bash scripts/fetch-large-samples.sh json
 zig build -Doptimize=ReleaseFast run-ll-json -- \
   languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```
+
+The `code-02.json` fixture is too large for git and is fetched from a GitHub
+release asset by `scripts/fetch-large-samples.sh`.
 
 ### Report More Than One Syntax Error
 ```zig
