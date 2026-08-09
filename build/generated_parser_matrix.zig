@@ -387,7 +387,10 @@ fn addValidationInput(
     large_sample_api_coverage: bool,
     work: *Work,
 ) !void {
-    const stat = try b.build_root.handle.statFile(b.graph.io, input_path, .{});
+    const stat = b.build_root.handle.statFile(b.graph.io, input_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
 
     if (options.selection.includes(.matrix_api) and shouldRunGeneratedParserApiTests(large_sample_api_coverage, stat.size)) {
         const sample_input = try b.build_root.handle.readFileAlloc(

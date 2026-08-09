@@ -25,8 +25,12 @@ Run it like this:
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --no-ast --no-error-recovery languages/json
+bash scripts/fetch-large-samples.sh json
 zig build -Doptimize=ReleaseFast run-ll-json -- languages/json/samples/code-02.json --iterations 100 --warmup-iterations 10
 ```
+
+The `code-02.json` fixture is too large for git; it is hosted as a GitHub
+release asset and fetched by `scripts/fetch-large-samples.sh`.
 
 General form:
 
