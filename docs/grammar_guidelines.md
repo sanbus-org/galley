@@ -59,12 +59,10 @@ The parser generator statically configures the Abstract Syntax Tree (AST) node c
 
 Terminals in rules represent either exact character literals or pre-defined generative character classes:
 
-- **Normal Terminals:** Exact character/string matches can be written in one of two quoting styles:
-  - **Double-quoted:** Wrapped in double quotes (e.g., `"{"`, `"null"`, `"+"`).
-  - **Single-quoted:** Wrapped in single quotes at the start and terminating with the `\x03` (0x03) byte (e.g., `'"\x03` representing the `"` character).
-  - Valid UTF-8 can be written directly in either form (e.g., `"سلام"` or `"😀"`).
+- **Normal Terminals:** Exact character/string matches are written in double quotes (e.g., `"{"`, `"null"`, `"+"`).
+  - Valid UTF-8 can be written directly (e.g., `"سلام"` or `"😀"`).
   - `\u{...}` inserts one Unicode scalar value using one to six hexadecimal digits (e.g., `"\u{1f600}"`). Surrogate code points and values above `U+10FFFF` are rejected.
-  - Existing byte escapes such as `"\x03"` remain available when an exact byte is more convenient than a literal character.
+  - The double-quote character itself is written as a raw string: `\"~"~"` (see below). Raw strings are the only way to spell a `"` terminal.
 - **Generative Character Terminals:** Unquoted keyword names map to specific sets of ASCII characters:
   - `digit`: Matches `'0'-'9'`
   - `hex_digit`: Matches `'0'-'9'`, `'a'-'f'`, and `'A'-'F'`
@@ -87,7 +85,8 @@ Terminals in rules represent either exact character literals or pre-defined gene
   - `utf8_continuation_80_8f`, `utf8_continuation_80_9f`, `utf8_continuation_90_bf`, and `utf8_continuation_a0_bf`: Restricted continuation ranges used at UTF-8 boundary cases
 
   See `languages/json-unicode/ll.grm` and `languages/json-unicode/lr.grm` for complete LL and LR scalar rules built from these terminals.
-- **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^'"\x03`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class.
+- **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^\"~"~"`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class.
+- **Raw Strings:** A `"` character inside a grammar can be matched with the raw-string form `\"~"~"`. This is a literal double quote and is the only way to express a `"` terminal. The form is also used in generative exceptions such as `character^\"~"~"`.
 
 ---
 

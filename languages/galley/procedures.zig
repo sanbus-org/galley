@@ -396,12 +396,72 @@ pub fn grammarFromAstAllocator(node_allocator: *const data_structures.ASTAllocat
 }
 
 fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
-    const unquoted = if ((raw_id.len >= 2 and raw_id[0] == '"' and raw_id[raw_id.len - 1] == '"') or
-        (raw_id.len >= 2 and raw_id[0] == '\'' and raw_id[raw_id.len - 1] == 0x03))
-        raw_id[1 .. raw_id.len - 1]
-    else
-        raw_id;
+    if (rawStringContent(raw_id)) |content| {
+        return allocator.dupe(u8, content);
+    }
 
+    if (raw_id.len >= 2 and raw_id[0] == '"' and raw_id[raw_id.len - 1] == '"') {
+        return decodeEscapedContent(allocator, raw_id[1 .. raw_id.len - 1]);
+    }
+
+    return decodeWithRawStrings(allocator, raw_id);
+}
+
+fn decodeWithRawStrings(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
+    var decoded = std.ArrayList(u8).empty;
+    var i: usize = 0;
+    while (i < raw_id.len) {
+        if (i > 0 and raw_id[i - 1] == '^' and i + 1 < raw_id.len and raw_id[i] == '\\' and raw_id[i + 1] == '"') {
+            const end = rawStringEnd(raw_id, i) orelse return error.InvalidRawString;
+            try decoded.appendSlice(allocator, raw_id[i..end]);
+            i = end;
+            continue;
+        }
+        if (raw_id[i] != '\\' or i + 1 >= raw_id.len) {
+            try decoded.append(allocator, raw_id[i]);
+            i += 1;
+            continue;
+        }
+
+        const escaped = raw_id[i + 1];
+        switch (escaped) {
+            'n' => try decoded.append(allocator, '\n'),
+            'r' => try decoded.append(allocator, '\r'),
+            't' => try decoded.append(allocator, '\t'),
+            '\\' => try decoded.append(allocator, '\\'),
+            '"' => try decoded.append(allocator, '"'),
+            '\'' => try decoded.append(allocator, '\''),
+            'x' => {
+                if (i + 3 >= raw_id.len) return error.InvalidHexEscape;
+                const value = try std.fmt.parseInt(u8, raw_id[i + 2 .. i + 4], 16);
+                try decoded.append(allocator, value);
+                i += 4;
+                continue;
+            },
+            'u' => {
+                if (i + 2 >= raw_id.len or raw_id[i + 2] != '{') return error.InvalidUnicodeEscape;
+                const end = std.mem.indexOfScalarPos(u8, raw_id, i + 3, '}') orelse
+                    return error.InvalidUnicodeEscape;
+                const digits = raw_id[i + 3 .. end];
+                if (digits.len == 0 or digits.len > 6) return error.InvalidUnicodeEscape;
+
+                const codepoint_value = std.fmt.parseInt(u21, digits, 16) catch
+                    return error.InvalidUnicodeEscape;
+                var buffer: [4]u8 = undefined;
+                const length = std.unicode.utf8Encode(codepoint_value, &buffer) catch
+                    return error.InvalidUnicodeEscape;
+                try decoded.appendSlice(allocator, buffer[0..length]);
+                i = end + 1;
+                continue;
+            },
+            else => try decoded.append(allocator, escaped),
+        }
+        i += 2;
+    }
+    return decoded.toOwnedSlice(allocator);
+}
+
+fn decodeEscapedContent(allocator: std.mem.Allocator, unquoted: []const u8) ![]const u8 {
     var decoded = std.ArrayList(u8).empty;
     var i: usize = 0;
     while (i < unquoted.len) {
@@ -450,6 +510,21 @@ fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
     return decoded.toOwnedSlice(allocator);
 }
 
+fn rawStringContent(raw_id: []const u8) ?[]const u8 {
+    const end = rawStringEnd(raw_id, 0) orelse return null;
+    if (end != raw_id.len) return null;
+    return raw_id[3 .. end - 2];
+}
+
+fn rawStringEnd(id: []const u8, start: usize) ?usize {
+    if (start + 2 >= id.len or id[start] != '\\' or id[start + 1] != '"') return null;
+    const indicator = id[start + 2];
+    const content_end = std.mem.indexOfScalarPos(u8, id, start + 3, indicator) orelse return null;
+    const end = content_end + 2;
+    if (end > id.len or id[end - 1] != '"') return null;
+    return end;
+}
+
 test "grammar Unicode escapes decode every UTF-8 width" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -479,6 +554,59 @@ test "grammar Unicode escapes reject non-scalars and malformed forms" {
         try std.testing.expectError(
             error.InvalidUnicodeEscape,
             decodeEscapes(std.testing.allocator, encoded),
+        );
+    }
+}
+
+test "raw string terminals decode to their verbatim content" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const cases = [_]struct { raw: []const u8, expected: []const u8 }{
+        .{ .raw = "\\\"~\"~\"", .expected = "\"" },
+        .{ .raw = "\\\"~\\~\"", .expected = "\\" },
+        .{ .raw = "\\\"~\\n~\"", .expected = "\\n" },
+        .{ .raw = "\\\"~~\"", .expected = "" },
+        .{ .raw = "\\\"~anything here~\"", .expected = "anything here" },
+    };
+    for (cases) |case| {
+        const decoded = try decodeEscapes(allocator, case.raw);
+        try std.testing.expectEqualStrings(case.expected, decoded);
+    }
+}
+
+test "raw string exceptions survive escape decoding for the generator" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const cases = [_]struct { raw: []const u8, expected: []const u8 }{
+        .{ .raw = "character^\\\"~\"~\"", .expected = "character^\\\"~\"~\"" },
+        .{ .raw = "character^\\\"~\"~\"^\"\\n\"", .expected = "character^\\\"~\"~\"^\"\n\"" },
+        .{ .raw = "character^\\\"~x~\"^\"\\n\"^\"\\\\\"", .expected = "character^\\\"~x~\"^\"\n\"^\"\\\"" },
+        .{ .raw = "character^\"\\n\"", .expected = "character^\"\n\"" },
+    };
+    for (cases) |case| {
+        const decoded = try decodeEscapes(allocator, case.raw);
+        try std.testing.expectEqualStrings(case.expected, decoded);
+    }
+}
+
+test "malformed raw strings are rejected" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    inline for (&.{
+        "character^\\\"",
+        "character^\\\"~",
+        "character^\\\"~x~",
+        "character^\\\"~x~x",
+    }) |raw| {
+        try std.testing.expectError(
+            error.InvalidRawString,
+            decodeEscapes(allocator, raw),
         );
     }
 }

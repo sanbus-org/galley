@@ -90,7 +90,7 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
                 symbol.* = .{
                     .id = source_symbol.id,
                     .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures },
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim },
                 };
             }
             rhs.* = .{
@@ -298,8 +298,8 @@ test "generator supports procedures without AST construction" {
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {
-    const source = "Start!^\"}\"!';\x03^@lhsHook\n" ++
-        "|!\",\"^@productionHook \"a\" Child!^']\x03@occurrenceHook\n" ++
+    const source = "Start!^\"}\"!\";\"^@lhsHook\n" ++
+        "|!\",\"^@productionHook \"a\" Child!^\"]\"@occurrenceHook\n" ++
         "\n" ++
         "Child\n" ++
         "| \"x\"\n";
@@ -330,7 +330,7 @@ test "grammar model preserves unified recovery and procedure annotations" {
 }
 
 test "recovery caret placement is structural when terminals contain carets" {
-    const source = "Start!^\"^\"!\"^\"^!^'^\x03!'\x5e\x03^\n" ++
+    const source = "Start!^\"^\"!\"^\"^!^\"^\"!\"^\"^\n" ++
         "| \"x\"\n";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -507,7 +507,7 @@ test "grammar rejects verbatim markers other than the verbatim marker" {
     try std.testing.expectError(error.InvalidVerbatimMarker, parseGrammar(arena.allocator(), source));
 }
 
-test "LR requires AST or procedures for verbatim capture" {
+test "LR support verbatim capture without AST or procedures" {
     const source =
         \\Start
         \\| Body!verbatim "x"
@@ -519,15 +519,14 @@ test "LR requires AST or procedures for verbatim capture" {
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    var output: std.Io.Writer.Allocating = .init(arena.allocator());
 
-    try std.testing.expectError(error.VerbatimRequiresNodeTracking, emitParserFromSource(
+    const lr_output = try generateParserAlloc(
         arena.allocator(),
         source,
-        &output.writer,
         .lr,
         .{ .with_ast = false, .with_procedures = false },
-    ));
+    );
+    try std.testing.expect(std.mem.indexOf(u8, lr_output, "captureVerbatim") != null);
 
     const ll_output = try generateParserAlloc(
         arena.allocator(),
@@ -863,7 +862,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 194), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 168), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

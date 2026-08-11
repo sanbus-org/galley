@@ -698,15 +698,64 @@ test "UTF-8 generative terminals expand to their exact byte ranges" {
     }
 }
 
+test "character exceptions exclude raw string and quoted content" {
+    const Case = struct {
+        id: []const u8,
+        excluded: []const u8,
+    };
+    const cases = [_]Case{
+        .{ .id = "character^\"\n\"", .excluded = "\n" },
+        .{ .id = "character^\\\"~\"~\"", .excluded = "\"" },
+        .{ .id = "character^\\\"~\"~\"^\"\n\"^\"\\\\\"", .excluded = "\"\n\\" },
+        .{ .id = "character^\\\"~x~\"^\"\n\"", .excluded = "x\n" },
+        .{ .id = "character^\\\"~~\"", .excluded = "" },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for (cases) |case| {
+        var expanded: std.ArrayList([]const u8) = .empty;
+        try expandGenerativeTerminal(arena.allocator(), &expanded, case.id);
+        for (case.excluded) |byte| {
+            for (expanded.items) |item| {
+                try std.testing.expect(!std.mem.eql(u8, item, &.{byte}));
+            }
+        }
+    }
+}
+
+test "character exceptions reject malformed raw strings" {
+    const malformed = [_][]const u8{
+        "character^\\\"",
+        "character^\\\"~",
+        "character^\\\"~x~",
+        "character^\\\"~x~x",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    for (malformed) |id| {
+        var expanded: std.ArrayList([]const u8) = .empty;
+        try std.testing.expectError(error.InvalidRawString, expandGenerativeTerminal(arena.allocator(), &expanded, id));
+    }
+}
+
 fn appendCharsExcept(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), chars: []const u8, id: []const u8) !void {
     var excluded = [_]bool{false} ** 256;
     var i = std.mem.indexOfScalar(u8, id, '^') orelse id.len;
     while (i < id.len) {
         i += 1;
         if (i >= id.len) break;
+        if (i + 1 < id.len and id[i] == '\\' and id[i + 1] == '"') {
+            const end = rawStringEnd(id, i) orelse return error.InvalidRawString;
+            const content_start = i + 3;
+            for (id[content_start .. end - 2]) |byte| excluded[byte] = true;
+            i = end;
+            continue;
+        }
         const quote = id[i];
         i += 1;
-        while (i < id.len and id[i] != quote and id[i] != 0x03) : (i += 1) excluded[id[i]] = true;
+        while (i < id.len and id[i] != quote) : (i += 1) excluded[id[i]] = true;
         if (i < id.len) i += 1;
     }
     for (chars) |byte| {
@@ -716,6 +765,18 @@ fn appendCharsExcept(allocator: std.mem.Allocator, out: *std.ArrayList([]const u
             try out.append(allocator, item);
         }
     }
+}
+
+/// Returns the index just past the closing quote of a raw string literal that
+/// starts at `start` (which points at the opening backslash of `\"`). The
+/// literal shape is `\"<indicator><content><indicator>"`.
+fn rawStringEnd(id: []const u8, start: usize) ?usize {
+    if (start + 2 >= id.len or id[start] != '\\' or id[start + 1] != '"') return null;
+    const indicator = id[start + 2];
+    const content_end = std.mem.indexOfScalarPos(u8, id, start + 3, indicator) orelse return null;
+    const end = content_end + 2;
+    if (end > id.len or id[end - 1] != '"') return null;
+    return end;
 }
 
 test "diagnostic symbol and rule text renders productions" {

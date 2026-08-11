@@ -12,7 +12,7 @@ Item
 | "{" BraceItems "}"
 | "(" ParenItems ")"
 | "[" BracketAfter
-| character^'"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+| character^\"~"~"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 DashItem
 | "-" DashAfter
@@ -33,7 +33,7 @@ BraceItem
 | "{" BraceItems "}"
 | "(" ParenItems ")"
 | "[" BracketAfter
-| character^'"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+| character^\"~"~"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 ParenItems
 | ParenItem ParenItems
@@ -46,7 +46,7 @@ ParenItem
 | "{" BraceItems "}"
 | "(" ParenItems ")"
 | "[" BracketAfter
-| character^'"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+| character^\"~"~"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 BracketAfter
 | "[" _LongStringContent
@@ -62,15 +62,15 @@ BracketItem
 | DashItem
 | "{" BraceItems "}"
 | "(" ParenItems ")"
-| character^'"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+| character^\"~"~"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 String
-| '" _DoubleStringContent '"
+| \"~"~" _DoubleStringContent \"~"~"
 | "'" _SingleStringContent "'"
 
 _DoubleStringContent
 | "\\" character _DoubleStringContent
-| character^'"^"\\" _DoubleStringContent
+| character^\"~"~"^"\\" _DoubleStringContent
 | new_line _DoubleStringContent
 |
 

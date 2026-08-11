@@ -171,10 +171,10 @@ NonEmptyListItemsTail
 |
 
 String
-| '" StringContent '"
+| \"~"~" StringContent \"~"~"
 
 StringContent
-| character^'" StringContent
+| character^\"~"~" StringContent
 |
 
 LogicCondition

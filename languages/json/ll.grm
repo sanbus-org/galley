@@ -2,17 +2,17 @@ Value
 | "{" OptionalBlank ObjectMembers OptionalBlank
 | "[" OptionalBlank ArrayMembers OptionalBlank
 | IntegerNumber FloatTail OptionalBlank
-| '" _StringContent '" OptionalBlank
+| \"~"~" _StringContent \"~"~" OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
 | "false" OptionalBlank
 
 ObjectMembers
-| '" _StringContent '" OptionalBlank ":" OptionalBlank Value ObjectMembersTail "}"
+| \"~"~" _StringContent \"~"~" OptionalBlank ":" OptionalBlank Value ObjectMembersTail "}"
 | "}"
 
 ObjectMembersTail
-| "," OptionalBlank '" _StringContent '" OptionalBlank ":" OptionalBlank Value ObjectMembersTail
+| "," OptionalBlank \"~"~" _StringContent \"~"~" OptionalBlank ":" OptionalBlank Value ObjectMembersTail
 |
 
 ArrayMembers
@@ -38,7 +38,7 @@ _OptionalBlank
 |
 
 _StringContent
-| character^'" _StringContent
+| character^\"~"~" _StringContent
 |
 
 IntegerNumber

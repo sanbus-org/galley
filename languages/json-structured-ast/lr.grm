@@ -43,10 +43,10 @@ _OptionalBlank
 |
 
 String
-| '" _StringContent '"
+| \"~"~" _StringContent \"~"~"
 
 _StringContent
-| _StringContent character^'"
+| _StringContent character^\"~"~"
 |
 
 _Number

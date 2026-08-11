@@ -382,7 +382,7 @@ const Builder = struct {
                     state.uses_semantic_stack = true;
                     break;
                 },
-                .reduce => if (self.options.with_ast or self.options.with_procedures) {
+                .reduce => if (self.options.with_ast or self.options.with_procedures or self.grammar.uses_verbatim) {
                     state.uses_semantic_stack = true;
                     break;
                 },
