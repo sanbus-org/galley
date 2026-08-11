@@ -20,6 +20,7 @@ pub const Options = struct {
     with_position_tracking: ?bool = null,
     with_input_streaming: bool = false,
     allow_no_ast_tree_procedures: bool = false,
+    syntax_error_reporter: ?*const fn (message: []const u8) void = null,
 
     pub fn validate(self: Options) !void {
         _ = self;
