@@ -1,6 +1,8 @@
 const std = @import("std");
 const generator = @import("galley_generator");
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 const max_source_size = 1024 * 1024 * 1024;
 
 const CliOptions = struct {
@@ -399,7 +401,7 @@ test "failed parser generation preserves the previous output" {
             .allocator = arena.allocator(),
             .source = "Start\n| \"unterminated\n",
             .parser_type = .ll,
-            .options = .{ .with_procedures = false },
+            .options = .{ .with_procedures = false, .syntax_error_reporter = &ignoreDiagnostic },
         },
         ParserEmission.emit,
     ));

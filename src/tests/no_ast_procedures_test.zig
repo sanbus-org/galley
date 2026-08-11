@@ -2,6 +2,8 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 const procedures = parser.procedures;
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 fn variableIndex(name: []const u8) u16 {
     for (parser.parser.variables, 0..) |candidate, index| {
         if (std.mem.eql(u8, candidate, name)) return @intCast(index);
@@ -10,7 +12,7 @@ fn variableIndex(name: []const u8) u16 {
 }
 
 fn parse(input: []const u8) !parser.ParsedInput {
-    return parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    return parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic });
 }
 
 fn expectAstRootMatchesSemantic(parsed: *parser.ParsedInput, root_name: []const u8, child_names: []const []const u8) !void {

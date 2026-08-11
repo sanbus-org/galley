@@ -9587,7 +9587,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         1 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9621,7 +9621,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         2 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9655,7 +9655,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         3 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9689,7 +9689,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         4 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9723,7 +9723,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         5 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9757,7 +9757,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         6 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9791,7 +9791,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         7 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9825,7 +9825,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         8 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9859,7 +9859,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         9 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9893,7 +9893,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         10 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9927,7 +9927,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         11 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9961,7 +9961,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         12 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -9995,7 +9995,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         13 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10029,7 +10029,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         14 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10063,7 +10063,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         15 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10097,7 +10097,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         16 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10131,7 +10131,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         17 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10165,7 +10165,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         18 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10199,7 +10199,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         19 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10233,7 +10233,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         20 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10267,7 +10267,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         21 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10301,7 +10301,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         22 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10335,7 +10335,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         23 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10369,7 +10369,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         24 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10403,7 +10403,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         25 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10437,7 +10437,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         26 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10471,7 +10471,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         27 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10505,7 +10505,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         28 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10539,7 +10539,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         29 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10573,7 +10573,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         30 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10607,7 +10607,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         31 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10641,7 +10641,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         32 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10675,7 +10675,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         33 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10709,7 +10709,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         34 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10743,7 +10743,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         35 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10777,7 +10777,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         36 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10811,7 +10811,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         37 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10845,7 +10845,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         38 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10879,7 +10879,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         39 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10913,7 +10913,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         40 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10947,7 +10947,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         41 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -10981,7 +10981,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         42 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11015,7 +11015,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         43 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11049,7 +11049,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         44 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11083,7 +11083,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         45 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11117,7 +11117,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         46 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11151,7 +11151,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         47 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11185,7 +11185,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         48 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11219,7 +11219,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         49 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11253,7 +11253,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         50 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11287,7 +11287,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         51 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11321,7 +11321,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         52 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11355,7 +11355,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         53 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11389,7 +11389,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         54 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11423,7 +11423,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         55 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11457,7 +11457,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         56 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11491,7 +11491,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         57 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11525,7 +11525,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         58 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11559,7 +11559,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         59 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11593,7 +11593,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         60 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11627,7 +11627,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         61 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11661,7 +11661,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         62 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11695,7 +11695,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         63 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11729,7 +11729,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         64 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11763,7 +11763,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         65 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11797,7 +11797,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         66 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11831,7 +11831,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         67 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11865,7 +11865,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         68 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11899,7 +11899,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         69 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11933,7 +11933,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         70 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -11967,7 +11967,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         71 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12001,7 +12001,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         72 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12035,7 +12035,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         73 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12069,7 +12069,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         74 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12103,7 +12103,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         75 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12137,7 +12137,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         76 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12171,7 +12171,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         77 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12205,7 +12205,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         78 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12239,7 +12239,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         79 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12273,7 +12273,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         80 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12307,7 +12307,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         81 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12341,7 +12341,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         82 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12375,7 +12375,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         83 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12409,7 +12409,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         84 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12443,7 +12443,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         85 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12477,7 +12477,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         86 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12511,7 +12511,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         87 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12545,7 +12545,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         88 => {
             const diagnostic = context.runtime().last_diagnostic.?;
@@ -12579,7 +12579,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 }) catch ""
             else
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            if (!builtin.is_test) std.debug.print("{s}", .{diagnostic_message});
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         else => unreachable,
     }

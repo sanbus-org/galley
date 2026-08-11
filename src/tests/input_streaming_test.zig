@@ -2,6 +2,8 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 const test_options = @import("test_options");
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 const window_crossing_padding = 1024;
 
 fn allocSentinel(input: []const u8) ![:0]u8 {
@@ -247,7 +249,7 @@ test "input streaming recovery handles EOF without reading beyond the window" {
     defer std.testing.allocator.free(input);
     try std.testing.expect(input.len > std.math.maxInt(u16));
 
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, "eof"));
 

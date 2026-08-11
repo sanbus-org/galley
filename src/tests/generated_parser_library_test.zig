@@ -7,6 +7,8 @@ const case_name = test_options.case_name;
 const suite = test_options.suite;
 const config_label = test_options.config_label;
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 fn sampleSupportsSessionSafetyTests() bool {
     return sample_input.len <= 1024 * 1024;
 }
@@ -82,7 +84,7 @@ test "JSON parser rejects malformed UTF-8 and non-scalars" {
     for (invalid_inputs) |input| {
         try std.testing.expectError(
             parser.ParseError.SyntaxError,
-            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{}),
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic }),
         );
     }
 }

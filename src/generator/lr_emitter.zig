@@ -1464,9 +1464,7 @@ const Generator = struct {
             try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
             try self.emitStringSliceItems(writer, spec.expected_tokens);
             try writer.writeAll("});\n");
-            try writer.writeAll("        if (!builtin.is_test) {\n");
-            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "            ");
-            try writer.writeAll("        }\n");
+            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "        ");
             try writer.writeAll("    }\n");
             try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
             if (spec.recoverable) {
@@ -1499,15 +1497,13 @@ const Generator = struct {
             \\) anyerror {
             \\    @branchHint(.cold);
             \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
-            \\    if (!builtin.is_test) {
-            \\        const diagnostic_message = render_message(.{
-            \\            .allocator = context.runtime().arena_allocator,
-            \\            .context = context,
-            \\            .diagnostic = context.runtime().last_diagnostic.?,
-            \\            .style = .ansi,
-            \\        }) catch "";
-            \\        std.debug.print("{s}", .{diagnostic_message});
-            \\    }
+            \\    const diagnostic_message = render_message(.{
+            \\        .allocator = context.runtime().arena_allocator,
+            \\        .context = context,
+            \\        .diagnostic = context.runtime().last_diagnostic.?,
+            \\        .style = .ansi,
+            \\    }) catch "";
+            \\    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
             \\    return root.ParseError.SyntaxError;
             \\}
             \\
@@ -1568,7 +1564,7 @@ const Generator = struct {
             \\{s}    error_messages.syntax_error(message_args) catch ""
             \\{s}else
             \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
-            \\{s}if (!builtin.is_test) std.debug.print("{{s}}", .{{diagnostic_message}});
+            \\{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
         , .{
             indent,

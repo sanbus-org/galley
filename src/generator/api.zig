@@ -16,8 +16,14 @@ pub const RecoveryResume = galley_grammar.procedures.RecoveryResume;
 pub const Options = common.Options;
 pub const atomic_file = common.atomic_file;
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
+    return parseGrammarWithOptions(allocator, source, .{});
+}
+
+pub fn parseGrammarWithOptions(allocator: std.mem.Allocator, source: []const u8, options: Options) !*Grammar {
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -144,7 +150,7 @@ pub fn emitParserFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -162,7 +168,7 @@ pub fn emitErrorMessagesFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{});
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -373,20 +379,29 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
         \\| "a"
         \\
     ));
-    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+    try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
+        arena.allocator(),
         \\Start!^digit
         \\| "a"
         \\
+    ,
+        .{ .syntax_error_reporter = &ignoreDiagnostic },
     ));
-    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+    try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
+        arena.allocator(),
         \\Start!";"
         \\| "a"
         \\
+    ,
+        .{ .syntax_error_reporter = &ignoreDiagnostic },
     ));
-    try std.testing.expectError(error.SyntaxError, parseGrammar(arena.allocator(),
+    try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
+        arena.allocator(),
         \\Start@hook!^";"
         \\| "a"
         \\
+    ,
+        .{ .syntax_error_reporter = &ignoreDiagnostic },
     ));
 }
 

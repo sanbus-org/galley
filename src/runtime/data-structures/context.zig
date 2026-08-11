@@ -36,6 +36,7 @@ pub const RuntimeContext = struct {
     explicit_recovery_position: ?usize = null,
     explicit_recovery_target_id: ?usize = null,
     pending_syntax_error_site: ?usize = null,
+    syntax_error_reporter: ?root.SyntaxErrorMessageReporter = null,
 };
 
 var runtime_registry_mutex: std.atomic.Mutex = .unlocked;

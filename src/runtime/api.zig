@@ -98,6 +98,8 @@ pub const DiagnosticStyle = enum {
     ansi,
 };
 
+pub const SyntaxErrorMessageReporter = *const fn (message: []const u8) void;
+
 pub const ParseOptions = struct {
     language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
@@ -107,6 +109,7 @@ pub const ParseOptions = struct {
     stack_overflow_recovery: bool = false,
     ast_preallocation_ratio: f64 = 2,
     ast_preallocation_cap: usize = 16_384,
+    syntax_error_reporter: ?SyntaxErrorMessageReporter = null,
 };
 
 pub const SyntaxErrorMessageArgs = struct {
@@ -352,6 +355,7 @@ pub const Session = struct {
                 .arena_allocator = arena.allocator(),
                 .max_errors = options.max_errors,
                 .recovery_window = options.recovery_window,
+                .syntax_error_reporter = options.syntax_error_reporter,
             },
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,

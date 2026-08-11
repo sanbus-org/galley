@@ -1,6 +1,8 @@
 const std = @import("std");
 const parser = @import("parser-under-test");
 
+fn ignoreDiagnostic(_: []const u8) void {}
+
 const ParsedError = struct {
     session: parser.Session,
     context: parser.data_structures.Context,
@@ -11,7 +13,7 @@ const ParsedError = struct {
 };
 
 fn parseError(input: [:0]const u8) !ParsedError {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
     errdefer session.deinit();
     var context = session._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, null);
     try std.testing.expectError(parser.ParseError.SyntaxError, session._parseContext(&context));
