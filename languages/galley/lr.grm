@@ -21,7 +21,6 @@ RightHandSideLine!"\n"^
 | "|" RecoveryTail ProcedureTail space NonEmptyRightHandSide new_line
 | "|" RecoveryTail ProcedureTail new_line
 | "#" AnyContent new_line
-# Some comment
 
 NonEmptyRightHandSide
 | NonEmptyRightHandSide space Symbol!^"\n" RecoveryTail ProcedureTail
@@ -37,8 +36,14 @@ VariableSymbol
 | "_" UppercaseId
 
 TerminalSymbol
-| "'" StringContent "\x03"
-| '" SimpleStringContent '"
+| RawString
+| \"~"~" SimpleStringContent \"~"~"
+
+RawString
+| "\u{5c}\u{22}" RawIndicator!verbatim "\u{22}"
+
+RawIndicator
+| character^\"~"~"^"\n"^"\\"
 
 GenerativeTerminalSymbol
 | LowercaseId
@@ -67,16 +72,10 @@ RecoveryPointBody
 VerbatimMarker
 | LowercaseId
 
-StringContent
-| StringContent character
-| StringContent _Utf8Scalar
-| character
-| _Utf8Scalar
-
 SimpleStringContent
-| SimpleStringContent character^'"
+| SimpleStringContent character^\"~"~"
 | SimpleStringContent _Utf8Scalar
-| character^'"
+| character^\"~"~"
 | _Utf8Scalar
 
 _Utf8Scalar
@@ -99,9 +98,7 @@ _Utf8FourByte
 
 ControlCharacter
 | "\x01"
-#| "\x02"
-| "\x03"
-| "\x04"
+| "\x02"
 
 AnyContent
 | AnyContent character^"\n"

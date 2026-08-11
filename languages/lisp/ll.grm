@@ -127,7 +127,7 @@ CharacterContent
 | "`"
 | "'"
 | "|"
-| '"
+| \"~"~"
 
 _CharNameTail
 | letter _CharNameTail
@@ -240,16 +240,16 @@ BlockCommentAfterPipe
 # -- Strings with escape sequences -------------------------
 
 String
-| '" _StringContent '"
+| \"~"~" _StringContent \"~"~"
 
 _StringContent
 | "\\" _EscapeSequence _StringContent
-| character^'"^"\\" _StringContent
+| character^\"~"~"^"\\" _StringContent
 | new_line _StringContent
 |
 
 _EscapeSequence
-| '"
+| \"~"~"
 | "\\"
 | "n"
 | "t"

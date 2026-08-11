@@ -47,6 +47,8 @@ jobs:
         case:
           - ll-galley
           - lr-galley
+          - ll-sanbus
+          - lr-sanbus
           - ll-json-structured-ast
           - lr-json-structured-ast
           - ll-json
@@ -57,8 +59,6 @@ jobs:
           - ll-lisp
           - ll-ll1
           - ll-lua
-          - ll-sanbus
-          - lr-sanbus
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

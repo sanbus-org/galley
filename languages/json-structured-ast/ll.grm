@@ -50,10 +50,10 @@ _OptionalBlankTail
 |
 
 String
-| '" _StringContent '"
+| \"~"~" _StringContent \"~"~"
 
 _StringContent
-| character^'" _StringContent
+| character^\"~"~" _StringContent
 |
 
 _Number

@@ -64,14 +64,6 @@ fn expectedSymbol(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     );
 }
 
-fn expectedQuotedTerminal(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected a quoted terminal symbol.\n" ++
-            "Use double quotes for literal text, for example `\"let\"`, or single quotes for escaped/control-style terminals.",
-    );
-}
-
 fn expectedGenerativeTerminal(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return fmt(
         args,
@@ -161,48 +153,8 @@ fn expectedHelperVariableMarker(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     );
 }
 
-fn expectedSingleQuotedTerminalBoundary(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected a single-quoted terminal boundary.\n" ++
-            "Single-quoted terminals look like `'literal'`. Use double quotes for simpler literal text.",
-    );
-}
-
 fn expectedDoubleQuotedTerminalBoundary(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return fmt(args, "Expected `\"` to open or close a double-quoted terminal.");
-}
-
-fn expectedSingleQuotedTerminalContent(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected more single-quoted terminal content or the closing quote.\n" ++
-            "Example: `'literal'`.",
-    );
-}
-
-fn expectedDoubleQuotedTerminalContent(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected more double-quoted terminal content or the closing quote.\n" ++
-            "Example: `\"literal\"`.",
-    );
-}
-
-fn expectedTerminalCharacter(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected a character inside the terminal literal.\n" ++
-            "Close the terminal with the matching quote, or add literal text before it.",
-    );
-}
-
-fn expectedControlCharacter(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return fmt(
-        args,
-        "Expected an escaped control character in the terminal literal.\n" ++
-            "Supported control escapes here are `\\x01`, `\\x03`, and `\\x04`.",
-    );
 }
 
 fn expectedControlCharacterEscape(args: root.SyntaxErrorMessageArgs) ![]const u8 {
@@ -317,10 +269,6 @@ pub fn syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymb
     return expectedSymbol(args);
 }
 
-pub fn syntax_error_ll_TerminalSymbol__expected_terminal__x34_or_terminal__x39(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedQuotedTerminal(args);
-}
-
 pub fn syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return expectedGenerativeTerminal(args);
 }
@@ -354,34 +302,10 @@ pub fn syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_
 pub fn syntax_error_ll_terminal____expected_terminal__(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return expectedHelperVariableMarker(args);
 }
-pub fn syntax_error_ll_terminal__x39__expected_terminal__x39(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedSingleQuotedTerminalBoundary(args);
-}
-pub fn syntax_error_ll_StringContent__expected_end_of_StringContent_or_generative_terminal_character(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedSingleQuotedTerminalContent(args);
-}
-pub fn syntax_error_ll_terminal__x92x03__expected_terminal__x92x03(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedSingleQuotedTerminalBoundary(args);
-}
 pub fn syntax_error_ll_terminal__x34__expected_terminal__x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return expectedDoubleQuotedTerminalBoundary(args);
 }
-pub fn syntax_error_ll_SimpleStringContent__expected_end_of_SimpleStringContent_or_generative_terminal_character_x94_x39_x34_x92x03(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedDoubleQuotedTerminalContent(args);
-}
-pub fn syntax_error_ll_generative_terminal_character__expected_generative_terminal_character(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedTerminalCharacter(args);
-}
-pub fn syntax_error_ll_generative_terminal_character_x94_x39_x34_x92x03__expected_generative_terminal_character_x94_x39_x34_x92x03(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedTerminalCharacter(args);
-}
-pub fn syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x03_or_terminal__x92x04(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedControlCharacter(args);
-}
 pub fn syntax_error_ll_terminal__x92x01__expected_terminal__x92x01(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    return expectedControlCharacterEscape(args);
-}
-pub fn syntax_error_ll_terminal__x92x04__expected_terminal__x92x04(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return expectedControlCharacterEscape(args);
 }
 pub fn syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
@@ -410,4 +334,106 @@ pub fn syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_gener
 }
 pub fn syntax_error_ll_special_EOF__expected_special_EOF(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return expectedEndOfGrammar(args);
+}
+
+// Added by `galley --fill-error-messages`.
+
+pub fn syntax_error_ll_RecoveryTail__expected_end_of_RecoveryTail_or_terminal__x33(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_Symbol__expected_TerminalSymbol(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_TerminalSymbol__expected_RawString(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RawString__expected_terminal__x92_x92_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x33__expected_terminal__x33(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RecoveryPoint__expected_RecoveryPointBody(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RecoveryPoint__expected_RecoveryPointBody_or_VerbatimMarker(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RecoveryPointBody__expected_TerminalSymbol(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_RecoveryPointBody__expected_TerminalSymbol_or_terminal__x94(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_VerbatimMarker__expected_LowercaseId(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x92xed__expected_terminal__x92xed(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+}
+pub fn syntax_error_ll_ControlCharacter__expected_terminal__x92x01(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
