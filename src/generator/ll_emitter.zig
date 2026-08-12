@@ -672,7 +672,7 @@ const Generator = struct {
     fn emitRuleSwitch(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
         if (node.groups.items.len == 0) {
             if (node.fallback) |rule_index| {
-                try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, skip_ast_construction);
+                try self.emitSwitchLeaf(writer, symbol_index, rule_index, node.fallback_length orelse prefix_length, indent, skip_ast_construction);
                 return;
             }
         }
@@ -695,7 +695,7 @@ const Generator = struct {
             try writer.writeByte('\n');
 
             if (group.child.isLeaf()) {
-                try self.emitSwitchLeaf(writer, symbol_index, group.child.fallback.?, prefix_length + step_length, indent, skip_ast_construction);
+                try self.emitSwitchLeaf(writer, symbol_index, group.child.fallback.?, group.child.fallback_length orelse prefix_length + step_length, indent, skip_ast_construction);
             } else {
                 var child_indent = std.ArrayList(u8).empty;
                 try child_indent.appendSlice(self.allocator, indent);
@@ -721,7 +721,7 @@ const Generator = struct {
     fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
         if (node.fallback) |rule_index| {
             try writer.print("{s}    else => {{ // ''\n", .{indent});
-            try self.emitSwitchLeaf(writer, symbol_index, rule_index, prefix_length, indent, skip_ast_construction);
+            try self.emitSwitchLeaf(writer, symbol_index, rule_index, node.fallback_length orelse prefix_length, indent, skip_ast_construction);
             try writer.print("{s}    }},\n", .{indent});
             return;
         }

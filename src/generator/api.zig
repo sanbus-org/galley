@@ -218,6 +218,83 @@ test generateParserAlloc {
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
 }
 
+test "LL decision falls back to the shorter terminal when one literal prefixes another" {
+    const source =
+        \\Test
+        \\| Operand
+        \\
+        \\Operand
+        \\| Id OperandDotTail OptionalArrayIndex OptionalLengthQuery
+        \\| Numeric
+        \\
+        \\OptionalArrayIndex
+        \\| "[" OptionalArrayIndexTail "]" OptionalArrayIndex
+        \\|
+        \\
+        \\OptionalArrayIndexTail
+        \\| Id OptionalArrayIndexOptionalExpressionTail
+        \\| ".." Id
+        \\
+        \\OptionalArrayIndexOptionalExpressionTail
+        \\| ".." OptionalExpression
+        \\|
+        \\
+        \\OptionalExpression
+        \\| Id
+        \\|
+        \\
+        \\OptionalLengthQuery
+        \\| ".length"
+        \\|
+        \\
+        \\OperandDotTail
+        \\| "." Id
+        \\|
+        \\
+        \\Numeric
+        \\| PositiveNumeric
+        \\
+        \\PositiveNumeric
+        \\| PositiveInteger NumericTail
+        \\
+        \\NumericTail
+        \\| "." PositiveInteger NumericTail
+        \\|
+        \\
+        \\PositiveInteger
+        \\| digit DigitTail
+        \\
+        \\DigitTail
+        \\| digit DigitTail
+        \\|
+        \\
+        \\Id
+        \\| lowercase_letter IdTail
+        \\
+        \\IdTail
+        \\| letter IdTail
+        \\| digit IdTail
+        \\| "_" IdTail
+        \\|
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = false,
+        .with_procedures = false,
+    });
+
+    // The ".l" prefix is shared by the ".length" literal and identifier tails
+    // such as ".left". When the bytes after ".l" are not "length", the decision
+    // must fall back to the empty alternative instead of reporting a syntax
+    // error, so inputs like "state.left" still parse.
+    const length_head = std.mem.indexOf(u8, output, "=> { // 'ength'") orelse return error.TestUnexpectedStructure;
+    const trailing_else = std.mem.indexOfPos(u8, output, length_head, "else =>") orelse return error.TestUnexpectedStructure;
+    try std.testing.expect(std.mem.startsWith(u8, output[trailing_else..], "else => { // ''"));
+}
 test "grammar accepts raw Unicode terminals and Unicode scalar escapes" {
     const source =
         \\Start

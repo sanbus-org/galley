@@ -15,6 +15,7 @@ pub const Node = struct {
     entries: []const Entry = &.{},
     step_length: usize = 0,
     fallback: ?usize = null,
+    fallback_length: ?usize = null,
     groups: std.ArrayList(Group) = .empty,
     diagnostic: ?usize = null,
 
@@ -24,6 +25,15 @@ pub const Node = struct {
 };
 
 pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node {
+    return buildWithInheritedFallback(allocator, source_entries, 0, null);
+}
+
+const InheritedFallback = struct {
+    target: usize,
+    length: usize,
+};
+
+fn buildWithInheritedFallback(allocator: std.mem.Allocator, source_entries: []const Entry, prefix_length: usize, inherited: ?InheritedFallback) !*Node {
     const node = try allocator.create(Node);
     node.* = .{};
 
@@ -35,6 +45,7 @@ pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node
     for (entries.items) |entry| {
         if (entry.terminal.len == 0) {
             node.fallback = entry.target;
+            node.fallback_length = prefix_length;
         } else {
             non_empty_count += 1;
         }
@@ -54,6 +65,11 @@ pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node
     }
     std.mem.sort([]const u8, heads.items, {}, common.headLessThan);
 
+    const child_inherited: ?InheritedFallback = if (node.fallback) |target|
+        .{ .target = target, .length = node.fallback_length.? }
+    else
+        inherited;
+
     for (heads.items) |head| {
         var payload = std.ArrayList(Entry).empty;
         for (entries.items) |entry| {
@@ -71,9 +87,16 @@ pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node
             try group.heads.append(allocator, head);
             break;
         } else {
-            var group = Group{ .child = try build(allocator, payload.items) };
+            var group = Group{ .child = try buildWithInheritedFallback(allocator, payload.items, prefix_length + node.step_length, child_inherited) };
             try group.heads.append(allocator, head);
             try node.groups.append(allocator, group);
+        }
+    }
+
+    if (node.fallback == null) {
+        if (inherited) |fallback| {
+            node.fallback = fallback.target;
+            node.fallback_length = fallback.length;
         }
     }
 
@@ -143,4 +166,31 @@ test "switch planning preserves grouped heads fallback and leaf topology" {
     try std.testing.expectEqual(@as(usize, 1), node.groups.items.len);
     try std.testing.expectEqual(@as(usize, 2), node.groups.items[0].heads.items.len);
     try std.testing.expectEqualStrings("ab", node.groups.items[0].heads.items[0]);
+}
+
+test "switch planning inherits ancestor fallback length" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const node = try build(allocator, &.{
+        .{ .terminal = ".", .target = 1 },
+        .{ .terminal = "..", .target = 2 },
+        .{ .terminal = ".length", .target = 3 },
+    });
+
+    // The node below "." holds ["", ".", "length"]; its empty entry is the "." terminal.
+    const tail = node.groups.items[0].child;
+    try std.testing.expectEqual(@as(?usize, 1), tail.fallback);
+    try std.testing.expectEqual(@as(usize, 1), tail.fallback_length);
+
+    // The "l" node holds ["ength"] only. It inherits the "." fallback and its length.
+    const l = tail.groups.items[1].child;
+    try std.testing.expectEqual(@as(?usize, 1), l.fallback);
+    try std.testing.expectEqual(@as(usize, 1), l.fallback_length);
+
+    // The leaf below the "l" node holds the ".length" terminal at its own prefix.
+    const length_leaf = l.groups.items[0].child;
+    try std.testing.expectEqual(@as(?usize, 3), length_leaf.fallback);
+    try std.testing.expectEqual(@as(usize, 7), length_leaf.fallback_length);
 }
