@@ -447,7 +447,7 @@ pub const Session = struct {
 
     fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
         try self.prepareASTCapacity(input.len);
-        const padding = if (input_streaming_enabled) input_padding_size else 1;
+        const padding = input_padding_size;
         const owned_input = try self.ensureOwnedInputCapacity(input.len + padding);
         @memcpy(owned_input[0..input.len], input);
         @memset(owned_input[input.len..], 0);
@@ -493,8 +493,8 @@ pub const Session = struct {
 
                 const input_length = complete_input.len;
                 try self.prepareASTCapacity(input_length);
-                complete_input = try self.allocator.realloc(complete_input, input_length + 1);
-                complete_input[input_length] = 0;
+                complete_input = try self.allocator.realloc(complete_input, input_length + input_padding_size);
+                @memset(complete_input[input_length..], 0);
                 break :input complete_input;
             };
             self.owned_input = input;
