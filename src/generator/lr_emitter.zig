@@ -296,7 +296,7 @@ const Generator = struct {
             try writer.writeByte('\n');
 
             if (group.child.isLeaf()) {
-                try self.emitAction(writer, state.actions.items[group.child.fallback.?], prefix_length + step_length, try indented(self.allocator, indent, 8));
+                try self.emitAction(writer, state.actions.items[group.child.fallback.?], group.child.fallback_length orelse prefix_length + step_length, try indented(self.allocator, indent, 8));
             } else {
                 try self.emitActionSwitch(writer, state, group.child, prefix_length + step_length, try indented(self.allocator, indent, 8));
                 try writer.writeByte('\n');
@@ -305,7 +305,7 @@ const Generator = struct {
         }
         if (node.fallback) |action| {
             try writer.print("{s}    else => {{\n", .{indent});
-            try self.emitAction(writer, state.actions.items[action], prefix_length, try indented(self.allocator, indent, 8));
+            try self.emitAction(writer, state.actions.items[action], node.fallback_length orelse prefix_length, try indented(self.allocator, indent, 8));
             try writer.print("{s}    }},\n", .{indent});
         } else {
             try self.emitSyntaxError(writer, node.diagnostic.?, try indented(self.allocator, indent, 4));
