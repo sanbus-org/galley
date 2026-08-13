@@ -64,6 +64,8 @@ pub const Rule = struct {
 
 pub const RecoveryScopeTarget = enum { lhs, production, occurrence };
 
+pub const RecoveryOccurrence = struct { rule: usize, position: usize };
+
 pub const RecoveryScope = struct {
     id: usize,
     target: RecoveryScopeTarget,
@@ -286,6 +288,105 @@ pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
         .terminal, .generative_terminal => options.ast_for_terminals,
         .end => false,
     };
+}
+
+/// Returns the index of a rule for `variable` whose entire RHS is nullable,
+/// or null when no such rule exists (including cycles). Copy-on-write visited
+/// propagation keeps the recursion free of the caller's set.
+pub fn nullableRule(
+    allocator: std.mem.Allocator,
+    grammar: *const PreparedGrammar,
+    variable: usize,
+    visited: ?*std.AutoHashMap(usize, void),
+) !?usize {
+    if (visited) |set| if (set.contains(variable)) return null;
+    var local_visited = std.AutoHashMap(usize, void).init(allocator);
+    defer local_visited.deinit();
+    if (visited) |set| {
+        var it = set.keyIterator();
+        while (it.next()) |entry| try local_visited.put(entry.*, {});
+    }
+    try local_visited.put(variable, {});
+    for (grammar.rules.items, 0..) |rule, rule_index| {
+        if (rule.header != variable) continue;
+        for (rule.rhs.items) |symbol_index| {
+            if (grammar.symbols.items[symbol_index].kind != .variable or try nullableRule(allocator, grammar, symbol_index, &local_visited) == null) break;
+        } else return rule_index;
+    }
+    return null;
+}
+
+/// Collects the FIRST terminal symbol indices of `variable` into `out`.
+pub fn firstsOfVariable(
+    allocator: std.mem.Allocator,
+    grammar: *const PreparedGrammar,
+    variable: usize,
+    out: *std.AutoHashMap(usize, void),
+    visited: ?*std.AutoHashMap(usize, void),
+) !void {
+    if (visited) |set| if (set.contains(variable)) return;
+    var local_visited = std.AutoHashMap(usize, void).init(allocator);
+    defer local_visited.deinit();
+    if (visited) |set| {
+        var it = set.keyIterator();
+        while (it.next()) |entry| try local_visited.put(entry.*, {});
+    }
+    try local_visited.put(variable, {});
+    for (grammar.rules.items) |rule| {
+        if (rule.header != variable) continue;
+        for (rule.rhs.items) |symbol_index| {
+            const symbol = grammar.symbols.items[symbol_index];
+            if (symbol.kind == .variable) {
+                try firstsOfVariable(allocator, grammar, symbol_index, out, &local_visited);
+                if (try nullableRule(allocator, grammar, symbol_index, null) == null) break;
+            } else {
+                try out.put(symbol_index, {});
+                break;
+            }
+        }
+    }
+}
+
+/// Collects the FIRST terminals of the symbols appearing after the dot of an
+/// item, falling back to the item's own lookahead when the tail is empty or
+/// fully nullable.
+pub fn firstsAfterItem(
+    allocator: std.mem.Allocator,
+    grammar: *const PreparedGrammar,
+    item: anytype,
+    out: *std.AutoHashMap(usize, void),
+) !void {
+    const rule = grammar.rules.items[item.rule];
+    var index = item.head + 1;
+    while (index < rule.rhs.items.len) : (index += 1) {
+        const symbol_index = rule.rhs.items[index];
+        const symbol = grammar.symbols.items[symbol_index];
+        if (symbol.kind == .variable) {
+            try firstsOfVariable(allocator, grammar, symbol_index, out, null);
+            if (try nullableRule(allocator, grammar, symbol_index, null) == null) return;
+        } else {
+            try out.put(symbol_index, {});
+            return;
+        }
+    }
+    try out.put(item.lookahead, {});
+}
+
+/// Resolves whether a rule RHS position carries a recoverable procedure
+/// occurrence, shared by the LR planning and recovery passes.
+pub fn procedureOccurrenceFor(
+    grammar: *const PreparedGrammar,
+    options: Options,
+    rule_index: usize,
+    position: usize,
+) ?RecoveryOccurrence {
+    const rule = grammar.rules.items[rule_index];
+    if (position >= rule.rhs.items.len) return null;
+    const annotations = rule.rhs_annotations.items[position];
+    if (annotations.verbatim) return .{ .rule = rule_index, .position = position };
+    if (!options.with_procedures or annotations.procedures.items.len == 0) return null;
+    const symbol = grammar.symbols.items[rule.rhs.items[position]];
+    return if (symbolReturnsNode(symbol, options)) .{ .rule = rule_index, .position = position } else null;
 }
 
 pub fn addSymbol(

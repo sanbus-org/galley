@@ -251,3 +251,157 @@ pub fn emitProcedureSequenceExpression(writer: *std.Io.Writer, procedures_: []co
     }
     try writer.writeAll("})");
 }
+
+/// Emits the `var args = data_structures.ProcedureArguments{...};` block shared by
+/// the LL and LR backends' procedure call sites. When `rule_index` is present the
+/// `.rule` field references the generated rule table; otherwise a `.rule = null`
+/// literal is emitted. `trailing_blank` controls an optional blank separator after
+/// the closing brace.
+pub fn emitProcedureArgsStruct(
+    writer: *std.Io.Writer,
+    indent: []const u8,
+    with_ast: bool,
+    rule_index: ?usize,
+    node_expr: []const u8,
+    trailing_blank: bool,
+) !void {
+    if (with_ast) {
+        if (rule_index) |rule| {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = rules[{d}],
+                \\{s}    .node_address = {s},
+                \\{s}}};
+            , .{ indent, indent, indent, rule, indent, node_expr, indent });
+        } else {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = null,
+                \\{s}    .node_address = {s},
+                \\{s}}};
+            , .{ indent, indent, indent, indent, node_expr, indent });
+        }
+    } else {
+        if (rule_index) |rule| {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = rules[{d}],
+                \\{s}    ._temp_node = &{s},
+                \\{s}}};
+            , .{ indent, indent, indent, rule, indent, node_expr, indent });
+        } else {
+            try writer.print(
+                \\{s}var args = data_structures.ProcedureArguments{{
+                \\{s}    .context = context,
+                \\{s}    .rule = null,
+                \\{s}    ._temp_node = &{s},
+                \\{s}}};
+            , .{ indent, indent, indent, indent, node_expr, indent });
+        }
+    }
+    if (trailing_blank) try writer.writeByte('\n');
+}
+
+/// Emits the `{indent}try runProcedureSequence(` prefix of a procedure invocation;
+/// the caller writes the procedure/sequence expression, then closes with
+/// `, &args);\n`. Shared by the LL and LR backends.
+pub fn emitProcedureRunCall(writer: *std.Io.Writer, indent: []const u8) !void {
+    try writer.print("{s}try runProcedureSequence(", .{indent});
+}
+
+/// Emits a complete `try runProcedureSequence(<rule procedure sequence>, &args);`
+/// statement using the rule's own annotation procedures.
+pub fn emitProcedureRuleSequenceCall(writer: *std.Io.Writer, indent: []const u8, procedures_: []const []const u8) !void {
+    try emitProcedureRunCall(writer, indent);
+    try emitProcedureSequenceExpression(writer, procedures_);
+    try writer.writeAll(", &args);\n");
+}
+
+/// Emits the post-args procedure dispatch tail shared verbatim by the LL and LR
+/// backends. The rule variant (all three indices present) is used after a rule
+/// reduction; the symbol-only variant is used for terminal procedure blocks.
+pub fn emitProcedureDispatchTail(
+    writer: *std.Io.Writer,
+    indent: []const u8,
+    rule_index: ?usize,
+    variable_index: ?usize,
+    parent_variable: ?usize,
+    symbol_index: ?usize,
+) !void {
+    if (rule_index != null and variable_index != null and parent_variable != null) {
+        try writer.print(
+            \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\{s}try runProcedureSequence(variable_procedures[{d}], &args);
+            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\
+        , .{
+            indent, rule_index.?,     indent, indent,            indent,
+            indent, variable_index.?, indent, parent_variable.?, indent,
+            indent, indent,           indent, indent,            indent,
+            indent,
+        });
+    } else {
+        try writer.print(
+            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
+            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+            \\{s}    try procedure(&args);
+            \\{s}}}
+            \\
+        , .{
+            indent, symbol_index.?, indent, indent, indent,
+            indent, indent,         indent, indent,
+        });
+    }
+}
+
+/// Emits a comma-separated rendering of the rule RHS for Debug-mode reduction
+/// output, shared verbatim by the LL and LR backends.
+pub fn emitRuleSymbolsForDebug(writer: *std.Io.Writer, symbols: []const common.Symbol, rule: common.Rule) !void {
+    for (rule.rhs.items, 0..) |symbol_index, i| {
+        if (i != 0) try writer.writeAll(", ");
+        const symbol = symbols[symbol_index];
+        if (symbol.kind == .variable) {
+            try common.emitFormatToken(writer, symbol.id);
+        } else {
+            try writer.writeByte('\'');
+            try common.emitFormatToken(writer, symbol.id);
+            try writer.writeByte('\'');
+        }
+    }
+}
+
+/// Emits the verbosity-gated Debug reduction log, shared by the LL and LR
+/// backends. The head symbol id is taken from the rule header.
+pub fn emitDebugReduction(writer: *std.Io.Writer, symbols: []const common.Symbol, rule: common.Rule, indent: []const u8) !void {
+    try writer.print(
+        \\{s}if (comptime builtin.mode == .Debug) {{
+        \\{s}    if (context.verbosityLevel() > 1) {{
+        \\{s}        std.debug.print("Reduction:
+    , .{ indent, indent, indent });
+    try writer.writeAll(" ");
+    try common.emitFormatToken(writer, symbols[rule.header].id);
+    try writer.writeAll(" <~ ");
+    try emitRuleSymbolsForDebug(writer, symbols, rule);
+    try writer.print(
+        \\\n", .{{}});
+        \\{s}    }}
+        \\{s}}}
+    , .{ indent, indent });
+}
