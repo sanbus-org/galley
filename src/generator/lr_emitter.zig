@@ -388,7 +388,7 @@ const Generator = struct {
         const rhs_len = rule.rhs.items.len;
 
         try writer.print("{s}// Reduce: {s} <- ", .{ indent, self.symbols.items[rule.header].id });
-        try self.emitRuleSymbolsForDebug(writer, rule);
+        try emitter_common.emitRuleSymbolsForDebug(writer, self.symbols.items, rule);
         try writer.writeByte('\n');
 
         if (self.options.with_ast or self.options.with_procedures or self.uses_verbatim) {
@@ -452,7 +452,7 @@ const Generator = struct {
             }
         }
 
-        try self.emitDebugReduction(writer, rule, indent);
+        try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, indent);
         try writer.print("{s}{s} ReduceResult{{ .variable = {d}, .pops_remaining = {d}, .is_accept = false{s} }};\n", .{
             indent,
             if (rhs_len > 0) "return" else "result =",
@@ -465,87 +465,20 @@ const Generator = struct {
     fn emitProcedureBlock(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, occurrence: ?Occurrence, node_expr: []const u8, indent: []const u8) !void {
         const rule = self.rules.items[rule_index];
         const variable_index = self.variableIndex(parent_variable);
-        if (self.options.with_ast) {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = rules[{d}],
-                \\{s}    .node_address = {s},
-                \\{s}}};
-            , .{ indent, indent, indent, rule_index, indent, node_expr, indent });
-        } else {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = rules[{d}],
-                \\{s}    ._temp_node = &{s},
-                \\{s}}};
-            , .{ indent, indent, indent, rule_index, indent, node_expr, indent });
-        }
-        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try emitter_common.emitProcedureArgsStruct(writer, indent, self.options.with_ast, rule_index, node_expr, false);
+        try emitter_common.emitProcedureRunCall(writer, indent);
         try self.emitOccurrenceExpression(writer, occurrence);
         try writer.writeAll(", &args);\n");
-        try writer.print("{s}try runProcedureSequence(", .{indent});
-        try emitter_common.emitProcedureSequenceExpression(writer, rule.annotations.procedures.items);
-        try writer.writeAll(", &args);\n");
-        try writer.print(
-            \\{s}if (comptime rule_procedures[{d}]) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\{s}try runProcedureSequence(variable_procedures[{d}], &args);
-            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\
-        , .{
-            indent, rule_index,     indent, indent,          indent,
-            indent, variable_index, indent, parent_variable, indent,
-            indent, indent,         indent, indent,          indent,
-            indent,
-        });
+        try emitter_common.emitProcedureRuleSequenceCall(writer, indent, rule.annotations.procedures.items);
+        try emitter_common.emitProcedureDispatchTail(writer, indent, rule_index, variable_index, parent_variable, null);
     }
 
     fn emitTerminalProcedureBlock(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, occurrence: ?Occurrence, node_expr: []const u8, indent: []const u8) !void {
-        if (self.options.with_ast) {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = null,
-                \\{s}    .node_address = {s},
-                \\{s}}};
-            , .{ indent, indent, indent, indent, node_expr, indent });
-        } else {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = null,
-                \\{s}    ._temp_node = &{s},
-                \\{s}}};
-            , .{ indent, indent, indent, indent, node_expr, indent });
-        }
-        try writer.print("{s}try runProcedureSequence(", .{indent});
+        try emitter_common.emitProcedureArgsStruct(writer, indent, self.options.with_ast, null, node_expr, false);
+        try emitter_common.emitProcedureRunCall(writer, indent);
         try self.emitOccurrenceExpression(writer, occurrence);
         try writer.writeAll(", &args);\n");
-        try writer.print(
-            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\
-        , .{
-            indent, terminal_index, indent, indent, indent,
-            indent, indent,         indent, indent,
-        });
+        try emitter_common.emitProcedureDispatchTail(writer, indent, null, null, null, terminal_index);
     }
 
     fn emitOccurrenceExpression(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence) !void {
@@ -587,23 +520,6 @@ const Generator = struct {
             try writer.print("{s}const verbatim_end = context.currentTokenSourceOffset();\n", .{indent});
         }
         try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
-    }
-
-    fn emitDebugReduction(self: *Generator, writer: *std.Io.Writer, rule: Rule, indent: []const u8) !void {
-        try writer.print(
-            \\{s}if (comptime builtin.mode == .Debug) {{
-            \\{s}    if (context.verbosityLevel() > 1) {{
-            \\{s}        std.debug.print("Reduction:
-        , .{ indent, indent, indent });
-        try writer.writeAll(" ");
-        try emitFormatToken(writer, self.symbols.items[rule.header].id);
-        try writer.writeAll(" <~ ");
-        try self.emitRuleSymbolsForDebug(writer, rule);
-        try writer.print(
-            \\\n", .{{}});
-            \\{s}    }}
-            \\{s}}}
-        , .{ indent, indent });
     }
 
     fn emitSyntaxError(self: *Generator, writer: *std.Io.Writer, diagnostic: usize, indent: []const u8) !void {
@@ -1586,20 +1502,6 @@ const Generator = struct {
             indent,
             indent,
         });
-    }
-
-    fn emitRuleSymbolsForDebug(self: *Generator, writer: *std.Io.Writer, rule: Rule) !void {
-        for (rule.rhs.items, 0..) |symbol_index, i| {
-            if (i != 0) try writer.writeAll(", ");
-            const symbol = self.symbols.items[symbol_index];
-            if (symbol.kind == .variable) {
-                try emitFormatToken(writer, symbol.id);
-            } else {
-                try writer.writeByte('\'');
-                try emitFormatToken(writer, symbol.id);
-                try writer.writeByte('\'');
-            }
-        }
     }
 
     fn symbolReturnsStackNode(self: *Generator, symbol_index: usize) bool {
