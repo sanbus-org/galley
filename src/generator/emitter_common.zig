@@ -38,6 +38,90 @@ pub fn emitRecoveryPoints(writer: *std.Io.Writer, points: []const common.Recover
     try writer.writeByte('}');
 }
 
+/// Emits the generated `ExplicitRecoveryScope` struct declaration shared
+/// verbatim by the LL and LR backends.
+pub fn emitExplicitRecoveryScopeStruct(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        \\const ExplicitRecoveryScope = struct {
+        \\    id: usize,
+        \\    target: root.SyntaxRecoveryTarget,
+        \\    points: []const root.SyntaxRecoveryPoint,
+        \\};
+        \\
+    );
+}
+
+/// Emits the `&ExplicitRecoveryScope{...}` literal for a variable's own
+/// recovery points, shared verbatim by the LL and LR backends.
+pub fn emitLhsRecoveryScope(writer: *std.Io.Writer, scopes: *const common.RecoveryPlan, symbols: []const common.Symbol, variable: usize) !void {
+    const scope = scopes.findLhs(variable) orelse unreachable;
+    try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .lhs_variable = ", .{scope.id});
+    try common.emitStringLiteral(writer, symbols[variable].id);
+    try writer.writeAll(" }, .points = ");
+    try emitRecoveryPoints(writer, symbols[variable].annotations.recovery_points.items);
+    try writer.writeAll(" }");
+}
+
+/// Emits the `&ExplicitRecoveryScope{...}` literal for a rule production's
+/// recovery points, shared verbatim by the LL and LR backends.
+pub fn emitProductionRecoveryScope(writer: *std.Io.Writer, scopes: *const common.RecoveryPlan, symbols: []const common.Symbol, rule: common.Rule, rule_index: usize) !void {
+    const scope = scopes.findProduction(rule_index) orelse unreachable;
+    try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .production = .{{ .variable = ", .{scope.id});
+    try common.emitStringLiteral(writer, symbols[rule.header].id);
+    try writer.print(", .rhs_index = {s} }} }}, .points = ", .{rule.rhs_index});
+    try emitRecoveryPoints(writer, rule.annotations.recovery_points.items);
+    try writer.writeAll(" }");
+}
+
+/// Emits the fail-fast syntax error support block shared verbatim by the LL
+/// and LR backends (emitted when error recovery is disabled). `function_prefix`
+/// is the backend lowercase prefix (`ll`/`lr`), `renderer_decl` is the renderer
+/// type name prefix (`LL`/`LR`), and `error_messages_decl` is the decl name in
+/// the generated error messages namespace (`syntax_error_ll`/`syntax_error_lr`).
+pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: []const u8, renderer_decl: []const u8, error_messages_decl: []const u8) !void {
+    try writer.print(
+        \\const {s}FailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
+        \\
+        \\fn {s}FailFastSyntaxError(
+        \\    context: *data_structures.Context,
+        \\    diagnostic_context: root.SyntaxDiagnosticContext,
+        \\    expected_tokens: []const []const u8,
+        \\    render_message: {s}FailFastMessageRenderer,
+        \\) anyerror {{
+        \\    @branchHint(.cold);
+        \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
+        \\    const diagnostic_message = render_message(.{{
+        \\        .allocator = context.runtime().arena_allocator,
+        \\        .context = context,
+        \\        .diagnostic = context.runtime().last_diagnostic.?,
+        \\        .style = .ansi,
+        \\    }}) catch "";
+        \\    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
+        \\    return root.ParseError.SyntaxError;
+        \\}}
+        \\
+        \\fn {s}FailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
+        \\    if (comptime @hasDecl(error_messages, "{s}"))
+        \\        return error_messages.{s}(args);
+        \\    if (comptime @hasDecl(error_messages, "syntax_error"))
+        \\        return error_messages.syntax_error(args);
+        \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+        \\}}
+        \\
+    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl });
+}
+
+/// Emits a fail-fast syntax error message renderer function shared by the LL
+/// and LR backends. `error_message_fields` is the ordered list of error
+/// messages namespace decls to try before `fallback_message_function`.
+pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8, fallback_message_function: []const u8) !void {
+    try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{\n", .{function_name});
+    for (error_message_fields) |field| {
+        try writer.print("    if (comptime @hasDecl(error_messages, \"{s}\"))\n        return @field(error_messages, \"{s}\")(args);\n", .{ field, field });
+    }
+    try writer.print("    return {s}(args);\n}}\n\n", .{fallback_message_function});
+}
+
 /// Emits the standalone customization file from completed diagnostic plans.
 pub fn emitErrorMessageFile(
     writer: *std.Io.Writer,

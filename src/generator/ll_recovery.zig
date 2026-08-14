@@ -33,32 +33,23 @@ pub fn build(
         if (symbol.kind == .variable) {
             for (first_sets[symbol_index]) |entry| {
                 for (grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
-                    try appendUnique(&candidates, allocator, terminal);
+                    try common.appendUniqueString(&candidates, allocator, terminal);
                 }
             }
             if (nullable_rules[symbol_index] == null) sequence_is_nullable = false;
         } else {
-            for (symbol.terminals.items) |terminal| try appendUnique(&candidates, allocator, terminal);
+            for (symbol.terminals.items) |terminal| try common.appendUniqueString(&candidates, allocator, terminal);
             sequence_is_nullable = false;
         }
         if (sequence_is_nullable and symbol.kind == .variable) {
             for (follow_sets[symbol_index]) |entry| {
                 for (grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
-                    try appendUnique(&candidates, allocator, terminal);
+                    try common.appendUniqueString(&candidates, allocator, terminal);
                 }
             }
         }
-        std.mem.sort([]const u8, candidates.items, {}, stringLessThan);
+        std.mem.sort([]const u8, candidates.items, {}, common.headLessThan);
         try result.automatic_candidates.put(symbol_index, try allocator.dupe([]const u8, candidates.items));
     }
     return result;
-}
-
-fn appendUnique(items: *std.ArrayList([]const u8), allocator: std.mem.Allocator, value: []const u8) !void {
-    for (items.items) |item| if (std.mem.eql(u8, item, value)) return;
-    try items.append(allocator, value);
-}
-
-fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
-    return std.mem.order(u8, lhs, rhs) == .lt;
 }
