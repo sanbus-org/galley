@@ -316,6 +316,24 @@ pub fn nullableRule(
     return null;
 }
 
+/// Rejects grammars whose verbatim-annotated RHS positions can match empty
+/// input, shared by the LL and LR planners.
+pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const PreparedGrammar) !void {
+    if (!grammar.uses_verbatim) return;
+    for (grammar.rules.items) |rule| {
+        for (rule.rhs.items, 0..) |symbol_index, position| {
+            if (!rule.rhs_annotations.items[position].verbatim) continue;
+            const symbol = grammar.symbols.items[symbol_index];
+            const empty_matchable = switch (symbol.kind) {
+                .terminal, .generative_terminal => symbol.id.len == 0,
+                .variable => try nullableRule(allocator, grammar, symbol_index, null) != null,
+                .end => false,
+            };
+            if (empty_matchable) return error.EmptyVerbatimSymbol;
+        }
+    }
+}
+
 /// Collects the FIRST terminal symbol indices of `variable` into `out`.
 pub fn firstsOfVariable(
     allocator: std.mem.Allocator,
@@ -592,6 +610,22 @@ pub fn longestTerminalLength(symbols: []const Symbol) usize {
         for (symbol.terminals.items) |terminal| longest = @max(longest, terminal.len);
     }
     return longest;
+}
+
+/// Appends `value` to `items` only when no equal element is already present.
+pub fn appendUniqueString(items: *std.ArrayList([]const u8), allocator: std.mem.Allocator, value: []const u8) !void {
+    for (items.items) |item| if (std.mem.eql(u8, item, value)) return;
+    try items.append(allocator, value);
+}
+
+/// Combines `longestTerminalLength` with the longest recovery-point terminal,
+/// matching how the LL and LR planners derive their buffer sizing.
+pub fn longestTerminalLengthWithRecovery(grammar: *const PreparedGrammar) usize {
+    const grammar_longest = longestTerminalLength(grammar.symbols.items);
+    return if (grammar.uses_explicit_recovery)
+        @max(grammar_longest, longestRecoveryTerminalLength(grammar.symbols.items, grammar.rules.items))
+    else
+        grammar_longest;
 }
 
 pub fn longestRecoveryTerminalLength(symbols: []const Symbol, rules: []const Rule) usize {

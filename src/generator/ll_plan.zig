@@ -113,7 +113,7 @@ const Builder = struct {
         for (self.plan.follow_sets) |*set| set.* = &.{};
 
         for (self.grammar.variables.items) |variable| {
-            self.plan.nullable_rules[variable] = self.nullableRule(variable);
+            self.plan.nullable_rules[variable] = try common.nullableRule(self.allocator, self.grammar, variable, null);
             var first_map = std.AutoHashMap(usize, usize).init(self.allocator);
             defer first_map.deinit();
             try self.firsts(variable, &first_map, null);
@@ -124,23 +124,7 @@ const Builder = struct {
             try self.follows(variable, &follow_map, null);
             self.plan.follow_sets[variable] = try self.terminalRulesFromMap(follow_map);
         }
-        try self.validateVerbatimSymbols();
-    }
-
-    fn validateVerbatimSymbols(self: *Builder) !void {
-        if (!self.grammar.uses_verbatim) return;
-        for (self.grammar.rules.items) |rule| {
-            for (rule.rhs.items, 0..) |symbol_index, position| {
-                if (!rule.rhs_annotations.items[position].verbatim) continue;
-                const symbol = self.grammar.symbols.items[symbol_index];
-                const empty_matchable = switch (symbol.kind) {
-                    .terminal, .generative_terminal => symbol.id.len == 0,
-                    .variable => self.plan.nullable_rules[symbol_index] != null,
-                    .end => false,
-                };
-                if (empty_matchable) return error.EmptyVerbatimSymbol;
-            }
-        }
+        try common.validateVerbatimSymbols(self.allocator, self.grammar);
     }
 
     fn terminalRulesFromMap(self: *Builder, map: std.AutoHashMap(usize, usize)) ![]const TerminalRule {
@@ -150,25 +134,6 @@ const Builder = struct {
             try result.append(self.allocator, .{ .terminal = entry.key_ptr.*, .rule = entry.value_ptr.* });
         }
         return result.toOwnedSlice(self.allocator);
-    }
-
-    fn nullableRule(self: *Builder, variable: usize) ?usize {
-        var visited = std.AutoHashMap(usize, void).init(self.allocator);
-        defer visited.deinit();
-        return self.nullableRuleImpl(variable, &visited);
-    }
-
-    fn nullableRuleImpl(self: *Builder, variable: usize, visited: *std.AutoHashMap(usize, void)) ?usize {
-        if (visited.contains(variable)) return null;
-        visited.put(variable, {}) catch return null;
-        defer _ = visited.remove(variable);
-        for (self.grammar.rules.items, 0..) |rule, rule_index| {
-            if (rule.header != variable) continue;
-            for (rule.rhs.items) |symbol_index| {
-                if (self.grammar.symbols.items[symbol_index].kind != .variable or self.nullableRuleImpl(symbol_index, visited) == null) break;
-            } else return rule_index;
-        }
-        return null;
     }
 
     fn firsts(self: *Builder, variable: usize, out: *std.AutoHashMap(usize, usize), visited: ?*std.AutoHashMap(usize, void)) !void {
@@ -196,7 +161,7 @@ const Builder = struct {
                 } else {
                     try self.putUnique(out, variable, symbol_index, rule_index);
                 }
-                if (symbol.kind != .variable or self.nullableRule(symbol_index) == null) break;
+                if (symbol.kind != .variable or try common.nullableRule(self.allocator, self.grammar, symbol_index, null) == null) break;
             }
         }
     }
@@ -230,7 +195,7 @@ const Builder = struct {
                     } else {
                         try out.put(next_symbol_index, rule_index);
                     }
-                    if (next_symbol.kind != .variable or self.nullableRule(next_symbol_index) == null) {
+                    if (next_symbol.kind != .variable or try common.nullableRule(self.allocator, self.grammar, next_symbol_index, null) == null) {
                         propagated = false;
                         break;
                     }
@@ -414,11 +379,7 @@ const Builder = struct {
         }
         self.plan.emitted_symbols = try emitted.toOwnedSlice(self.allocator);
 
-        const grammar_longest = common.longestTerminalLength(self.grammar.symbols.items);
-        self.plan.longest_terminal_length = if (self.grammar.uses_explicit_recovery)
-            @max(grammar_longest, common.longestRecoveryTerminalLength(self.grammar.symbols.items, self.grammar.rules.items))
-        else
-            grammar_longest;
+        self.plan.longest_terminal_length = common.longestTerminalLengthWithRecovery(self.grammar);
     }
 
     fn planParsersAndDiagnostics(self: *Builder) !void {
@@ -503,14 +464,14 @@ const Builder = struct {
     fn syntaxErrorExpectedStem(self: *Builder, symbol_index: usize, node: switch_planning.Node) ![]const u8 {
         var stems = std.ArrayList([]const u8).empty;
         if (node.groups.items.len == 0) {
-            try appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
+            try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
         } else if (self.grammar.symbols.items[symbol_index].kind == .variable) {
             for (node.groups.items) |group| {
-                for (group.child.entries) |entry| try appendUniqueString(&stems, self.allocator, try self.ruleExpectedStem(symbol_index, entry.target));
+                for (group.child.entries) |entry| try common.appendUniqueString(&stems, self.allocator, try self.ruleExpectedStem(symbol_index, entry.target));
             }
-        } else try appendUniqueString(&stems, self.allocator, self.plan.parser_names[symbol_index]);
-        if (stems.items.len == 0) try appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
-        std.mem.sort([]const u8, stems.items, {}, stringLessThan);
+        } else try common.appendUniqueString(&stems, self.allocator, self.plan.parser_names[symbol_index]);
+        if (stems.items.len == 0) try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
+        std.mem.sort([]const u8, stems.items, {}, common.headLessThan);
         return joinWithOr(self.allocator, stems.items);
     }
 
@@ -542,15 +503,6 @@ const Builder = struct {
 fn byteContains(items: []const u8, byte: u8) bool {
     for (items) |item| if (item == byte) return true;
     return false;
-}
-
-fn appendUniqueString(items: *std.ArrayList([]const u8), allocator: std.mem.Allocator, value: []const u8) !void {
-    for (items.items) |item| if (std.mem.eql(u8, item, value)) return;
-    try items.append(allocator, value);
-}
-
-fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
-    return std.mem.order(u8, lhs, rhs) == .lt;
 }
 
 fn joinWithOr(allocator: std.mem.Allocator, items: []const []const u8) ![]const u8 {

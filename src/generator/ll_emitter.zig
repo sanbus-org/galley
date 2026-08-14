@@ -141,13 +141,9 @@ const Generator = struct {
     }
 
     fn emitExplicitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
+        try emitter_common.emitExplicitRecoveryScopeStruct(writer);
+        try writer.writeByte('\n');
         try writer.writeAll(
-            \\const ExplicitRecoveryScope = struct {
-            \\    id: usize,
-            \\    target: root.SyntaxRecoveryTarget,
-            \\    points: []const root.SyntaxRecoveryPoint,
-            \\};
-            \\
             \\fn llTryExplicitScope(context: *data_structures.Context, scope: *const ExplicitRecoveryScope) !bool {
             \\    if (!try context.tryExplicitRecovery(scope.id, scope.target, scope.points)) return false;
             \\    try llFlushSyntaxDiagnostic(context);
@@ -162,7 +158,7 @@ const Generator = struct {
             try writer.writeAll("    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;\n");
             if (self.symbols.items[variable].annotations.recovery_points.items.len != 0) {
                 try writer.writeAll("    if (try llTryExplicitScope(context, ");
-                try self.emitLhsRecoveryScope(writer, variable);
+                try emitter_common.emitLhsRecoveryScope(writer, &self.plan.recovery.scopes, self.symbols.items, variable);
                 try writer.writeAll(")) return true;\n");
             }
             try writer.writeAll("    return false;\n}\n\n");
@@ -174,12 +170,12 @@ const Generator = struct {
             try writer.writeAll("    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;\n");
             if (rule.annotations.recovery_points.items.len != 0) {
                 try writer.writeAll("    if (try llTryExplicitScope(context, ");
-                try self.emitProductionRecoveryScope(writer, rule, rule_index);
+                try emitter_common.emitProductionRecoveryScope(writer, &self.plan.recovery.scopes, self.symbols.items, rule, rule_index);
                 try writer.writeAll(")) return true;\n");
             }
             if (self.symbols.items[rule.header].annotations.recovery_points.items.len != 0) {
                 try writer.writeAll("    if (try llTryExplicitScope(context, ");
-                try self.emitLhsRecoveryScope(writer, rule.header);
+                try emitter_common.emitLhsRecoveryScope(writer, &self.plan.recovery.scopes, self.symbols.items, rule.header);
                 try writer.writeAll(")) return true;\n");
             }
             try writer.writeAll("    return false;\n}\n\n");
@@ -197,24 +193,6 @@ const Generator = struct {
             try writer.writeAll("        },\n");
         }
         try writer.writeAll("        else => unreachable,\n    }\n}\n\n");
-    }
-
-    fn emitLhsRecoveryScope(self: *Generator, writer: *std.Io.Writer, variable: usize) !void {
-        const scope = self.plan.recovery.scopes.findLhs(variable) orelse unreachable;
-        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .lhs_variable = ", .{scope.id});
-        try emitStringLiteral(writer, self.symbols.items[variable].id);
-        try writer.writeAll(" }, .points = ");
-        try emitter_common.emitRecoveryPoints(writer, self.symbols.items[variable].annotations.recovery_points.items);
-        try writer.writeAll(" }");
-    }
-
-    fn emitProductionRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, rule_index: usize) !void {
-        const scope = self.plan.recovery.scopes.findProduction(rule_index) orelse unreachable;
-        try writer.print("&ExplicitRecoveryScope{{ .id = {d}, .target = .{{ .production = .{{ .variable = ", .{scope.id});
-        try emitStringLiteral(writer, self.symbols.items[rule.header].id);
-        try writer.print(", .rhs_index = {s} }} }}, .points = ", .{rule.rhs_index});
-        try emitter_common.emitRecoveryPoints(writer, rule.annotations.recovery_points.items);
-        try writer.writeAll(" }");
     }
 
     fn emitOccurrenceRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize) !void {
@@ -845,37 +823,8 @@ const Generator = struct {
 
     fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
-        try writer.writeAll(
-            \\
-            \\const LLFailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
-            \\
-            \\fn llFailFastSyntaxError(
-            \\    context: *data_structures.Context,
-            \\    diagnostic_context: root.SyntaxDiagnosticContext,
-            \\    expected_tokens: []const []const u8,
-            \\    render_message: LLFailFastMessageRenderer,
-            \\) anyerror {
-            \\    @branchHint(.cold);
-            \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
-            \\    const diagnostic_message = render_message(.{
-            \\        .allocator = context.runtime().arena_allocator,
-            \\        .context = context,
-            \\        .diagnostic = context.runtime().last_diagnostic.?,
-            \\        .style = .ansi,
-            \\    }) catch "";
-            \\    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-            \\    return root.ParseError.SyntaxError;
-            \\}
-            \\
-            \\fn llFailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {
-            \\    if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-            \\        return error_messages.syntax_error_ll(args);
-            \\    if (comptime @hasDecl(error_messages, "syntax_error"))
-            \\        return error_messages.syntax_error(args);
-            \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
-            \\}
-            \\
-        );
+        try writer.writeByte('\n');
+        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "ll", "LL", "syntax_error_ll");
     }
 
     fn emitFailFastSyntaxErrorMessageRenderer(
@@ -884,23 +833,8 @@ const Generator = struct {
         spec: SyntaxErrorHandlerSpec,
     ) !void {
         _ = self;
-        try writer.print(
-            \\
-            \\fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
-            \\    if (comptime @hasDecl(error_messages, "{s}"))
-            \\        return @field(error_messages, "{s}")(args);
-            \\    if (comptime @hasDecl(error_messages, "{s}"))
-            \\        return @field(error_messages, "{s}")(args);
-            \\    return llFailFastDefaultMessage(args);
-            \\}}
-            \\
-        , .{
-            spec.name,
-            spec.exact_name,
-            spec.exact_name,
-            spec.symbol_name,
-            spec.symbol_name,
-        });
+        try writer.writeByte('\n');
+        try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{ spec.exact_name, spec.symbol_name }, "llFailFastDefaultMessage");
     }
 
     fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, exact_name: []const u8, symbol_name: []const u8, indent: []const u8) !void {

@@ -69,7 +69,7 @@ pub const LRPlan = struct {
         };
         try builder.buildStates();
         try builder.buildParseTable();
-        try builder.validateVerbatimSymbols();
+        try common.validateVerbatimSymbols(allocator, grammar);
         builder.planSemanticStackRequirements();
         builder.plan.recovery = try recovery_planning.build(allocator, grammar, options, builder.plan.states.items);
         try builder.planStateDecisionsAndDiagnostics();
@@ -235,22 +235,6 @@ const Builder = struct {
         std.mem.sort(Item, state.items.items, {}, itemLessThan);
     }
 
-    fn validateVerbatimSymbols(self: *Builder) !void {
-        if (!self.grammar.uses_verbatim) return;
-        for (self.grammar.rules.items) |rule| {
-            for (rule.rhs.items, 0..) |symbol_index, position| {
-                if (!rule.rhs_annotations.items[position].verbatim) continue;
-                const symbol = self.grammar.symbols.items[symbol_index];
-                const empty_matchable = switch (symbol.kind) {
-                    .terminal, .generative_terminal => symbol.id.len == 0,
-                    .variable => try common.nullableRule(self.allocator, self.grammar, symbol_index, null) != null,
-                    .end => false,
-                };
-                if (empty_matchable) return error.EmptyVerbatimSymbol;
-            }
-        }
-    }
-
     fn gotoState(self: *Builder, state: State, symbol: usize) !State {
         var next = State{};
         for (state.items.items) |item| {
@@ -371,11 +355,7 @@ const Builder = struct {
         for (self.grammar.symbols.items, 0..) |symbol, symbol_index| {
             self.plan.symbol_returns_stack_node[symbol_index] = common.symbolReturnsNode(symbol, self.options);
         }
-        const grammar_longest = common.longestTerminalLength(self.grammar.symbols.items);
-        self.plan.longest_terminal_length = if (self.grammar.uses_explicit_recovery)
-            @max(grammar_longest, common.longestRecoveryTerminalLength(self.grammar.symbols.items, self.grammar.rules.items))
-        else
-            grammar_longest;
+        self.plan.longest_terminal_length = common.longestTerminalLengthWithRecovery(self.grammar);
     }
 };
 
