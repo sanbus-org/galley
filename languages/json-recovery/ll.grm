@@ -2,17 +2,17 @@ Value
 |!"}"^ "{" OptionalBlank ObjectMembers OptionalBlank
 |!"]"^ "[" OptionalBlank ArrayMembers OptionalBlank
 | IntegerNumber FloatTail OptionalBlank
-| \"~"~" _StringContent \"~"~" OptionalBlank
+| "\u{22}" _StringContent "\u{22}" OptionalBlank
 | "null" OptionalBlank
 | "true" OptionalBlank
 | "false" OptionalBlank
 
 ObjectMembers!"}"^
-|!"}"^ \"~"~" _StringContent \"~"~" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail "}"
+|!"}"^ "\u{22}" _StringContent "\u{22}" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail "}"
 | "}"
 
 ObjectMembersTail
-|!^"}" "," OptionalBlank \"~"~" _StringContent \"~"~" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail
+|!^"}" "," OptionalBlank "\u{22}" _StringContent "\u{22}" OptionalBlank ":" _ValueSlot!^","!^"}" ObjectMembersTail
 |
 
 ArrayMembers!"]"^
@@ -41,7 +41,7 @@ _OptionalBlank
 |
 
 _StringContent
-| character^\"~"~" _StringContent
+| character^"\u{22}" _StringContent
 |
 
 IntegerNumber

@@ -43,10 +43,10 @@ _OptionalBlank
 |
 
 String
-| \"~"~" _StringContent \"~"~"
+| "\u{22}" _StringContent "\u{22}"
 
 _StringContent
-| _StringContent character^\"~"~"
+| _StringContent character^"\u{22}"
 |
 
 _Number

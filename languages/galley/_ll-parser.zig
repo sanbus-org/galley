@@ -48,7 +48,7 @@ pub const symbols = &[_][]const u8{
     "SimpleStringContent", // 26
     "\\\"", // 27
     "RawIndicator", // 28
-    "character^\\\"~\"~\"^\"\n\"^\"\\\"", // 29
+    "character^\"\\u{22}\"^\"\\n\"^\"\\u{5c}\"", // 29
     "LowercaseId", // 30
     "GenerativeTerminalExceptions", // 31
     "^", // 32
@@ -60,7 +60,7 @@ pub const symbols = &[_][]const u8{
     "VerbatimMarker", // 38
     ">>", // 39
     ">", // 40
-    "character^\\\"~\"~\"", // 41
+    "character^\"\\u{22}\"", // 41
     "_Utf8Scalar", // 42
     "_Utf8TwoByte", // 43
     "_Utf8ThreeByte", // 44
@@ -80,7 +80,7 @@ pub const symbols = &[_][]const u8{
     "ControlCharacter", // 58
     "\x01", // 59
     "\x02", // 60
-    "character^\"\n\"", // 61
+    "character^\"\\n\"", // 61
     "AnyContentTail", // 62
     "IdTail", // 63
     "letter", // 64
@@ -2207,10 +2207,10 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: AnyContent -> 'character^\"\\n\"', AnyContentTail\n", .{});
+                    std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContentTail\n", .{});
                 }
             }
-            parse_generative_terminal_character_x94_x34_x92n_x34(context, null) catch |err| switch (err) {
+            parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -2265,7 +2265,7 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
 
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: AnyContent <~ 'character^\"\\n\"', AnyContentTail\n", .{});
+                    std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContentTail\n", .{});
                 }
             }        },
         else => {
@@ -4569,7 +4569,7 @@ inline fn parse_terminal__x34(context: *data_structures.Context, occurrence_reco
 }
 
 // Self-Repeating Parser for Symbol "SimpleStringContent" at index 1 of its right hand side
-// Right hand side: -> 'character^\\\\\"~\"~\"', SimpleStringContent
+// Right hand side: -> 'character^\"\\\\u{{22}}\"', SimpleStringContent
 fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = data_structures.Node.invalid_pointer;
     node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
@@ -4582,7 +4582,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
-                        std.debug.print("Rule expansion: SimpleStringContent -> 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
+                        std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
                 }
                 const temporary_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 20);
@@ -4592,7 +4592,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
                     context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(context, null) catch |err| switch (err) {
+                parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
                                 return data_structures.Node.invalid_pointer;
@@ -4625,7 +4625,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
-                std.debug.print("Reduction: SimpleStringContent <~ 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
+                std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
@@ -4784,10 +4784,10 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: SimpleStringContent -> 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
+                    std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }
-            parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(context, null) catch |err| switch (err) {
+            parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -4842,7 +4842,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
 
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: SimpleStringContent <~ 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
+                    std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
@@ -4979,10 +4979,10 @@ fn parse_RawIndicator(context: *data_structures.Context, occurrence_recovery: ?*
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: RawIndicator -> 'character^\\\\\"~\"~\"^\"\\n\"^\"\\\\\"'\n", .{});
+                    std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
             }
-            parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34(context, null) catch |err| switch (err) {
+            parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_26(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -5023,7 +5023,7 @@ fn parse_RawIndicator(context: *data_structures.Context, occurrence_recovery: ?*
 
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: RawIndicator <~ 'character^\\\\\"~\"~\"^\"\\n\"^\"\\\\\"'\n", .{});
+                    std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
             }        },
         else => {
@@ -5034,8 +5034,8 @@ fn parse_RawIndicator(context: *data_structures.Context, occurrence_recovery: ?*
     return node_address;
 }
 
-// Parser for Symbol "generative_terminal_character^\\"~"~"^"\n"^"\\"" with index 29
-inline fn parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_character^"\\u{22}"^"\\n"^"\\u{5c}"" with index 29
+inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
@@ -6105,8 +6105,8 @@ inline fn parse_terminal__x62(context: *data_structures.Context, occurrence_reco
     }
 }
 
-// Parser for Symbol "generative_terminal_character^\\"~"~"" with index 41
-inline fn parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_character^"\\u{22}"" with index 41
+inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
@@ -6797,8 +6797,8 @@ inline fn parse_terminal__x92x02(context: *data_structures.Context, occurrence_r
     }
 }
 
-// Parser for Symbol "generative_terminal_character^"\n"" with index 61
-inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_character^"\\n"" with index 61
+inline fn parse_generative_terminal_character_x94_x34_x92_x92n_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
@@ -6920,7 +6920,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
 }
 
 // Self-Repeating Parser for Symbol "AnyContentTail" at index 1 of its right hand side
-// Right hand side: -> 'character^\"\\n\"', AnyContentTail
+// Right hand side: -> 'character^\"\\\\n\"', AnyContentTail
 fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = data_structures.Node.invalid_pointer;
     node_address = node_address; // dummy store so Zig always sees this local as mutated (0-repetition paths return the initial value)
@@ -6933,7 +6933,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
             9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
-                        std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\n\"', AnyContentTail\n", .{});
+                        std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\\\n\"', AnyContentTail\n", .{});
                     }
                 }
                 const temporary_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 33);
@@ -6943,7 +6943,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
                     context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
-                parse_generative_terminal_character_x94_x34_x92n_x34(context, null) catch |err| switch (err) {
+                parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
                                 return data_structures.Node.invalid_pointer;
@@ -6976,7 +6976,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
 
         if (comptime builtin.mode == .Debug) {
             if (context.verbosityLevel() > 1) {
-                std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
+                std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\\\n\"', AnyContentTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
@@ -7100,10 +7100,10 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\n\"', AnyContentTail\n", .{});
+                    std.debug.print("Rule expansion: AnyContentTail -> 'character^\"\\\\n\"', AnyContentTail\n", .{});
                 }
             }
-            parse_generative_terminal_character_x94_x34_x92n_x34(context, null) catch |err| switch (err) {
+            parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -7158,7 +7158,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
 
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
+                    std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\\\n\"', AnyContentTail\n", .{});
                 }
             }        },
         10 => { // '\n'
@@ -9108,7 +9108,7 @@ fn ll_syntax_error_30(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_31(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\\\"~\"~\"^\"\n\"^\"\\\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\u{22}\"^\"\\n\"^\"\\u{5c}\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(31);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9236,7 +9236,7 @@ fn ll_syntax_error_44(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_45(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\\\"~\"~\"" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\u{22}\"" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(45);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9406,7 +9406,7 @@ fn ll_syntax_error_64(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_65(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(65);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9905,8 +9905,8 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         8 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34"))
-                @field(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92n_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -10585,8 +10585,8 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         28 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34"))
-                @field(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
+                @field(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -10653,8 +10653,8 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         30 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34"))
-                @field(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
+                @field(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -10687,15 +10687,15 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         31 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
                     .style = .ansi,
                 }) catch ""
-            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34_x94_x34_x92n_x34_x94_x34_x92_x92_x34")(.{
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -11163,15 +11163,15 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         45 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
                     .style = .ansi,
                 }) catch ""
-            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34")(.{
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -11843,15 +11843,15 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         65 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
                     .style = .ansi,
                 }) catch ""
-            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34"))
-                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34")(.{
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -11877,8 +11877,8 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         66 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34"))
-                @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
+                @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
