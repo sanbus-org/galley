@@ -272,7 +272,6 @@ fn symbolFromAst(
 ) !SymbolRef {
     const allocator = context.runtime().arena_allocator;
     const concrete_address = firstChild(context, symbol_address) orelse return error.MissingSymbol;
-    const raw_id = nodeText(context, concrete_address);
     const kind: SymbolKind = if (nodeIs(context, concrete_address, "VariableSymbol"))
         .variable
     else if (nodeIs(context, concrete_address, "TerminalSymbol"))
@@ -288,8 +287,13 @@ fn symbolFromAst(
     if (recovery_tail_address) |address| try appendRecoveryTail(context, &recovery_points, address, &verbatim, &verbatim_literal);
     if (recovery_points.items.len != 0 and kind != .variable) return error.InvalidRecoveryTarget;
 
+    const id = if (kind == .generative_terminal)
+        try generativeIdFromAst(context, allocator, concrete_address)
+    else
+        try decodeEscapes(allocator, nodeText(context, concrete_address));
+
     return .{
-        .id = try decodeEscapes(allocator, raw_id),
+        .id = id,
         .kind = kind,
         .annotations = .{
             .procedures = try procedures.toOwnedSlice(allocator),
@@ -298,6 +302,63 @@ fn symbolFromAst(
             .verbatim_literal = verbatim_literal,
         },
     };
+}
+
+/// Builds the canonical id for a generative terminal symbol by walking its
+/// exception children instead of decoding flattened source text. Each
+/// exception `TerminalSymbol` is decoded on its own, so a decoded quote or
+/// backslash can never collide with the structural delimiters the generator
+/// parses back out.
+fn generativeIdFromAst(context: *data_structures.Context, allocator: std.mem.Allocator, node_address: Node.Pointer) ![]const u8 {
+    const lowercase_address = firstChildNamed(context, node_address, "LowercaseId") orelse
+        return error.MissingGenerativeId;
+    var id = std.ArrayList(u8).empty;
+    try id.appendSlice(allocator, nodeText(context, lowercase_address));
+    try appendExceptionTerminals(context, allocator, &id, node_address);
+    return id.toOwnedSlice(allocator);
+}
+
+fn appendExceptionTerminals(context: *data_structures.Context, allocator: std.mem.Allocator, id: *std.ArrayList(u8), node_address: Node.Pointer) !void {
+    var child_address = context.node_allocator.at(node_address).first_child;
+    while (child_address != Node.invalid_pointer) {
+        const next_address = context.node_allocator.at(child_address).next;
+        if (nodeIs(context, child_address, "TerminalSymbol")) {
+            try id.append(allocator, '^');
+            try id.append(allocator, '"');
+            try appendEncodedTerminal(allocator, id, try decodeEscapes(allocator, nodeText(context, child_address)));
+            try id.append(allocator, '"');
+        } else {
+            try appendExceptionTerminals(context, allocator, id, child_address);
+        }
+        child_address = next_address;
+    }
+}
+
+/// Canonically re-encodes decoded exception content so the generator's
+/// exception scanner can read it back without structural ambiguity. Every
+/// byte the escape scanner treats specially is rendered as a `\u{..}` byte
+/// escape, keeping the generator's decode logic a single bounded rule.
+fn appendEncodedTerminal(allocator: std.mem.Allocator, id: *std.ArrayList(u8), content: []const u8) !void {
+    for (content) |byte| {
+        switch (byte) {
+            '\n' => try id.appendSlice(allocator, "\\n"),
+            '\r' => try id.appendSlice(allocator, "\\r"),
+            '\t' => try id.appendSlice(allocator, "\\t"),
+            else => {
+                const printable = byte >= 0x20 and byte <= 0x7e;
+                const special = byte == '\\' or byte == '"';
+                if (printable and !special) {
+                    try id.append(allocator, byte);
+                } else {
+                    try id.appendSlice(allocator, "\\u{");
+                    var digits_buffer: [2]u8 = undefined;
+                    _ = try std.fmt.bufPrint(&digits_buffer, "{x:0>2}", .{byte});
+                    try id.appendSlice(allocator, &digits_buffer);
+                    try id.append(allocator, '}');
+                }
+            },
+        }
+    }
 }
 
 fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: Node.Pointer, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8) !void {

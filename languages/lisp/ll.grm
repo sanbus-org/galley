@@ -127,7 +127,7 @@ CharacterContent
 | "`"
 | "'"
 | "|"
-| \"~"~"
+| "\u{22}"
 
 _CharNameTail
 | letter _CharNameTail
@@ -240,16 +240,16 @@ BlockCommentAfterPipe
 # -- Strings with escape sequences -------------------------
 
 String
-| \"~"~" _StringContent \"~"~"
+| "\u{22}" _StringContent "\u{22}"
 
 _StringContent
 | "\\" _EscapeSequence _StringContent
-| character^\"~"~"^"\\" _StringContent
+| character^"\u{22}"^"\\" _StringContent
 | new_line _StringContent
 |
 
 _EscapeSequence
-| \"~"~"
+| "\u{22}"
 | "\\"
 | "n"
 | "t"

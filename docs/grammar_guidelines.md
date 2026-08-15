@@ -62,7 +62,8 @@ Terminals in rules represent either exact character literals or pre-defined gene
 - **Normal Terminals:** Exact character/string matches are written in double quotes (e.g., `"{"`, `"null"`, `"+"`).
   - Valid UTF-8 can be written directly (e.g., `"سلام"` or `"😀"`).
   - `\u{...}` inserts one Unicode scalar value using one to six hexadecimal digits (e.g., `"\u{1f600}"`). Surrogate code points and values above `U+10FFFF` are rejected.
-  - The double-quote character itself is written as a raw string: `\"~"~"` (see below). Raw strings are the only way to spell a `"` terminal.
+  - The double-quote character itself is written as a `"\u{22}"` escape (also usable inside generative exceptions, e.g. `character^"\u{22}"`).
+- **Raw Strings:** The raw-string form `\"~"~"` matches a literal `"` with no escape decoding of its verbatim content. It is an alternative to `"\u{22}"` and is useful when content would otherwise require heavy escaping; bundled grammars use the escaped spelling for readability.
 - **Generative Character Terminals:** Unquoted keyword names map to specific sets of ASCII characters:
   - `digit`: Matches `'0'-'9'`
   - `hex_digit`: Matches `'0'-'9'`, `'a'-'f'`, and `'A'-'F'`
@@ -85,8 +86,8 @@ Terminals in rules represent either exact character literals or pre-defined gene
   - `utf8_continuation_80_8f`, `utf8_continuation_80_9f`, `utf8_continuation_90_bf`, and `utf8_continuation_a0_bf`: Restricted continuation ranges used at UTF-8 boundary cases
 
   See `languages/json-unicode/ll.grm` and `languages/json-unicode/lr.grm` for complete LL and LR scalar rules built from these terminals.
-- **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^\"~"~"`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class.
-- **Raw Strings:** A `"` character inside a grammar can be matched with the raw-string form `\"~"~"`. This is a literal double quote and is the only way to express a `"` terminal. The form is also used in generative exceptions such as `character^\"~"~"`.
+- **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^"\u{22}"`, or multiple chained exceptions like `digit^"1"^"3"`). The exception terminal's characters are excluded from the allowed terminal characters of the generative class. Exception terminals use the same escape rules as normal terminals, so content is decoded once per exception rather than re-scanned from flattened text.
+- **Raw Strings:** A `"` character inside a grammar can also be matched with the raw-string form `\"~"~"`, whose content is taken verbatim (no escape decoding).
 
 ---
 

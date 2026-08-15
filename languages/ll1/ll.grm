@@ -171,10 +171,10 @@ NonEmptyListItemsTail
 |
 
 String
-| \"~"~" StringContent \"~"~"
+| "\u{22}" StringContent "\u{22}"
 
 StringContent
-| character^\"~"~" StringContent
+| character^"\u{22}" StringContent
 |
 
 LogicCondition

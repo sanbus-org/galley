@@ -864,6 +864,9 @@ test "character exceptions exclude raw string and quoted content" {
         .{ .id = "character^\\\"~\"~\"^\"\n\"^\"\\\\\"", .excluded = "\"\n\\" },
         .{ .id = "character^\\\"~x~\"^\"\n\"", .excluded = "x\n" },
         .{ .id = "character^\\\"~~\"", .excluded = "" },
+        .{ .id = "character^\"\\u{22}\"", .excluded = "\"" },
+        .{ .id = "character^\"\\u{22}\"^\"\\u{a}\"^\"\\u{5c}\"", .excluded = "\"\n\\" },
+        .{ .id = "character^\"\\u{40}\"^\"x\"", .excluded = "@x" },
     };
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -910,7 +913,40 @@ fn appendCharsExcept(allocator: std.mem.Allocator, out: *std.ArrayList([]const u
         }
         const quote = id[i];
         i += 1;
-        while (i < id.len and id[i] != quote) : (i += 1) excluded[id[i]] = true;
+        while (i < id.len and id[i] != quote) {
+            if (id[i] == '\\' and i + 1 < id.len) {
+                switch (id[i + 1]) {
+                    'n' => {
+                        excluded['\n'] = true;
+                        i += 2;
+                        continue;
+                    },
+                    'r' => {
+                        excluded['\r'] = true;
+                        i += 2;
+                        continue;
+                    },
+                    't' => {
+                        excluded['\t'] = true;
+                        i += 2;
+                        continue;
+                    },
+                    'u' => {
+                        if (i + 2 >= id.len or id[i + 2] != '{') return error.InvalidRawString;
+                        const end = std.mem.indexOfScalarPos(u8, id, i + 3, '}') orelse return error.InvalidRawString;
+                        const digits = id[i + 3 .. end];
+                        if (digits.len == 0 or digits.len > 2) return error.InvalidRawString;
+                        const byte = std.fmt.parseInt(u8, digits, 16) catch return error.InvalidRawString;
+                        excluded[byte] = true;
+                        i = end + 1;
+                        continue;
+                    },
+                    else => {},
+                }
+            }
+            excluded[id[i]] = true;
+            i += 1;
+        }
         if (i < id.len) i += 1;
     }
     for (chars) |byte| {

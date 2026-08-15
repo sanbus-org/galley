@@ -37,13 +37,13 @@ VariableSymbol
 
 TerminalSymbol
 | RawString
-| \"~"~" SimpleStringContent \"~"~"
+| "\u{22}" SimpleStringContent "\u{22}"
 
 RawString
 | "\u{5c}\u{22}" RawIndicator!>> "\u{22}"
 
 RawIndicator
-| character^\"~"~"^"\n"^"\\"
+| character^"\u{22}"^"\n"^"\\"
 
 GenerativeTerminalSymbol
 | LowercaseId
@@ -74,9 +74,9 @@ VerbatimMarker
 | ">" TerminalSymbol
 
 SimpleStringContent
-| SimpleStringContent character^\"~"~"
+| SimpleStringContent character^"\u{22}"
 | SimpleStringContent _Utf8Scalar
-| character^\"~"~"
+| character^"\u{22}"
 | _Utf8Scalar
 
 _Utf8Scalar
