@@ -80,6 +80,7 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotati
         .recovery_points = recovery_points,
         .verbatim = source.verbatim,
         .verbatim_literal = verbatim_literal,
+        .verbatim_consume = source.verbatim_consume,
     };
 }
 
@@ -101,7 +102,7 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
                 symbol.* = .{
                     .id = source_symbol.id,
                     .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal },
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal, .verbatim_consume = source_symbol.annotations.verbatim_consume },
                 };
             }
             rhs.* = .{
@@ -608,7 +609,7 @@ test "literal verbatim terminators emit literal capture" {
         var output: std.Io.Writer.Allocating = .init(allocator);
         defer output.deinit();
         try emitParser(allocator, &.{ .rules = &rules }, &output.writer, parser_type, .{ .with_procedures = true });
-        try std.testing.expect(std.mem.indexOf(u8, output.written(), "captureVerbatim(\"%%\")") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "captureVerbatim(\"%%\", true)") != null);
     }
 }
 
@@ -665,8 +666,8 @@ test "distinct literal verbatim terminators emit each literal" {
         defer output.deinit();
         try emitParser(allocator, &.{ .rules = &rules }, &output.writer, parser_type, .{ .with_procedures = true });
         const generated = output.written();
-        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"one\")") != null);
-        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"two\")") != null);
+        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"one\", true)") != null);
+        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"two\", true)") != null);
     }
 }
 
@@ -1025,7 +1026,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 164), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 172), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

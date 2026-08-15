@@ -1,54 +1,104 @@
+# There are comments all around
 TodoItem:
+  # There are comments all around
   - title: str
+  # There are comments all around
   - timestamp: int = timestamp()
 
+# There are comments all around
 TodoList:
+  # There are comments all around
   - items: TodoItem[]
 
+# There are comments all around
 Initialize:
+# There are comments all around
 ---
+  # There are comments all around
   >state: TodoList(
+    # There are comments all around
     items=[item, *state.items]
+  # There are comments all around
   )
+  # There are comments all around
   >state: TodoList(
+    # There are comments all around
     items=[]
+  # There are comments all around
   )
+  # There are comments all around
   >actions:
+    # There are comments all around
     - Add(
+      # There are comments all around
       item=TodoItem(
+        # There are comments all around
         title="test"
+      # There are comments all around
       )
+    # There are comments all around
     )
 
+# There are comments all around
 Add:
+  # There are comments all around
   - item: TodoItem
+# There are comments all around
 ---
+    # There are comments all around
     >state: *(
+      # There are comments all around
       items=[T(), *Items()]
+    # There are comments all around
     )
+  # There are comments all around
   {len(state.items) < 10}
+    # There are comments all around
     >state: *(
+      # There are comments all around
       items=[item, *state.items[..-1]]
+    # There are comments all around
     )
+    # There are comments all around
     >actions:
+      # There are comments all around
       - notification:Notification(
+        # There are comments all around
         severity=notification:Severity.Important
+        # There are comments all around
         title="Overflow"
+        # There are comments all around
         message="Items overflow, oldest item was removed"
+      # There are comments all around
       )
 
+# There are comments all around
 Remove:
+  # There are comments all around
   - item: TodoItem
+# There are comments all around
 ---
+      # There are comments all around
       >state: *(
+        # There are comments all around
         items=[_ {item = item_} item<|item_| state.items]
+      # There are comments all around
       )
+    # There are comments all around
     {1 > 2}
+      # There are comments all around
       >state: *()
+  # There are comments all around
   {item_ = item |item_| state.items}
+    # There are comments all around
     >actions:
+      # There are comments all around
       - notification:Notification(
+        # There are comments all around
         severity=notification:Severity.Important
+        # There are comments all around
         title="No such item"
+        # There are comments all around
         message="Todo item to be removed does not exist!"
+      # There are comments all around
       )

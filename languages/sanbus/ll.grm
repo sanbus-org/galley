@@ -1,5 +1,5 @@
 Start
-| Rules
+| NewLineTail Rules
 
 Rules
 | Rule RulesTail
@@ -16,21 +16,21 @@ RuleTail
 | ":" ActionBody
 
 EnumBody
-| block_start EnumItems block_end
+| BlockStart EnumItems BlockEnd
 
 EnumItems
 | EnumItemRow EnumItemsTail
 
 EnumItemsTail@dropIfEmpty
-| new_line EnumItemRow EnumItemsTail
+| NewLine EnumItemRow EnumItemsTail
 |
 
 EnumItemRow
 | "-" space UppercaseId
 
 ActionBody
-| block_start Fields block_end ActionBodyTail
-| "\n---" WrappedLogicBody
+| BlockStart Fields BlockEnd ActionBodyTail
+| NewLine "---" WrappedLogicBody
 
 ActionBodyTail@dropIfEmpty
 | "---" WrappedLogicBody
@@ -40,7 +40,7 @@ Fields
 | FieldRow FieldsTail
 
 FieldsTail@dropIfEmpty
-| new_line FieldRow FieldsTail
+| NewLine FieldRow FieldsTail
 |
 
 FieldRow
@@ -71,27 +71,27 @@ State
 | "*" InstantiationTail
 
 ActionDispatchOutcome
-| ">actions:" block_start ActionsToDispatch block_end
+| ">actions:" BlockStart ActionsToDispatch BlockEnd
 
 ActionsToDispatch
-| new_line "-" space Expression ActionsToDispatch
+| NewLine "-" space Expression ActionsToDispatch
 | "-" space Expression
 
 SideEffects
-| ">effects:" block_start SideEffectsToDispatch block_end
+| ">effects:" BlockStart SideEffectsToDispatch BlockEnd
 
 SideEffectsToDispatch
-| new_line "-" space Expression SideEffectsToDispatch
+| NewLine "-" space Expression SideEffectsToDispatch
 | "-" space Expression
 
 WrappedLogicBody
-| block_start LogicBody block_end
+| BlockStart LogicBody BlockEnd
 
 LogicBody
 | Expression LogicBodyTail
 
 LogicBodyTail@dropIfEmpty
-| new_line LogicBody
+| NewLine LogicBody
 |
 
 Expression
@@ -148,14 +148,14 @@ InstantiationParameters
 | InstantiationParameter InstantiationParametersTail
 
 InstantiationParametersTail
-| new_line InstantiationParameter InstantiationParametersTail
+| NewLine InstantiationParameter InstantiationParametersTail
 |
 
 InstantiationParameter
 | Id OptionalBlank "=" OptionalBlank Expression
 
 InstantiationTail
-| "(" block_start InstantiationParameters block_end ")"
+| "(" BlockStart InstantiationParameters BlockEnd ")"
 | "()"
 
 Parameters
@@ -210,7 +210,7 @@ ForceBlank
 | Blank OptionalBlank
 
 OptionalNewLineMany
-| new_line OptionalNewLineMany
+| NewLine OptionalNewLineMany
 |
 
 Id
@@ -252,4 +252,17 @@ NegativeIntegerNumber
 
 FloatTail
 | "." PositiveIntegerNumber
+|
+
+NewLine
+| new_line NewLineTail
+
+BlockStart
+| block_start NewLineTail
+
+BlockEnd
+| block_end NewLineTail
+
+NewLineTail
+| "#"!>^"\n" new_line NewLineTail
 |

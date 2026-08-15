@@ -270,6 +270,7 @@ const Builder = struct {
         const lhs_verbatim_literal = lhs_annotations.verbatim_literal orelse "";
         const rhs_verbatim_literal = rhs_annotations.verbatim_literal orelse "";
         if (!std.mem.eql(u8, lhs_verbatim_literal, rhs_verbatim_literal)) return false;
+        if (lhs_annotations.verbatim_consume != rhs_annotations.verbatim_consume) return false;
         const lhs_names = lhs_annotations.procedures.items;
         const rhs_names = rhs_annotations.procedures.items;
         if (lhs_names.len != rhs_names.len) return false;
