@@ -347,7 +347,11 @@ const Generator = struct {
                         self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal
                     else
                         null;
-                    try self.emitVerbatimShiftCapture(writer, action.terminal, verbatim_literal, indent);
+                    const verbatim_consume = if (action.occurrence) |o|
+                        self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_consume
+                    else
+                        true;
+                    try self.emitVerbatimShiftCapture(writer, action.terminal, verbatim_literal, verbatim_consume, indent);
                 }
                 if (self.options.with_procedures and self.options.ast_for_terminals) {
                     try self.emitTerminalProcedureBlock(writer, action.terminal, action.occurrence, if (self.options.with_ast) "node_address" else "terminal_node", indent);
@@ -415,7 +419,7 @@ const Generator = struct {
                 try writer.print("{s}const start_pos = context.currentTokenSourceOffset();\n", .{indent});
             }
             if (self.occurrenceIsVerbatim(occurrence)) {
-                try self.emitVerbatimReduceCapture(writer, occurrence, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal else null, indent);
+                try self.emitVerbatimReduceCapture(writer, occurrence, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal else null, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_consume else true, indent);
             }
 
             if ((self.options.with_ast or self.options.with_procedures) and self.symbols.items[rule.header].ast_enabled) {
@@ -503,23 +507,23 @@ const Generator = struct {
         return false;
     }
 
-    fn emitVerbatimShiftCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, verbatim_literal: ?[]const u8, indent: []const u8) !void {
+    fn emitVerbatimShiftCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, verbatim_literal: ?[]const u8, verbatim_consume: bool, indent: []const u8) !void {
         const symbol = self.symbols.items[symbol_index];
         if (verbatim_literal) |literal| {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, literal);
-            try writer.writeAll(");\n");
+            try writer.print(", {s});\n", .{if (verbatim_consume) "true" else "false"});
         } else if (symbol.kind == .terminal) {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, symbol.id);
-            try writer.writeAll(");\n");
+            try writer.writeAll(", true);\n");
         } else {
             try writer.print("{s}const verbatim_terminator = context.getTextSlice(start_pos, context.currentTokenSourceOffset() - start_pos);\n", .{indent});
-            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator, true);\n", .{indent});
         }
     }
 
-    fn emitVerbatimReduceCapture(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence, verbatim_literal: ?[]const u8, indent: []const u8) !void {
+    fn emitVerbatimReduceCapture(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence, verbatim_literal: ?[]const u8, verbatim_consume: bool, indent: []const u8) !void {
         const value = occurrence.?;
         const symbol_index = self.rules.items[value.rule].rhs.items[value.position];
         if (self.symbols.items[symbol_index].kind != .variable) return;
@@ -532,9 +536,9 @@ const Generator = struct {
         if (verbatim_literal) |literal| {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, literal);
-            try writer.writeAll(");\n");
+            try writer.print(", {s});\n", .{if (verbatim_consume) "true" else "false"});
         } else {
-            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator, true);\n", .{indent});
         }
     }
 
@@ -1367,7 +1371,8 @@ const Generator = struct {
                 try writer.writeAll("    return null;\n}\n\n");
                 continue;
             }
-            if (!spec.recoverable or (!self.options.with_ast and !self.options.with_procedures) or spec.state_index == 0) try writer.writeAll("    _ = stack;\n");
+            const pops_stack = spec.recoverable and spec.state_index != 0 and (self.options.with_ast or self.options.with_procedures or self.uses_verbatim);
+            if (!pops_stack) try writer.writeAll("    _ = stack;\n");
             try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
             try writer.writeAll("    if (report_syntax_error) {\n");
             try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});

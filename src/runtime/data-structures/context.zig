@@ -252,29 +252,32 @@ pub const Context = struct {
 
     /// Captures raw source bytes from the current source position through the
     /// next occurrence of `terminator`, consuming them without lexing,
-    /// indentation processing, or escape decoding. On success the parser
-    /// resumes immediately after the terminator with line and column advanced
-    /// over the captured bytes. When `terminator` never reappears the parse
-    /// fails with `error.UnterminatedRawString`, mirroring recovery points by
-    /// carrying the expected terminator bytes in the recorded diagnostic.
+    /// indentation processing, or escape decoding. When `consume` is true the
+    /// parser resumes immediately after the terminator with line and column
+    /// advanced over the captured bytes; when false the terminator bytes are
+    /// left in the stream and the parser resumes at its first byte, so the
+    /// terminator is parsed normally by the surrounding rule. When `terminator`
+    /// never reappears the parse fails with `error.UnterminatedRawString`,
+    /// mirroring recovery points by carrying the expected terminator bytes in
+    /// the recorded diagnostic.
     ///
     /// Verbatim capture works with retained source and with input streaming; in
     /// the streaming case the terminator is found by scanning forward through
     /// the loaded regions and extending the input on demand, so the captured
     /// body never needs to fit inside a single loaded region.
-    pub fn captureVerbatim(self: *Self, terminator: []const u8) !void {
+    pub fn captureVerbatim(self: *Self, terminator: []const u8, consume: bool) !void {
         const body_start = self.currentTokenSourceOffset();
         if (comptime root.input_streaming_enabled) {
-            return self.captureVerbatimStreaming(body_start, terminator);
+            return self.captureVerbatimStreaming(body_start, terminator, consume);
         }
 
         const body_end = if (comptime root.config.indentation_syntax)
-            findVerbatimTerminatorEnd(self.chunk_buffer, body_start, terminator) orelse {
+            findVerbatimTerminatorEnd(self.chunk_buffer, body_start, terminator, consume) orelse {
                 try self.recordUnterminatedVerbatim(terminator);
                 return error.UnterminatedRawString;
             }
         else
-            findVerbatimTerminatorEnd(self.token.buffer, body_start, terminator) orelse {
+            findVerbatimTerminatorEnd(self.token.buffer, body_start, terminator, consume) orelse {
                 try self.recordUnterminatedVerbatim(terminator);
                 return error.UnterminatedRawString;
             };
@@ -315,12 +318,90 @@ pub const Context = struct {
         last_newline: ?usize,
     };
 
+    /// Ring of the most recent newline offsets recorded by a streaming verbatim
+    /// scan, relative to the captured body start. The ring holds up to
+    /// `terminator.len + 1` entries so that when the terminator itself contains
+    /// newline bytes a non-consuming capture (`consume = false`) can still
+    /// recover the last newline preceding the terminator after the terminator's
+    /// own newlines overwrote the running `last_newline`.
+    const NewlineTail = struct {
+        entries: []usize = &.{},
+        head: usize = 0,
+        count: usize = 0,
+
+        fn push(self: *NewlineTail, index: usize) void {
+            if (self.entries.len == 0) return;
+            self.entries[self.head] = index;
+            self.head = (self.head + 1) % self.entries.len;
+            if (self.count < self.entries.len) self.count += 1;
+        }
+
+        /// Most recent recorded newline offset strictly before `span_len`, or
+        /// `null` when every retained newline falls at or past it.
+        fn lastBefore(self: *const NewlineTail, span_len: usize) ?usize {
+            if (self.entries.len == 0) return null;
+            var k: usize = 0;
+            const n = self.count;
+            while (k < n) : (k += 1) {
+                const slot = (self.head + self.entries.len - 1 - k) % self.entries.len;
+                if (self.entries[slot] < span_len) return self.entries[slot];
+            }
+            return null;
+        }
+    };
+
+    /// Newline bookkeeping for a streaming verbatim scan, so a non-consuming
+    /// capture (`consume = false`) can exclude the terminator's bytes from the
+    /// position statistics while a consuming capture keeps the full scan totals.
+    const VerbatimScan = struct {
+        newlines: u32 = 0,
+        last_newline: ?usize = null,
+        tail: NewlineTail = .{},
+
+        /// Reserves the newline tail when the terminator contains newline bytes
+        /// and the capture leaves it unconsumed; otherwise leaves it empty and
+        /// `finish` uses the running `last_newline` directly.
+        fn init(self: *VerbatimScan, allocator: std.mem.Allocator, terminator: []const u8, consume: bool) !void {
+            if (consume) return;
+            for (terminator) |byte| {
+                if (byte == '\n') {
+                    self.tail.entries = try allocator.alloc(usize, terminator.len + 1);
+                    return;
+                }
+            }
+        }
+
+        fn record(self: *VerbatimScan, index: usize) void {
+            self.newlines += 1;
+            self.last_newline = index;
+            self.tail.push(index);
+        }
+
+        /// Finalizes the capture at a matched terminator, backing the
+        /// terminator bytes out of the statistics when they stay unconsumed.
+        fn finish(self: *const VerbatimScan, frontier: usize, body_start: usize, terminator: []const u8, consume: bool) VerbatimCapture {
+            if (consume) {
+                return .{ .body_end = frontier, .newlines = self.newlines, .last_newline = self.last_newline };
+            }
+            const span_len = (frontier - body_start) - terminator.len;
+            var terminator_newlines: u32 = 0;
+            for (terminator) |byte| {
+                if (byte == '\n') terminator_newlines += 1;
+            }
+            return .{
+                .body_end = frontier - terminator.len,
+                .newlines = self.newlines - terminator_newlines,
+                .last_newline = if (self.tail.entries.len == 0) self.last_newline else self.tail.lastBefore(span_len),
+            };
+        }
+    };
+
     /// Streaming-aware equivalent of `captureVerbatim`. Finds `terminator`
     /// starting at `body_start` in the raw source, loading more input through
     /// the active streaming mode as needed, then advances line/column over the
     /// captured bytes and resumes the parser after the terminator.
-    fn captureVerbatimStreaming(self: *Self, body_start: usize, terminator: []const u8) !void {
-        const capture = try self.findVerbatimTerminatorStreaming(body_start, terminator) orelse {
+    fn captureVerbatimStreaming(self: *Self, body_start: usize, terminator: []const u8, consume: bool) !void {
+        const capture = try self.findVerbatimTerminatorStreaming(body_start, terminator, consume) orelse {
             try self.recordUnterminatedVerbatim(terminator);
             return error.UnterminatedRawString;
         };
@@ -368,7 +449,7 @@ pub const Context = struct {
     /// when the terminator never reappears before the end of input. The scan
     /// carries the partial terminator match state across refill boundaries so
     /// the terminator may straddle chunks.
-    fn findVerbatimTerminatorStreaming(self: *Self, body_start: usize, terminator: []const u8) !?VerbatimCapture {
+    fn findVerbatimTerminatorStreaming(self: *Self, body_start: usize, terminator: []const u8, consume: bool) !?VerbatimCapture {
         if (terminator.len == 0) return .{ .body_end = body_start, .newlines = 0, .last_newline = null };
 
         const failure = try self.runtime().arena_allocator.alloc(usize, terminator.len);
@@ -383,12 +464,12 @@ pub const Context = struct {
         }
 
         if (comptime root.config.indentation_syntax) {
-            return self.scanVerbatimChunks(body_start, terminator, failure);
+            return self.scanVerbatimChunks(body_start, terminator, failure, consume);
         }
 
+        var scan = VerbatimScan{};
+        try scan.init(self.runtime().arena_allocator, terminator, consume);
         var frontier = body_start;
-        var newlines: u32 = 0;
-        var last_newline: ?usize = null;
         var matched: usize = 0;
         while (true) {
             if (frontier >= self.loaded_end) {
@@ -400,8 +481,7 @@ pub const Context = struct {
             frontier += 1;
             const captured_index = frontier - body_start - 1;
             if (byte == '\n') {
-                newlines += 1;
-                last_newline = captured_index;
+                scan.record(captured_index);
             }
             // A NUL only ever appears as the end-of-input sentinel padded past
             // the last real source byte, so reaching one before the terminator
@@ -410,7 +490,7 @@ pub const Context = struct {
             while (matched != 0 and byte != terminator[matched]) matched = failure[matched - 1];
             if (byte == terminator[matched]) matched += 1;
             if (matched == terminator.len) {
-                return .{ .body_end = frontier, .newlines = newlines, .last_newline = last_newline };
+                return scan.finish(frontier, body_start, terminator, consume);
             }
         }
     }
@@ -439,7 +519,7 @@ pub const Context = struct {
     /// boundaries. `failure` is the KMP prefix table for `terminator`. Loading
     /// the chunk containing `body_start` also recomputes the indentation level
     /// of the body's line, mirroring the retained-source capture path.
-    fn scanVerbatimChunks(self: *Self, body_start: usize, terminator: []const u8, failure: []const usize) !?VerbatimCapture {
+    fn scanVerbatimChunks(self: *Self, body_start: usize, terminator: []const u8, failure: []const usize, consume: bool) !?VerbatimCapture {
         comptime std.debug.assert(root.config.indentation_syntax and root.input_streaming_enabled);
 
         const chunk_len = self.chunk_buffer.len;
@@ -450,9 +530,9 @@ pub const Context = struct {
         self.read();
         self.current_indent = @intCast(lineIndentOf(self.chunk_buffer, body_start - body_chunk_base) / @max(self.indent_width, 1));
 
+        var scan = VerbatimScan{};
+        try scan.init(self.runtime().arena_allocator, terminator, consume);
         var frontier = body_start;
-        var newlines: u32 = 0;
-        var last_newline: ?usize = null;
         var matched: usize = 0;
         while (true) {
             const chunk_index = frontier - self.read_bytes;
@@ -466,8 +546,7 @@ pub const Context = struct {
             frontier += 1;
             const captured_index = frontier - body_start - 1;
             if (byte == '\n') {
-                newlines += 1;
-                last_newline = captured_index;
+                scan.record(captured_index);
             }
             // A NUL only ever appears as the end-of-input sentinel written by a
             // short chunk read (`Context.read`), so reaching one before the
@@ -476,7 +555,7 @@ pub const Context = struct {
             while (matched != 0 and byte != terminator[matched]) matched = failure[matched - 1];
             if (byte == terminator[matched]) matched += 1;
             if (matched == terminator.len) {
-                return .{ .body_end = frontier, .newlines = newlines, .last_newline = last_newline };
+                return scan.finish(frontier, body_start, terminator, consume);
             }
         }
     }
@@ -544,10 +623,10 @@ pub const Context = struct {
         }
     }
 
-    fn findVerbatimTerminatorEnd(buffer: []const u8, start: usize, terminator: []const u8) ?usize {
+    fn findVerbatimTerminatorEnd(buffer: []const u8, start: usize, terminator: []const u8, consume: bool) ?usize {
         const region_end = std.mem.indexOfScalarPos(u8, buffer, start, 0) orelse buffer.len;
         const terminator_at = std.mem.indexOf(u8, buffer[start..region_end], terminator) orelse return null;
-        return start + terminator_at + terminator.len;
+        return start + terminator_at + (if (consume) terminator.len else 0);
     }
 
     /// Number of leading spaces on the line containing `offset`.

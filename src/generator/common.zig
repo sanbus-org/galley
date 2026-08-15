@@ -45,6 +45,7 @@ pub const Annotations = struct {
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
     verbatim: bool = false,
     verbatim_literal: ?[]const u8 = null,
+    verbatim_consume: bool = true,
 };
 
 pub const Symbol = struct {
@@ -523,6 +524,10 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
             source.verbatim_literal
         else
             null,
+        .verbatim_consume = if (@hasField(@TypeOf(source), "verbatim_consume"))
+            source.verbatim_consume
+        else
+            true,
     };
     if (result.verbatim_literal) |literal| {
         result.verbatim_literal = try allocator.dupe(u8, literal);
@@ -546,6 +551,11 @@ pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, sou
         if (source.verbatim_literal) |literal| {
             target.verbatim_literal = try allocator.dupe(u8, literal);
         }
+    }
+    if (@hasField(@TypeOf(source), "verbatim_consume") and
+        @hasField(@TypeOf(source), "verbatim") and source.verbatim)
+    {
+        target.verbatim_consume = source.verbatim_consume;
     }
     try appendProcedureNames(allocator, &target.procedures, source.procedures);
     for (source.recovery_points) |point| {

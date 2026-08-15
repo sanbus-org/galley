@@ -9,7 +9,7 @@
 - [5. Explicit Syntax Recovery (`!`)](#5-explicit-syntax-recovery-)
 - [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
-- [8. Verbatim Raw Capture (`!>>` / `!>"..."`)](#8-verbatim-raw-capture)
+- [8. Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)](#8-verbatim-raw-capture)
 
 ---
 
@@ -303,11 +303,11 @@ for suffix calls, list gets, and casts.
 
 ---
 
-## 8. Verbatim Raw Capture (`!>>` / `!>"..."`)
+## 8. Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)
 
 Annotate an RHS occurrence with the verbatim marker `!>>` (derived terminator)
-or `!>"..."` (literal terminator) to consume a raw block of source bytes
-opaquely. For `!>>`, the occurrence still matches normally and the bytes it
+or `!>"..."` / `!>^"..."` (literal terminator) to consume a raw block of source
+bytes opaquely. For `!>>`, the occurrence still matches normally and the bytes it
 matched become a terminator; the parser captures every raw byte from just
 after the terminator until the terminator reappears in the input, then resumes
 the remaining RHS. For `!>"..."`, the given terminal is the fixed terminator and
@@ -318,18 +318,29 @@ Program
 | "<<<" UpperPair!>> LowerTail
 | "]]]" "%%"!>> LowerTail
 | "{{{" UpperPair!>"/>" LowerTail
+| "(((" UpperPair!>^"\n" LowerTail
 ```
 
-- The marker grammar lexes only the two marker forms: `>>` (derived) and
-  `> "..."` (literal terminator). Any other marker text is a syntax error in
-  the galley grammar itself.
+- The marker grammar lexes only the three marker forms: `>>` (derived) and
+  `> "..."` / `>^ "..."` (literal terminator). Any other marker text is a syntax
+  error in the galley grammar itself.
 - The annotated symbol may be a variable occurrence (`UpperPair!>>`) or a
   terminal occurrence (`"%%"!>>`). For a variable with `!>>`, the terminator is
   the exact source bytes the variable matched; for a terminal, the terminal's
   literal bytes. With `!>"..."` the terminator is exactly the literal bytes.
+- The `^` prefix/suffix chooses whether the terminator is part of the captured
+  body. A marker ending in `^` after the terminator (`!>"..."^`) appends the
+  terminator to the body; a marker beginning `^` before the terminator
+  (`!>^"..."`) leaves the terminator in the input for the parser to match next.
+  The same prefix/suffix rules select the recovery anchor with `^` on recovery
+  points.
 - The captured body is not lexed: no tokenization, indentation translation, or
   escape decoding applies inside it. The search for the reappearing terminator
   is byte-exact and case-sensitive, and stops at the first occurrence.
+- With `!>"..."^` the captured span includes the terminator bytes and the cursor
+  is left directly past them. With `!>^"..."` the captured span excludes the
+  terminator and the terminator bytes remain in the input stream for the parser
+  to match (the cursor is left at the start of the terminator).
 - A derived terminator must come from a non-empty, non-nullable symbol;
   generation fails with `error.EmptyVerbatimSymbol`. A literal terminator must
   be non-empty and contain no NUL bytes; generation fails with

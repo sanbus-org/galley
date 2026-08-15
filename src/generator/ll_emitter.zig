@@ -27,6 +27,7 @@ const Generator = struct {
     uses_explicit_recovery: bool,
     uses_verbatim: bool,
     verbatim_literal: ?[]const u8 = null,
+    verbatim_consume: bool = true,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -973,6 +974,7 @@ const Generator = struct {
         const explicit_recovery = self.uses_explicit_recovery;
         const verbatim = rule.rhs_annotations.items[child_index].verbatim;
         self.verbatim_literal = rule.rhs_annotations.items[child_index].verbatim_literal;
+        self.verbatim_consume = rule.rhs_annotations.items[child_index].verbatim_consume;
         const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         const call_name = if (symbol_index == parent_variable)
@@ -1080,14 +1082,14 @@ const Generator = struct {
         if (self.verbatim_literal) |literal| {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, literal);
-            try writer.writeAll(");\n");
+            try writer.print(", {s});\n", .{if (self.verbatim_consume) "true" else "false"});
         } else if (child.kind == .terminal) {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, child.id);
-            try writer.writeAll(");\n");
+            try writer.writeAll(", true);\n");
         } else {
             try writer.print("{s}const verbatim_terminator = context.getTextSlice(verbatim_start, context.currentTokenSourceOffset() - verbatim_start);\n", .{indent});
-            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator, true);\n", .{indent});
         }
     }
 

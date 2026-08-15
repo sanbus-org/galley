@@ -6,7 +6,7 @@
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Syntax-Error Recovery](#syntax-error-recovery)
-- [Verbatim Raw Capture (`!>>` / `!>"..."`)](#verbatim-raw-capture)
+- [Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)](#verbatim-raw-capture)
 - [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -58,19 +58,23 @@ configure the limit and search window through `ParseOptions.max_errors` and
 
 ---
 
-## Verbatim Raw Capture (`!>>` / `!>"..."`)
+## Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)
 
 An RHS occurrence annotated `!>>` matches normally, then its matched
 bytes act as a terminator; an occurrence annotated `!>"..."` uses the given
 terminal as a fixed terminator. Either way the runtime captures every raw byte
 until the terminator reappears, without lexing, indentation translation, or
-escape decoding. In the LL generator the capture is emitted at the child call
-site; in the LR generator a terminal occurrence captures at its shift and a
-variable occurrence captures when its rule reduces. Because a captured body may
-begin with any byte, an LR verbatim reduction is emitted as a default action on
-all lookaheads rather than being gated on the symbol's follow set. The reduction
-records the terminator symbol's span before the capture advances the input
-offset, so the annotated symbol's node covers only the terminator bytes.
+escape decoding. The capture consumes the terminator by default; annotating
+with a `^` before the terminator (`!>^"..."`) leaves the terminator in the input
+for the parser to match next, while a `^` after the terminator instead appends
+the terminator to the captured span. In the LL generator the capture is emitted
+at the child call site; in the LR generator a terminal occurrence captures at
+its shift and a variable occurrence captures when its rule reduces. Because a
+captured body may begin with any byte, an LR verbatim reduction is emitted as a
+default action on all lookaheads rather than being gated on the symbol's follow
+set. The reduction records the terminator symbol's span before the capture
+advances the input offset, so the annotated symbol's node covers only the
+terminator bytes.
 
 Verbatim capture scans the whole buffered input, so parsers using it enable
 source retention automatically and force `is_input_streaming_enabled = false`.

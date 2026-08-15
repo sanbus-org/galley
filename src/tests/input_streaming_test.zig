@@ -74,7 +74,7 @@ test "input streaming generated capability" {
     try std.testing.expectEqual(test_options.streaming_enabled, parser.input_streaming_enabled);
     try std.testing.expectEqual(test_options.ast_large_input, parser.parser.is_ast_enabled);
     try std.testing.expectEqual(
-        test_options.streaming_enabled and !test_options.ast_large_input,
+        test_options.streaming_enabled and !test_options.ast_large_input and !parser.uses_verbatim,
         parser.sliding_input_enabled,
     );
     try std.testing.expectEqual(test_options.indentation, parser.config.indentation_syntax);

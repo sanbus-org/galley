@@ -17,7 +17,7 @@ NewLinesTail
 |
 
 Rule!^"\n\n"
-| VariableSymbol RecoveryTail ProcedureTail new_line RightHandSides
+| VariableSymbol AnnotationTail ProcedureTail new_line RightHandSides
 
 RightHandSides
 | RightHandSideLine RightHandSidesTail
@@ -27,15 +27,15 @@ RightHandSidesTail
 |
 
 RightHandSideLine!"\n"^
-| "|" RecoveryTail ProcedureTail RightHandSide new_line
+| "|" AnnotationTail ProcedureTail RightHandSide new_line
 | "#" AnyContent new_line
 
 RightHandSide
-| space Symbol!^"\n" RecoveryTail ProcedureTail RightHandSideTail
+| space Symbol!^"\n" AnnotationTail ProcedureTail RightHandSideTail
 |
 
 RightHandSideTail
-| space Symbol!^"\n" RecoveryTail ProcedureTail RightHandSideTail
+| space Symbol!^"\n" AnnotationTail ProcedureTail RightHandSideTail
 |
 
 Symbol
@@ -68,21 +68,25 @@ ProcedureTail
 | "@" CamelCaseId ProcedureTail
 |
 
-RecoveryTail
-| "!" RecoveryPoint RecoveryTail
+AnnotationTail
+| "!" Annotation AnnotationTail
 |
 
-RecoveryPoint
-| RecoveryPointBody
+Annotation
+| RecoveryPoint
 | VerbatimMarker
 
-RecoveryPointBody
+RecoveryPoint
 | "^" TerminalSymbol
 | TerminalSymbol "^"
 
 VerbatimMarker
 | ">>"
-| ">" TerminalSymbol
+| ">" VerbatimSymbol
+
+VerbatimSymbol
+| "^" TerminalSymbol
+| TerminalSymbol "^"
 
 SimpleStringContent
 | character^"\u{22}" SimpleStringContent
