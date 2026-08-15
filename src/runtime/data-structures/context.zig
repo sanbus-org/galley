@@ -258,11 +258,16 @@ pub const Context = struct {
     /// fails with `error.UnterminatedRawString`, mirroring recovery points by
     /// carrying the expected terminator bytes in the recorded diagnostic.
     ///
-    /// Verbatim capture requires retained source, so the generated parser
-    /// disables input streaming and every token buffer already holds the
-    /// complete input.
+    /// Verbatim capture works with retained source and with input streaming; in
+    /// the streaming case the terminator is found by scanning forward through
+    /// the loaded regions and extending the input on demand, so the captured
+    /// body never needs to fit inside a single loaded region.
     pub fn captureVerbatim(self: *Self, terminator: []const u8) !void {
         const body_start = self.currentTokenSourceOffset();
+        if (comptime root.input_streaming_enabled) {
+            return self.captureVerbatimStreaming(body_start, terminator);
+        }
+
         const body_end = if (comptime root.config.indentation_syntax)
             findVerbatimTerminatorEnd(self.chunk_buffer, body_start, terminator) orelse {
                 try self.recordUnterminatedVerbatim(terminator);
@@ -303,6 +308,190 @@ pub const Context = struct {
         }
     }
 
+    /// Result of a streaming verbatim terminator scan, in source coordinates.
+    const VerbatimCapture = struct {
+        body_end: usize,
+        newlines: u32,
+        last_newline: ?usize,
+    };
+
+    /// Streaming-aware equivalent of `captureVerbatim`. Finds `terminator`
+    /// starting at `body_start` in the raw source, loading more input through
+    /// the active streaming mode as needed, then advances line/column over the
+    /// captured bytes and resumes the parser after the terminator.
+    fn captureVerbatimStreaming(self: *Self, body_start: usize, terminator: []const u8) !void {
+        const capture = try self.findVerbatimTerminatorStreaming(body_start, terminator) orelse {
+            try self.recordUnterminatedVerbatim(terminator);
+            return error.UnterminatedRawString;
+        };
+        const body_end = capture.body_end;
+
+        if (comptime root.config.indentation_syntax) {
+            const chunk_len = self.chunk_buffer.len;
+            const body_chunk_base = body_end - (body_end % chunk_len);
+
+            self.indentation_error = false;
+            if (comptime root.position_tracking_enabled) {
+                const discard = @min(self.token.len, self.line_offsets.len);
+                if (discard != 0) {
+                    self.line_offsets.pop(@intCast(discard));
+                    self.column_offsets.pop(@intCast(discard));
+                }
+            }
+            self.token.resetBuffered();
+            // The scan advanced the chunk reader past `body_end`; rewind it to
+            // the chunk containing the terminator end and reload that chunk so
+            // lexing resumes exactly after the terminator.
+            self.read_bytes = body_chunk_base;
+            self.seek = body_end - body_chunk_base;
+            try self.seekSourceTo(body_chunk_base);
+            self.read();
+            if (comptime root.position_tracking_enabled) {
+                advanceVerbatimPositionsFromScan(&self.line, &self.column, body_end - body_start, capture);
+            }
+            return;
+        }
+
+        const discard = self.token.len;
+        self.token.head = body_end;
+        self.token.len = 0;
+        if (comptime root.position_tracking_enabled) {
+            if (discard != 0) self.column_offsets.pop(discard);
+            advanceVerbatimPositionsFromScan(&self.line, &self.column, body_end - body_start, capture);
+        }
+    }
+
+    /// Scans the raw input forward from `body_start` for `terminator`, loading
+    /// more data through the active streaming mode as needed. Returns the
+    /// absolute source offset just past the terminator together with the
+    /// newline/column statistics accumulated over the captured body, or `null`
+    /// when the terminator never reappears before the end of input. The scan
+    /// carries the partial terminator match state across refill boundaries so
+    /// the terminator may straddle chunks.
+    fn findVerbatimTerminatorStreaming(self: *Self, body_start: usize, terminator: []const u8) !?VerbatimCapture {
+        if (terminator.len == 0) return .{ .body_end = body_start, .newlines = 0, .last_newline = null };
+
+        const failure = try self.runtime().arena_allocator.alloc(usize, terminator.len);
+        @memset(failure, 0);
+        {
+            var matched: usize = 0;
+            for (1..terminator.len) |index| {
+                while (matched != 0 and terminator[index] != terminator[matched]) matched = failure[matched - 1];
+                if (terminator[index] == terminator[matched]) matched += 1;
+                failure[index] = matched;
+            }
+        }
+
+        if (comptime root.config.indentation_syntax) {
+            return self.scanVerbatimChunks(body_start, terminator, failure);
+        }
+
+        var frontier = body_start;
+        var newlines: u32 = 0;
+        var last_newline: ?usize = null;
+        var matched: usize = 0;
+        while (true) {
+            if (frontier >= self.loaded_end) {
+                if (!self.extendVerbatimInput(frontier, body_start)) return null;
+                continue;
+            }
+
+            const byte = self.token.buffer[frontier];
+            frontier += 1;
+            const captured_index = frontier - body_start - 1;
+            if (byte == '\n') {
+                newlines += 1;
+                last_newline = captured_index;
+            }
+            // A NUL only ever appears as the end-of-input sentinel padded past
+            // the last real source byte, so reaching one before the terminator
+            // means the input ended.
+            if (byte == 0) return null;
+            while (matched != 0 and byte != terminator[matched]) matched = failure[matched - 1];
+            if (byte == terminator[matched]) matched += 1;
+            if (matched == terminator.len) {
+                return .{ .body_end = frontier, .newlines = newlines, .last_newline = last_newline };
+            }
+        }
+    }
+
+    /// Loads more input for the verbatim scan, returning false at the end of
+    /// input. `body_start` anchors the token's source offset so the refill
+    /// loads forward from the scan frontier. Verbatim capture forces source
+    /// retention (`uses_verbatim` contributes to `source_retention_enabled`),
+    /// so this never runs with a sliding input window.
+    fn extendVerbatimInput(self: *Self, frontier: usize, body_start: usize) bool {
+        comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
+        comptime std.debug.assert(!root.sliding_input_enabled);
+
+        if (frontier < self.loaded_end) return true;
+        if (self.loaded_end >= self.input_end) {
+            // Reaching `loaded_end` with no more source available means EOF.
+            return false;
+        }
+        const needed = (frontier - body_start) + root.read_chunk_size;
+        self.loadInputUpTo(needed);
+        return true;
+    }
+
+    /// Scans `chunk_buffer` chunks for the verbatim terminator in indentation
+    /// streaming mode, reading fresh chunks as the frontier crosses chunk
+    /// boundaries. `failure` is the KMP prefix table for `terminator`. Loading
+    /// the chunk containing `body_start` also recomputes the indentation level
+    /// of the body's line, mirroring the retained-source capture path.
+    fn scanVerbatimChunks(self: *Self, body_start: usize, terminator: []const u8, failure: []const usize) !?VerbatimCapture {
+        comptime std.debug.assert(root.config.indentation_syntax and root.input_streaming_enabled);
+
+        const chunk_len = self.chunk_buffer.len;
+        const body_chunk_base = body_start - (body_start % chunk_len);
+        self.read_bytes = body_chunk_base;
+        self.seek = body_start - body_chunk_base;
+        try self.seekSourceTo(body_chunk_base);
+        self.read();
+        self.current_indent = @intCast(lineIndentOf(self.chunk_buffer, body_start - body_chunk_base) / @max(self.indent_width, 1));
+
+        var frontier = body_start;
+        var newlines: u32 = 0;
+        var last_newline: ?usize = null;
+        var matched: usize = 0;
+        while (true) {
+            const chunk_index = frontier - self.read_bytes;
+            if (chunk_index >= chunk_len) {
+                self.read_bytes += chunk_len;
+                self.seek = 0;
+                self.read();
+                continue;
+            }
+            const byte = self.chunk_buffer[chunk_index];
+            frontier += 1;
+            const captured_index = frontier - body_start - 1;
+            if (byte == '\n') {
+                newlines += 1;
+                last_newline = captured_index;
+            }
+            // A NUL only ever appears as the end-of-input sentinel written by a
+            // short chunk read (`Context.read`), so reaching one before the
+            // terminator means the input ended.
+            if (byte == 0) return null;
+            while (matched != 0 and byte != terminator[matched]) matched = failure[matched - 1];
+            if (byte == terminator[matched]) matched += 1;
+            if (matched == terminator.len) {
+                return .{ .body_end = frontier, .newlines = newlines, .last_newline = last_newline };
+            }
+        }
+    }
+
+    /// Positions the underlying reader at an absolute source offset so the next
+    /// `read()`/`readInput()` fills from there; byte sources just rewind the
+    /// offset into the resident input.
+    fn seekSourceTo(self: *Self, offset: usize) !void {
+        comptime std.debug.assert(root.input_streaming_enabled);
+        switch (self.source) {
+            .file => |*reader| reader.seekTo(offset) catch return error.ReadFailed,
+            .bytes => |*bytes| bytes.offset = @min(offset, bytes.input.len),
+        }
+    }
+
     /// Reports an unterminated verbatim capture with the expected terminator
     /// bytes as the diagnostic's expected tokens.
     fn recordUnterminatedVerbatim(self: *Self, terminator: []const u8) !void {
@@ -340,6 +529,18 @@ pub const Context = struct {
             column.* = @intCast(captured.len - suffix_start);
         } else {
             column.* += @intCast(captured.len);
+        }
+    }
+
+    /// Streaming-scan equivalent of `advanceVerbatimPositions`, driven by the
+    /// per-byte newline statistics accumulated over the captured body instead
+    /// of a resident slice.
+    fn advanceVerbatimPositionsFromScan(line: *u32, column: *u32, captured_len: usize, capture: VerbatimCapture) void {
+        line.* += capture.newlines;
+        if (capture.last_newline) |suffix_start| {
+            column.* = @intCast(captured_len - suffix_start);
+        } else {
+            column.* += @intCast(captured_len);
         }
     }
 
@@ -819,14 +1020,14 @@ pub const Context = struct {
                 const mutable = @constCast(self);
                 const span = self.runtimeConst().arena_allocator.alloc(u8, length) catch return &[_]u8{};
                 const frontier = self.read_bytes + self.seek;
-                mutable.source.file.interface.seekTo(start) catch return span[0..0];
+                mutable.source.file.seekTo(start) catch return span[0..0];
                 var filled: usize = 0;
                 while (filled < length) {
                     const n = mutable.source.file.interface.readSliceShort(span[filled..]) catch break;
                     if (n == 0) break;
                     filled += n;
                 }
-                mutable.source.file.interface.seekTo(frontier) catch {};
+                mutable.source.file.seekTo(frontier) catch {};
                 return span[0..filled];
             },
         }

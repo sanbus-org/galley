@@ -177,7 +177,7 @@ pub fn emitParserMetadata(
         options.with_error_recovery,
         if (!options.with_error_recovery) "disabled" else if (uses_explicit_recovery) "explicit" else "automatic",
         if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
-        options.with_input_streaming and !uses_verbatim,
+        options.with_input_streaming,
         if (uses_verbatim) "pub const uses_verbatim = true;\n" else "",
         longest_terminal_length,
     });
