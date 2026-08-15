@@ -343,7 +343,11 @@ const Generator = struct {
                 }
                 try writer.print("{s}context.releaseToken({d});\n", .{ indent, length });
                 if (self.occurrenceIsVerbatim(action.occurrence)) {
-                    try self.emitVerbatimShiftCapture(writer, action.terminal, indent);
+                    const verbatim_literal = if (action.occurrence) |o|
+                        self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal
+                    else
+                        null;
+                    try self.emitVerbatimShiftCapture(writer, action.terminal, verbatim_literal, indent);
                 }
                 if (self.options.with_procedures and self.options.ast_for_terminals) {
                     try self.emitTerminalProcedureBlock(writer, action.terminal, action.occurrence, if (self.options.with_ast) "node_address" else "terminal_node", indent);
@@ -411,7 +415,7 @@ const Generator = struct {
                 try writer.print("{s}const start_pos = context.currentTokenSourceOffset();\n", .{indent});
             }
             if (self.occurrenceIsVerbatim(occurrence)) {
-                try self.emitVerbatimReduceCapture(writer, occurrence, indent);
+                try self.emitVerbatimReduceCapture(writer, occurrence, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal else null, indent);
             }
 
             if ((self.options.with_ast or self.options.with_procedures) and self.symbols.items[rule.header].ast_enabled) {
@@ -499,9 +503,13 @@ const Generator = struct {
         return false;
     }
 
-    fn emitVerbatimShiftCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
+    fn emitVerbatimShiftCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, verbatim_literal: ?[]const u8, indent: []const u8) !void {
         const symbol = self.symbols.items[symbol_index];
-        if (symbol.kind == .terminal) {
+        if (verbatim_literal) |literal| {
+            try writer.print("{s}try context.captureVerbatim(", .{indent});
+            try common.emitStringLiteral(writer, literal);
+            try writer.writeAll(");\n");
+        } else if (symbol.kind == .terminal) {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, symbol.id);
             try writer.writeAll(");\n");
@@ -511,15 +519,23 @@ const Generator = struct {
         }
     }
 
-    fn emitVerbatimReduceCapture(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence, indent: []const u8) !void {
+    fn emitVerbatimReduceCapture(self: *Generator, writer: *std.Io.Writer, occurrence: ?Occurrence, verbatim_literal: ?[]const u8, indent: []const u8) !void {
         const value = occurrence.?;
         const symbol_index = self.rules.items[value.rule].rhs.items[value.position];
         if (self.symbols.items[symbol_index].kind != .variable) return;
-        try writer.print("{s}const verbatim_terminator = context.getTextSlice(start_pos, context.currentTokenSourceOffset() - start_pos);\n", .{indent});
+        if (verbatim_literal == null) {
+            try writer.print("{s}const verbatim_terminator = context.getTextSlice(start_pos, context.currentTokenSourceOffset() - start_pos);\n", .{indent});
+        }
         if (self.options.with_ast or self.options.with_procedures) {
             try writer.print("{s}const verbatim_end = context.currentTokenSourceOffset();\n", .{indent});
         }
-        try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+        if (verbatim_literal) |literal| {
+            try writer.print("{s}try context.captureVerbatim(", .{indent});
+            try common.emitStringLiteral(writer, literal);
+            try writer.writeAll(");\n");
+        } else {
+            try writer.print("{s}try context.captureVerbatim(verbatim_terminator);\n", .{indent});
+        }
     }
 
     fn emitSyntaxError(self: *Generator, writer: *std.Io.Writer, diagnostic: usize, indent: []const u8) !void {

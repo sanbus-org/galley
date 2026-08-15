@@ -9,7 +9,7 @@ FirstTail
 |
 
 VerbatimItem
-| "<<<" Tag!verbatim block_start LowercaseWord
+| "<<<" Tag!>> block_start LowercaseWord
 
 Tag
 | uppercase_letter TagTail

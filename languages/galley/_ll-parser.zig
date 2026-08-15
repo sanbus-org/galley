@@ -58,37 +58,39 @@ pub const symbols = &[_][]const u8{
     "RecoveryPoint", // 36
     "RecoveryPointBody", // 37
     "VerbatimMarker", // 38
-    "character^\\\"~\"~\"", // 39
-    "_Utf8Scalar", // 40
-    "_Utf8TwoByte", // 41
-    "_Utf8ThreeByte", // 42
-    "_Utf8FourByte", // 43
-    "utf8_lead_two", // 44
-    "utf8_continuation", // 45
-    "\xe0", // 46
-    "utf8_continuation_a0_bf", // 47
-    "utf8_lead_three_general", // 48
-    "\xed", // 49
-    "utf8_continuation_80_9f", // 50
-    "\xf0", // 51
-    "utf8_continuation_90_bf", // 52
-    "utf8_lead_four_general", // 53
-    "\xf4", // 54
-    "utf8_continuation_80_8f", // 55
-    "ControlCharacter", // 56
-    "\x01", // 57
-    "\x02", // 58
-    "character^\"\n\"", // 59
-    "AnyContentTail", // 60
-    "IdTail", // 61
-    "letter", // 62
-    "digit", // 63
-    "lowercase_letter", // 64
-    "uppercase_letter", // 65
-    "CamelCaseIdTail", // 66
-    "_AugmentedStart", // 67
-    "\x00", // 68
-    "GenerativeTerminal", // 69
+    ">>", // 39
+    ">", // 40
+    "character^\\\"~\"~\"", // 41
+    "_Utf8Scalar", // 42
+    "_Utf8TwoByte", // 43
+    "_Utf8ThreeByte", // 44
+    "_Utf8FourByte", // 45
+    "utf8_lead_two", // 46
+    "utf8_continuation", // 47
+    "\xe0", // 48
+    "utf8_continuation_a0_bf", // 49
+    "utf8_lead_three_general", // 50
+    "\xed", // 51
+    "utf8_continuation_80_9f", // 52
+    "\xf0", // 53
+    "utf8_continuation_90_bf", // 54
+    "utf8_lead_four_general", // 55
+    "\xf4", // 56
+    "utf8_continuation_80_8f", // 57
+    "ControlCharacter", // 58
+    "\x01", // 59
+    "\x02", // 60
+    "character^\"\n\"", // 61
+    "AnyContentTail", // 62
+    "IdTail", // 63
+    "letter", // 64
+    "digit", // 65
+    "lowercase_letter", // 66
+    "uppercase_letter", // 67
+    "CamelCaseIdTail", // 68
+    "_AugmentedStart", // 69
+    "\x00", // 70
+    "GenerativeTerminal", // 71
 };
 
 pub const is_terminal = &[_]bool{
@@ -131,6 +133,8 @@ pub const is_terminal = &[_]bool{
     false,
     false,
     false,
+    true,
+    true,
     true,
     false,
     false,
@@ -195,6 +199,8 @@ pub const is_generative_terminal = &[_]bool{
     false,
     false,
     true,
+    false,
+    false,
     false,
     false,
     false,
@@ -307,39 +313,39 @@ pub const symbol_by_variable = &[_]usize{
     36,
     37,
     38,
-    40,
-    41,
     42,
     43,
-    56,
-    60,
-    61,
-    66,
-    67,
+    44,
+    45,
+    58,
+    62,
+    63,
+    68,
     69,
+    71,
 };
 
 pub const rules = &[_]data_structures.Rule{
-    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 56, 60 }, .right_hand_side_index = "1" }, // AnyContent
-    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 59, 60 }, .right_hand_side_index = "0" }, // AnyContent
+    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 58, 62 }, .right_hand_side_index = "1" }, // AnyContent
+    data_structures.Rule{ .header = 6, .right_hand_side = &[_]u16{ 61, 62 }, .right_hand_side_index = "0" }, // AnyContent
     data_structures.Rule{ .header = 33, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // AnyContentTail
-    data_structures.Rule{ .header = 33, .right_hand_side = &[_]u16{ 56, 60 }, .right_hand_side_index = "1" }, // AnyContentTail
-    data_structures.Rule{ .header = 33, .right_hand_side = &[_]u16{ 59, 60 }, .right_hand_side_index = "0" }, // AnyContentTail
-    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 64, 66 }, .right_hand_side_index = "0" }, // CamelCaseId
+    data_structures.Rule{ .header = 33, .right_hand_side = &[_]u16{ 58, 62 }, .right_hand_side_index = "1" }, // AnyContentTail
+    data_structures.Rule{ .header = 33, .right_hand_side = &[_]u16{ 61, 62 }, .right_hand_side_index = "0" }, // AnyContentTail
+    data_structures.Rule{ .header = 24, .right_hand_side = &[_]u16{ 66, 68 }, .right_hand_side_index = "0" }, // CamelCaseId
     data_structures.Rule{ .header = 35, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // CamelCaseIdTail
-    data_structures.Rule{ .header = 35, .right_hand_side = &[_]u16{ 62, 66 }, .right_hand_side_index = "0" }, // CamelCaseIdTail
-    data_structures.Rule{ .header = 35, .right_hand_side = &[_]u16{ 63, 66 }, .right_hand_side_index = "1" }, // CamelCaseIdTail
-    data_structures.Rule{ .header = 32, .right_hand_side = &[_]u16{57}, .right_hand_side_index = "0" }, // ControlCharacter
-    data_structures.Rule{ .header = 32, .right_hand_side = &[_]u16{58}, .right_hand_side_index = "1" }, // ControlCharacter
+    data_structures.Rule{ .header = 35, .right_hand_side = &[_]u16{ 64, 68 }, .right_hand_side_index = "0" }, // CamelCaseIdTail
+    data_structures.Rule{ .header = 35, .right_hand_side = &[_]u16{ 65, 68 }, .right_hand_side_index = "1" }, // CamelCaseIdTail
+    data_structures.Rule{ .header = 32, .right_hand_side = &[_]u16{59}, .right_hand_side_index = "0" }, // ControlCharacter
+    data_structures.Rule{ .header = 32, .right_hand_side = &[_]u16{60}, .right_hand_side_index = "1" }, // ControlCharacter
     data_structures.Rule{ .header = 37, .right_hand_side = &[_]u16{}, .right_hand_side_index = "0" }, // GenerativeTerminal
     data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // GenerativeTerminalExceptions
     data_structures.Rule{ .header = 23, .right_hand_side = &[_]u16{ 32, 20, 31 }, .right_hand_side_index = "0" }, // GenerativeTerminalExceptions
     data_structures.Rule{ .header = 17, .right_hand_side = &[_]u16{ 30, 31 }, .right_hand_side_index = "0" }, // GenerativeTerminalSymbol
     data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{}, .right_hand_side_index = "3" }, // IdTail
-    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 23, 61 }, .right_hand_side_index = "2" }, // IdTail
-    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 62, 61 }, .right_hand_side_index = "0" }, // IdTail
-    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 63, 61 }, .right_hand_side_index = "1" }, // IdTail
-    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{ 64, 61 }, .right_hand_side_index = "0" }, // LowercaseId
+    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 23, 63 }, .right_hand_side_index = "2" }, // IdTail
+    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 64, 63 }, .right_hand_side_index = "0" }, // IdTail
+    data_structures.Rule{ .header = 34, .right_hand_side = &[_]u16{ 65, 63 }, .right_hand_side_index = "1" }, // IdTail
+    data_structures.Rule{ .header = 22, .right_hand_side = &[_]u16{ 66, 63 }, .right_hand_side_index = "0" }, // LowercaseId
     data_structures.Rule{ .header = 4, .right_hand_side = &[_]u16{ 5, 6 }, .right_hand_side_index = "0" }, // NewLines
     data_structures.Rule{ .header = 5, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // NewLinesTail
     data_structures.Rule{ .header = 5, .right_hand_side = &[_]u16{ 5, 6 }, .right_hand_side_index = "0" }, // NewLinesTail
@@ -368,29 +374,30 @@ pub const rules = &[_]data_structures.Rule{
     data_structures.Rule{ .header = 3, .right_hand_side = &[_]u16{}, .right_hand_side_index = "1" }, // RulesTail
     data_structures.Rule{ .header = 3, .right_hand_side = &[_]u16{ 4, 2, 3 }, .right_hand_side_index = "0" }, // RulesTail
     data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{}, .right_hand_side_index = "2" }, // SimpleStringContent
-    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 39, 26 }, .right_hand_side_index = "0" }, // SimpleStringContent
-    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 40, 26 }, .right_hand_side_index = "1" }, // SimpleStringContent
+    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 41, 26 }, .right_hand_side_index = "0" }, // SimpleStringContent
+    data_structures.Rule{ .header = 20, .right_hand_side = &[_]u16{ 42, 26 }, .right_hand_side_index = "1" }, // SimpleStringContent
     data_structures.Rule{ .header = 0, .right_hand_side = &[_]u16{1}, .right_hand_side_index = "0" }, // Start
     data_structures.Rule{ .header = 14, .right_hand_side = &[_]u16{9}, .right_hand_side_index = "0" }, // Symbol
     data_structures.Rule{ .header = 14, .right_hand_side = &[_]u16{20}, .right_hand_side_index = "1" }, // Symbol
     data_structures.Rule{ .header = 14, .right_hand_side = &[_]u16{21}, .right_hand_side_index = "2" }, // Symbol
     data_structures.Rule{ .header = 16, .right_hand_side = &[_]u16{24}, .right_hand_side_index = "0" }, // TerminalSymbol
     data_structures.Rule{ .header = 16, .right_hand_side = &[_]u16{ 25, 26, 25 }, .right_hand_side_index = "1" }, // TerminalSymbol
-    data_structures.Rule{ .header = 18, .right_hand_side = &[_]u16{ 65, 61 }, .right_hand_side_index = "0" }, // UppercaseId
+    data_structures.Rule{ .header = 18, .right_hand_side = &[_]u16{ 67, 63 }, .right_hand_side_index = "0" }, // UppercaseId
     data_structures.Rule{ .header = 7, .right_hand_side = &[_]u16{22}, .right_hand_side_index = "0" }, // VariableSymbol
     data_structures.Rule{ .header = 7, .right_hand_side = &[_]u16{ 23, 22 }, .right_hand_side_index = "1" }, // VariableSymbol
-    data_structures.Rule{ .header = 27, .right_hand_side = &[_]u16{30}, .right_hand_side_index = "0" }, // VerbatimMarker
-    data_structures.Rule{ .header = 36, .right_hand_side = &[_]u16{ 0, 68 }, .right_hand_side_index = "0" }, // _AugmentedStart
-    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 51, 52, 45, 45 }, .right_hand_side_index = "0" }, // _Utf8FourByte
-    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 53, 45, 45, 45 }, .right_hand_side_index = "1" }, // _Utf8FourByte
-    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 54, 55, 45, 45 }, .right_hand_side_index = "2" }, // _Utf8FourByte
-    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{41}, .right_hand_side_index = "0" }, // _Utf8Scalar
-    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{42}, .right_hand_side_index = "1" }, // _Utf8Scalar
-    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{43}, .right_hand_side_index = "2" }, // _Utf8Scalar
-    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 46, 47, 45 }, .right_hand_side_index = "0" }, // _Utf8ThreeByte
-    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 48, 45, 45 }, .right_hand_side_index = "1" }, // _Utf8ThreeByte
-    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 49, 50, 45 }, .right_hand_side_index = "2" }, // _Utf8ThreeByte
-    data_structures.Rule{ .header = 29, .right_hand_side = &[_]u16{ 44, 45 }, .right_hand_side_index = "0" }, // _Utf8TwoByte
+    data_structures.Rule{ .header = 27, .right_hand_side = &[_]u16{39}, .right_hand_side_index = "0" }, // VerbatimMarker
+    data_structures.Rule{ .header = 27, .right_hand_side = &[_]u16{ 40, 20 }, .right_hand_side_index = "1" }, // VerbatimMarker
+    data_structures.Rule{ .header = 36, .right_hand_side = &[_]u16{ 0, 70 }, .right_hand_side_index = "0" }, // _AugmentedStart
+    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 53, 54, 47, 47 }, .right_hand_side_index = "0" }, // _Utf8FourByte
+    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 55, 47, 47, 47 }, .right_hand_side_index = "1" }, // _Utf8FourByte
+    data_structures.Rule{ .header = 31, .right_hand_side = &[_]u16{ 56, 57, 47, 47 }, .right_hand_side_index = "2" }, // _Utf8FourByte
+    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{43}, .right_hand_side_index = "0" }, // _Utf8Scalar
+    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{44}, .right_hand_side_index = "1" }, // _Utf8Scalar
+    data_structures.Rule{ .header = 28, .right_hand_side = &[_]u16{45}, .right_hand_side_index = "2" }, // _Utf8Scalar
+    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 48, 49, 47 }, .right_hand_side_index = "0" }, // _Utf8ThreeByte
+    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 50, 47, 47 }, .right_hand_side_index = "1" }, // _Utf8ThreeByte
+    data_structures.Rule{ .header = 30, .right_hand_side = &[_]u16{ 51, 52, 47 }, .right_hand_side_index = "2" }, // _Utf8ThreeByte
+    data_structures.Rule{ .header = 29, .right_hand_side = &[_]u16{ 46, 47 }, .right_hand_side_index = "0" }, // _Utf8TwoByte
 };
 
 const RootReduction = struct {
@@ -550,16 +557,6 @@ fn llTryRecoverySelection_38(context: *data_structures.Context, occurrence: ?*co
     return false;
 }
 
-fn llTryRecoverySelection_40(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
-    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
-    return false;
-}
-
-fn llTryRecoverySelection_41(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
-    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
-    return false;
-}
-
 fn llTryRecoverySelection_42(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
@@ -570,27 +567,37 @@ fn llTryRecoverySelection_43(context: *data_structures.Context, occurrence: ?*co
     return false;
 }
 
-fn llTryRecoverySelection_56(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+fn llTryRecoverySelection_44(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
 }
 
-fn llTryRecoverySelection_60(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+fn llTryRecoverySelection_45(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
 }
 
-fn llTryRecoverySelection_61(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+fn llTryRecoverySelection_58(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
 }
 
-fn llTryRecoverySelection_66(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+fn llTryRecoverySelection_62(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
 }
 
-fn llTryRecoverySelection_67(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+fn llTryRecoverySelection_63(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
+    return false;
+}
+
+fn llTryRecoverySelection_68(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
+    return false;
+}
+
+fn llTryRecoverySelection_69(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
     if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
     return false;
 }
@@ -948,6 +955,11 @@ fn llTryRecoveryRule_70(context: *data_structures.Context, occurrence: ?*const E
     return false;
 }
 
+fn llTryRecoveryRule_71(context: *data_structures.Context, occurrence: ?*const ExplicitRecoveryScope) !bool {
+    if (occurrence) |scope| if (try llTryExplicitScope(context, scope)) return true;
+    return false;
+}
+
 const ProcedureSequenceNode = struct {
     procedure: *const data_structures.Procedure,
     next: ?*const ProcedureSequenceNode,
@@ -972,7 +984,7 @@ fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_str
 }
 
 pub const rule_procedures = rule_procedures: {
-    var arr: [71]?*const data_structures.Procedure = .{null} ** 71;
+    var arr: [72]?*const data_structures.Procedure = .{null} ** 72;
 
     for (rules, 0..) |rule, index| {
         const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
@@ -985,7 +997,7 @@ pub const rule_procedures = rule_procedures: {
 };
 
 pub const symbol_procedures = symbol_procedures: {
-    var arr: [70]?*const data_structures.Procedure = .{null} ** 70;
+    var arr: [72]?*const data_structures.Procedure = .{null} ** 72;
 
     for (symbols, 0..) |symbol, index| {
         const procedure_name = "reduction_" ++ symbol;
@@ -1109,8 +1121,7 @@ fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const E
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_0(context, occurrence_recovery);
@@ -1192,8 +1203,7 @@ fn parse_Rules(context: *data_structures.Context, occurrence_recovery: ?*const E
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Rule, RulesTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_1(context, occurrence_recovery);
@@ -1312,8 +1322,7 @@ fn parse_Rule(context: *data_structures.Context, occurrence_recovery: ?*const Ex
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, RecoveryTail, ProcedureTail, 'new_line', RightHandSides\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_2(context, occurrence_recovery);
@@ -1400,8 +1409,7 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ NewLines, Rule, RulesTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -1491,8 +1499,7 @@ fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*con
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1575,8 +1582,7 @@ fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*con
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLines, Rule, RulesTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_3(context, occurrence_recovery);
@@ -1653,8 +1659,7 @@ fn parse_NewLines(context: *data_structures.Context, occurrence_recovery: ?*cons
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLines <~ 'new_line', NewLinesTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_4(context, occurrence_recovery);
@@ -1735,8 +1740,7 @@ fn parse_NewLinesTail_0_1(context: *data_structures.Context, occurrence_recovery
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: NewLinesTail <~ 'new_line', NewLinesTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -1863,8 +1867,7 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: NewLinesTail <~ '#', AnyContent, 'new_line', NewLinesTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -1977,8 +1980,7 @@ fn parse_NewLinesTail(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ 'new_line', NewLinesTail\n", .{});
                 }
-            }
-        },
+            }        },
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2065,8 +2067,7 @@ fn parse_NewLinesTail(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ '#', AnyContent, 'new_line', NewLinesTail\n", .{});
                 }
-            }
-        },
+            }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2107,8 +2108,7 @@ fn parse_NewLinesTail(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLinesTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_6(context, occurrence_recovery);
@@ -2203,8 +2203,7 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContentTail\n", .{});
                 }
-            }
-        },
+            }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2268,8 +2267,7 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\n\"', AnyContentTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_8(context, occurrence_recovery);
@@ -2337,8 +2335,7 @@ fn parse_VariableSymbol(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
-            }
-        },
+            }        },
         95 => { // '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2402,8 +2399,7 @@ fn parse_VariableSymbol(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_9(context, occurrence_recovery);
@@ -2485,8 +2481,7 @@ fn parse_RecoveryTail_0_2(context: *data_structures.Context, occurrence_recovery
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RecoveryTail <~ '!', RecoveryPoint, RecoveryTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2576,8 +2571,7 @@ fn parse_RecoveryTail(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2655,8 +2649,7 @@ fn parse_RecoveryTail(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryTail <~ '!', RecoveryPoint, RecoveryTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_10(context, occurrence_recovery);
@@ -2738,8 +2731,7 @@ fn parse_ProcedureTail_0_2(context: *data_structures.Context, occurrence_recover
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2829,8 +2821,7 @@ fn parse_ProcedureTail(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ProcedureTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         64 => { // '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2908,8 +2899,7 @@ fn parse_ProcedureTail(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ProcedureTail <~ '@', CamelCaseId, ProcedureTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_11(context, occurrence_recovery);
@@ -2991,8 +2981,7 @@ fn parse_RightHandSides(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSidesTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_12(context, occurrence_recovery);
@@ -3078,8 +3067,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '#', AnyContent, 'new_line'\n", .{});
                 }
-            }
-        },
+            }        },
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3180,8 +3168,7 @@ fn parse_RightHandSideLine(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', RecoveryTail, ProcedureTail, RightHandSide, 'new_line'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_13(context, occurrence_recovery);
@@ -3254,8 +3241,7 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSidesTail <~ RightHandSideLine, RightHandSidesTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -3345,8 +3331,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context, occurrence_recove
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSidesTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         35, 124 => { // '#', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3415,8 +3400,7 @@ fn parse_RightHandSidesTail(context: *data_structures.Context, occurrence_recove
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSidesTail <~ RightHandSideLine, RightHandSidesTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_14(context, occurrence_recovery);
@@ -3483,8 +3467,7 @@ fn parse_RightHandSide(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
-            }
-        },
+            }        },
         32 => { // ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3501,7 +3484,7 @@ fn parse_RightHandSide(context: *data_structures.Context, occurrence_recovery: ?
                     else => return err,
                 }; // child 0
             {
-                const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 195, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
+                const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 198, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_35(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -3590,8 +3573,7 @@ fn parse_RightHandSide(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, RecoveryTail, ProcedureTail, RightHandSideTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_16(context, occurrence_recovery);
@@ -3672,8 +3654,7 @@ fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
-            }
-        },
+            }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3728,8 +3709,7 @@ fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
-            }
-        },
+            }        },
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
@@ -3786,8 +3766,7 @@ fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const 
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
-                    }
-                },
+                    }                },
                 else => {
                     @branchHint(.unlikely);
                     return ll_syntax_error_18(context, occurrence_recovery);
@@ -3848,8 +3827,7 @@ fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_19(context, occurrence_recovery);
@@ -3892,7 +3870,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
                         else => return err,
                     }; // child 0
                 {
-                    const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSideTail", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
+                    const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 211, .target = .{ .occurrence = .{ .parent_variable = "RightHandSideTail", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
                                 return data_structures.Node.invalid_pointer;
@@ -3959,8 +3937,7 @@ fn parse_RightHandSideTail_0_4(context: *data_structures.Context, occurrence_rec
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSideTail <~ 'space', Symbol, RecoveryTail, ProcedureTail, RightHandSideTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4050,8 +4027,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         32 => { // ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4068,7 +4044,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recover
                     else => return err,
                 }; // child 0
             {
-                const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSideTail", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
+                const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 211, .target = .{ .occurrence = .{ .parent_variable = "RightHandSideTail", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
                             return data_structures.Node.invalid_pointer;
@@ -4157,8 +4133,7 @@ fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideTail <~ 'space', Symbol, RecoveryTail, ProcedureTail, RightHandSideTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_20(context, occurrence_recovery);
@@ -4244,8 +4219,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
-            }
-        },
+            }        },
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
@@ -4302,8 +4276,7 @@ fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: 
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
-                    }
-                },
+                    }                },
                 else => {
                     @branchHint(.unlikely);
                     return ll_syntax_error_21(context, occurrence_recovery);
@@ -4391,8 +4364,7 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context, occurrence_
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_23(context, occurrence_recovery);
@@ -4469,8 +4441,7 @@ fn parse_UppercaseId(context: *data_structures.Context, occurrence_recovery: ?*c
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_24(context, occurrence_recovery);
@@ -4575,8 +4546,7 @@ fn parse_RawString(context: *data_structures.Context, occurrence_recovery: ?*con
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_26(context, occurrence_recovery);
@@ -4657,8 +4627,7 @@ fn parse_SimpleStringContent_0_1(context: *data_structures.Context, occurrence_r
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4762,8 +4731,7 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4876,8 +4844,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\\\\\"~\"~\"', SimpleStringContent\n", .{});
                 }
-            }
-        },
+            }        },
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4918,8 +4885,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
-            }
-        },
+            }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4983,8 +4949,7 @@ fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recov
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_28(context, occurrence_recovery);
@@ -5060,8 +5025,7 @@ fn parse_RawIndicator(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\\\\\"~\"~\"^\"\\n\"^\"\\\\\"'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_30(context, occurrence_recovery);
@@ -5151,8 +5115,7 @@ fn parse_LowercaseId(context: *data_structures.Context, occurrence_recovery: ?*c
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_32(context, occurrence_recovery);
@@ -5234,8 +5197,7 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -5325,8 +5287,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context, occurre
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
-            }
-        },
+            }        },
         94 => { // '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5404,8 +5365,7 @@ fn parse_GenerativeTerminalExceptions(context: *data_structures.Context, occurre
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_33(context, occurrence_recovery);
@@ -5508,8 +5468,7 @@ fn parse_CamelCaseId(context: *data_structures.Context, occurrence_recovery: ?*c
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_36(context, occurrence_recovery);
@@ -5590,6 +5549,119 @@ fn parse_RecoveryPoint(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ RecoveryPointBody\n", .{});
                 }
+            }        },
+        62 => { // '>'
+            switch (context.head(u8, 1)) {
+                62 => { // '>'
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Rule expansion: RecoveryPoint -> VerbatimMarker\n", .{});
+                        }
+                    }
+                    {
+                        const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
+                            error.ExplicitSyntaxRecovery => {
+                                if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
+                                    return data_structures.Node.invalid_pointer;
+                                }
+                                return err;
+                            },
+                            else => return err,
+                        }; // child 0
+                        if (child_node != data_structures.Node.invalid_pointer) {
+                            context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                        }
+                    }
+                    context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
+                    var args = data_structures.ProcedureArguments{
+                        .context = context,
+                        .rule = rules[29],
+                        .node_address = node_address,
+                    };
+                    try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
+                    if (comptime rule_procedures[29]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    try runProcedureSequence(variable_procedures[25], &args);
+                    if (comptime symbol_procedures[36]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    if (comptime reduction_procedure) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 2) {
+                            std.debug.print("Procedure outcome for RecoveryPoint: {f}\n", .{
+                                string_utilities.fmtNode(args.node_address, context),
+                            });
+                        }
+                    }
+                    node_address = args.node_address orelse data_structures.Node.invalid_pointer;
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Reduction: RecoveryPoint <~ VerbatimMarker\n", .{});
+                        }
+                    }                },
+                else => { // ''
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Rule expansion: RecoveryPoint -> VerbatimMarker\n", .{});
+                        }
+                    }
+                    {
+                        const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
+                            error.ExplicitSyntaxRecovery => {
+                                if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
+                                    return data_structures.Node.invalid_pointer;
+                                }
+                                return err;
+                            },
+                            else => return err,
+                        }; // child 0
+                        if (child_node != data_structures.Node.invalid_pointer) {
+                            context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
+                        }
+                    }
+                    context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
+                    var args = data_structures.ProcedureArguments{
+                        .context = context,
+                        .rule = rules[29],
+                        .node_address = node_address,
+                    };
+                    try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
+                    if (comptime rule_procedures[29]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    try runProcedureSequence(variable_procedures[25], &args);
+                    if (comptime symbol_procedures[36]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    if (comptime reduction_procedure) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 2) {
+                            std.debug.print("Procedure outcome for RecoveryPoint: {f}\n", .{
+                                string_utilities.fmtNode(args.node_address, context),
+                            });
+                        }
+                    }
+                    node_address = args.node_address orelse data_structures.Node.invalid_pointer;
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Reduction: RecoveryPoint <~ VerbatimMarker\n", .{});
+                        }
+                    }                },
             }
         },
         92 => { // '\\'
@@ -5648,68 +5720,11 @@ fn parse_RecoveryPoint(context: *data_structures.Context, occurrence_recovery: ?
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ RecoveryPointBody\n", .{});
                         }
-                    }
-                },
+                    }                },
                 else => {
                     @branchHint(.unlikely);
                     return ll_syntax_error_38(context, occurrence_recovery);
                 },
-            }
-        },
-        97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: RecoveryPoint -> VerbatimMarker\n", .{});
-                }
-            }
-            {
-                const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
-                    error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.Node.invalid_pointer;
-                        }
-                        return err;
-                    },
-                    else => return err,
-                }; // child 0
-                if (child_node != data_structures.Node.invalid_pointer) {
-                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
-                }
-            }
-            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            var args = data_structures.ProcedureArguments{
-                .context = context,
-                .rule = rules[29],
-                .node_address = node_address,
-            };
-            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
-            if (comptime rule_procedures[29]) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-            try runProcedureSequence(variable_procedures[25], &args);
-            if (comptime symbol_procedures[36]) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-            if (comptime reduction_procedure) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 2) {
-                    std.debug.print("Procedure outcome for RecoveryPoint: {f}\n", .{
-                        string_utilities.fmtNode(args.node_address, context),
-                    });
-                }
-            }
-            node_address = args.node_address orelse data_structures.Node.invalid_pointer;
-
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: RecoveryPoint <~ VerbatimMarker\n", .{});
-                }
             }
         },
         else => {
@@ -5788,8 +5803,7 @@ fn parse_RecoveryPointBody(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPointBody <~ TerminalSymbol, '^'\n", .{});
                 }
-            }
-        },
+            }        },
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
@@ -5855,8 +5869,7 @@ fn parse_RecoveryPointBody(context: *data_structures.Context, occurrence_recover
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPointBody <~ TerminalSymbol, '^'\n", .{});
                         }
-                    }
-                },
+                    }                },
                 else => {
                     @branchHint(.unlikely);
                     return ll_syntax_error_40(context, occurrence_recovery);
@@ -5926,8 +5939,7 @@ fn parse_RecoveryPointBody(context: *data_structures.Context, occurrence_recover
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPointBody <~ '^', TerminalSymbol\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_41(context, occurrence_recovery);
@@ -5941,60 +5953,122 @@ fn parse_VerbatimMarker(context: *data_structures.Context, occurrence_recovery: 
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 27);
 
     switch (context.head(u8, 0)) {
-        97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: VerbatimMarker -> LowercaseId\n", .{});
-                }
-            }
-            {
-                const child_node = parse_LowercaseId(context, null) catch |err| switch (err) {
-                    error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.Node.invalid_pointer;
+        62 => { // '>'
+            switch (context.head(u8, 1)) {
+                62 => { // '>'
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Rule expansion: VerbatimMarker -> '>>'\n", .{});
                         }
-                        return err;
-                    },
-                    else => return err,
-                }; // child 0
-                if (child_node != data_structures.Node.invalid_pointer) {
-                    context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
-                }
-            }
-            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            var args = data_structures.ProcedureArguments{
-                .context = context,
-                .rule = rules[59],
-                .node_address = node_address,
-            };
-            try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
-            if (comptime rule_procedures[59]) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-            try runProcedureSequence(variable_procedures[27], &args);
-            if (comptime symbol_procedures[38]) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
-            if (comptime reduction_procedure) |procedure_pointer| {
-                const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-                try procedure(&args);
-            }
+                    }
+                    parse_terminal__x62_x62(context, null) catch |err| switch (err) {
+                            error.ExplicitSyntaxRecovery => {
+                                if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
+                                    return data_structures.Node.invalid_pointer;
+                                }
+                                return err;
+                            },
+                            else => return err,
+                        }; // child 0
+                    context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
+                    var args = data_structures.ProcedureArguments{
+                        .context = context,
+                        .rule = rules[59],
+                        .node_address = node_address,
+                    };
+                    try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
+                    if (comptime rule_procedures[59]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    try runProcedureSequence(variable_procedures[27], &args);
+                    if (comptime symbol_procedures[38]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    if (comptime reduction_procedure) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
 
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 2) {
-                    std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
-                        string_utilities.fmtNode(args.node_address, context),
-                    });
-                }
-            }
-            node_address = args.node_address orelse data_structures.Node.invalid_pointer;
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 2) {
+                            std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
+                                string_utilities.fmtNode(args.node_address, context),
+                            });
+                        }
+                    }
+                    node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: VerbatimMarker <~ LowercaseId\n", .{});
-                }
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Reduction: VerbatimMarker <~ '>>'\n", .{});
+                        }
+                    }                },
+                else => { // ''
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Rule expansion: VerbatimMarker -> '>', TerminalSymbol\n", .{});
+                        }
+                    }
+                    parse_terminal__x62(context, null) catch |err| switch (err) {
+                            error.ExplicitSyntaxRecovery => {
+                                if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
+                                    return data_structures.Node.invalid_pointer;
+                                }
+                                return err;
+                            },
+                            else => return err,
+                        }; // child 0
+                    {
+                        const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
+                            error.ExplicitSyntaxRecovery => {
+                                if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
+                                    return data_structures.Node.invalid_pointer;
+                                }
+                                return err;
+                            },
+                            else => return err,
+                        }; // child 1
+                        if (child_node != data_structures.Node.invalid_pointer) {
+                            context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 1 (chain if replaceWithChildren)
+                        }
+                    }
+                    context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
+                    var args = data_structures.ProcedureArguments{
+                        .context = context,
+                        .rule = rules[60],
+                        .node_address = node_address,
+                    };
+                    try runProcedureSequence(comptime makeProcedureSequence(&[_][]const u8{}), &args);
+                    if (comptime rule_procedures[60]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    try runProcedureSequence(variable_procedures[27], &args);
+                    if (comptime symbol_procedures[38]) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+                    if (comptime reduction_procedure) |procedure_pointer| {
+                        const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
+                        try procedure(&args);
+                    }
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 2) {
+                            std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
+                                string_utilities.fmtNode(args.node_address, context),
+                            });
+                        }
+                    }
+                    node_address = args.node_address orelse data_structures.Node.invalid_pointer;
+
+                    if (comptime builtin.mode == .Debug) {
+                        if (context.verbosityLevel() > 1) {
+                            std.debug.print("Reduction: VerbatimMarker <~ '>', TerminalSymbol\n", .{});
+                        }
+                    }                },
             }
         },
         else => {
@@ -6005,11 +6079,11 @@ fn parse_VerbatimMarker(context: *data_structures.Context, occurrence_recovery: 
     return node_address;
 }
 
-// Parser for Symbol "generative_terminal_character^\\"~"~"" with index 39
-inline fn parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            context.releaseToken(1);
+// Parser for Symbol "terminal_>>" with index 39
+inline fn parse_terminal__x62_x62(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u16, 0)) {
+        15934 => { // '>>'
+            context.releaseToken(2);
         },
         else => {
             @branchHint(.unlikely);
@@ -6018,7 +6092,33 @@ inline fn parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(
     }
 }
 
-// Parser for Symbol "_Utf8Scalar" with index 40
+// Parser for Symbol "terminal_>" with index 40
+inline fn parse_terminal__x62(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        62 => { // '>'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_44(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "generative_terminal_character^\\"~"~"" with index 41
+inline fn parse_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_45(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "_Utf8Scalar" with index 42
 fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
@@ -6029,7 +6129,7 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
             }
             parse__Utf8TwoByte_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6040,8 +6140,7 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8TwoByte\n", .{});
                 }
-            }
-        },
+            }        },
         224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239 => { // '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6049,27 +6148,6 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                 }
             }
             parse__Utf8ThreeByte_(context, null) catch |err| switch (err) {
-                    error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
-                            return;
-                        }
-                        return err;
-                    },
-                    else => return err,
-                }; // child 0
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
-                }
-            }
-        },
-        240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
-                }
-            }
-            parse__Utf8FourByte_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_66(context, occurrence_recovery)) {
                             return;
@@ -6080,18 +6158,37 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                 }; // child 0
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
+                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
+                }
+            }        },
+        240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
                 }
             }
-        },
+            parse__Utf8FourByte_(context, null) catch |err| switch (err) {
+                    error.ExplicitSyntaxRecovery => {
+                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                            return;
+                        }
+                        return err;
+                    },
+                    else => return err,
+                }; // child 0
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
+                }
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_44(context, occurrence_recovery);
+            return ll_syntax_error_46(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "_Utf8TwoByte" with index 41
+// Parser for Symbol "_Utf8TwoByte" with index 43
 fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
@@ -6102,7 +6199,7 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
             }
             parse_generative_terminal_utf8_lead_two(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_71(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6111,7 +6208,7 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
                 }; // child 0
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_71(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6122,16 +6219,15 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8TwoByte <~ 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_45(context, occurrence_recovery);
+            return ll_syntax_error_47(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "_Utf8ThreeByte" with index 42
+// Parser for Symbol "_Utf8ThreeByte" with index 44
 fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         224 => { // '\xe0'
@@ -6142,7 +6238,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_terminal__x92xe0(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6151,7 +6247,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation_a0_bf(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6160,7 +6256,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6171,8 +6267,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6181,7 +6276,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_generative_terminal_utf8_lead_three_general(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6190,7 +6285,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6199,7 +6294,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6210,8 +6305,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         237 => { // '\xed'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6220,7 +6314,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_terminal__x92xed(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6229,7 +6323,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation_80_9f(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6238,7 +6332,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6249,16 +6343,15 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_46(context, occurrence_recovery);
+            return ll_syntax_error_48(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "_Utf8FourByte" with index 43
+// Parser for Symbol "_Utf8FourByte" with index 45
 fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         240 => { // '\xf0'
@@ -6269,7 +6362,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
             }
             parse_terminal__x92xf0(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6278,7 +6371,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 0
             parse_generative_terminal_utf8_continuation_90_bf(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6287,7 +6380,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6296,7 +6389,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 2
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6307,8 +6400,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6317,7 +6409,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
             }
             parse_generative_terminal_utf8_lead_four_general(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6326,7 +6418,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 0
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6335,7 +6427,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6344,7 +6436,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 2
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6355,8 +6447,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         244 => { // '\xf4'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6365,7 +6456,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
             }
             parse_terminal__x92xf4(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6374,7 +6465,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 0
             parse_generative_terminal_utf8_continuation_80_8f(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6383,7 +6474,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 1
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6392,7 +6483,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 2
             parse_generative_terminal_utf8_continuation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -6403,34 +6494,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_47(context, occurrence_recovery);
-        },
-    }
-}
-
-// Parser for Symbol "generative_terminal_utf8_lead_two" with index 44
-inline fn parse_generative_terminal_utf8_lead_two(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            context.releaseToken(1);
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_48(context, occurrence_recovery);
-        },
-    }
-}
-
-// Parser for Symbol "generative_terminal_utf8_continuation" with index 45
-inline fn parse_generative_terminal_utf8_continuation(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
-            context.releaseToken(1);
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_49(context, occurrence_recovery);
@@ -6438,10 +6502,10 @@ inline fn parse_generative_terminal_utf8_continuation(context: *data_structures.
     }
 }
 
-// Parser for Symbol "terminal_\xe0" with index 46
-inline fn parse_terminal__x92xe0(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_lead_two" with index 46
+inline fn parse_generative_terminal_utf8_lead_two(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        224 => { // '\xe0'
+        194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
         else => {
@@ -6451,10 +6515,10 @@ inline fn parse_terminal__x92xe0(context: *data_structures.Context, occurrence_r
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_continuation_a0_bf" with index 47
-inline fn parse_generative_terminal_utf8_continuation_a0_bf(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_continuation" with index 47
+inline fn parse_generative_terminal_utf8_continuation(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -6464,10 +6528,10 @@ inline fn parse_generative_terminal_utf8_continuation_a0_bf(context: *data_struc
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_lead_three_general" with index 48
-inline fn parse_generative_terminal_utf8_lead_three_general(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "terminal_\xe0" with index 48
+inline fn parse_terminal__x92xe0(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
+        224 => { // '\xe0'
             context.releaseToken(1);
         },
         else => {
@@ -6477,10 +6541,10 @@ inline fn parse_generative_terminal_utf8_lead_three_general(context: *data_struc
     }
 }
 
-// Parser for Symbol "terminal_\xed" with index 49
-inline fn parse_terminal__x92xed(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_continuation_a0_bf" with index 49
+inline fn parse_generative_terminal_utf8_continuation_a0_bf(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        237 => { // '\xed'
+        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -6490,10 +6554,10 @@ inline fn parse_terminal__x92xed(context: *data_structures.Context, occurrence_r
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_continuation_80_9f" with index 50
-inline fn parse_generative_terminal_utf8_continuation_80_9f(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_lead_three_general" with index 50
+inline fn parse_generative_terminal_utf8_lead_three_general(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
+        225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
         else => {
@@ -6503,10 +6567,10 @@ inline fn parse_generative_terminal_utf8_continuation_80_9f(context: *data_struc
     }
 }
 
-// Parser for Symbol "terminal_\xf0" with index 51
-inline fn parse_terminal__x92xf0(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "terminal_\xed" with index 51
+inline fn parse_terminal__x92xed(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        240 => { // '\xf0'
+        237 => { // '\xed'
             context.releaseToken(1);
         },
         else => {
@@ -6516,10 +6580,10 @@ inline fn parse_terminal__x92xf0(context: *data_structures.Context, occurrence_r
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_continuation_90_bf" with index 52
-inline fn parse_generative_terminal_utf8_continuation_90_bf(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_continuation_80_9f" with index 52
+inline fn parse_generative_terminal_utf8_continuation_80_9f(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
         else => {
@@ -6529,10 +6593,10 @@ inline fn parse_generative_terminal_utf8_continuation_90_bf(context: *data_struc
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_lead_four_general" with index 53
-inline fn parse_generative_terminal_utf8_lead_four_general(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "terminal_\xf0" with index 53
+inline fn parse_terminal__x92xf0(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
+        240 => { // '\xf0'
             context.releaseToken(1);
         },
         else => {
@@ -6542,10 +6606,10 @@ inline fn parse_generative_terminal_utf8_lead_four_general(context: *data_struct
     }
 }
 
-// Parser for Symbol "terminal_\xf4" with index 54
-inline fn parse_terminal__x92xf4(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_continuation_90_bf" with index 54
+inline fn parse_generative_terminal_utf8_continuation_90_bf(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        244 => { // '\xf4'
+        144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -6555,10 +6619,10 @@ inline fn parse_terminal__x92xf4(context: *data_structures.Context, occurrence_r
     }
 }
 
-// Parser for Symbol "generative_terminal_utf8_continuation_80_8f" with index 55
-inline fn parse_generative_terminal_utf8_continuation_80_8f(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_utf8_lead_four_general" with index 55
+inline fn parse_generative_terminal_utf8_lead_four_general(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
+        241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
         else => {
@@ -6568,7 +6632,33 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f(context: *data_struc
     }
 }
 
-// Parser for Symbol "ControlCharacter" with index 56
+// Parser for Symbol "terminal_\xf4" with index 56
+inline fn parse_terminal__x92xf4(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        244 => { // '\xf4'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_60(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "generative_terminal_utf8_continuation_80_8f" with index 57
+inline fn parse_generative_terminal_utf8_continuation_80_8f(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_61(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "ControlCharacter" with index 58
 fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 32);
 
@@ -6600,7 +6690,7 @@ fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[32], &args);
-            if (comptime symbol_procedures[56]) |procedure_pointer| {
+            if (comptime symbol_procedures[58]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -6622,8 +6712,7 @@ fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
-            }
-        },
+            }        },
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6651,7 +6740,7 @@ fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[32], &args);
-            if (comptime symbol_procedures[56]) |procedure_pointer| {
+            if (comptime symbol_procedures[58]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -6673,17 +6762,16 @@ fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_60(context, occurrence_recovery);
+            return ll_syntax_error_62(context, occurrence_recovery);
         },
     }
     return node_address;
 }
 
-// Parser for Symbol "terminal_\x01" with index 57
+// Parser for Symbol "terminal_\x01" with index 59
 inline fn parse_terminal__x92x01(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
@@ -6691,12 +6779,12 @@ inline fn parse_terminal__x92x01(context: *data_structures.Context, occurrence_r
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_61(context, occurrence_recovery);
+            return ll_syntax_error_63(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "terminal_\x02" with index 58
+// Parser for Symbol "terminal_\x02" with index 60
 inline fn parse_terminal__x92x02(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         2 => { // '\x02'
@@ -6704,12 +6792,12 @@ inline fn parse_terminal__x92x02(context: *data_structures.Context, occurrence_r
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_62(context, occurrence_recovery);
+            return ll_syntax_error_64(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "generative_terminal_character^"\n"" with index 59
+// Parser for Symbol "generative_terminal_character^"\n"" with index 61
 inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
@@ -6717,7 +6805,7 @@ inline fn parse_generative_terminal_character_x94_x34_x92n_x34(context: *data_st
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_63(context, occurrence_recovery);
+            return ll_syntax_error_65(context, occurrence_recovery);
         },
     }
 }
@@ -6786,8 +6874,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnyContentTail <~ ControlCharacter, AnyContentTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6800,7 +6887,7 @@ fn parse_AnyContentTail_1_1(context: *data_structures.Context, occurrence_recove
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[33], &args);
-        if (comptime symbol_procedures[60]) |procedure_pointer| {
+        if (comptime symbol_procedures[62]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -6891,8 +6978,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6905,7 +6991,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[33], &args);
-        if (comptime symbol_procedures[60]) |procedure_pointer| {
+        if (comptime symbol_procedures[62]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -6937,7 +7023,7 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
     return node_address;
 }
 
-// Parser for Symbol "AnyContentTail" with index 60
+// Parser for Symbol "AnyContentTail" with index 62
 fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 33);
 
@@ -6988,7 +7074,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[33], &args);
-            if (comptime symbol_procedures[60]) |procedure_pointer| {
+            if (comptime symbol_procedures[62]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7010,8 +7096,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ ControlCharacter, AnyContentTail\n", .{});
                 }
-            }
-        },
+            }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7053,7 +7138,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[33], &args);
-            if (comptime symbol_procedures[60]) |procedure_pointer| {
+            if (comptime symbol_procedures[62]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7075,8 +7160,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ 'character^\"\\n\"', AnyContentTail\n", .{});
                 }
-            }
-        },
+            }        },
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7095,7 +7179,7 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[33], &args);
-            if (comptime symbol_procedures[60]) |procedure_pointer| {
+            if (comptime symbol_procedures[62]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7117,11 +7201,10 @@ fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContentTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_64(context, occurrence_recovery);
+            return ll_syntax_error_66(context, occurrence_recovery);
         },
     }
     return node_address;
@@ -7186,8 +7269,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7200,7 +7282,7 @@ fn parse_IdTail_2_1(context: *data_structures.Context, occurrence_recovery: ?*co
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[34], &args);
-        if (comptime symbol_procedures[61]) |procedure_pointer| {
+        if (comptime symbol_procedures[63]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -7291,8 +7373,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7305,7 +7386,7 @@ fn parse_IdTail_0_1(context: *data_structures.Context, occurrence_recovery: ?*co
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[34], &args);
-        if (comptime symbol_procedures[61]) |procedure_pointer| {
+        if (comptime symbol_procedures[63]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -7396,8 +7477,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7410,7 +7490,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[34], &args);
-        if (comptime symbol_procedures[61]) |procedure_pointer| {
+        if (comptime symbol_procedures[63]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -7442,7 +7522,7 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
     return node_address;
 }
 
-// Parser for Symbol "IdTail" with index 61
+// Parser for Symbol "IdTail" with index 63
 fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 34);
 
@@ -7465,7 +7545,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[34], &args);
-            if (comptime symbol_procedures[61]) |procedure_pointer| {
+            if (comptime symbol_procedures[63]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7487,8 +7567,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7530,7 +7609,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[34], &args);
-            if (comptime symbol_procedures[61]) |procedure_pointer| {
+            if (comptime symbol_procedures[63]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7552,8 +7631,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
-            }
-        },
+            }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7595,7 +7673,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[34], &args);
-            if (comptime symbol_procedures[61]) |procedure_pointer| {
+            if (comptime symbol_procedures[63]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7617,8 +7695,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
-            }
-        },
+            }        },
         95 => { // '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7660,7 +7737,7 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[34], &args);
-            if (comptime symbol_procedures[61]) |procedure_pointer| {
+            if (comptime symbol_procedures[63]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7682,46 +7759,19 @@ fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
-            }
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_65(context, occurrence_recovery);
-        },
-    }
-    return node_address;
-}
-
-// Parser for Symbol "generative_terminal_letter" with index 62
-inline fn parse_generative_terminal_letter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            context.releaseToken(1);
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_66(context, occurrence_recovery);
-        },
-    }
-}
-
-// Parser for Symbol "generative_terminal_digit" with index 63
-inline fn parse_generative_terminal_digit(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            context.releaseToken(1);
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_67(context, occurrence_recovery);
         },
     }
+    return node_address;
 }
 
-// Parser for Symbol "generative_terminal_lowercase_letter" with index 64
-inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// Parser for Symbol "generative_terminal_letter" with index 64
+inline fn parse_generative_terminal_letter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+        65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
         else => {
@@ -7731,7 +7781,33 @@ inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.C
     }
 }
 
-// Parser for Symbol "generative_terminal_uppercase_letter" with index 65
+// Parser for Symbol "generative_terminal_digit" with index 65
+inline fn parse_generative_terminal_digit(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_69(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "generative_terminal_lowercase_letter" with index 66
+inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_70(context, occurrence_recovery);
+        },
+    }
+}
+
+// Parser for Symbol "generative_terminal_uppercase_letter" with index 67
 inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -7739,7 +7815,7 @@ inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.C
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_69(context, occurrence_recovery);
+            return ll_syntax_error_71(context, occurrence_recovery);
         },
     }
 }
@@ -7803,8 +7879,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7817,7 +7892,7 @@ fn parse_CamelCaseIdTail_0_1(context: *data_structures.Context, occurrence_recov
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[35], &args);
-        if (comptime symbol_procedures[66]) |procedure_pointer| {
+        if (comptime symbol_procedures[68]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -7908,8 +7983,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
-        }
-        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -7922,7 +7996,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
             try procedure(&args);
         }
         try runProcedureSequence(variable_procedures[35], &args);
-        if (comptime symbol_procedures[66]) |procedure_pointer| {
+        if (comptime symbol_procedures[68]) |procedure_pointer| {
             const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
             try procedure(&args);
         }
@@ -7954,7 +8028,7 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
     return node_address;
 }
 
-// Parser for Symbol "CamelCaseIdTail" with index 66
+// Parser for Symbol "CamelCaseIdTail" with index 68
 fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 35);
 
@@ -7977,7 +8051,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[35], &args);
-            if (comptime symbol_procedures[66]) |procedure_pointer| {
+            if (comptime symbol_procedures[68]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -7999,8 +8073,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
-            }
-        },
+            }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8042,7 +8115,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[35], &args);
-            if (comptime symbol_procedures[66]) |procedure_pointer| {
+            if (comptime symbol_procedures[68]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -8064,8 +8137,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
-            }
-        },
+            }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8107,7 +8179,7 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 try procedure(&args);
             }
             try runProcedureSequence(variable_procedures[35], &args);
-            if (comptime symbol_procedures[66]) |procedure_pointer| {
+            if (comptime symbol_procedures[68]) |procedure_pointer| {
                 const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
                 try procedure(&args);
             }
@@ -8129,17 +8201,16 @@ fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_70(context, occurrence_recovery);
+            return ll_syntax_error_72(context, occurrence_recovery);
         },
     }
     return node_address;
 }
 
-// Parser for Symbol "_AugmentedStart" with index 67
+// Parser for Symbol "_AugmentedStart" with index 69
 fn parse__AugmentedStart(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope, root_reduction: *RootReduction) anyerror!void {
     root_reduction.* = .{};
     switch (context.head(u8, 0)) {
@@ -8152,7 +8223,7 @@ fn parse__AugmentedStart(context: *data_structures.Context, occurrence_recovery:
             var root_node: data_structures.Node.Pointer = data_structures.Node.invalid_pointer;
             root_node = parse_Start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8161,7 +8232,7 @@ fn parse__AugmentedStart(context: *data_structures.Context, occurrence_recovery:
                 }; // child 0
             parse_special_EOF(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8176,16 +8247,15 @@ fn parse__AugmentedStart(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_71(context, occurrence_recovery);
+            return ll_syntax_error_73(context, occurrence_recovery);
         },
     }
 }
 
-// Parser for Symbol "special_EOF" with index 68
+// Parser for Symbol "special_EOF" with index 70
 inline fn parse_special_EOF(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
@@ -8193,13 +8263,13 @@ inline fn parse_special_EOF(context: *data_structures.Context, occurrence_recove
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_72(context, occurrence_recovery);
+            return ll_syntax_error_74(context, occurrence_recovery);
         },
     }
 }
 
 
-// AST-Suppressed Parser for Symbol "_Utf8Scalar" with index 40
+// AST-Suppressed Parser for Symbol "_Utf8Scalar" with index 42
 fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
@@ -8210,7 +8280,7 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
             }
             parse__Utf8TwoByte_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8221,8 +8291,7 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8TwoByte\n", .{});
                 }
-            }
-        },
+            }        },
         224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239 => { // '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8230,27 +8299,6 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                 }
             }
             parse__Utf8ThreeByte_(context, null) catch |err| switch (err) {
-                    error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
-                            return;
-                        }
-                        return err;
-                    },
-                    else => return err,
-                }; // child 0
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
-                }
-            }
-        },
-        240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
-                if (context.verbosityLevel() > 1) {
-                    std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
-                }
-            }
-            parse__Utf8FourByte_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_66(context, occurrence_recovery)) {
                             return;
@@ -8261,18 +8309,37 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                 }; // child 0
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
-                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
+                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
+                }
+            }        },
+        240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
                 }
             }
-        },
+            parse__Utf8FourByte_(context, null) catch |err| switch (err) {
+                    error.ExplicitSyntaxRecovery => {
+                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                            return;
+                        }
+                        return err;
+                    },
+                    else => return err,
+                }; // child 0
+            if (comptime builtin.mode == .Debug) {
+                if (context.verbosityLevel() > 1) {
+                    std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
+                }
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_73(context, occurrence_recovery);
+            return ll_syntax_error_75(context, occurrence_recovery);
         },
     }
 }
 
-// AST-Suppressed Parser for Symbol "_Utf8TwoByte" with index 41
+// AST-Suppressed Parser for Symbol "_Utf8TwoByte" with index 43
 fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
@@ -8283,7 +8350,7 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
             }
             parse_generative_terminal_utf8_lead_two_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_71(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8292,7 +8359,7 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
                 }; // child 0
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_71(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8303,16 +8370,15 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8TwoByte <~ 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_74(context, occurrence_recovery);
+            return ll_syntax_error_76(context, occurrence_recovery);
         },
     }
 }
 
-// AST-Suppressed Parser for Symbol "_Utf8ThreeByte" with index 42
+// AST-Suppressed Parser for Symbol "_Utf8ThreeByte" with index 44
 fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         224 => { // '\xe0'
@@ -8323,7 +8389,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
             }
             parse_terminal__x92xe0_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8332,7 +8398,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 0
             parse_generative_terminal_utf8_continuation_a0_bf_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8341,7 +8407,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_67(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8352,8 +8418,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8362,7 +8427,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
             }
             parse_generative_terminal_utf8_lead_three_general_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8371,7 +8436,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 0
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8380,7 +8445,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_68(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8391,8 +8456,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         237 => { // '\xed'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8401,7 +8465,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
             }
             parse_terminal__x92xed_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8410,7 +8474,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 0
             parse_generative_terminal_utf8_continuation_80_9f_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8419,7 +8483,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_69(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_70(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8430,16 +8494,15 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_75(context, occurrence_recovery);
+            return ll_syntax_error_77(context, occurrence_recovery);
         },
     }
 }
 
-// AST-Suppressed Parser for Symbol "_Utf8FourByte" with index 43
+// AST-Suppressed Parser for Symbol "_Utf8FourByte" with index 45
 fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         240 => { // '\xf0'
@@ -8450,7 +8513,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_terminal__x92xf0_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8459,7 +8522,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation_90_bf_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8468,7 +8531,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8477,7 +8540,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 2
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8488,8 +8551,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8498,7 +8560,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_generative_terminal_utf8_lead_four_general_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8507,7 +8569,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8516,7 +8578,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8525,7 +8587,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 2
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8536,8 +8598,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
+            }        },
         244 => { // '\xf4'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8546,7 +8607,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
             }
             parse_terminal__x92xf4_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8555,7 +8616,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 0
             parse_generative_terminal_utf8_continuation_80_8f_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8564,7 +8625,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 1
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8573,7 +8634,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 }; // child 2
             parse_generative_terminal_utf8_continuation_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
-                        if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
+                        if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
                             return;
                         }
                         return err;
@@ -8584,34 +8645,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
-            }
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_76(context, occurrence_recovery);
-        },
-    }
-}
-
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_two" with index 44
-inline fn parse_generative_terminal_utf8_lead_two_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            context.releaseToken(1);
-        },
-        else => {
-            @branchHint(.unlikely);
-            return ll_syntax_error_77(context, occurrence_recovery);
-        },
-    }
-}
-
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation" with index 45
-inline fn parse_generative_terminal_utf8_continuation_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    switch (context.head(u8, 0)) {
-        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
-            context.releaseToken(1);
-        },
+            }        },
         else => {
             @branchHint(.unlikely);
             return ll_syntax_error_78(context, occurrence_recovery);
@@ -8619,10 +8653,10 @@ inline fn parse_generative_terminal_utf8_continuation_(context: *data_structures
     }
 }
 
-// AST-Suppressed Parser for Symbol "terminal_\xe0" with index 46
-inline fn parse_terminal__x92xe0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_two" with index 46
+inline fn parse_generative_terminal_utf8_lead_two_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        224 => { // '\xe0'
+        194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
         else => {
@@ -8632,10 +8666,10 @@ inline fn parse_terminal__x92xe0_(context: *data_structures.Context, occurrence_
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_a0_bf" with index 47
-inline fn parse_generative_terminal_utf8_continuation_a0_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation" with index 47
+inline fn parse_generative_terminal_utf8_continuation_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -8645,10 +8679,10 @@ inline fn parse_generative_terminal_utf8_continuation_a0_bf_(context: *data_stru
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_three_general" with index 48
-inline fn parse_generative_terminal_utf8_lead_three_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "terminal_\xe0" with index 48
+inline fn parse_terminal__x92xe0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
+        224 => { // '\xe0'
             context.releaseToken(1);
         },
         else => {
@@ -8658,10 +8692,10 @@ inline fn parse_generative_terminal_utf8_lead_three_general_(context: *data_stru
     }
 }
 
-// AST-Suppressed Parser for Symbol "terminal_\xed" with index 49
-inline fn parse_terminal__x92xed_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_a0_bf" with index 49
+inline fn parse_generative_terminal_utf8_continuation_a0_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        237 => { // '\xed'
+        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -8671,10 +8705,10 @@ inline fn parse_terminal__x92xed_(context: *data_structures.Context, occurrence_
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_9f" with index 50
-inline fn parse_generative_terminal_utf8_continuation_80_9f_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_three_general" with index 50
+inline fn parse_generative_terminal_utf8_lead_three_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
+        225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
         else => {
@@ -8684,10 +8718,10 @@ inline fn parse_generative_terminal_utf8_continuation_80_9f_(context: *data_stru
     }
 }
 
-// AST-Suppressed Parser for Symbol "terminal_\xf0" with index 51
-inline fn parse_terminal__x92xf0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "terminal_\xed" with index 51
+inline fn parse_terminal__x92xed_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        240 => { // '\xf0'
+        237 => { // '\xed'
             context.releaseToken(1);
         },
         else => {
@@ -8697,10 +8731,10 @@ inline fn parse_terminal__x92xf0_(context: *data_structures.Context, occurrence_
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_90_bf" with index 52
-inline fn parse_generative_terminal_utf8_continuation_90_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_9f" with index 52
+inline fn parse_generative_terminal_utf8_continuation_80_9f_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
         else => {
@@ -8710,10 +8744,10 @@ inline fn parse_generative_terminal_utf8_continuation_90_bf_(context: *data_stru
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_four_general" with index 53
-inline fn parse_generative_terminal_utf8_lead_four_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "terminal_\xf0" with index 53
+inline fn parse_terminal__x92xf0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
+        240 => { // '\xf0'
             context.releaseToken(1);
         },
         else => {
@@ -8723,10 +8757,10 @@ inline fn parse_generative_terminal_utf8_lead_four_general_(context: *data_struc
     }
 }
 
-// AST-Suppressed Parser for Symbol "terminal_\xf4" with index 54
-inline fn parse_terminal__x92xf4_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_90_bf" with index 54
+inline fn parse_generative_terminal_utf8_continuation_90_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
-        244 => { // '\xf4'
+        144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
         else => {
@@ -8736,7 +8770,33 @@ inline fn parse_terminal__x92xf4_(context: *data_structures.Context, occurrence_
     }
 }
 
-// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_8f" with index 55
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_four_general" with index 55
+inline fn parse_generative_terminal_utf8_lead_four_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_88(context, occurrence_recovery);
+        },
+    }
+}
+
+// AST-Suppressed Parser for Symbol "terminal_\xf4" with index 56
+inline fn parse_terminal__x92xf4_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    switch (context.head(u8, 0)) {
+        244 => { // '\xf4'
+            context.releaseToken(1);
+        },
+        else => {
+            @branchHint(.unlikely);
+            return ll_syntax_error_89(context, occurrence_recovery);
+        },
+    }
+}
+
+// AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_8f" with index 57
 inline fn parse_generative_terminal_utf8_continuation_80_8f_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     switch (context.head(u8, 0)) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
@@ -8744,7 +8804,7 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f_(context: *data_stru
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_88(context, occurrence_recovery);
+            return ll_syntax_error_90(context, occurrence_recovery);
         },
     }
 }
@@ -9120,7 +9180,7 @@ fn ll_syntax_error_38(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_39(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RecoveryPoint" }, &[_][]const u8{"\"", "\\", "^", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RecoveryPoint" }, &[_][]const u8{"\"", ">", "\\", "^"});
     context.setPendingSyntaxErrorSite(39);
     if (try llTryRecoverySelection_36(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9150,7 +9210,7 @@ fn ll_syntax_error_41(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_42(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "VerbatimMarker" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "VerbatimMarker" }, &[_][]const u8{">"});
     context.setPendingSyntaxErrorSite(42);
     if (try llTryRecoverySelection_38(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9160,7 +9220,7 @@ fn ll_syntax_error_42(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_43(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\\\"~\"~\"" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = ">>" }, &[_][]const u8{">>"});
     context.setPendingSyntaxErrorSite(43);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9168,27 +9228,23 @@ fn ll_syntax_error_43(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_44(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = ">" }, &[_][]const u8{">"});
     context.setPendingSyntaxErrorSite(44);
-    if (try llTryRecoverySelection_40(context, occurrence_recovery)) {
-        return;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_45(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\\\"~\"~\"" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(45);
-    if (try llTryRecoverySelection_41(context, occurrence_recovery)) {
-        return;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_46(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(46);
     if (try llTryRecoverySelection_42(context, occurrence_recovery)) {
         return;
@@ -9198,7 +9254,7 @@ fn ll_syntax_error_46(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_47(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(47);
     if (try llTryRecoverySelection_43(context, occurrence_recovery)) {
         return;
@@ -9208,23 +9264,27 @@ fn ll_syntax_error_47(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_48(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(48);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_44(context, occurrence_recovery)) {
+        return;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_49(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(49);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_45(context, occurrence_recovery)) {
+        return;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_50(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(50);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9232,7 +9292,7 @@ fn ll_syntax_error_50(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_51(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(51);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9240,7 +9300,7 @@ fn ll_syntax_error_51(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_52(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
     context.setPendingSyntaxErrorSite(52);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9248,7 +9308,7 @@ fn ll_syntax_error_52(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_53(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(53);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9256,7 +9316,7 @@ fn ll_syntax_error_53(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_54(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(54);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9264,7 +9324,7 @@ fn ll_syntax_error_54(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_55(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
     context.setPendingSyntaxErrorSite(55);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9272,7 +9332,7 @@ fn ll_syntax_error_55(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_56(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
     context.setPendingSyntaxErrorSite(56);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9280,7 +9340,7 @@ fn ll_syntax_error_56(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_57(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
     context.setPendingSyntaxErrorSite(57);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9288,7 +9348,7 @@ fn ll_syntax_error_57(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_58(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(58);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9296,85 +9356,85 @@ fn ll_syntax_error_58(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_59(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
     context.setPendingSyntaxErrorSite(59);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_60(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
+fn ll_syntax_error_60(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{"\x01", "\x02"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
     context.setPendingSyntaxErrorSite(60);
-    if (try llTryRecoverySelection_56(context, occurrence_recovery)) {
-        return data_structures.Node.invalid_pointer;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_61(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x01" }, &[_][]const u8{"\x01"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
     context.setPendingSyntaxErrorSite(61);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_62(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+fn ll_syntax_error_62(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x02" }, &[_][]const u8{"\x02"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{"\x01", "\x02"});
     context.setPendingSyntaxErrorSite(62);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_58(context, occurrence_recovery)) {
+        return data_structures.Node.invalid_pointer;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_63(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x01" }, &[_][]const u8{"\x01"});
     context.setPendingSyntaxErrorSite(63);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_64(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
+fn ll_syntax_error_64(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    @branchHint(.cold);
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x02" }, &[_][]const u8{"\x02"});
+    context.setPendingSyntaxErrorSite(64);
+    _ = occurrence_recovery;
+    return error.ExplicitSyntaxRecovery;
+}
+
+fn ll_syntax_error_65(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    @branchHint(.cold);
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    context.setPendingSyntaxErrorSite(65);
+    _ = occurrence_recovery;
+    return error.ExplicitSyntaxRecovery;
+}
+
+fn ll_syntax_error_66(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
     try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContentTail" }, &[_][]const u8{"\x01", "\x02", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
-    context.setPendingSyntaxErrorSite(64);
-    if (try llTryRecoverySelection_60(context, occurrence_recovery)) {
+    context.setPendingSyntaxErrorSite(66);
+    if (try llTryRecoverySelection_62(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
     }
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_65(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
+fn ll_syntax_error_67(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
     try context.recordSyntaxDiagnostic(.{ .while_parsing = "IdTail" }, &[_][]const u8{"\n", " ", "!", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
-    context.setPendingSyntaxErrorSite(65);
-    if (try llTryRecoverySelection_61(context, occurrence_recovery)) {
+    context.setPendingSyntaxErrorSite(67);
+    if (try llTryRecoverySelection_63(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
     }
-    return error.ExplicitSyntaxRecovery;
-}
-
-fn ll_syntax_error_66(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
-    context.setPendingSyntaxErrorSite(66);
-    _ = occurrence_recovery;
-    return error.ExplicitSyntaxRecovery;
-}
-
-fn ll_syntax_error_67(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
-    @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
-    context.setPendingSyntaxErrorSite(67);
-    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_68(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(68);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9382,45 +9442,43 @@ fn ll_syntax_error_68(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_69(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
     context.setPendingSyntaxErrorSite(69);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_70(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
+fn ll_syntax_error_70(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(70);
-    if (try llTryRecoverySelection_66(context, occurrence_recovery)) {
-        return data_structures.Node.invalid_pointer;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_71(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
     context.setPendingSyntaxErrorSite(71);
-    if (try llTryRecoverySelection_67(context, occurrence_recovery)) {
-        return;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
-fn ll_syntax_error_72(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+fn ll_syntax_error_72(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x00" }, &[_][]const u8{"\x00"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(72);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_68(context, occurrence_recovery)) {
+        return data_structures.Node.invalid_pointer;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_73(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(73);
-    if (try llTryRecoverySelection_40(context, occurrence_recovery)) {
+    if (try llTryRecoverySelection_69(context, occurrence_recovery)) {
         return;
     }
     return error.ExplicitSyntaxRecovery;
@@ -9428,17 +9486,15 @@ fn ll_syntax_error_73(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_74(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x00" }, &[_][]const u8{"\x00"});
     context.setPendingSyntaxErrorSite(74);
-    if (try llTryRecoverySelection_41(context, occurrence_recovery)) {
-        return;
-    }
+    _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_75(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(75);
     if (try llTryRecoverySelection_42(context, occurrence_recovery)) {
         return;
@@ -9448,7 +9504,7 @@ fn ll_syntax_error_75(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_76(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(76);
     if (try llTryRecoverySelection_43(context, occurrence_recovery)) {
         return;
@@ -9458,23 +9514,27 @@ fn ll_syntax_error_76(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_77(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(77);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_44(context, occurrence_recovery)) {
+        return;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_78(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(78);
-    _ = occurrence_recovery;
+    if (try llTryRecoverySelection_45(context, occurrence_recovery)) {
+        return;
+    }
     return error.ExplicitSyntaxRecovery;
 }
 
 fn ll_syntax_error_79(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(79);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9482,7 +9542,7 @@ fn ll_syntax_error_79(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_80(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(80);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9490,7 +9550,7 @@ fn ll_syntax_error_80(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_81(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
     context.setPendingSyntaxErrorSite(81);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9498,7 +9558,7 @@ fn ll_syntax_error_81(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_82(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(82);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9506,7 +9566,7 @@ fn ll_syntax_error_82(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_83(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(83);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9514,7 +9574,7 @@ fn ll_syntax_error_83(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_84(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
     context.setPendingSyntaxErrorSite(84);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9522,7 +9582,7 @@ fn ll_syntax_error_84(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_85(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
     context.setPendingSyntaxErrorSite(85);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9530,7 +9590,7 @@ fn ll_syntax_error_85(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_86(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
     context.setPendingSyntaxErrorSite(86);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9538,7 +9598,7 @@ fn ll_syntax_error_86(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_87(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(87);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9546,8 +9606,24 @@ fn ll_syntax_error_87(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_88(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
     context.setPendingSyntaxErrorSite(88);
+    _ = occurrence_recovery;
+    return error.ExplicitSyntaxRecovery;
+}
+
+fn ll_syntax_error_89(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    @branchHint(.cold);
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
+    context.setPendingSyntaxErrorSite(89);
+    _ = occurrence_recovery;
+    return error.ExplicitSyntaxRecovery;
+}
+
+fn ll_syntax_error_90(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    @branchHint(.cold);
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
+    context.setPendingSyntaxErrorSite(90);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
 }
@@ -10985,8 +11061,8 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         42 => {
             const diagnostic = context.runtime().last_diagnostic.?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_LowercaseId"))
-                @field(error_messages, "syntax_error_ll_VerbatimMarker__expected_LowercaseId")(.{
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_terminal__x62_or_terminal__x62_x62"))
+                @field(error_messages, "syntax_error_ll_VerbatimMarker__expected_terminal__x62_or_terminal__x62_x62")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
                     .diagnostic = diagnostic,
@@ -11018,6 +11094,74 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
         43 => {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62_x62__expected_terminal__x62_x62"))
+                @field(error_messages, "syntax_error_ll_terminal__x62_x62__expected_terminal__x62_x62")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62_x62"))
+                @field(error_messages, "syntax_error_ll_terminal__x62_x62")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
+        },
+        44 => {
+            const diagnostic = context.runtime().last_diagnostic.?;
+            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62__expected_terminal__x62"))
+                @field(error_messages, "syntax_error_ll_terminal__x62__expected_terminal__x62")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62"))
+                @field(error_messages, "syntax_error_ll_terminal__x62")(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error_ll"))
+                error_messages.syntax_error_ll(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else if (comptime @hasDecl(error_messages, "syntax_error"))
+                error_messages.syntax_error(.{
+                    .allocator = context.runtime().arena_allocator,
+                    .context = context,
+                    .diagnostic = diagnostic,
+                    .style = .ansi,
+                }) catch ""
+            else
+                root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
+        },
+        45 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34__expected_generative_terminal_character_x94_x92_x92_x34_x126_x34_x126_x34")(.{
@@ -11051,7 +11195,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        44 => {
+        46 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
                 @field(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")(.{
@@ -11085,7 +11229,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        45 => {
+        47 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")(.{
@@ -11119,7 +11263,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        46 => {
+        48 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")(.{
@@ -11153,7 +11297,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        47 => {
+        49 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")(.{
@@ -11187,7 +11331,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        48 => {
+        50 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")(.{
@@ -11221,7 +11365,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        49 => {
+        51 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")(.{
@@ -11255,7 +11399,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        50 => {
+        52 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")(.{
@@ -11289,7 +11433,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        51 => {
+        53 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")(.{
@@ -11323,7 +11467,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        52 => {
+        54 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")(.{
@@ -11357,7 +11501,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        53 => {
+        55 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")(.{
@@ -11391,7 +11535,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        54 => {
+        56 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")(.{
@@ -11425,7 +11569,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        55 => {
+        57 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")(.{
@@ -11459,7 +11603,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        56 => {
+        58 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")(.{
@@ -11493,7 +11637,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        57 => {
+        59 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")(.{
@@ -11527,7 +11671,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        58 => {
+        60 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")(.{
@@ -11561,7 +11705,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        59 => {
+        61 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")(.{
@@ -11595,7 +11739,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        60 => {
+        62 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02"))
                 @field(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02")(.{
@@ -11629,7 +11773,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        61 => {
+        63 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01"))
                 @field(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01")(.{
@@ -11663,7 +11807,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        62 => {
+        64 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02"))
                 @field(error_messages, "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02")(.{
@@ -11697,7 +11841,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        63 => {
+        65 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92n_x34__expected_generative_terminal_character_x94_x34_x92n_x34")(.{
@@ -11731,7 +11875,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        64 => {
+        66 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34"))
                 @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92n_x34")(.{
@@ -11765,7 +11909,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        65 => {
+        67 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
                 @field(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__")(.{
@@ -11799,7 +11943,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        66 => {
+        68 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter")(.{
@@ -11833,7 +11977,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        67 => {
+        69 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit")(.{
@@ -11867,7 +12011,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        68 => {
+        70 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter")(.{
@@ -11901,7 +12045,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        69 => {
+        71 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter")(.{
@@ -11935,7 +12079,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        70 => {
+        72 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
                 @field(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter")(.{
@@ -11969,7 +12113,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        71 => {
+        73 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
                 @field(error_messages, "syntax_error_ll__AugmentedStart__expected_Start")(.{
@@ -12003,7 +12147,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        72 => {
+        74 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF"))
                 @field(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF")(.{
@@ -12037,7 +12181,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        73 => {
+        75 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
                 @field(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")(.{
@@ -12071,7 +12215,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        74 => {
+        76 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")(.{
@@ -12105,7 +12249,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        75 => {
+        77 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")(.{
@@ -12139,7 +12283,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        76 => {
+        78 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")(.{
@@ -12173,7 +12317,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        77 => {
+        79 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")(.{
@@ -12207,7 +12351,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        78 => {
+        80 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")(.{
@@ -12241,7 +12385,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        79 => {
+        81 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")(.{
@@ -12275,7 +12419,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        80 => {
+        82 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")(.{
@@ -12309,7 +12453,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        81 => {
+        83 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")(.{
@@ -12343,7 +12487,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        82 => {
+        84 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")(.{
@@ -12377,7 +12521,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        83 => {
+        85 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")(.{
@@ -12411,7 +12555,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        84 => {
+        86 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")(.{
@@ -12445,7 +12589,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        85 => {
+        87 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")(.{
@@ -12479,7 +12623,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        86 => {
+        88 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")(.{
@@ -12513,7 +12657,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        87 => {
+        89 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")(.{
@@ -12547,7 +12691,7 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
                 root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
             if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
         },
-        88 => {
+        90 => {
             const diagnostic = context.runtime().last_diagnostic.?;
             const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")(.{

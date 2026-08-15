@@ -6,7 +6,7 @@
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Syntax-Error Recovery](#syntax-error-recovery)
-- [Verbatim Raw Capture (`!verbatim`)](#verbatim-raw-capture-verbatim)
+- [Verbatim Raw Capture (`!>>` / `!>"..."`)](#verbatim-raw-capture)
 - [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -58,24 +58,25 @@ configure the limit and search window through `ParseOptions.max_errors` and
 
 ---
 
-## Verbatim Raw Capture (`!verbatim`)
+## Verbatim Raw Capture (`!>>` / `!>"..."`)
 
-An RHS occurrence annotated `!verbatim` matches normally, then its matched
-bytes act as a terminator: the runtime captures every raw byte until the
-terminator reappears, without lexing, indentation translation, or escape
-decoding. In the LL generator the capture is emitted at the child call site; in
-the LR generator a terminal occurrence captures at its shift and a variable
-occurrence captures when its rule reduces. Because a captured body may begin
-with any byte, an LR verbatim reduction is emitted as a default action on all
-lookaheads rather than being gated on the symbol's follow set. The reduction
+An RHS occurrence annotated `!>>` matches normally, then its matched
+bytes act as a terminator; an occurrence annotated `!>"..."` uses the given
+terminal as a fixed terminator. Either way the runtime captures every raw byte
+until the terminator reappears, without lexing, indentation translation, or
+escape decoding. In the LL generator the capture is emitted at the child call
+site; in the LR generator a terminal occurrence captures at its shift and a
+variable occurrence captures when its rule reduces. Because a captured body may
+begin with any byte, an LR verbatim reduction is emitted as a default action on
+all lookaheads rather than being gated on the symbol's follow set. The reduction
 records the terminator symbol's span before the capture advances the input
 offset, so the annotated symbol's node covers only the terminator bytes.
 
 Verbatim capture scans the whole buffered input, so parsers using it enable
 source retention automatically and force `is_input_streaming_enabled = false`.
-The LL generator supports verbatim capture without node tracking; the LR
-generator requires AST or procedures and otherwise rejects the grammar with
-`error.VerbatimRequiresNodeTracking`.
+Both the LL and LR generators support verbatim capture without node tracking;
+the marker grammar lexes only `>>` and `> "..."`, so any other marker text is a
+syntax error in the galley grammar itself.
 
 ---
 

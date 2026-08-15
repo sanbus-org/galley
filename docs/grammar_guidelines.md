@@ -9,7 +9,7 @@
 - [5. Explicit Syntax Recovery (`!`)](#5-explicit-syntax-recovery-)
 - [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
-- [8. Verbatim Raw Capture (`!verbatim`)](#8-verbatim-raw-capture-verbatim)
+- [8. Verbatim Raw Capture (`!>>` / `!>"..."`)](#8-verbatim-raw-capture)
 
 ---
 
@@ -302,50 +302,55 @@ for suffix calls, list gets, and casts.
 
 ---
 
-## 8. Verbatim Raw Capture (`!verbatim`)
+## 8. Verbatim Raw Capture (`!>>` / `!>"..."`)
 
-Annotate an RHS occurrence with the bare marker `!verbatim` to consume a raw
-block of source bytes opaquely. The occurrence still matches normally; the
-bytes it matched become a terminator, and the parser captures every raw byte
-from just after the terminator until the terminator reappears in the input,
-then resumes the remaining RHS.
+Annotate an RHS occurrence with the verbatim marker `!>>` (derived terminator)
+or `!>"..."` (literal terminator) to consume a raw block of source bytes
+opaquely. For `!>>`, the occurrence still matches normally and the bytes it
+matched become a terminator; the parser captures every raw byte from just
+after the terminator until the terminator reappears in the input, then resumes
+the remaining RHS. For `!>"..."`, the given terminal is the fixed terminator and
+the annotated symbol is the anchor.
 
 ```text
 Program
-| "<<<" UpperPair!verbatim LowerTail
-| "]]]" "%%"!verbatim LowerTail
+| "<<<" UpperPair!>> LowerTail
+| "]]]" "%%"!>> LowerTail
+| "{{{" UpperPair!>"/>" LowerTail
 ```
 
-- The marker is a bareword: `!verbatim` only. Any other marker text is rejected
-  during parsing (`error.InvalidVerbatimMarker`).
-- The annotated symbol may be a variable occurrence (`UpperPair!verbatim`) or a
-  terminal occurrence (`"%%"!verbatim`). For a variable, the terminator is the
-  exact source bytes the variable matched; for a terminal, the terminal's literal
-  bytes.
+- The marker grammar lexes only the two marker forms: `>>` (derived) and
+  `> "..."` (literal terminator). Any other marker text is a syntax error in
+  the galley grammar itself.
+- The annotated symbol may be a variable occurrence (`UpperPair!>>`) or a
+  terminal occurrence (`"%%"!>>`). For a variable with `!>>`, the terminator is
+  the exact source bytes the variable matched; for a terminal, the terminal's
+  literal bytes. With `!>"..."` the terminator is exactly the literal bytes.
 - The captured body is not lexed: no tokenization, indentation translation, or
   escape decoding applies inside it. The search for the reappearing terminator
   is byte-exact and case-sensitive, and stops at the first occurrence.
-- The terminator must be non-empty and non-nullable, otherwise generation fails
-  with `error.EmptyVerbatimSymbol`.
+- A derived terminator must come from a non-empty, non-nullable symbol;
+  generation fails with `error.EmptyVerbatimSymbol`. A literal terminator must
+  be non-empty and contain no NUL bytes; generation fails with
+  `error.EmptyVerbatimTerminator` or `error.NulVerbatimTerminator`.
 - An unterminated capture raises `error.UnterminatedRawString`, reporting the
   terminator bytes as the expected tokens.
 
-Semantic span: the annotated symbol's node covers only the terminator symbol's
-own matched bytes (for example `EN`); the captured body is consumed but does not
-extend the symbol's span. The enclosing rule's node still spans the entire
-production, body included.
+Semantic span: the annotated symbol's node covers only the anchor terminator
+symbol's own matched bytes (for example `EN` in `<<<EN...`); the captured body
+is consumed but does not extend the symbol's span. The enclosing rule's node
+still spans the entire production, body included.
 
 Parser notes:
 
-- The LL generator supports `!verbatim` with or without AST and procedures.
-- The LR generator requires node tracking for verbatim capture (AST or
-  procedures enabled), otherwise generation fails with
-  `error.VerbatimRequiresNodeTracking`. At runtime, LR parses a variable
-  terminator by reducing it as a default action, because the captured body may
-  begin with any byte.
+- The LL generator supports verbatim capture with or without AST and
+  procedures.
+- At runtime, LR parses a variable terminator by reducing it as a default
+  action, because the captured body may begin with any byte; a literal
+  terminator keeps the anchor short and is often the simpler LR shape.
 - Verbatim capture keeps the entire input in memory: source retention is
   enabled automatically and input streaming is disabled for parsers that use
-  `!verbatim`.
+  verbatim capture.
 
 Galley's own grammar demonstrates the syntax; `tests/verbatim/grammar.grm` is a
 maintained example with plain and indentation-mode test fixtures.
