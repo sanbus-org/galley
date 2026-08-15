@@ -115,3 +115,31 @@ test "unterminated verbatim literal terminator reports UnterminatedRawString" {
         .{},
     ));
 }
+
+test "verbatim literal terminator on a variable anchor consumes the raw body" {
+    const input = "{{{EN{raw $ body}/>tail";
+    parser.procedures.resetCaptures();
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
+
+    const program = findCapture("Program") orelse return error.MissingCapture;
+    try std.testing.expectEqual(@as(usize, 0), program.start);
+    try std.testing.expectEqual(input.len, program.start + program.length);
+    try std.testing.expectEqualStrings(input, program.text[0..program.text_len]);
+
+    const upper_pair = findCapture("UpperPair") orelse return error.MissingCapture;
+    try std.testing.expectEqualStrings("EN", upper_pair.text[0..upper_pair.text_len]);
+
+    const tail = findCapture("LowerTail") orelse return error.MissingCapture;
+    try std.testing.expectEqualStrings("tail", tail.text[0..tail.text_len]);
+}
+
+test "unterminated verbatim literal terminator on a variable anchor reports UnterminatedRawString" {
+    try std.testing.expectError(error.UnterminatedRawString, parser.parseBytes(
+        std.testing.io,
+        std.testing.allocator,
+        "{{{EN raw body without the marker",
+        .{},
+    ));
+}

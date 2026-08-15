@@ -267,6 +267,9 @@ const Builder = struct {
         const lhs_annotations = self.grammar.rules.items[lhs.?.rule].rhs_annotations.items[lhs.?.position];
         const rhs_annotations = self.grammar.rules.items[rhs.?.rule].rhs_annotations.items[rhs.?.position];
         if (lhs_annotations.verbatim != rhs_annotations.verbatim) return false;
+        const lhs_verbatim_literal = lhs_annotations.verbatim_literal orelse "";
+        const rhs_verbatim_literal = rhs_annotations.verbatim_literal orelse "";
+        if (!std.mem.eql(u8, lhs_verbatim_literal, rhs_verbatim_literal)) return false;
         const lhs_names = lhs_annotations.procedures.items;
         const rhs_names = rhs_annotations.procedures.items;
         if (lhs_names.len != rhs_names.len) return false;

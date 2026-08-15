@@ -258,7 +258,7 @@ pub const Context = struct {
     /// fails with `error.UnterminatedRawString`, mirroring recovery points by
     /// carrying the expected terminator bytes in the recorded diagnostic.
     ///
-    /// `!verbatim` capture requires retained source, so the generated parser
+    /// Verbatim capture requires retained source, so the generated parser
     /// disables input streaming and every token buffer already holds the
     /// complete input.
     pub fn captureVerbatim(self: *Self, terminator: []const u8) !void {
@@ -303,7 +303,7 @@ pub const Context = struct {
         }
     }
 
-    /// Reports an unterminated `!verbatim` capture with the expected terminator
+    /// Reports an unterminated verbatim capture with the expected terminator
     /// bytes as the diagnostic's expected tokens.
     fn recordUnterminatedVerbatim(self: *Self, terminator: []const u8) !void {
         if (self.input_read_failed) return error.ReadFailed;

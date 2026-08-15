@@ -25,6 +25,7 @@ pub const Annotations = struct {
     procedures: []const []const u8 = &.{},
     recovery_points: []const RecoveryPoint = &.{},
     verbatim: bool = false,
+    verbatim_literal: ?[]const u8 = null,
 };
 
 pub const SymbolRef = struct {
@@ -214,7 +215,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Poin
 
     var rule = MutableRule{ .header = try allocator.dupe(u8, nodeText(context, header_address)) };
     if (firstChildNamed(context, rule_address, "RecoveryTail")) |recovery_address| {
-        try appendRecoveryTail(context, &rule.recovery_points, recovery_address, null);
+        try appendRecoveryTail(context, &rule.recovery_points, recovery_address, null, null);
     }
     if (firstChildNamed(context, rule_address, "ProcedureTail")) |procedures_address| {
         try appendProcedureTail(context, &rule.procedures, procedures_address);
@@ -242,7 +243,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Po
 
     var rhs = MutableRightHandSide{};
     if (firstChildNamed(context, line_address, "RecoveryTail")) |recovery_address| {
-        try appendRecoveryTail(context, &rhs.recovery_points, recovery_address, null);
+        try appendRecoveryTail(context, &rhs.recovery_points, recovery_address, null, null);
     }
     try appendProcedureTail(context, &rhs.procedures, line_procedures_address);
     const symbols_parent_address = rhs_address orelse return rhs;
@@ -283,7 +284,8 @@ fn symbolFromAst(
     try appendProcedureTail(context, &procedures, procedure_tail_address);
     var recovery_points = std.ArrayList(RecoveryPoint).empty;
     var verbatim = false;
-    if (recovery_tail_address) |address| try appendRecoveryTail(context, &recovery_points, address, &verbatim);
+    var verbatim_literal: ?[]const u8 = null;
+    if (recovery_tail_address) |address| try appendRecoveryTail(context, &recovery_points, address, &verbatim, &verbatim_literal);
     if (recovery_points.items.len != 0 and kind != .variable) return error.InvalidRecoveryTarget;
 
     return .{
@@ -293,20 +295,30 @@ fn symbolFromAst(
             .procedures = try procedures.toOwnedSlice(allocator),
             .recovery_points = try recovery_points.toOwnedSlice(allocator),
             .verbatim = verbatim,
+            .verbatim_literal = verbatim_literal,
         },
     };
 }
 
-fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: Node.Pointer, verbatim_target: ?*bool) !void {
+fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: Node.Pointer, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8) !void {
     const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(recovery_tail_address).first_child;
     while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "RecoveryPoint")) {
             if (firstDescendantNamed(context, child_address, "VerbatimMarker")) |marker_address| {
-                if (!std.mem.eql(u8, nodeText(context, marker_address), "verbatim")) return error.InvalidVerbatimMarker;
-                if (verbatim_target) |flag| {
-                    flag.* = true;
+                if (verbatim_active) |active| {
+                    active.* = true;
+                    if (firstDescendantNamed(context, marker_address, "TerminalSymbol")) |terminal_address| {
+                        const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
+                        if (terminal.len == 0) return error.EmptyVerbatimTerminator;
+                        if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulVerbatimTerminator;
+                        if (verbatim_literal) |literal| {
+                            literal.* = terminal;
+                        }
+                    } else if (verbatim_literal) |literal| {
+                        literal.* = null;
+                    }
                 } else {
                     return error.InvalidVerbatimPlacement;
                 }

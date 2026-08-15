@@ -40,7 +40,7 @@ TerminalSymbol
 | \"~"~" SimpleStringContent \"~"~"
 
 RawString
-| "\u{5c}\u{22}" RawIndicator!verbatim "\u{22}"
+| "\u{5c}\u{22}" RawIndicator!>> "\u{22}"
 
 RawIndicator
 | character^\"~"~"^"\n"^"\\"
@@ -70,7 +70,8 @@ RecoveryPointBody
 | TerminalSymbol "^"
 
 VerbatimMarker
-| LowercaseId
+| ">>"
+| ">" TerminalSymbol
 
 SimpleStringContent
 | SimpleStringContent character^\"~"~"

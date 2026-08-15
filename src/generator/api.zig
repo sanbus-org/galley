@@ -71,10 +71,15 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotati
             .@"resume" = point.@"resume",
         };
     }
+    const verbatim_literal = if (source.verbatim_literal) |literal|
+        try allocator.dupe(u8, literal)
+    else
+        null;
     return .{
         .procedures = try cloneStringSlice(allocator, source.procedures),
         .recovery_points = recovery_points,
         .verbatim = source.verbatim,
+        .verbatim_literal = verbatim_literal,
     };
 }
 
@@ -96,7 +101,7 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
                 symbol.* = .{
                     .id = source_symbol.id,
                     .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim },
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal },
                 };
             }
             rhs.* = .{
@@ -548,13 +553,13 @@ test "generation rejects variables referenced but never defined" {
 test "generation rejects empty-matchable verbatim symbols" {
     const empty_literal_source =
         \\Start
-        \\| ""!verbatim "x"
+        \\| ""!>> "x"
         \\
     ;
 
     const nullable_variable_source =
         \\Start
-        \\| Body!verbatim "x"
+        \\| Body!>> "x"
         \\
         \\Body
         \\| "a" Body
@@ -584,25 +589,91 @@ test "generation rejects empty-matchable verbatim symbols" {
     }
 }
 
-test "grammar rejects verbatim markers other than the verbatim marker" {
-    const source =
-        \\Start
-        \\| Word!foo "x"
-        \\
-        \\Word
-        \\| "w"
-        \\
-    ;
-
+test "literal verbatim terminators emit literal capture" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    try std.testing.expectError(error.InvalidVerbatimMarker, parseGrammar(arena.allocator(), source));
+    const allocator = arena.allocator();
+
+    const body_symbols = [_]SymbolRef{.{ .id = "b", .kind = .terminal }};
+    const start_symbols = [_]SymbolRef{
+        .{ .id = "Body", .kind = .variable, .annotations = .{ .verbatim = true, .verbatim_literal = "%%" } },
+        .{ .id = "end", .kind = .terminal },
+    };
+    const rules = [_]Rule{
+        .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &start_symbols }} },
+        .{ .header = "Body", .right_hand_sides = &.{.{ .symbols = &body_symbols }} },
+    };
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        try emitParser(allocator, &.{ .rules = &rules }, &output.writer, parser_type, .{ .with_procedures = true });
+        try std.testing.expect(std.mem.indexOf(u8, output.written(), "captureVerbatim(\"%%\")") != null);
+    }
+}
+
+test "generation rejects empty or NUL literal verbatim terminators" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const empty_literal_symbols = [_]SymbolRef{
+        .{ .id = "Body", .kind = .variable, .annotations = .{ .verbatim = true, .verbatim_literal = "" } },
+        .{ .id = "end", .kind = .terminal },
+    };
+    const nul_literal_symbols = [_]SymbolRef{
+        .{ .id = "Body", .kind = .variable, .annotations = .{ .verbatim = true, .verbatim_literal = "a\x00b" } },
+        .{ .id = "end", .kind = .terminal },
+    };
+    const body_symbols = [_]SymbolRef{.{ .id = "b", .kind = .terminal }};
+
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        var empty_rules = [_]Rule{
+            .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &empty_literal_symbols }} },
+            .{ .header = "Body", .right_hand_sides = &.{.{ .symbols = &body_symbols }} },
+        };
+        try std.testing.expectError(error.EmptyVerbatimTerminator, emitParser(allocator, &.{ .rules = &empty_rules }, &output.writer, parser_type, .{ .with_procedures = true }));
+
+        var nul_rules = [_]Rule{
+            .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &nul_literal_symbols }} },
+            .{ .header = "Body", .right_hand_sides = &.{.{ .symbols = &body_symbols }} },
+        };
+        try std.testing.expectError(error.NulVerbatimTerminator, emitParser(allocator, &.{ .rules = &nul_rules }, &output.writer, parser_type, .{ .with_procedures = true }));
+    }
+}
+
+test "distinct literal verbatim terminators emit each literal" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const body_symbols = [_]SymbolRef{.{ .id = "b", .kind = .terminal }};
+    const symbols = [_]SymbolRef{
+        .{ .id = "a", .kind = .terminal, .annotations = .{ .verbatim = true, .verbatim_literal = "one" } },
+        .{ .id = "Body", .kind = .variable },
+        .{ .id = "a", .kind = .terminal, .annotations = .{ .verbatim = true, .verbatim_literal = "two" } },
+    };
+    const rules = [_]Rule{
+        .{ .header = "Start", .right_hand_sides = &.{.{ .symbols = &symbols }} },
+        .{ .header = "Body", .right_hand_sides = &.{.{ .symbols = &body_symbols }} },
+    };
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        try emitParser(allocator, &.{ .rules = &rules }, &output.writer, parser_type, .{ .with_procedures = true });
+        const generated = output.written();
+        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"one\")") != null);
+        try std.testing.expect(std.mem.indexOf(u8, generated, "captureVerbatim(\"two\")") != null);
+    }
 }
 
 test "LR support verbatim capture without AST or procedures" {
     const source =
         \\Start
-        \\| Body!verbatim "x"
+        \\| Body!>> "x"
         \\
         \\Body
         \\| "b"
@@ -954,7 +1025,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 168), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 164), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

@@ -44,6 +44,7 @@ pub const Annotations = struct {
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
     verbatim: bool = false,
+    verbatim_literal: ?[]const u8 = null,
 };
 
 pub const Symbol = struct {
@@ -322,7 +323,13 @@ pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const Pre
     if (!grammar.uses_verbatim) return;
     for (grammar.rules.items) |rule| {
         for (rule.rhs.items, 0..) |symbol_index, position| {
-            if (!rule.rhs_annotations.items[position].verbatim) continue;
+            const annotations = rule.rhs_annotations.items[position];
+            if (!annotations.verbatim) continue;
+            if (annotations.verbatim_literal) |literal| {
+                if (literal.len == 0) return error.EmptyVerbatimTerminator;
+                if (std.mem.indexOfScalar(u8, literal, 0) != null) return error.NulVerbatimTerminator;
+                continue;
+            }
             const symbol = grammar.symbols.items[symbol_index];
             const empty_matchable = switch (symbol.kind) {
                 .terminal, .generative_terminal => symbol.id.len == 0,
@@ -512,7 +519,14 @@ pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList
 pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotations {
     var result = Annotations{
         .verbatim = if (@hasField(@TypeOf(source), "verbatim")) source.verbatim else false,
+        .verbatim_literal = if (@hasField(@TypeOf(source), "verbatim_literal"))
+            source.verbatim_literal
+        else
+            null,
     };
+    if (result.verbatim_literal) |literal| {
+        result.verbatim_literal = try allocator.dupe(u8, literal);
+    }
     try appendProcedureNames(allocator, &result.procedures, source.procedures);
     for (source.recovery_points) |point| {
         try result.recovery_points.append(allocator, .{
@@ -528,6 +542,11 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
 
 pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, source: anytype) !void {
     target.verbatim = target.verbatim or (@hasField(@TypeOf(source), "verbatim") and source.verbatim);
+    if (@hasField(@TypeOf(source), "verbatim_literal")) {
+        if (source.verbatim_literal) |literal| {
+            target.verbatim_literal = try allocator.dupe(u8, literal);
+        }
+    }
     try appendProcedureNames(allocator, &target.procedures, source.procedures);
     for (source.recovery_points) |point| {
         try target.recovery_points.append(allocator, .{

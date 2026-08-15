@@ -1,6 +1,7 @@
 Program
-| "<<<" UpperPair!verbatim LowerTail
-| "]]]" "%%"!verbatim LowerTail
+| "<<<" UpperPair!>> LowerTail
+| "]]]" "%%"!>> LowerTail
+| "{{{" UpperPair!>"/>" LowerTail
 
 UpperPair
 | uppercase_letter uppercase_letter

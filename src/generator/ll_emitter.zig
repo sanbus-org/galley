@@ -26,6 +26,7 @@ const Generator = struct {
     has_occurrence_procedures: bool,
     uses_explicit_recovery: bool,
     uses_verbatim: bool,
+    verbatim_literal: ?[]const u8 = null,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -971,6 +972,7 @@ const Generator = struct {
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
         const verbatim = rule.rhs_annotations.items[child_index].verbatim;
+        self.verbatim_literal = rule.rhs_annotations.items[child_index].verbatim_literal;
         const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or (child.kind == .variable and !child.ast_enabled));
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         const call_name = if (symbol_index == parent_variable)
@@ -1069,13 +1071,17 @@ const Generator = struct {
     }
 
     fn emitVerbatimTerminatorStart(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
-        if (self.symbols.items[symbol_index].kind == .terminal) return;
+        if (self.verbatim_literal != null or self.symbols.items[symbol_index].kind == .terminal) return;
         try writer.print("{s}const verbatim_start = context.currentTokenSourceOffset();\n", .{indent});
     }
 
     fn emitVerbatimCapture(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, indent: []const u8) !void {
         const child = self.symbols.items[symbol_index];
-        if (child.kind == .terminal) {
+        if (self.verbatim_literal) |literal| {
+            try writer.print("{s}try context.captureVerbatim(", .{indent});
+            try common.emitStringLiteral(writer, literal);
+            try writer.writeAll(");\n");
+        } else if (child.kind == .terminal) {
             try writer.print("{s}try context.captureVerbatim(", .{indent});
             try common.emitStringLiteral(writer, child.id);
             try writer.writeAll(");\n");
