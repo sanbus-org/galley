@@ -1031,8 +1031,8 @@ def json_unicode_benchmark(gen_opts, args):
     args.benchmark_plan.append(prepare_benchmark_suite("json-unicode", gen_opts, args))
 
 
-def ll1_benchmark(gen_opts, args):
-    args.benchmark_plan.append(prepare_benchmark_suite("ll1", gen_opts, args))
+def indentation_benchmark(gen_opts, args):
+    args.benchmark_plan.append(prepare_benchmark_suite("indentation", gen_opts, args))
 
 
 def lisp_benchmark(gen_opts, args):
@@ -1071,7 +1071,7 @@ BENCHMARKS = {
     "json-unicode": json_unicode_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
-    "ll1": ll1_benchmark,
+    "indentation": indentation_benchmark,
 }
 
 

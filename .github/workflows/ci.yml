@@ -55,7 +55,7 @@ jobs:
           - ll-json-recovery
           - lr-json-recovery
           - ll-lisp
-          - ll-ll1
+          - ll-indentation
           - ll-lua
     steps:
       - name: Checkout repository

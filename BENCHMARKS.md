@@ -288,7 +288,7 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
   LR  ✓ast ✓term  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      62.2 MB/s
 ```
 
-### `languages/galley/samples/ll1-ll.grm`
+### `languages/galley/samples/indentation-ll.grm`
 
 | AST | Term. | LL         | LR         | LL/LR |
 | --- | ----- | ---------- | ---------- | ----- |
@@ -307,13 +307,13 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
 
 ---
 
-## LL(1)
+## Indentation
 
-_A procedure-free indentation-sensitive grammar whose delimiter tokens make every decision point unambiguous with one token of lookahead. Used to exercise and benchmark the LL(1) fast path._
+_A procedure-free indentation-sensitive grammar whose delimiter tokens make every decision point unambiguous with one token of lookahead. Used to exercise and benchmark indentation handling in LL and LR parsers._
 
 _AST = build syntax tree · Term. = include terminal nodes in tree_
 
-### `languages/ll1/samples/code-01`
+### `languages/indentation/samples/code-01`
 
 | AST | Term. | LL         | LR | LL/LR |
 | --- | ----- | ---------- | -- | ----- |
@@ -330,7 +330,7 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
   LR  ✓ast ✗term  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░       0.0 MB/s
 ```
 
-### `languages/ll1/samples/code-02`
+### `languages/indentation/samples/code-02`
 
 | AST | Term. | LL         | LR | LL/LR |
 | --- | ----- | ---------- | -- | ----- |

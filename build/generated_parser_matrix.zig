@@ -89,7 +89,7 @@ const languages = [_][]const u8{
     "json-structured-ast",
     "lisp",
     "lua",
-    "ll1",
+    "indentation",
 };
 
 pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !Work {

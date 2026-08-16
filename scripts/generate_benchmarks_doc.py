@@ -524,10 +524,10 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "returns, function-call expressions, integer literals, strings, comments, "
         "and keyed table constructors."
     ),
-    "ll1": (
+    "indentation": (
         "A procedure-free indentation-sensitive grammar whose delimiter tokens make "
         "every decision point unambiguous with one token of lookahead. Used to exercise "
-        "and benchmark the LL(1) fast path."
+        "and benchmark indentation handling in LL and LR parsers."
     ),
 }
 
@@ -539,7 +539,7 @@ GRAMMAR_SECTION_ORDER = [
     "galley",
     "json-augmented",
     "json-structured-ast",
-    "ll1",
+    "indentation",
 ]
 
 
@@ -550,7 +550,7 @@ GRAMMAR_SECTION_LABELS = {
     "galley": "Galley",
     "json-augmented": "JSON Augmented",
     "json-structured-ast": "JSON with Structured AST",
-    "ll1": "LL(1)",
+    "indentation": "Indentation",
 }
 
 
