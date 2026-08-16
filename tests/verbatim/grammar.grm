@@ -1,7 +1,7 @@
 Program
-| "<<<" UpperPair!>> LowerTail
-| "]]]" "%%"!>> LowerTail
-| "{{{" UpperPair!>"/>"^ LowerTail
+| "<<<" UpperPair@>> LowerTail
+| "]]]" "%%"@>> LowerTail
+| "{{{" UpperPair@>"/>"^ LowerTail
 
 UpperPair
 | uppercase_letter uppercase_letter
