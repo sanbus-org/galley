@@ -187,14 +187,13 @@ test "unfiltered selection includes every suite and case" {
     try std.testing.expect(selection.includes(.generator));
     try std.testing.expect(selection.includes(.matrix_api));
     try std.testing.expect(selection.includes(.galley_parity));
-    try std.testing.expect(selection.matchesCase("ll-sanbus"));
+    try std.testing.expect(selection.matchesCase("ll-json"));
 }
 
 test "selectors OR within a type and AND across types" {
     const selection = try Selection.parse(std.testing.allocator, &.{
         "suite:matrix-api",
         "suite:matrix-error",
-        "case:ll-sanbus",
         "case:lr-json",
         "name:parse bytes",
         "name:parse files",
@@ -205,14 +204,13 @@ test "selectors OR within a type and AND across types" {
 
     try std.testing.expect(selection.includes(.matrix_api));
     try std.testing.expect(selection.includes(.matrix_error));
-    try std.testing.expect(selection.matchesCase("ll-sanbus"));
     try std.testing.expect(selection.matchesCase("lr-json"));
     try std.testing.expect(!selection.matchesCase("ll-json"));
     try std.testing.expectEqual(@as(usize, 2), selection.names.len);
 }
 
 test "case selector defaults to the complete matrix suite" {
-    const selection = try Selection.parse(std.testing.allocator, &.{"case:ll-sanbus"});
+    const selection = try Selection.parse(std.testing.allocator, &.{"case:ll-json"});
     defer std.testing.allocator.free(selection.suites);
     defer std.testing.allocator.free(selection.cases);
     defer std.testing.allocator.free(selection.names);
@@ -225,9 +223,9 @@ test "case selector defaults to the complete matrix suite" {
 }
 
 test "invalid selector forms are rejected" {
-    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"ll-sanbus"}, false));
+    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"ll-json"}, false));
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"suite:unknown"}, false));
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"name:dropSelf"}, false));
-    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{ "suite:runtime", "case:ll-sanbus" }, false));
+    try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{ "suite:runtime", "case:ll-json" }, false));
     try std.testing.expectError(error.InvalidTestFilter, Selection.parseInternal(std.testing.allocator, &.{"suite:removed"}, false));
 }

@@ -39,7 +39,7 @@ pub fn add(b: *std.Build, options: Options) !void {
     const generator = options.generator;
     const generate_parser_file_exe = options.generate_parser_file_exe;
 
-    // Usage: zig build test -Dtest-filter="case:ll-sanbus"
+    // Usage: zig build test -Dtest-filter="case:ll-json"
     // Usage: zig build test -Dtest-filter="suite:runtime" -Dtest-filter="name:dropSelf"
     // Long-running samples: zig build test --test-timeout 30m
     const selection = try test_selection.Selection.parse(b.allocator, options.test_filters);
@@ -1155,7 +1155,7 @@ fn addInputStreamingTests(
     kind: InputStreamingTestKind,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const language = if (kind == .indentation or kind == .indentation_no_streaming) "sanbus" else "json";
+    const language = if (kind == .indentation or kind == .indentation_no_streaming) "ll1" else "json";
     const label = @tagName(kind);
     const parser_name = b.fmt("input-streaming-{s}-{s}", .{ parser_type, label });
 

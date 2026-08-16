@@ -1,5 +1,5 @@
 Start
-| NewLineTail Rules
+| Rules
 
 Rules
 | Rule RulesTail
@@ -9,44 +9,27 @@ RulesTail
 |
 
 Rule
-| UppercaseId RuleTail
-
-RuleTail
-| ".:" EnumBody
-| ":" ActionBody
-
-EnumBody
-| BlockStart EnumItems BlockEnd
-
-EnumItems
-| EnumItemRow EnumItemsTail
-
-EnumItemsTail@dropIfEmpty
-| NewLine EnumItemRow EnumItemsTail
-|
-
-EnumItemRow
-| "-" space UppercaseId
+| UppercaseId ":" ActionBody
 
 ActionBody
-| BlockStart Fields BlockEnd ActionBodyTail
-| NewLine "---" WrappedLogicBody
+| block_start Fields block_end ActionBodyTail
+| "[" WrappedLogicBody
 
-ActionBodyTail@dropIfEmpty
-| "---" WrappedLogicBody
+ActionBodyTail
+| "-" WrappedLogicBody
 |
 
 Fields
 | FieldRow FieldsTail
 
-FieldsTail@dropIfEmpty
-| NewLine FieldRow FieldsTail
+FieldsTail
+| new_line FieldRow FieldsTail
 |
 
 FieldRow
 | "-" space LowercaseId ":" OptionalBlank Type OptionalFieldDefaultValue
 
-OptionalFieldDefaultValue@dropIfEmpty@replaceWithChildren
+OptionalFieldDefaultValue
 | OptionalBlank "=" OptionalBlank Expression
 |
 
@@ -54,7 +37,7 @@ Type
 | Id OptionalTypeArray
 
 OptionalTypeArray
-| "[]"
+| ";"
 |
 
 ActionOutcomeEntry
@@ -63,42 +46,42 @@ ActionOutcomeEntry
 | SideEffects
 
 StateOutcome
-| ">state:" space State
+| "\\" space State
 
 State
 | LowercaseId ":" UppercaseId InstantiationTail
 | UppercaseId InstantiationTail
-| "*" InstantiationTail
+| "!" InstantiationTail
 
 ActionDispatchOutcome
-| ">actions:" BlockStart ActionsToDispatch BlockEnd
+| "{" block_start ActionsToDispatch block_end
 
 ActionsToDispatch
-| NewLine "-" space Expression ActionsToDispatch
+| new_line "-" space Expression ActionsToDispatch
 | "-" space Expression
 
 SideEffects
-| ">effects:" BlockStart SideEffectsToDispatch BlockEnd
+| "}" block_start SideEffectsToDispatch block_end
 
 SideEffectsToDispatch
-| NewLine "-" space Expression SideEffectsToDispatch
+| new_line "-" space Expression SideEffectsToDispatch
 | "-" space Expression
 
 WrappedLogicBody
-| BlockStart LogicBody BlockEnd
+| block_start LogicBody block_end
 
 LogicBody
 | Expression LogicBodyTail
 
-LogicBodyTail@dropIfEmpty
-| NewLine LogicBody
+LogicBodyTail
+| new_line LogicBody
 |
 
 Expression
 | OperandAndNumber OptionalBlank ExpressionTail
 | ActionOutcomeEntry
 
-ExpressionTail@dropIfEmpty
+ExpressionTail
 | Operator OptionalBlank Expression
 |
 
@@ -114,24 +97,24 @@ Operand
 | String
 | List
 
-OperandTail@dropIfEmpty
+OperandTail
 | "[" ListGetTail
 |
 
 ListGetTail
 | Expression ListGetExpressionTail
-| "..]"
-| ".." Expression "]"
+| "]"
+| ":" Expression "]"
 
 ListGetExpressionTail
 | "]"
-| "..]"
-| ".." Expression "]"
+| "?"
+| "^" Expression "]"
 
-OperandLowercaseIdTail@replaceWithChildren
+OperandLowercaseIdTail
 | "." Id
 | "(" Parameters ")"
-| "()"
+| "%"
 | ":" UppercaseId CompoundIdTail
 |
 
@@ -148,15 +131,15 @@ InstantiationParameters
 | InstantiationParameter InstantiationParametersTail
 
 InstantiationParametersTail
-| NewLine InstantiationParameter InstantiationParametersTail
+| new_line InstantiationParameter InstantiationParametersTail
 |
 
 InstantiationParameter
-| Id OptionalBlank "=" OptionalBlank Expression
+| Id OptionalBlank "`" OptionalBlank Expression
 
 InstantiationTail
-| "(" BlockStart InstantiationParameters BlockEnd ")"
-| "()"
+| "(" block_start InstantiationParameters block_end ")"
+| "$"
 
 Parameters
 | OptionalBlank Expression ParametersTail
@@ -176,7 +159,7 @@ ListItems
 
 ListItemsTail
 | "," space NonEmptyListItems
-| "<|" Id "|" space Expression
+| "@" Id "," space Expression
 |
 
 NonEmptyListItems
@@ -194,6 +177,16 @@ StringContent
 | character^"\u{22}" StringContent
 |
 
+LogicCondition
+| Condition WrappedLogicBody ElsePart
+
+ElsePart
+| "e" WrappedLogicBody
+|
+
+Condition
+| Id Operator Id
+
 Operator
 | operator
 | "{" Expression "}"
@@ -210,7 +203,7 @@ ForceBlank
 | Blank OptionalBlank
 
 OptionalNewLineMany
-| NewLine OptionalNewLineMany
+| new_line OptionalNewLineMany
 |
 
 Id
@@ -252,17 +245,4 @@ NegativeIntegerNumber
 
 FloatTail
 | "." PositiveIntegerNumber
-|
-
-NewLine
-| new_line NewLineTail
-
-BlockStart
-| block_start NewLineTail
-
-BlockEnd
-| block_end NewLineTail
-
-NewLineTail
-| "#"!>^"\n" new_line NewLineTail
 |

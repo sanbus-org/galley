@@ -41,11 +41,11 @@ class ParserResult:
 @dataclass
 class BenchmarkFile:
     path: str
-    source: str          # "galley" or "third_party"
-    language: str        # "json", "galley", "augmented-json", etc.
-    input_file: str      # e.g. "languages/json/samples/code-01.json"
-    ast_mode: str        # "no-ast", "no-procedures", "" (third_party)
-    terminal_ast: str    # "ast-for-terminals", "no-ast-for-terminals", ""
+    source: str  # "galley" or "third_party"
+    language: str  # "json", "galley", "augmented-json", etc.
+    input_file: str  # e.g. "languages/json/samples/code-01.json"
+    ast_mode: str  # "no-ast", "no-procedures", "" (third_party)
+    terminal_ast: str  # "ast-for-terminals", "no-ast-for-terminals", ""
     results: List[ParserResult] = field(default_factory=list)
 
 
@@ -338,18 +338,10 @@ def section_json_comparison(files: List[BenchmarkFile]) -> str:
     tp = third_party_results(files)
 
     # Galley JSON — three meaningful modes
-    g_ll_noast = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-ast"
-    )
-    g_lr_noast = best_galley_result(
-        files, "json", "LR", ast_mode_pref="no-ast"
-    )
-    g_ll_ast = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-procedures"
-    )
-    g_lr_ast = best_galley_result(
-        files, "json", "LR", ast_mode_pref="no-procedures"
-    )
+    g_ll_noast = best_galley_result(files, "json", "LL", ast_mode_pref="no-ast")
+    g_lr_noast = best_galley_result(files, "json", "LR", ast_mode_pref="no-ast")
+    g_ll_ast = best_galley_result(files, "json", "LL", ast_mode_pref="no-procedures")
+    g_lr_ast = best_galley_result(files, "json", "LR", ast_mode_pref="no-procedures")
 
     # Classify third-party entries
     SIMD_LIBS = {"simdjson (C++)", "RapidJSON (C++ / SIMD)"}
@@ -532,11 +524,6 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "returns, function-call expressions, integer literals, strings, comments, "
         "and keyed table constructors."
     ),
-    "sanbus": (
-        "An indentation-sensitive structured data/schema language with declarations and "
-        "embedded state, action, and effect logic. It exercises both LL and LR parsing "
-        "together with semantic reduction procedures."
-    ),
     "ll1": (
         "A procedure-free indentation-sensitive grammar whose delimiter tokens make "
         "every decision point unambiguous with one token of lookahead. Used to exercise "
@@ -552,7 +539,6 @@ GRAMMAR_SECTION_ORDER = [
     "galley",
     "json-augmented",
     "json-structured-ast",
-    "sanbus",
     "ll1",
 ]
 
@@ -564,7 +550,6 @@ GRAMMAR_SECTION_LABELS = {
     "galley": "Galley",
     "json-augmented": "JSON Augmented",
     "json-structured-ast": "JSON with Structured AST",
-    "sanbus": "Sanbus",
     "ll1": "LL(1)",
 }
 
@@ -615,9 +600,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     def term_sym(t: str) -> str:
         return "✓" if t == "ast-for-terminals" else "✗"
 
-    lines.append(
-        "_AST = build syntax tree · Term. = include terminal nodes in tree_\n"
-    )
+    lines.append("_AST = build syntax tree · Term. = include terminal nodes in tree_\n")
 
     inputs = sorted({input_file for (_, _, input_file) in seen_configs})
     headers = ["AST", "Term.", "LL", "LR", "LL/LR"]
@@ -761,9 +744,7 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
     # Summary stats
     tp = third_party_results(files)
-    galley_ll = best_galley_result(
-        files, "json", "LL", ast_mode_pref="no-ast"
-    )
+    galley_ll = best_galley_result(files, "json", "LL", ast_mode_pref="no-ast")
     if galley_ll:
         best_tp = max(tp.values(), key=lambda r: r.throughput) if tp else None
         print(f"\nGalley LL best JSON:  {galley_ll.throughput:,.1f} MB/s")

@@ -305,65 +305,6 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
   LR  ✓ast ✓term  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      59.4 MB/s
 ```
 
-### `languages/galley/samples/sanbus-ll.grm`
-
-| AST | Term. | LL         | LR         | LL/LR |
-| --- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 591.1 MB/s | 185.1 MB/s | 3.19× |
-| ✓   | ✓     | 76.8 MB/s  | 59.9 MB/s  | 1.28× |
-| ✓   | ✗     | 112.9 MB/s | 80.6 MB/s  | 1.40× |
-
-```
-  LL  ✗ast ✗term  ████████████████████████████████████████     591.1 MB/s
-  LR  ✗ast ✗term  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░     185.1 MB/s
-  LL  ✓ast ✗term  ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     112.9 MB/s
-  LR  ✓ast ✗term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      80.6 MB/s
-  LL  ✓ast ✓term  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      76.8 MB/s
-  LR  ✓ast ✓term  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      59.9 MB/s
-```
-
----
-
-## Sanbus
-
-_An indentation-sensitive structured data/schema language with declarations and embedded state, action, and effect logic. It exercises both LL and LR parsing together with semantic reduction procedures._
-
-_AST = build syntax tree · Term. = include terminal nodes in tree_
-
-### `languages/sanbus/samples/code-01`
-
-| AST | Term. | LL         | LR        | LL/LR |
-| --- | ----- | ---------- | --------- | ----- |
-| ✗   | ✗     | 137.0 MB/s | 97.7 MB/s | 1.40× |
-| ✓   | ✓     | 73.4 MB/s  | 50.6 MB/s | 1.45× |
-| ✓   | ✗     | 88.4 MB/s  | 64.3 MB/s | 1.37× |
-
-```
-  LL  ✗ast ✗term  ████████████████████████████████████████     137.0 MB/s
-  LR  ✗ast ✗term  ████████████████████████████░░░░░░░░░░░░      97.7 MB/s
-  LL  ✓ast ✗term  █████████████████████████░░░░░░░░░░░░░░░      88.4 MB/s
-  LL  ✓ast ✓term  █████████████████████░░░░░░░░░░░░░░░░░░░      73.4 MB/s
-  LR  ✓ast ✗term  ██████████████████░░░░░░░░░░░░░░░░░░░░░░      64.3 MB/s
-  LR  ✓ast ✓term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░      50.6 MB/s
-```
-
-### `languages/sanbus/samples/code-02`
-
-| AST | Term. | LL         | LR         | LL/LR |
-| --- | ----- | ---------- | ---------- | ----- |
-| ✗   | ✗     | 182.7 MB/s | 118.0 MB/s | 1.55× |
-| ✓   | ✓     | 76.3 MB/s  | 53.5 MB/s  | 1.43× |
-| ✓   | ✗     | 98.5 MB/s  | 67.9 MB/s  | 1.45× |
-
-```
-  LL  ✗ast ✗term  ████████████████████████████████████████     182.7 MB/s
-  LR  ✗ast ✗term  █████████████████████████░░░░░░░░░░░░░░░     118.0 MB/s
-  LL  ✓ast ✗term  █████████████████████░░░░░░░░░░░░░░░░░░░      98.5 MB/s
-  LL  ✓ast ✓term  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░      76.3 MB/s
-  LR  ✓ast ✗term  ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░      67.9 MB/s
-  LR  ✓ast ✓term  ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      53.5 MB/s
-```
-
 ---
 
 ## LL(1)
@@ -434,12 +375,14 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
 ## Methodology
 
 ### Galley (this compiler)
+
 - Benchmarks are run by `scripts/benchmark.py`.
 - Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{terminal_ast}/{input_lang}/{input_file}.txt`.
 - **Parsed bytes** reflects repeated parsing of the input until a stable total is reached.
 - **LL** = generated LL parser; **LR** = generated LR parser.
 
 ### Third-party parsers
+
 - Benchmarks are run by the `third_party/parser-benchmark/` submodule.
 - Results are written below `third_party/parser-benchmark/benchmark_results/json/`.
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
@@ -450,4 +393,5 @@ _AST = build syntax tree · Term. = include terminal nodes in tree_
   RapidJSON (C++/SIMD, DOM & SAX).
 
 ### Environment
+
 Results will vary by machine. All numbers are from a single run on an Apple M1 Pro.

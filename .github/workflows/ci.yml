@@ -47,8 +47,6 @@ jobs:
         case:
           - ll-galley
           - lr-galley
-          - ll-sanbus
-          - lr-sanbus
           - ll-json-structured-ast
           - lr-json-structured-ast
           - ll-json

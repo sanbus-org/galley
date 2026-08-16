@@ -52,7 +52,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
     if (if (args.context.verbosityLevel() > 0) args.node_address else null) |node_address| {
         std.debug.print("\nProgram text:\n{s}\n", .{try data_structures.Node.augmentedText(node_address, args.context)});
 
-        const log_file = try std.Io.Dir.cwd().createFile(args.context.runtime().io, "sanbus-parse.log", .{
+        const log_file = try std.Io.Dir.cwd().createFile(args.context.runtime().io, "parse.log", .{
             .lock = .exclusive,
         });
         defer log_file.close(args.context.runtime().io);
