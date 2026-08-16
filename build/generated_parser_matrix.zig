@@ -38,7 +38,7 @@ const matrix_variants = [_]MatrixVariant{
         .name = "no-ast-procedures-no-terminal-ast",
         .args = &.{ "--no-ast", "--with-procedures", "--no-ast-for-terminals" },
         .large_sample_api_coverage = true,
-        .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast", "sanbus" },
+        .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast" },
     },
     .{
         .name = "ast-no-procedures-no-terminal-ast",
@@ -89,7 +89,6 @@ const languages = [_][]const u8{
     "json-structured-ast",
     "lisp",
     "lua",
-    "sanbus",
     "ll1",
 };
 
@@ -510,18 +509,6 @@ fn errorInputs(language: []const u8) ?ErrorInputs {
             .diagnostic_column = 6,
             .unexpected_token_prefix = "\x00",
             .expected_token = ")",
-        };
-    }
-    if (std.mem.eql(u8, language, "sanbus")) {
-        return .{
-            .valid = "Item:\n  - value: str\n",
-            .malformed = "Item:\n  - value! str\n",
-            .multiple_errors = "Item:\n  - first! str\n  - second! str\n",
-            .small_window_error_count = 1,
-            .diagnostic_line = 2,
-            .diagnostic_column = 10,
-            .unexpected_token_prefix = "!",
-            .expected_token = ":",
         };
     }
     if (std.mem.eql(u8, language, "galley")) {

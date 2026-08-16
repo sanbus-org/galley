@@ -12,7 +12,7 @@ docgen_tmp/
 
 __pycache__/
 *.py[cod]
-sanbus-parse.log
+parse.log
 
 *-backup
 _*parser.zig
