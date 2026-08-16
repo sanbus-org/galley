@@ -1155,7 +1155,7 @@ fn addInputStreamingTests(
     kind: InputStreamingTestKind,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const language = if (kind == .indentation or kind == .indentation_no_streaming) "ll1" else "json";
+    const language = if (kind == .indentation or kind == .indentation_no_streaming) "indentation" else "json";
     const label = @tagName(kind);
     const parser_name = b.fmt("input-streaming-{s}-{s}", .{ parser_type, label });
 

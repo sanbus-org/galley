@@ -173,7 +173,7 @@ match them through three generative terminals:
 | `block_end` | `\x02` | One level of indentation was closed. |
 | `new_line` | `\n` | A line boundary at the same indentation level. |
 
-Galley's `languages/ll1/ll.grm` is a maintained example: blocks are written as
+Galley's `languages/indentation/ll.grm` is a maintained example: blocks are written as
 `block_start Fields block_end`, and a sequence of same-level rows joins them with
 `new_line`.
 
@@ -297,7 +297,7 @@ must live at different precedence levels, each with its own recursion direction
 (right recursion for right-associativity in LL, left recursion for
 left-associativity in LR).
 
-Galley's `languages/ll1/ll.grm` demonstrates the per-level pattern with
+Galley's `languages/indentation/ll.grm` demonstrates the per-level pattern with
 `Expression` / `ExpressionTail`, `OperandAndNumber`, and `Operand`/`OperandTail`
 for suffix calls, list gets, and casts.
 
