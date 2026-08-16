@@ -13,45 +13,45 @@ Start@capture
 | "c" Recursive
 
 Occurrence
-| "a" Damaged!";"^@mark "z"
+| "a" Damaged@!";"^@mark "z"
 
 Before
-| "a" Damaged!^"}" "}"
+| "a" Damaged@!^"}" "}"
 
 Production
-|!";"^@mark "a" Damaged
+|@!";"^@mark "a" Damaged
 
-Lhs!";"^@mark
+Lhs@!";"^@mark
 | "a" Damaged
 
 Multi
-| "a" Damaged!^";"!^";;"!^"," ";;"
+| "a" Damaged@!^";"@!^";;"@!^"," ";;"
 
 Tie
-| "a" Damaged!^";"!";"^ ";"
+| "a" Damaged@!^";"@!";"^ ";"
 
 Outer
-| "a" Inner!";"^
+| "a" Inner@!";"^
 
 Inner
-| "i" Damaged!^"]"
+| "i" Damaged@!^"]"
 
 Fail
 | "a" Damaged
 
 Two
-| "a" Damaged!";"^ "b" Damaged!";"^
+| "a" Damaged@!";"^ "b" Damaged@!";"^
 
 Speculative
-|!";"^ "a" "x"
+|@!";"^ "a" "x"
 | "a" "y"
 
 Distinct
-| "a" Damaged!";"^
-| "b" Damaged!","^
+| "a" Damaged@!";"^
+| "b" Damaged@!","^
 
 Recursive
-| "a" Recursive!";"^
+| "a" Recursive@!";"^
 | "z"
 
 Damaged

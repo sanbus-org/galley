@@ -146,7 +146,6 @@ pub const reduction_RulesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RulesTailTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
-pub const reduction_ProcedureTail_0 = flattenRightRecursiveTail;
 pub const reduction_AnnotationTail_0 = flattenRightRecursiveTail;
 pub const reduction_GenerativeTerminalExceptions_0 = flattenRightRecursiveTail;
 
@@ -154,9 +153,13 @@ pub const reduction_Rules = normalizeList("RulesTail").function;
 pub const reduction_RightHandSides = normalizeList("RightHandSidesTail").function;
 pub const reduction_RightHandSide = normalizeList("RightHandSideTail").function;
 pub const reduction_NonEmptyRightHandSide = normalizeList(null).function;
-pub const reduction_ProcedureTail = normalizeList(null).function;
 pub const reduction_AnnotationTail = normalizeList(null).function;
 pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
+
+pub const reduction_Procedure_0 = standard_procedures.replaceWithChildren;
+pub const reduction_RecoveryPoint_0 = absorbLastChildNamed("TerminalAndCursor").function;
+pub const reduction_VerbatimMarker_0 = absorbLastChildNamed("TerminalAndCursor").function;
+pub const reduction_VerbatimMarker_1 = absorbLastChildNamed("TerminalAndCursor").function;
 
 fn grammarFromAst(context: *data_structures.Context, start_address: Node.Pointer) !*Grammar {
     const allocator = context.runtime().arena_allocator;
@@ -215,11 +218,8 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Poin
     const right_hand_sides_address = firstChildNamed(context, rule_address, "RightHandSides") orelse return error.MissingRightHandSides;
 
     var rule = MutableRule{ .header = try allocator.dupe(u8, nodeText(context, header_address)) };
-    if (firstChildNamed(context, rule_address, "AnnotationTail")) |recovery_address| {
-        try appendRecoveryTail(context, &rule.recovery_points, recovery_address, null, null, null);
-    }
-    if (firstChildNamed(context, rule_address, "ProcedureTail")) |procedures_address| {
-        try appendProcedureTail(context, &rule.procedures, procedures_address);
+    if (firstChildNamed(context, rule_address, "AnnotationTail")) |annotations_address| {
+        try appendAnnotationTail(context, annotations_address, &rule.recovery_points, &rule.procedures, null, null, null);
     }
 
     var child_address = context.node_allocator.at(right_hand_sides_address).first_child;
@@ -238,15 +238,12 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Poin
 
 fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Pointer) !?MutableRightHandSide {
     const allocator = context.runtime().arena_allocator;
-    const line_procedures_address = firstChildNamed(context, line_address, "ProcedureTail") orelse return null;
+    const line_annotations_address = firstChildNamed(context, line_address, "AnnotationTail") orelse return null;
     const rhs_address = firstChildNamed(context, line_address, "RightHandSide") orelse
         firstChildNamed(context, line_address, "NonEmptyRightHandSide");
 
     var rhs = MutableRightHandSide{};
-    if (firstChildNamed(context, line_address, "AnnotationTail")) |recovery_address| {
-        try appendRecoveryTail(context, &rhs.recovery_points, recovery_address, null, null, null);
-    }
-    try appendProcedureTail(context, &rhs.procedures, line_procedures_address);
+    try appendAnnotationTail(context, line_annotations_address, &rhs.recovery_points, &rhs.procedures, null, null, null);
     const symbols_parent_address = rhs_address orelse return rhs;
 
     var child_address = context.node_allocator.at(symbols_parent_address).first_child;
@@ -256,10 +253,9 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Po
             continue;
         }
 
-        const recovery_tail_address = nextSiblingNamed(context, child_address, "AnnotationTail");
-        const procedure_tail_address = nextSiblingNamed(context, child_address, "ProcedureTail") orelse return error.MissingSymbolProcedures;
-        try rhs.symbols.append(allocator, try symbolFromAst(context, child_address, recovery_tail_address, procedure_tail_address));
-        child_address = context.node_allocator.at(procedure_tail_address).next;
+        const annotation_tail_address = nextSiblingNamed(context, child_address, "AnnotationTail") orelse return error.MissingSymbolAnnotations;
+        try rhs.symbols.append(allocator, try symbolFromAst(context, child_address, annotation_tail_address));
+        child_address = context.node_allocator.at(annotation_tail_address).next;
     }
 
     return rhs;
@@ -268,8 +264,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Po
 fn symbolFromAst(
     context: *data_structures.Context,
     symbol_address: Node.Pointer,
-    recovery_tail_address: ?Node.Pointer,
-    procedure_tail_address: Node.Pointer,
+    annotation_tail_address: Node.Pointer,
 ) !SymbolRef {
     const allocator = context.runtime().arena_allocator;
     const concrete_address = firstChild(context, symbol_address) orelse return error.MissingSymbol;
@@ -281,12 +276,11 @@ fn symbolFromAst(
         .generative_terminal;
 
     var procedures = std.ArrayList([]const u8).empty;
-    try appendProcedureTail(context, &procedures, procedure_tail_address);
     var recovery_points = std.ArrayList(RecoveryPoint).empty;
     var verbatim = false;
     var verbatim_literal: ?[]const u8 = null;
     var verbatim_consume = true;
-    if (recovery_tail_address) |address| try appendRecoveryTail(context, &recovery_points, address, &verbatim, &verbatim_literal, &verbatim_consume);
+    try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &verbatim, &verbatim_literal, &verbatim_consume);
     if (recovery_points.items.len != 0 and kind != .variable) return error.InvalidRecoveryTarget;
 
     const id = if (kind == .generative_terminal)
@@ -364,42 +358,41 @@ fn appendEncodedTerminal(allocator: std.mem.Allocator, id: *std.ArrayList(u8), c
     }
 }
 
-fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(RecoveryPoint), recovery_tail_address: Node.Pointer, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
+fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Pointer, recovery_target: *std.ArrayList(RecoveryPoint), procedure_target: *std.ArrayList([]const u8), verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
     const allocator = context.runtime().arena_allocator;
-    var child_address = context.node_allocator.at(recovery_tail_address).first_child;
+    var child_address = context.node_allocator.at(tail_address).first_child;
     while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "Annotation")) {
-            const marker_address = firstDescendantNamed(context, child_address, "VerbatimMarker");
-            if (marker_address) |marker| {
+            if (firstDescendantNamed(context, child_address, "CamelCaseId")) |id_node| {
+                try procedure_target.append(allocator, try allocator.dupe(u8, nodeText(context, id_node)));
+            } else if (firstDescendantNamed(context, child_address, "VerbatimMarker")) |marker_address| {
                 if (verbatim_active) |active| {
                     active.* = true;
-                    if (firstDescendantNamed(context, marker, "VerbatimSymbol")) |symbol_address| {
-                        const terminal_address = firstDescendantNamed(context, symbol_address, "TerminalSymbol") orelse return error.MissingVerbatimTerminal;
-                        const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
-                        if (terminal.len == 0) return error.EmptyVerbatimTerminator;
-                        if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulVerbatimTerminator;
-                        if (verbatim_literal) |literal| {
-                            literal.* = terminal;
-                        }
-                        if (verbatim_consume) |consume| {
-                            const symbol_node = context.node_allocator.at(symbol_address);
-                            const terminal_node = context.node_allocator.at(terminal_address);
-                            consume.* = symbol_node.text_start >= terminal_node.text_start;
-                        }
-                    } else {
-                        if (verbatim_literal) |literal| {
-                            literal.* = null;
-                        }
-                        if (verbatim_consume) |consume| {
-                            consume.* = true;
-                        }
-                    }
                 } else {
                     return error.InvalidVerbatimPlacement;
                 }
-            } else {
-                const point_address = firstDescendantNamed(context, child_address, "RecoveryPoint") orelse return error.MissingRecoveryPoint;
+                if (firstDescendantNamed(context, marker_address, "TerminalSymbol")) |terminal_address| {
+                    const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
+                    if (terminal.len == 0) return error.EmptyVerbatimTerminator;
+                    if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulVerbatimTerminator;
+                    if (verbatim_literal) |literal| {
+                        literal.* = terminal;
+                    }
+                    if (verbatim_consume) |consume| {
+                        const marker_node = context.node_allocator.at(marker_address);
+                        const terminal_node = context.node_allocator.at(terminal_address);
+                        consume.* = marker_node.text_start >= terminal_node.text_start;
+                    }
+                } else {
+                    if (verbatim_literal) |literal| {
+                        literal.* = null;
+                    }
+                    if (verbatim_consume) |consume| {
+                        consume.* = true;
+                    }
+                }
+            } else if (firstDescendantNamed(context, child_address, "RecoveryPoint")) |point_address| {
                 const terminal_address = firstDescendantNamed(context, point_address, "TerminalSymbol") orelse return error.MissingRecoveryTerminal;
                 const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
                 if (terminal.len == 0) return error.EmptyRecoveryTerminal;
@@ -407,20 +400,10 @@ fn appendRecoveryTail(context: *data_structures.Context, target: *std.ArrayList(
                 const point_node = context.node_allocator.at(point_address);
                 const terminal_node = context.node_allocator.at(terminal_address);
                 const resume_side: RecoveryResume = if (point_node.text_start < terminal_node.text_start) .before else .after;
-                try target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
+                try recovery_target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
+            } else {
+                return error.InvalidAnnotation;
             }
-        }
-        child_address = next_address;
-    }
-}
-
-fn appendProcedureTail(context: *data_structures.Context, target: *std.ArrayList([]const u8), procedure_tail_address: Node.Pointer) !void {
-    const allocator = context.runtime().arena_allocator;
-    var child_address = context.node_allocator.at(procedure_tail_address).first_child;
-    while (child_address != Node.invalid_pointer) {
-        const next_address = context.node_allocator.at(child_address).next;
-        if (nodeIs(context, child_address, "CamelCaseId")) {
-            try target.append(allocator, try allocator.dupe(u8, nodeText(context, child_address)));
         }
         child_address = next_address;
     }

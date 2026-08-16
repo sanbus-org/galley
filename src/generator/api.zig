@@ -387,8 +387,8 @@ test "generator supports procedures without AST construction" {
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {
-    const source = "Start!^\"}\"!\";\"^@lhsHook\n" ++
-        "|!\",\"^@productionHook \"a\" Child!^\"]\"@occurrenceHook\n" ++
+    const source = "Start@!^\"}\"@!\";\"^@lhsHook\n" ++
+        "|@!\",\"^@productionHook \"a\" Child@!^\"]\"@occurrenceHook\n" ++
         "\n" ++
         "Child\n" ++
         "| \"x\"\n";
@@ -419,7 +419,7 @@ test "grammar model preserves unified recovery and procedure annotations" {
 }
 
 test "recovery caret placement is structural when terminals contain carets" {
-    const source = "Start!^\"^\"!\"^\"^!^\"^\"!\"^\"^\n" ++
+    const source = "Start@!^\"^\"@!\"^\"^@!^\"^\"@!\"^\"^\n" ++
         "| \"x\"\n";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -449,30 +449,22 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
     ));
     try std.testing.expectError(error.InvalidRecoveryTarget, parseGrammar(arena.allocator(),
         \\Start
-        \\| "a"!^";"
+        \\| "a"@!^";"
         \\
     ));
     try std.testing.expectError(error.EmptyRecoveryTerminal, parseGrammar(arena.allocator(),
-        \\Start!^""
+        \\Start@!^""
         \\| "a"
         \\
     ));
     try std.testing.expectError(error.NulRecoveryTerminal, parseGrammar(arena.allocator(),
-        \\Start!^"\x00"
+        \\Start@!^"\x00"
         \\| "a"
         \\
     ));
     try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
         arena.allocator(),
-        \\Start!^digit
-        \\| "a"
-        \\
-    ,
-        .{ .syntax_error_reporter = &ignoreDiagnostic },
-    ));
-    try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
-        arena.allocator(),
-        \\Start!";"
+        \\Start@!^digit
         \\| "a"
         \\
     ,
@@ -480,7 +472,15 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
     ));
     try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
         arena.allocator(),
-        \\Start@hook!^";"
+        \\Start@!";"
+        \\| "a"
+        \\
+    ,
+        .{ .syntax_error_reporter = &ignoreDiagnostic },
+    ));
+    try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
+        arena.allocator(),
+        \\Start@hook@!^
         \\| "a"
         \\
     ,
@@ -554,13 +554,13 @@ test "generation rejects variables referenced but never defined" {
 test "generation rejects empty-matchable verbatim symbols" {
     const empty_literal_source =
         \\Start
-        \\| ""!>> "x"
+        \\| ""@>> "x"
         \\
     ;
 
     const nullable_variable_source =
         \\Start
-        \\| Body!>> "x"
+        \\| Body@>> "x"
         \\
         \\Body
         \\| "a" Body
@@ -674,7 +674,7 @@ test "distinct literal verbatim terminators emit each literal" {
 test "LR support verbatim capture without AST or procedures" {
     const source =
         \\Start
-        \\| Body!>> "x"
+        \\| Body@>> "x"
         \\
         \\Body
         \\| "b"
@@ -984,8 +984,8 @@ test "disabled recovery annotations are inert in LL and LR generation" {
         \\
     ;
     const annotated_source =
-        \\Start!^"synchronization"
-        \\|!";"^ Item!^","
+        \\Start@!^"synchronization"
+        \\|@!";"^ Item@!^","
         \\
         \\Item
         \\| "x" Item
@@ -1026,7 +1026,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 172), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 162), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());
@@ -1038,7 +1038,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
 test "generateParserAlloc emits explicit-only recovery when annotations exist" {
     const source =
         \\Start
-        \\| "a" Child!";"^
+        \\| "a" Child@!";"^
         \\
         \\Child
         \\| "x"

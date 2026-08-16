@@ -6,7 +6,7 @@
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Syntax-Error Recovery](#syntax-error-recovery)
-- [Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)](#verbatim-raw-capture)
+- [Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)](#verbatim-raw-capture)
 - [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -40,7 +40,7 @@ Instead of dynamically allocating stack frame objects or pushing/popping state I
 
 Generated LL and LR parsers are fail-fast by default: a mismatch records and prints one diagnostic, then returns `ParseError.SyntaxError`. Passing `with_error_recovery = true` to the generator enables recovery. Generated parsers expose `error_recovery_mode` as `.disabled`, `.automatic`, or `.explicit`, while retaining `is_error_recovery_enabled` for compatibility.
 
-An enabled grammar without recovery annotations uses automatic recovery. If any LHS variable, production, or RHS variable occurrence carries a `!` synchronization annotation, the parser instead uses explicit-only recovery with no automatic fallback. An annotation records an exact terminal and whether synchronization resumes before it (preserving it) or after it (consuming it). Disabled generation keeps annotations inert and emits one warning.
+An enabled grammar without recovery annotations uses automatic recovery. If any LHS variable, production, or RHS variable occurrence carries an `@` annotation, the parser instead uses explicit-only recovery with no automatic fallback. An annotation records an exact terminal and whether synchronization resumes before it (preserving it) or after it (consuming it). Disabled generation keeps annotations inert and emits one warning.
 
 An automatic-mode LL syntax mismatch transfers control to a generated cold handler. The handler prints the first diagnostic at an input position, searches ahead for the failing symbol's recovery candidates, and returns a neutral parser value. The parent then continues through its ordinary generated code, naturally exposing later grammar states as recovery points.
 
@@ -58,14 +58,14 @@ configure the limit and search window through `ParseOptions.max_errors` and
 
 ---
 
-## Verbatim Raw Capture (`!>>` / `!>"..."` / `!>^"..."`)
+## Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)
 
-An RHS occurrence annotated `!>>` matches normally, then its matched
-bytes act as a terminator; an occurrence annotated `!>"..."` uses the given
+An RHS occurrence annotated `@>>` matches normally, then its matched
+bytes act as a terminator; an occurrence annotated `@>"..."` uses the given
 terminal as a fixed terminator. Either way the runtime captures every raw byte
 until the terminator reappears, without lexing, indentation translation, or
 escape decoding. The capture consumes the terminator by default; annotating
-with a `^` before the terminator (`!>^"..."`) leaves the terminator in the input
+with a `^` before the terminator (`@>^"..."`) leaves the terminator in the input
 for the parser to match next, while a `^` after the terminator instead appends
 the terminator to the captured span. In the LL generator the capture is emitted
 at the child call site; in the LR generator a terminal occurrence captures at

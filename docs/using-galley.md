@@ -361,17 +361,17 @@ LL and LR parsers report the first syntax error and stop by default. Enable reco
 ./zig-out/bin/galley --parser-type ll --with-error-recovery <LANGUAGE_DIR>
 ```
 
-API generators enable the same behavior with `.with_error_recovery = true`. Every generated parser exposes `ErrorRecoveryMode`, `error_recovery_mode`, and the compatibility boolean `is_error_recovery_enabled`. The mode is `.disabled` without generated recovery, `.automatic` when recovery is enabled for an unannotated grammar, and `.explicit` when recovery is enabled for a grammar containing `!` annotations.
+API generators enable the same behavior with `.with_error_recovery = true`. Every generated parser exposes `ErrorRecoveryMode`, `error_recovery_mode`, and the compatibility boolean `is_error_recovery_enabled`. The mode is `.disabled` without generated recovery, `.automatic` when recovery is enabled for an unannotated grammar, and `.explicit` when recovery is enabled for a grammar containing `@` annotations.
 
 Explicit annotations can be attached to an LHS variable, a production immediately after `|`, or an RHS variable occurrence:
 
 ```text
-Statement!^"}"!";"^@hook
-|!","^ Expression
-| Block Statement!^"}"
+Statement@!^"}"@!";"^@hook
+|@!","^ Expression
+| Block Statement@!^"}"
 ```
 
-The caret selects the resume side: `!^"}"` preserves `}` and resumes before it, while `!";"^` consumes `;` and resumes after it. Multiple consecutive annotations are candidates on the same target and must precede `@` hooks. If a grammar contains any recovery annotation, recovery is explicit-only: a mismatch with no active annotated scope fails instead of falling back to automatic recovery. See the [grammar guidelines](grammar_guidelines.md#5-explicit-syntax-recovery-) for validation and scope-selection details.
+The caret selects the resume side: `@!^"}"` preserves `}` and resumes before it, while `@!";"^` consumes `;` and resumes after it. Multiple consecutive annotations are candidates on the same target. If a grammar contains any recovery annotation, recovery is explicit-only: a mismatch with no active annotated scope fails instead of falling back to automatic recovery. See the [grammar guidelines](grammar_guidelines.md#5-explicit-syntax-recovery-) for validation and scope-selection details.
 
 Galley's own LL and LR grammars use newline and blank-line annotations as the production example. The `languages/json-recovery` LL and LR grammars demonstrate nested occurrence, production, and LHS recovery around object and array delimiters, together with finalized custom diagnostics in `languages/json-recovery/error_messages.zig`. The minimal `languages/json` grammars remain the performance reference. From the repository root, compare Galley's material recovery behavior against automatic recovery with:
 

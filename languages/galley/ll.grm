@@ -16,8 +16,8 @@ NewLinesTail
 | "#" AnyContent new_line NewLinesTail
 |
 
-Rule!^"\n\n"
-| VariableSymbol AnnotationTail ProcedureTail new_line RightHandSides
+Rule@!^"\n\n"
+| VariableSymbol AnnotationTail new_line RightHandSides
 
 RightHandSides
 | RightHandSideLine RightHandSidesTail
@@ -26,16 +26,16 @@ RightHandSidesTail
 | RightHandSideLine RightHandSidesTail
 |
 
-RightHandSideLine!"\n"^
-| "|" AnnotationTail ProcedureTail RightHandSide new_line
+RightHandSideLine@!"\n"^
+| "|" AnnotationTail RightHandSide new_line
 | "#" AnyContent new_line
 
 RightHandSide
-| space Symbol!^"\n" AnnotationTail ProcedureTail RightHandSideTail
+| space Symbol@!^"\n" AnnotationTail RightHandSideTail
 |
 
 RightHandSideTail
-| space Symbol!^"\n" AnnotationTail ProcedureTail RightHandSideTail
+| space Symbol@!^"\n" AnnotationTail RightHandSideTail
 |
 
 Symbol
@@ -52,7 +52,7 @@ TerminalSymbol
 | "\u{22}" SimpleStringContent "\u{22}"
 
 RawString
-| "\u{5c}\u{22}" RawIndicator!>> "\u{22}"
+| "\u{5c}\u{22}" RawIndicator@>> "\u{22}"
 
 RawIndicator
 | character^"\u{22}"^"\n"^"\\"
@@ -64,27 +64,26 @@ GenerativeTerminalExceptions
 | "^" TerminalSymbol GenerativeTerminalExceptions
 |
 
-ProcedureTail
-| "@" CamelCaseId ProcedureTail
-|
-
 AnnotationTail
-| "!" Annotation AnnotationTail
+| "@" Annotation AnnotationTail
 |
 
 Annotation
-| RecoveryPoint
-| VerbatimMarker
+| Procedure
+| "!" RecoveryPoint
+| ">" VerbatimMarker
+
+Procedure
+| CamelCaseId
 
 RecoveryPoint
-| "^" TerminalSymbol
-| TerminalSymbol "^"
+| TerminalAndCursor
 
 VerbatimMarker
-| ">>"
-| ">" VerbatimSymbol
+| ">"
+| TerminalAndCursor
 
-VerbatimSymbol
+TerminalAndCursor
 | "^" TerminalSymbol
 | TerminalSymbol "^"
 
