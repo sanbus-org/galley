@@ -6,7 +6,7 @@ pub const procedures = @import("procedures");
 pub const config = @import("config");
 pub const error_messages = @import("error_messages");
 pub const parser = @import("parser");
-pub const ast_memory_benchmark_enabled = runtime_options.ast_memory_benchmark;
+pub const ast_memory_benchmark_enabled = @hasDecl(runtime_options, "ast_memory_benchmark") and runtime_options.ast_memory_benchmark;
 pub const syntax_error_stack_depth_build_override = if (@hasDecl(runtime_options, "syntax_error_stack_depth") and
     runtime_options.syntax_error_stack_depth > 0)
     runtime_options.syntax_error_stack_depth
@@ -179,7 +179,7 @@ pub const ParsedInput = struct {
 };
 
 comptime {
-    if (builtin.is_test and runtime_options.include_tests) {
+    if (builtin.is_test and @hasDecl(runtime_options, "include_tests") and runtime_options.include_tests) {
         _ = @import("runtime_test.zig");
         _ = stack_overflow_utilities;
     }

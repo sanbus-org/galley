@@ -8,9 +8,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const runtime_options = b.addOptions();
-    runtime_options.addOption(bool, "include_tests", false);
-    runtime_options.addOption(bool, "ast_memory_benchmark", false);
+    const runtime_options_mod = b.createModule(.{
+        .root_source_file = galley.path("src/runtime/default_runtime_options.zig"),
+    });
     const procedures_mod = b.createModule(.{
         .root_source_file = galley.path("languages/galley/procedures.zig"),
         .target = target,
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "config", .module = config_mod },
             .{ .name = "error_messages", .module = error_messages_mod },
             .{ .name = "parser", .module = parser_source_mod },
-            .{ .name = "runtime_options", .module = runtime_options.createModule() },
+            .{ .name = "runtime_options", .module = runtime_options_mod },
         },
     });
     parser_mod.addImport("galley", parser_mod);
