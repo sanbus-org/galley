@@ -363,6 +363,12 @@ fn addLanguageSamples(
     };
     if (samples_dir) |*samples_dir_handle| {
         defer samples_dir_handle.close(b.graph.io);
+
+        var sample_paths: std.ArrayList([]const u8) = .empty;
+        var sample_inputs: std.ArrayList([]const u8) = .empty;
+        defer sample_paths.deinit(b.allocator);
+        defer sample_inputs.deinit(b.allocator);
+
         var samples_walker = try samples_dir_handle.walk(b.allocator);
         defer samples_walker.deinit();
 
@@ -373,62 +379,41 @@ fn addLanguageSamples(
                 b.allocator,
                 &.{ samples_path, sample_entry.path },
             );
-            try addValidationInput(
+            const stat = b.build_root.handle.statFile(b.graph.io, sample_path, .{}) catch |err| switch (err) {
+                error.FileNotFound => continue,
+                else => return err,
+            };
+            if (!options.selection.includes(.matrix_api)) continue;
+            if (!shouldRunGeneratedParserApiTests(large_sample_api_coverage, stat.size)) continue;
+
+            const sample_input = try b.build_root.handle.readFileAlloc(
+                b.graph.io,
+                sample_path,
+                b.allocator,
+                .limited(std.math.maxInt(usize)),
+            );
+            sample_paths.append(b.allocator, sample_path) catch @panic("OOM");
+            sample_inputs.append(b.allocator, sample_input) catch @panic("OOM");
+        }
+
+        if (sample_paths.items.len != 0) {
+            const run_parser_api_tests = addGeneratedParserApiTest(
                 b,
-                matrix_step,
-                options,
+                options.target,
+                options.optimize,
                 galley_parser_mod,
                 case_name,
                 case_label,
+                "matrix",
                 config_label,
-                sample_path,
-                large_sample_api_coverage,
-                work,
+                sample_paths.items,
+                sample_inputs.items,
+                options.selection.names,
             );
+            matrix_step.dependOn(&run_parser_api_tests.step);
+            trackFilteredTestRun(b, options, &run_parser_api_tests.step);
+            work.api += 1;
         }
-    }
-}
-
-fn addValidationInput(
-    b: *std.Build,
-    matrix_step: *std.Build.Step,
-    options: Options,
-    galley_parser_mod: *std.Build.Module,
-    case_name: []const u8,
-    case_label: []const u8,
-    config_label: []const u8,
-    input_path: []const u8,
-    large_sample_api_coverage: bool,
-    work: *Work,
-) !void {
-    const stat = b.build_root.handle.statFile(b.graph.io, input_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return,
-        else => return err,
-    };
-
-    if (options.selection.includes(.matrix_api) and shouldRunGeneratedParserApiTests(large_sample_api_coverage, stat.size)) {
-        const sample_input = try b.build_root.handle.readFileAlloc(
-            b.graph.io,
-            input_path,
-            b.allocator,
-            .limited(std.math.maxInt(usize)),
-        );
-        const run_parser_api_tests = addGeneratedParserApiTest(
-            b,
-            options.target,
-            options.optimize,
-            galley_parser_mod,
-            case_name,
-            case_label,
-            "matrix",
-            config_label,
-            input_path,
-            sample_input,
-            options.selection.names,
-        );
-        matrix_step.dependOn(&run_parser_api_tests.step);
-        trackFilteredTestRun(b, options, &run_parser_api_tests.step);
-        work.api += 1;
     }
 }
 
@@ -441,17 +426,16 @@ fn addGeneratedParserApiTest(
     case_label: []const u8,
     suite: []const u8,
     config_label: []const u8,
-    sample_path: []const u8,
-    sample_input: []const u8,
+    sample_paths: []const []const u8,
+    sample_inputs: []const []const u8,
     filters: []const []const u8,
 ) *std.Build.Step.Run {
-    const sample_name = std.fs.path.basename(sample_path);
     const parser_api_test_options = b.addOptions();
     parser_api_test_options.addOption([]const u8, "case_name", case_name);
     parser_api_test_options.addOption([]const u8, "suite", suite);
     parser_api_test_options.addOption([]const u8, "config_label", config_label);
-    parser_api_test_options.addOption([]const u8, "sample_path", sample_path);
-    parser_api_test_options.addOption([]const u8, "sample_input", sample_input);
+    parser_api_test_options.addOption([]const []const u8, "sample_paths", sample_paths);
+    parser_api_test_options.addOption([]const []const u8, "sample_inputs", sample_inputs);
     const parser_api_test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/generated_parser_library_test.zig"),
         .target = target,
@@ -462,13 +446,15 @@ fn addGeneratedParserApiTest(
         },
     });
     const parser_api_tests = b.addTest(.{
-        .name = b.fmt("{s}-api-{s}", .{ case_name, sample_name }),
+        .name = b.fmt("{s}-api", .{case_name}),
         .root_module = parser_api_test_mod,
         .filters = filters,
     });
     const run_parser_api_tests = b.addRunArtifact(parser_api_tests);
-    run_parser_api_tests.setName(b.fmt("test API {s} {s}", .{ case_label, sample_name }));
-    run_parser_api_tests.addFileInput(b.path(sample_path));
+    run_parser_api_tests.setName(b.fmt("test API {s}", .{case_label}));
+    for (sample_paths) |sample_path| {
+        run_parser_api_tests.addFileInput(b.path(sample_path));
+    }
     return run_parser_api_tests;
 }
 
