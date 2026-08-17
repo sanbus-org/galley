@@ -31,6 +31,7 @@ pub const RuntimeContext = struct {
     last_diagnostic: ?root.ParseDiagnostic = null,
     max_errors: usize = 10,
     recovery_window: usize = 500,
+    syntax_error_stack_depth: usize = 0,
     syntax_error_count: usize = 0,
     syntax_recovery_position: ?usize = null,
     explicit_recovery_position: ?usize = null,
@@ -41,6 +42,79 @@ pub const RuntimeContext = struct {
 
 var runtime_registry_mutex: std.atomic.Mutex = .unlocked;
 var runtime_registry_head: ?*RuntimeContextRegistration = null;
+
+/// Maximum number of in-progress variables that the LL parser tracks for
+/// syntax error reporting. The generated `syntax_error_stack_depth` const must
+/// not exceed this value.
+pub const max_syntax_error_stack_depth = 64;
+
+/// Ring of the most recently entered LL parse variables, innermost first.
+/// Consecutive repeats of the same variable are suppressed so self-recursive
+/// rules (for example `DigitTail -> digit DigitTail`) occupy a single slot.
+pub const SyntaxErrorStack = struct {
+    entries: [max_syntax_error_stack_depth][]const u8 = .{""} ** max_syntax_error_stack_depth,
+    depth: usize = 0,
+    head: usize = 0,
+
+    const Self = @This();
+
+    /// Pushes `name` and returns whether an entry was added. Returns false when
+    /// the innermost entry is already `name`, so the matching pop is skipped.
+    pub fn push(self: *Self, name: []const u8) bool {
+        if (self.depth > 0) {
+            const top = (self.head + max_syntax_error_stack_depth - 1) % max_syntax_error_stack_depth;
+            if (std.mem.eql(u8, self.entries[top], name)) return false;
+        }
+        self.entries[self.head] = name;
+        self.head = (self.head + 1) % max_syntax_error_stack_depth;
+        if (self.depth < max_syntax_error_stack_depth) self.depth += 1;
+        return true;
+    }
+
+    pub fn pop(self: *Self) void {
+        if (self.depth > 0) {
+            self.depth -= 1;
+            self.head = (self.head + max_syntax_error_stack_depth - 1) % max_syntax_error_stack_depth;
+        }
+    }
+
+    /// Writes the most recent entries into `out` (innermost first, up to
+    /// `out.len` entries) and returns the number written.
+    pub fn lastSlice(self: *const Self, out: [][]const u8) usize {
+        const count = @min(out.len, self.depth);
+        var index: usize = 0;
+        while (index < count) : (index += 1) {
+            const slot = (self.head + max_syntax_error_stack_depth - 1 - index) % max_syntax_error_stack_depth;
+            out[index] = self.entries[slot];
+        }
+        return count;
+    }
+
+    test "ring reports innermost-first with consecutive repeats suppressed" {
+        var stack: SyntaxErrorStack = .{};
+        try std.testing.expect(stack.push("Value"));
+        try std.testing.expect(stack.push("ArrayMembers"));
+        try std.testing.expect(stack.push("Value"));
+        try std.testing.expect(stack.push("DigitTail"));
+        try std.testing.expect(!stack.push("DigitTail"));
+
+        var scratch: [max_syntax_error_stack_depth][]const u8 = undefined;
+        const count = stack.lastSlice(&scratch);
+        try std.testing.expectEqual(@as(usize, 4), count);
+        try std.testing.expectEqualStrings("DigitTail", scratch[0]);
+        try std.testing.expectEqualStrings("Value", scratch[1]);
+        try std.testing.expectEqualStrings("ArrayMembers", scratch[2]);
+        try std.testing.expectEqualStrings("Value", scratch[3]);
+
+        stack.pop();
+        try std.testing.expect(stack.push("DigitTail"));
+        stack.pop();
+        stack.pop();
+        stack.pop();
+        stack.pop();
+        try std.testing.expectEqual(@as(usize, 0), stack.lastSlice(&scratch));
+    }
+};
 
 fn lockRuntimeRegistry() void {
     while (!runtime_registry_mutex.tryLock()) std.atomic.spinLoopHint();
@@ -94,6 +168,13 @@ pub const Context = struct {
     else
         void = if (root.position_tracking_enabled) .{} else {},
 
+    // These fields are defined only when the generated parser reports the
+    // in-progress variable stack in syntax errors.
+    syntax_error_stack: if (root.parser.is_syntax_error_stack_enabled)
+        SyntaxErrorStack
+    else
+        void = if (root.parser.is_syntax_error_stack_enabled) .{} else {},
+
     const Self = @This();
 
     pub noinline fn runtime(self: *Self) *RuntimeContext {
@@ -111,6 +192,15 @@ pub const Context = struct {
         return 0;
     }
 
+    pub inline fn pushSyntaxErrorVariable(self: *Self, name: []const u8) bool {
+        if (comptime root.parser.is_syntax_error_stack_enabled) return self.syntax_error_stack.push(name);
+        return false;
+    }
+
+    pub inline fn popSyntaxErrorVariable(self: *Self) void {
+        if (comptime root.parser.is_syntax_error_stack_enabled) self.syntax_error_stack.pop();
+    }
+
     pub fn recordSyntaxDiagnostic(
         self: *@This(),
         diagnostic_context: root.SyntaxDiagnosticContext,
@@ -120,6 +210,18 @@ pub const Context = struct {
         if (comptime root.config.indentation_syntax) {
             if (self.indentation_error) return error.IndentationError;
         }
+        var effective_diagnostic_context = diagnostic_context;
+        if (comptime root.parser.is_syntax_error_stack_enabled) {
+            const runtime_context = self.runtime();
+            const depth = @min(runtime_context.syntax_error_stack_depth, max_syntax_error_stack_depth);
+            var scratch: [max_syntax_error_stack_depth][]const u8 = undefined;
+            const count = self.syntax_error_stack.lastSlice(scratch[0..depth]);
+            if (count > 0) {
+                const names = try runtime_context.arena_allocator.alloc([]const u8, count);
+                for (scratch[0..count], 0..) |name, index| names[index] = name;
+                effective_diagnostic_context = .{ .while_parsing = names };
+            }
+        }
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.diagnosticTokenItems());
         self.runtime().last_diagnostic = .{
             .syntax = .{
@@ -127,7 +229,7 @@ pub const Context = struct {
                 .column = if (comptime root.position_tracking_enabled) self.column else 0,
                 .unexpected_token = unexpected_token,
                 .expected_tokens = expected_tokens,
-                .context = diagnostic_context,
+                .context = effective_diagnostic_context,
             },
         };
         self.runtime().syntax_error_count += 1;

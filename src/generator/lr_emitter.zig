@@ -65,6 +65,7 @@ const Generator = struct {
             self.uses_explicit_recovery,
             self.longestTerminalLength(),
             self.uses_verbatim,
+            false,
         );
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
         if (self.options.with_error_recovery and !self.uses_explicit_recovery) try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");

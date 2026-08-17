@@ -154,6 +154,7 @@ pub fn emitParserMetadata(
     uses_explicit_recovery: bool,
     longest_terminal_length: usize,
     uses_verbatim: bool,
+    syntax_error_stack_supported: bool,
 ) !void {
     try writer.print(
         \\
@@ -166,6 +167,8 @@ pub fn emitParserMetadata(
         \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
         \\pub const is_position_tracking_enabled = {s};
         \\pub const is_input_streaming_enabled = {};
+        \\pub const syntax_error_stack_depth = {s};
+        \\pub const is_syntax_error_stack_enabled = {s};
         \\{s}pub const longest_terminal_length = {d};
         \\
         \\
@@ -178,6 +181,11 @@ pub fn emitParserMetadata(
         if (!options.with_error_recovery) "disabled" else if (uses_explicit_recovery) "explicit" else "automatic",
         if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
         options.with_input_streaming,
+        if (syntax_error_stack_supported)
+            "root.syntax_error_stack_depth"
+        else
+            "1",
+        if (syntax_error_stack_supported) "syntax_error_stack_depth > 1" else "false",
         if (uses_verbatim) "pub const uses_verbatim = true;\n" else "",
         longest_terminal_length,
     });

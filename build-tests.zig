@@ -237,6 +237,7 @@ pub fn add(b: *std.Build, options: Options) !void {
         const runtime_options = b.addOptions();
         runtime_options.addOption(bool, "include_tests", true);
         runtime_options.addOption(bool, "ast_memory_benchmark", generator.ast_memory_benchmark);
+        runtime_options.addOption(usize, "syntax_error_stack_depth", generator.syntax_error_stack_depth);
         const runtime_test_mod = b.createModule(.{
             .root_source_file = b.path("src/runtime/api.zig"),
             .target = target,

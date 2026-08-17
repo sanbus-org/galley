@@ -16,6 +16,13 @@ const indented = common.indented;
 const SyntaxErrorHandlerSpec = planning.SyntaxErrorHandler;
 const LLPlan = planning.LLPlan;
 
+/// The LL backend tracks the in-progress variable stack whenever the generated
+/// parser is compiled with the stack enabled (`syntax_error_stack_depth > 1`).
+/// The generated source gates the push/pop instrumentation and the
+/// `@call(.always_tail, ...)` error bail-out on the comptime
+/// `is_syntax_error_stack_enabled` const: when the stack is enabled, the plain
+/// return must be used so the `defer` that pops the stack always runs; when
+/// disabled, the whole instrumentation folds away and the tail call returns.
 const Generator = struct {
     allocator: std.mem.Allocator,
     options: Options,
@@ -61,6 +68,7 @@ const Generator = struct {
             self.uses_explicit_recovery,
             self.longestTerminalLength(),
             self.uses_verbatim,
+            true,
         );
 
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
@@ -272,6 +280,11 @@ const Generator = struct {
             } else {
                 try writer.print("    var node = data_structures.Node{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }};\n\n", .{variable_index});
             }
+        }
+        if (variable != self.plan.augmented_start) {
+            try writer.writeAll("    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable(");
+            try emitStringLiteral(writer, self.symbols.items[variable].id);
+            try writer.writeAll(") else false;\n    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();\n");
         }
 
         const decision = self.plan.parserDecision(variable, skip_ast_construction);
@@ -746,7 +759,7 @@ const Generator = struct {
             !self.has_occurrence_procedures and (!self.options.with_ast or
             (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
         if (can_tail_call) {
-            try writer.print("{s}if (comptime builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64) {{\n", .{indent});
+            try writer.print("{s}if (comptime !is_syntax_error_stack_enabled and (builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64)) {{\n", .{indent});
             try writer.print("{s}    return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
             try writer.print("{s}}}\n", .{indent});
         }
@@ -771,18 +784,18 @@ const Generator = struct {
             });
             try writer.writeAll("    @branchHint(.cold);\n");
             if (!self.options.with_error_recovery) {
-                try writer.writeAll("    return llFailFastSyntaxError(context, .{ .while_parsing = ");
+                try writer.writeAll("    return llFailFastSyntaxError(context, .{ .while_parsing = &[_][]const u8{");
                 try emitStringLiteral(writer, symbol.id);
-                try writer.writeAll(" }, ");
+                try writer.writeAll("} }, ");
                 try self.emitRecoveryCandidates(writer, spec.expected_tokens);
                 try writer.print(", {s}_message);\n}}\n", .{spec.name});
                 try self.emitFailFastSyntaxErrorMessageRenderer(writer, spec);
                 continue;
             }
             if (self.uses_explicit_recovery) {
-                try writer.writeAll("    try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
+                try writer.writeAll("    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{");
                 try emitStringLiteral(writer, symbol.id);
-                try writer.writeAll(" }, ");
+                try writer.writeAll("} }, ");
                 try self.emitRecoveryCandidates(writer, spec.expected_tokens);
                 try writer.writeAll(");\n");
                 try writer.print("    context.setPendingSyntaxErrorSite({d});\n", .{site_index});
@@ -803,9 +816,9 @@ const Generator = struct {
             const candidates = self.plan.recovery.automatic_candidates.get(spec.symbol_index) orelse unreachable;
             try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
             try writer.writeAll("    if (report_syntax_error) {\n");
-            try writer.writeAll("        try context.recordSyntaxDiagnostic(.{ .while_parsing = ");
+            try writer.writeAll("        try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{");
             try emitStringLiteral(writer, symbol.id);
-            try writer.writeAll(" }, ");
+            try writer.writeAll("} }, ");
             try self.emitRecoveryCandidates(writer, spec.expected_tokens);
             try writer.writeAll(");\n");
             try self.emitSyntaxErrorMessagePrint(writer, spec.exact_name, spec.symbol_name, "        ");

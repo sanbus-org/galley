@@ -86,7 +86,7 @@ fn guidanceFromRecovery(diagnostic: root.SyntaxDiagnostic, recovery: root.Syntax
 
 fn guidanceFromContext(context: root.SyntaxDiagnosticContext) Guidance {
     const name = switch (context) {
-        .while_parsing => |name| name,
+        .while_parsing => |names| if (names.len == 0) return .generic else names[0],
         .none, .state => return .generic,
     };
     if (isValueSlot(name)) return .value;
