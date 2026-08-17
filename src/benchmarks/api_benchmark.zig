@@ -5,6 +5,7 @@ const string_utilities = galley.string_utilities;
 
 const Options = struct {
     input_path: ?[]const u8 = null,
+    verbosity: usize = 0,
     iterations: usize = 1,
     warmup_iterations: usize = 0,
 };
@@ -28,7 +29,7 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.free(sentinel_input);
     @memcpy(sentinel_input, input);
 
-    var session = try galley.Session.init(init.io, init.gpa, .{ .input_path = input_path });
+    var session = try galley.Session.init(init.io, init.gpa, .{ .input_path = input_path, .verbosity = options.verbosity });
     defer session.deinit();
 
     if (comptime galley.ast_memory_benchmark_enabled) {
@@ -100,6 +101,8 @@ fn parseArgs(init: std.process.Init) !Options {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             printUsage();
             std.process.exit(0);
+        } else if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--verbosity")) {
+            options.verbosity = try parseCount(args.next(), arg);
         } else if (std.mem.eql(u8, arg, "-r") or std.mem.eql(u8, arg, "--iterations")) {
             if (comptime galley.ast_memory_benchmark_enabled) return incompatibleIterationOption(arg);
             options.iterations = try parseCount(args.next(), arg);
@@ -162,6 +165,7 @@ fn printUsage() void {
             \\  -h, --help                         Display this help and exit.
             \\  -r, --iterations <ITERATIONS>      Timed parse iterations.
             \\  -w, --warmup-iterations <COUNT>    Untimed warmup iterations.
+            \\  -v, --verbosity <LEVEL>            Parse-time verbosity level (debug builds).
             \\
         , .{});
     }
