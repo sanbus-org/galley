@@ -199,9 +199,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const runtime_options = b.addOptions();
-    runtime_options.addOption(bool, "include_tests", false);
-    runtime_options.addOption(bool, "ast_memory_benchmark", false);
+    // Galley's runtime resolves every option through @hasDecl, so an empty
+    // default module yields the built-in defaults. Override an option by
+    // wiring your own b.addOptions() module instead.
+    const runtime_options = b.createModule(.{
+        .root_source_file = galley.path("src/runtime/default_runtime_options.zig"),
+    });
 
     const procedures = b.createModule(.{
         .root_source_file = b.path("language/procedures.zig"),
@@ -237,10 +240,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "config", .module = config },
             .{ .name = "error_messages", .module = error_messages },
             .{ .name = "parser", .module = generated_parser },
-            .{
-                .name = "runtime_options",
-                .module = runtime_options.createModule(),
-            },
+            .{ .name = "runtime_options", .module = runtime_options },
         },
     });
 
