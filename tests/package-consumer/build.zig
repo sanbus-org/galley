@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    procedures_mod.addImport("generator_common", galley.module("generator_common"));
     const config_mod = b.createModule(.{
         .root_source_file = galley.path("languages/galley/config.zig"),
         .target = target,

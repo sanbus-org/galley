@@ -569,11 +569,35 @@ pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, sou
     }
 }
 
-pub fn validateGrammar(grammar: anytype) !void {
-    for (grammar.rules, 0..) |rule, rule_index| {
-        for (grammar.rules[0..rule_index]) |previous| {
-            if (std.mem.eql(u8, previous.header, rule.header)) return error.DuplicateRuleHeader;
+/// Indices of two rules that share a header: `first` is the earlier rule and
+/// `second` is the later duplicate.
+pub const DuplicateRuleHeaders = struct {
+    first: usize,
+    second: usize,
+};
+
+/// Returns the first pair of rules sharing a header, or null when every rule
+/// header is unique. `rules` is any slice-like value whose elements expose a
+/// `header` field; both the AST-built grammar and the immutable grammar model
+/// delegate to this single detection routine.
+pub fn findDuplicateRuleHeader(rules: anytype) ?DuplicateRuleHeaders {
+    for (rules, 0..) |rule, rule_index| {
+        for (rules[0..rule_index], 0..) |previous, previous_index| {
+            if (std.mem.eql(u8, previous.header, rule.header)) {
+                return .{ .first = previous_index, .second = rule_index };
+            }
         }
+    }
+    return null;
+}
+
+pub fn validateGrammar(grammar: anytype) !void {
+    if (findDuplicateRuleHeader(grammar.rules)) |duplicate| {
+        const rule = grammar.rules[duplicate.second];
+        std.debug.print("duplicate rule header \"{s}\" (first defined at rule {d})\n", .{ rule.header, duplicate.first + 1 });
+        return error.DuplicateRuleHeader;
+    }
+    for (grammar.rules) |rule| {
         try validateRecoveryPoints(rule.annotations.recovery_points);
         for (rule.right_hand_sides) |rhs| {
             try validateRecoveryPoints(rhs.annotations.recovery_points);

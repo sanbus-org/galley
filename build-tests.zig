@@ -214,11 +214,13 @@ pub fn add(b: *std.Build, options: Options) !void {
     }
 
     if (selection.includes(.runtime)) {
-        const runtime_test_procedures_mod = b.createModule(.{
-            .root_source_file = b.path("languages/galley/procedures.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
+        const runtime_test_procedures_mod = common.addGalleyGrammarProceduresModule(
+            b,
+            "runtime-test-procedures",
+            target,
+            optimize,
+            generator.generator_common_mod,
+        );
         const runtime_test_config_mod = b.createModule(.{
             .root_source_file = b.path("languages/galley/config.zig"),
             .target = target,
@@ -1372,11 +1374,13 @@ fn addLrBackedGenerator(
     generate_lr_parser.addArgs(&.{ "--parser-type", "lr", "--with-error-recovery", "--output" });
     const parser_source = generate_lr_parser.addOutputFileArg("galley-lr-bootstrap.zig");
 
-    const procedures_mod = b.addModule("galley-bootstrap-parity-procedures", .{
-        .root_source_file = b.path("languages/galley/procedures.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const procedures_mod = common.addGalleyGrammarProceduresModule(
+        b,
+        "galley-bootstrap-parity-procedures",
+        target,
+        optimize,
+        generator.generator_common_mod,
+    );
     const config_mod = b.addModule("galley-bootstrap-parity-config", .{
         .root_source_file = b.path("languages/galley/config.zig"),
         .target = target,

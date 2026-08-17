@@ -23,7 +23,7 @@ pub fn main(init: std.process.Init) !void {
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_source_size));
     defer init.gpa.free(source);
 
-    try generator.atomic_file.write(
+    generator.atomic_file.write(
         init.io,
         .cwd(),
         output_path,
@@ -36,7 +36,10 @@ pub fn main(init: std.process.Init) !void {
             .strip_recovery_annotations = options.strip_recovery_annotations,
         },
         ParserEmission.emit,
-    );
+    ) catch |err| switch (err) {
+        error.DuplicateRuleHeader => std.process.exit(1),
+        else => return err,
+    };
 }
 
 const ParserEmission = struct {
