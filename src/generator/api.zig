@@ -870,6 +870,7 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
     _ = try expectContains(output, "try parse_Item(context)");
     _ = try expectContains(output, "builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64");
+    _ = try expectContains(output, "comptime !is_syntax_error_stack_enabled");
     _ = try expectContains(output, "return @call(.always_tail, ll_syntax_error_");
     _ = try expectContains(output, "return ll_syntax_error_");
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
@@ -973,6 +974,21 @@ test "generateParserAlloc configures input streaming" {
     _ = try expectContains(streaming_lr, "pub const is_input_streaming_enabled = true;");
 }
 
+test "generateParserAlloc configures the syntax error stack" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const depth_expr = "root.syntax_error_stack_depth";
+
+    const ll_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
+    _ = try expectContains(ll_output, "pub const syntax_error_stack_depth = " ++ depth_expr ++ ";");
+    _ = try expectContains(ll_output, "pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;");
+
+    const lr_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
+    _ = try expectContains(lr_output, "pub const syntax_error_stack_depth = 1;");
+    _ = try expectContains(lr_output, "pub const is_syntax_error_stack_enabled = false;");
+}
+
 test "disabled recovery annotations are inert in LL and LR generation" {
     const plain_source =
         \\Start
@@ -1068,7 +1084,7 @@ test "generateParserAlloc emits explicit-only recovery when annotations exist" {
     try expectNotContains(lr_output, "lrRecoveryOffset");
 }
 
-test "LL syntax error recovery tail calls have a portable fallback" {
+test "LL syntax error recovery restores tail calls when the stack is disabled" {
     const source =
         \\Start
         \\| "a"
@@ -1084,7 +1100,7 @@ test "LL syntax error recovery tail calls have a portable fallback" {
         .with_error_recovery = true,
     });
     const no_ast_terminal = try generatedFunction(no_ast_output, "inline fn parse_terminal_a(");
-    _ = try expectContains(no_ast_terminal, "builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64");
+    _ = try expectContains(no_ast_terminal, "comptime !is_syntax_error_stack_enabled and (builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64)");
     _ = try expectContains(no_ast_terminal, "return @call(.always_tail, ll_syntax_error_");
     _ = try expectContains(no_ast_terminal, "return ll_syntax_error_");
 
@@ -1095,6 +1111,5 @@ test "LL syntax error recovery tail calls have a portable fallback" {
         .ast_for_terminals = true,
     });
     const terminal_ast_parser = try generatedFunction(terminal_ast_output, "inline fn parse_terminal_a(");
-    try expectNotContains(terminal_ast_parser, "@call(.always_tail");
     _ = try expectContains(terminal_ast_parser, "return ll_syntax_error_");
 }

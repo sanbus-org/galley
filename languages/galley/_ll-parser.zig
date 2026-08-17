@@ -15,6 +15,8 @@ pub const is_error_recovery_enabled = true;
 pub const error_recovery_mode: ErrorRecoveryMode = .explicit;
 pub const is_position_tracking_enabled = builtin.mode != .ReleaseFast;
 pub const is_input_streaming_enabled = false;
+pub const syntax_error_stack_depth = root.syntax_error_stack_depth;
+pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
 pub const uses_verbatim = true;
 pub const longest_terminal_length = 2;
 
@@ -1080,6 +1082,8 @@ pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(
 fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 0);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Start") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
@@ -1148,6 +1152,8 @@ fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const E
 fn parse_Rules(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 1);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rules") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
@@ -1230,6 +1236,8 @@ fn parse_Rules(context: *data_structures.Context, occurrence_recovery: ?*const E
 fn parse_Rule(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 2);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rule") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
@@ -1458,6 +1466,8 @@ fn parse_RulesTail_0_2(context: *data_structures.Context, occurrence_recovery: ?
 fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 3);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RulesTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         0 => { // '\x00'
             if (comptime builtin.mode == .Debug) {
@@ -1595,6 +1605,8 @@ fn parse_RulesTail(context: *data_structures.Context, occurrence_recovery: ?*con
 fn parse_NewLines(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 4);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLines") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
@@ -1916,6 +1928,8 @@ fn parse_NewLinesTail_1_3(context: *data_structures.Context, occurrence_recovery
 fn parse_NewLinesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 5);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLinesTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
@@ -2134,6 +2148,8 @@ inline fn parse_terminal__x35(context: *data_structures.Context, occurrence_reco
 fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 6);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
@@ -2280,6 +2296,8 @@ fn parse_AnyContent(context: *data_structures.Context, occurrence_recovery: ?*co
 fn parse_VariableSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 7);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
@@ -2530,6 +2548,8 @@ fn parse_AnnotationTail_0_2(context: *data_structures.Context, occurrence_recove
 fn parse_AnnotationTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 8);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
@@ -2662,6 +2682,8 @@ fn parse_AnnotationTail(context: *data_structures.Context, occurrence_recovery: 
 fn parse_RightHandSides(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 9);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         35, 124 => { // '#', '|'
             if (comptime builtin.mode == .Debug) {
@@ -2744,6 +2766,8 @@ fn parse_RightHandSides(context: *data_structures.Context, occurrence_recovery: 
 fn parse_RightHandSideLine(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 10);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
@@ -3026,6 +3050,8 @@ fn parse_RightHandSidesTail_0_1(context: *data_structures.Context, occurrence_re
 fn parse_RightHandSidesTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 11);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSidesTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         0, 10 => { // '\x00', '\n'
             if (comptime builtin.mode == .Debug) {
@@ -3162,6 +3188,8 @@ inline fn parse_terminal__x124(context: *data_structures.Context, occurrence_rec
 fn parse_RightHandSide(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 12);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
@@ -3321,6 +3349,8 @@ inline fn parse_generative_terminal_space(context: *data_structures.Context, occ
 fn parse_Symbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 13);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
@@ -3694,6 +3724,8 @@ fn parse_RightHandSideTail_0_3(context: *data_structures.Context, occurrence_rec
 fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 14);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
@@ -3840,6 +3872,8 @@ fn parse_RightHandSideTail(context: *data_structures.Context, occurrence_recover
 fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 15);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
@@ -3989,6 +4023,8 @@ fn parse_TerminalSymbol(context: *data_structures.Context, occurrence_recovery: 
 fn parse_GenerativeTerminalSymbol(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 16);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
@@ -4071,6 +4107,8 @@ fn parse_GenerativeTerminalSymbol(context: *data_structures.Context, occurrence_
 fn parse_UppercaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 17);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
@@ -4161,6 +4199,8 @@ inline fn parse_terminal__(context: *data_structures.Context, occurrence_recover
 fn parse_RawString(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 18);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -4474,6 +4514,8 @@ fn parse_SimpleStringContent_1_1(context: *data_structures.Context, occurrence_r
 fn parse_SimpleStringContent(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 19);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
@@ -4669,6 +4711,8 @@ inline fn parse_terminal__x92_x92_x34(context: *data_structures.Context, occurre
 fn parse_RawIndicator(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 20);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
@@ -4745,6 +4789,8 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x
 fn parse_LowercaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 21);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
@@ -4940,6 +4986,8 @@ fn parse_GenerativeTerminalExceptions_0_2(context: *data_structures.Context, occ
 fn parse_GenerativeTerminalExceptions(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 22);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
@@ -5098,6 +5146,8 @@ inline fn parse_terminal__x64(context: *data_structures.Context, occurrence_reco
 fn parse_Annotation(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 23);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
@@ -5294,6 +5344,8 @@ fn parse_Annotation(context: *data_structures.Context, occurrence_recovery: ?*co
 fn parse_Procedure(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 24);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
@@ -5375,6 +5427,8 @@ inline fn parse_terminal__x33(context: *data_structures.Context, occurrence_reco
 fn parse_RecoveryPoint(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 25);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
@@ -5519,6 +5573,8 @@ inline fn parse_terminal__x62(context: *data_structures.Context, occurrence_reco
 fn parse_VerbatimMarker(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 26);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
@@ -5700,6 +5756,8 @@ fn parse_VerbatimMarker(context: *data_structures.Context, occurrence_recovery: 
 fn parse_CamelCaseId(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 27);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
@@ -5777,6 +5835,8 @@ fn parse_CamelCaseId(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse_TerminalAndCursor(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 28);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
@@ -6001,6 +6061,8 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(c
 
 // Parser for Symbol "_Utf8Scalar" with index 42
 fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8Scalar") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
@@ -6071,6 +6133,8 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
 
 // Parser for Symbol "_Utf8TwoByte" with index 43
 fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8TwoByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
@@ -6110,6 +6174,8 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
 
 // Parser for Symbol "_Utf8ThreeByte" with index 44
 fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8ThreeByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         224 => { // '\xe0'
             if (comptime builtin.mode == .Debug) {
@@ -6234,6 +6300,8 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
 
 // Parser for Symbol "_Utf8FourByte" with index 45
 fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8FourByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         240 => { // '\xf0'
             if (comptime builtin.mode == .Debug) {
@@ -6543,6 +6611,8 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f(context: *data_struc
 fn parse_ControlCharacter(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 33);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
@@ -6908,6 +6978,8 @@ fn parse_AnyContentTail_0_1(context: *data_structures.Context, occurrence_recove
 fn parse_AnyContentTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 34);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContentTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
@@ -7407,6 +7479,8 @@ fn parse_IdTail_1_1(context: *data_structures.Context, occurrence_recovery: ?*co
 fn parse_IdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 35);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
@@ -7913,6 +7987,8 @@ fn parse_CamelCaseIdTail_1_1(context: *data_structures.Context, occurrence_recov
 fn parse_CamelCaseIdTail(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), 36);
 
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
@@ -8152,6 +8228,8 @@ inline fn parse_special_EOF(context: *data_structures.Context, occurrence_recove
 
 // AST-Suppressed Parser for Symbol "_Utf8Scalar" with index 42
 fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8Scalar") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
@@ -8222,6 +8300,8 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
 
 // AST-Suppressed Parser for Symbol "_Utf8TwoByte" with index 43
 fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8TwoByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
@@ -8261,6 +8341,8 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
 
 // AST-Suppressed Parser for Symbol "_Utf8ThreeByte" with index 44
 fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8ThreeByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         224 => { // '\xe0'
             if (comptime builtin.mode == .Debug) {
@@ -8385,6 +8467,8 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
 
 // AST-Suppressed Parser for Symbol "_Utf8FourByte" with index 45
 fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
+    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8FourByte") else false;
+    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
     switch (context.head(u8, 0)) {
         240 => { // '\xf0'
             if (comptime builtin.mode == .Debug) {
@@ -8693,7 +8777,7 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f_(context: *data_stru
 
 fn ll_syntax_error_0(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Start" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Start"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(0);
     if (try llTryRecoverySelection_0(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8703,7 +8787,7 @@ fn ll_syntax_error_0(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_1(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rules" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Rules"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(1);
     if (try llTryRecoverySelection_1(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8713,7 +8797,7 @@ fn ll_syntax_error_1(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_2(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Rule" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Rule"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(2);
     if (try llTryRecoverySelection_2(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8723,7 +8807,7 @@ fn ll_syntax_error_2(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_3(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RulesTail" }, &[_][]const u8{"\x00", "\n"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RulesTail"} }, &[_][]const u8{"\x00", "\n"});
     context.setPendingSyntaxErrorSite(3);
     if (try llTryRecoverySelection_3(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8733,7 +8817,7 @@ fn ll_syntax_error_3(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_4(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLines" }, &[_][]const u8{"\n"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"NewLines"} }, &[_][]const u8{"\n"});
     context.setPendingSyntaxErrorSite(4);
     if (try llTryRecoverySelection_4(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8743,7 +8827,7 @@ fn ll_syntax_error_4(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_5(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "new_line" }, &[_][]const u8{"\n"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"new_line"} }, &[_][]const u8{"\n"});
     context.setPendingSyntaxErrorSite(5);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8751,7 +8835,7 @@ fn ll_syntax_error_5(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_6(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "NewLinesTail" }, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"NewLinesTail"} }, &[_][]const u8{"\n", "#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(6);
     if (try llTryRecoverySelection_6(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8761,7 +8845,7 @@ fn ll_syntax_error_6(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_7(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "#" }, &[_][]const u8{"#"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"#"} }, &[_][]const u8{"#"});
     context.setPendingSyntaxErrorSite(7);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8769,7 +8853,7 @@ fn ll_syntax_error_7(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_8(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContent" }, &[_][]const u8{"\x01", "\x02", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"AnyContent"} }, &[_][]const u8{"\x01", "\x02", "\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(8);
     if (try llTryRecoverySelection_8(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8779,7 +8863,7 @@ fn ll_syntax_error_8(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_9(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "VariableSymbol" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"VariableSymbol"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(9);
     if (try llTryRecoverySelection_9(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8789,7 +8873,7 @@ fn ll_syntax_error_9(context: *data_structures.Context, occurrence_recovery: ?*c
 
 fn ll_syntax_error_10(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnnotationTail" }, &[_][]const u8{"\n", " ", "@"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"AnnotationTail"} }, &[_][]const u8{"\n", " ", "@"});
     context.setPendingSyntaxErrorSite(10);
     if (try llTryRecoverySelection_10(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8799,7 +8883,7 @@ fn ll_syntax_error_10(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_11(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSides" }, &[_][]const u8{"#", "|"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RightHandSides"} }, &[_][]const u8{"#", "|"});
     context.setPendingSyntaxErrorSite(11);
     if (try llTryRecoverySelection_11(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8809,7 +8893,7 @@ fn ll_syntax_error_11(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_12(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideLine" }, &[_][]const u8{"#", "|"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RightHandSideLine"} }, &[_][]const u8{"#", "|"});
     context.setPendingSyntaxErrorSite(12);
     if (try llTryRecoverySelection_12(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8819,7 +8903,7 @@ fn ll_syntax_error_12(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_13(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSidesTail" }, &[_][]const u8{"\x00", "\n", "#", "|"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RightHandSidesTail"} }, &[_][]const u8{"\x00", "\n", "#", "|"});
     context.setPendingSyntaxErrorSite(13);
     if (try llTryRecoverySelection_13(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8829,7 +8913,7 @@ fn ll_syntax_error_13(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_14(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "|" }, &[_][]const u8{"|"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"|"} }, &[_][]const u8{"|"});
     context.setPendingSyntaxErrorSite(14);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8837,7 +8921,7 @@ fn ll_syntax_error_14(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_15(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSide" }, &[_][]const u8{"\n", " "});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RightHandSide"} }, &[_][]const u8{"\n", " "});
     context.setPendingSyntaxErrorSite(15);
     if (try llTryRecoverySelection_15(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8847,7 +8931,7 @@ fn ll_syntax_error_15(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_16(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "space" }, &[_][]const u8{" "});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"space"} }, &[_][]const u8{" "});
     context.setPendingSyntaxErrorSite(16);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8855,7 +8939,7 @@ fn ll_syntax_error_16(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_17(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Symbol" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Symbol"} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(17);
     if (try llTryRecoverySelection_17(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8865,7 +8949,7 @@ fn ll_syntax_error_17(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_18(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Symbol" }, &[_][]const u8{"\"", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "\\", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Symbol"} }, &[_][]const u8{"\"", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "\\", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(18);
     if (try llTryRecoverySelection_17(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8875,7 +8959,7 @@ fn ll_syntax_error_18(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_19(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RightHandSideTail" }, &[_][]const u8{"\n", " "});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RightHandSideTail"} }, &[_][]const u8{"\n", " "});
     context.setPendingSyntaxErrorSite(19);
     if (try llTryRecoverySelection_18(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8885,7 +8969,7 @@ fn ll_syntax_error_19(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_20(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalSymbol" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"TerminalSymbol"} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(20);
     if (try llTryRecoverySelection_19(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8895,7 +8979,7 @@ fn ll_syntax_error_20(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_21(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalSymbol" }, &[_][]const u8{"\"", "\\"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"TerminalSymbol"} }, &[_][]const u8{"\"", "\\"});
     context.setPendingSyntaxErrorSite(21);
     if (try llTryRecoverySelection_19(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8905,7 +8989,7 @@ fn ll_syntax_error_21(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_22(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalSymbol" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"GenerativeTerminalSymbol"} }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(22);
     if (try llTryRecoverySelection_20(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8915,7 +8999,7 @@ fn ll_syntax_error_22(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_23(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "UppercaseId" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"UppercaseId"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
     context.setPendingSyntaxErrorSite(23);
     if (try llTryRecoverySelection_21(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8925,7 +9009,7 @@ fn ll_syntax_error_23(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_24(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_" }, &[_][]const u8{"_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_"} }, &[_][]const u8{"_"});
     context.setPendingSyntaxErrorSite(24);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8933,7 +9017,7 @@ fn ll_syntax_error_24(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_25(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RawString" }, &[_][]const u8{"\\\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RawString"} }, &[_][]const u8{"\\\""});
     context.setPendingSyntaxErrorSite(25);
     if (try llTryRecoverySelection_23(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8943,7 +9027,7 @@ fn ll_syntax_error_25(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_26(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\"" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\""} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(26);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8951,7 +9035,7 @@ fn ll_syntax_error_26(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_27(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "SimpleStringContent" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"SimpleStringContent"} }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(27);
     if (try llTryRecoverySelection_25(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8961,7 +9045,7 @@ fn ll_syntax_error_27(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_28(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\\\"" }, &[_][]const u8{"\\\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\\\""} }, &[_][]const u8{"\\\""});
     context.setPendingSyntaxErrorSite(28);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8969,7 +9053,7 @@ fn ll_syntax_error_28(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_29(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RawIndicator" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RawIndicator"} }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(29);
     if (try llTryRecoverySelection_27(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8979,7 +9063,7 @@ fn ll_syntax_error_29(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_30(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\u{22}\"^\"\\n\"^\"\\u{5c}\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"character^\"\\u{22}\"^\"\\n\"^\"\\u{5c}\""} }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(30);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -8987,7 +9071,7 @@ fn ll_syntax_error_30(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_31(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "LowercaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"LowercaseId"} }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(31);
     if (try llTryRecoverySelection_29(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -8997,7 +9081,7 @@ fn ll_syntax_error_31(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_32(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "GenerativeTerminalExceptions" }, &[_][]const u8{"\n", " ", "@", "^"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"GenerativeTerminalExceptions"} }, &[_][]const u8{"\n", " ", "@", "^"});
     context.setPendingSyntaxErrorSite(32);
     if (try llTryRecoverySelection_30(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9007,7 +9091,7 @@ fn ll_syntax_error_32(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_33(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "^" }, &[_][]const u8{"^"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"^"} }, &[_][]const u8{"^"});
     context.setPendingSyntaxErrorSite(33);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9015,7 +9099,7 @@ fn ll_syntax_error_33(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_34(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "@" }, &[_][]const u8{"@"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"@"} }, &[_][]const u8{"@"});
     context.setPendingSyntaxErrorSite(34);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9023,7 +9107,7 @@ fn ll_syntax_error_34(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_35(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Annotation" }, &[_][]const u8{"!", ">", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Annotation"} }, &[_][]const u8{"!", ">", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(35);
     if (try llTryRecoverySelection_33(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9033,7 +9117,7 @@ fn ll_syntax_error_35(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_36(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "Procedure" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"Procedure"} }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(36);
     if (try llTryRecoverySelection_34(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9043,7 +9127,7 @@ fn ll_syntax_error_36(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_37(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "!" }, &[_][]const u8{"!"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"!"} }, &[_][]const u8{"!"});
     context.setPendingSyntaxErrorSite(37);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9051,7 +9135,7 @@ fn ll_syntax_error_37(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_38(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RecoveryPoint" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RecoveryPoint"} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(38);
     if (try llTryRecoverySelection_36(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9061,7 +9145,7 @@ fn ll_syntax_error_38(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_39(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "RecoveryPoint" }, &[_][]const u8{"\"", "\\", "^"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"RecoveryPoint"} }, &[_][]const u8{"\"", "\\", "^"});
     context.setPendingSyntaxErrorSite(39);
     if (try llTryRecoverySelection_36(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9071,7 +9155,7 @@ fn ll_syntax_error_39(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_40(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = ">" }, &[_][]const u8{">"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{">"} }, &[_][]const u8{">"});
     context.setPendingSyntaxErrorSite(40);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9079,7 +9163,7 @@ fn ll_syntax_error_40(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_41(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "VerbatimMarker" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"VerbatimMarker"} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(41);
     if (try llTryRecoverySelection_38(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9089,7 +9173,7 @@ fn ll_syntax_error_41(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_42(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "VerbatimMarker" }, &[_][]const u8{"\"", ">", "\\", "^"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"VerbatimMarker"} }, &[_][]const u8{"\"", ">", "\\", "^"});
     context.setPendingSyntaxErrorSite(42);
     if (try llTryRecoverySelection_38(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9099,7 +9183,7 @@ fn ll_syntax_error_42(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_43(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseId" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"CamelCaseId"} }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(43);
     if (try llTryRecoverySelection_39(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9109,7 +9193,7 @@ fn ll_syntax_error_43(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_44(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalAndCursor" }, &[_][]const u8{"\""});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"TerminalAndCursor"} }, &[_][]const u8{"\""});
     context.setPendingSyntaxErrorSite(44);
     if (try llTryRecoverySelection_40(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9119,7 +9203,7 @@ fn ll_syntax_error_44(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_45(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "TerminalAndCursor" }, &[_][]const u8{"\"", "\\", "^"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"TerminalAndCursor"} }, &[_][]const u8{"\"", "\\", "^"});
     context.setPendingSyntaxErrorSite(45);
     if (try llTryRecoverySelection_40(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9129,7 +9213,7 @@ fn ll_syntax_error_45(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_46(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\u{22}\"" }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"character^\"\\u{22}\""} }, &[_][]const u8{"\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(46);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9137,7 +9221,7 @@ fn ll_syntax_error_46(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_47(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8Scalar"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(47);
     if (try llTryRecoverySelection_42(context, occurrence_recovery)) {
         return;
@@ -9147,7 +9231,7 @@ fn ll_syntax_error_47(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_48(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8TwoByte"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(48);
     if (try llTryRecoverySelection_43(context, occurrence_recovery)) {
         return;
@@ -9157,7 +9241,7 @@ fn ll_syntax_error_48(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_49(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8ThreeByte"} }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(49);
     if (try llTryRecoverySelection_44(context, occurrence_recovery)) {
         return;
@@ -9167,7 +9251,7 @@ fn ll_syntax_error_49(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_50(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8FourByte"} }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(50);
     if (try llTryRecoverySelection_45(context, occurrence_recovery)) {
         return;
@@ -9177,7 +9261,7 @@ fn ll_syntax_error_50(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_51(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_two"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(51);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9185,7 +9269,7 @@ fn ll_syntax_error_51(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_52(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(52);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9193,7 +9277,7 @@ fn ll_syntax_error_52(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_53(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xe0"} }, &[_][]const u8{"\xe0"});
     context.setPendingSyntaxErrorSite(53);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9201,7 +9285,7 @@ fn ll_syntax_error_53(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_54(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_a0_bf"} }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(54);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9209,7 +9293,7 @@ fn ll_syntax_error_54(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_55(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_three_general"} }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(55);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9217,7 +9301,7 @@ fn ll_syntax_error_55(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_56(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xed"} }, &[_][]const u8{"\xed"});
     context.setPendingSyntaxErrorSite(56);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9225,7 +9309,7 @@ fn ll_syntax_error_56(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_57(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_80_9f"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
     context.setPendingSyntaxErrorSite(57);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9233,7 +9317,7 @@ fn ll_syntax_error_57(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_58(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xf0"} }, &[_][]const u8{"\xf0"});
     context.setPendingSyntaxErrorSite(58);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9241,7 +9325,7 @@ fn ll_syntax_error_58(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_59(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_90_bf"} }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(59);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9249,7 +9333,7 @@ fn ll_syntax_error_59(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_60(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_four_general"} }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
     context.setPendingSyntaxErrorSite(60);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9257,7 +9341,7 @@ fn ll_syntax_error_60(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_61(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xf4"} }, &[_][]const u8{"\xf4"});
     context.setPendingSyntaxErrorSite(61);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9265,7 +9349,7 @@ fn ll_syntax_error_61(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_62(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_80_8f"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
     context.setPendingSyntaxErrorSite(62);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9273,7 +9357,7 @@ fn ll_syntax_error_62(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_63(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "ControlCharacter" }, &[_][]const u8{"\x01", "\x02"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"ControlCharacter"} }, &[_][]const u8{"\x01", "\x02"});
     context.setPendingSyntaxErrorSite(63);
     if (try llTryRecoverySelection_58(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9283,7 +9367,7 @@ fn ll_syntax_error_63(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_64(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x01" }, &[_][]const u8{"\x01"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\x01"} }, &[_][]const u8{"\x01"});
     context.setPendingSyntaxErrorSite(64);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9291,7 +9375,7 @@ fn ll_syntax_error_64(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_65(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x02" }, &[_][]const u8{"\x02"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\x02"} }, &[_][]const u8{"\x02"});
     context.setPendingSyntaxErrorSite(65);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9299,7 +9383,7 @@ fn ll_syntax_error_65(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_66(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "character^\"\\n\"" }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"character^\"\\n\""} }, &[_][]const u8{"\t", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(66);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9307,7 +9391,7 @@ fn ll_syntax_error_66(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_67(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "AnyContentTail" }, &[_][]const u8{"\x01", "\x02", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"AnyContentTail"} }, &[_][]const u8{"\x01", "\x02", "\t", "\n", "\x0b", "\x0c", "\r", " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_", "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~"});
     context.setPendingSyntaxErrorSite(67);
     if (try llTryRecoverySelection_62(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9317,7 +9401,7 @@ fn ll_syntax_error_67(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_68(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "IdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"IdTail"} }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "^", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(68);
     if (try llTryRecoverySelection_63(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9327,7 +9411,7 @@ fn ll_syntax_error_68(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_69(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"letter"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(69);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9335,7 +9419,7 @@ fn ll_syntax_error_69(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_70(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "digit" }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"digit"} }, &[_][]const u8{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"});
     context.setPendingSyntaxErrorSite(70);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9343,7 +9427,7 @@ fn ll_syntax_error_70(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_71(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "lowercase_letter" }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"lowercase_letter"} }, &[_][]const u8{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(71);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9351,7 +9435,7 @@ fn ll_syntax_error_71(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_72(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "uppercase_letter" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"uppercase_letter"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"});
     context.setPendingSyntaxErrorSite(72);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9359,7 +9443,7 @@ fn ll_syntax_error_72(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_73(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!data_structures.Node.Pointer {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "CamelCaseIdTail" }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"CamelCaseIdTail"} }, &[_][]const u8{"\n", " ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"});
     context.setPendingSyntaxErrorSite(73);
     if (try llTryRecoverySelection_68(context, occurrence_recovery)) {
         return data_structures.Node.invalid_pointer;
@@ -9369,7 +9453,7 @@ fn ll_syntax_error_73(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_74(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_AugmentedStart" }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_AugmentedStart"} }, &[_][]const u8{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "_"});
     context.setPendingSyntaxErrorSite(74);
     if (try llTryRecoverySelection_69(context, occurrence_recovery)) {
         return;
@@ -9379,7 +9463,7 @@ fn ll_syntax_error_74(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_75(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\x00" }, &[_][]const u8{"\x00"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\x00"} }, &[_][]const u8{"\x00"});
     context.setPendingSyntaxErrorSite(75);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9387,7 +9471,7 @@ fn ll_syntax_error_75(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_76(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8Scalar" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8Scalar"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf", "\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef", "\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(76);
     if (try llTryRecoverySelection_42(context, occurrence_recovery)) {
         return;
@@ -9397,7 +9481,7 @@ fn ll_syntax_error_76(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_77(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8TwoByte" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8TwoByte"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(77);
     if (try llTryRecoverySelection_43(context, occurrence_recovery)) {
         return;
@@ -9407,7 +9491,7 @@ fn ll_syntax_error_77(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_78(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8ThreeByte" }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8ThreeByte"} }, &[_][]const u8{"\xe0", "\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xed", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(78);
     if (try llTryRecoverySelection_44(context, occurrence_recovery)) {
         return;
@@ -9417,7 +9501,7 @@ fn ll_syntax_error_78(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_79(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "_Utf8FourByte" }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"_Utf8FourByte"} }, &[_][]const u8{"\xf0", "\xf1", "\xf2", "\xf3", "\xf4"});
     context.setPendingSyntaxErrorSite(79);
     if (try llTryRecoverySelection_45(context, occurrence_recovery)) {
         return;
@@ -9427,7 +9511,7 @@ fn ll_syntax_error_79(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_80(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_two" }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_two"} }, &[_][]const u8{"\xc2", "\xc3", "\xc4", "\xc5", "\xc6", "\xc7", "\xc8", "\xc9", "\xca", "\xcb", "\xcc", "\xcd", "\xce", "\xcf", "\xd0", "\xd1", "\xd2", "\xd3", "\xd4", "\xd5", "\xd6", "\xd7", "\xd8", "\xd9", "\xda", "\xdb", "\xdc", "\xdd", "\xde", "\xdf"});
     context.setPendingSyntaxErrorSite(80);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9435,7 +9519,7 @@ fn ll_syntax_error_80(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_81(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(81);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9443,7 +9527,7 @@ fn ll_syntax_error_81(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_82(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xe0" }, &[_][]const u8{"\xe0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xe0"} }, &[_][]const u8{"\xe0"});
     context.setPendingSyntaxErrorSite(82);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9451,7 +9535,7 @@ fn ll_syntax_error_82(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_83(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_a0_bf" }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_a0_bf"} }, &[_][]const u8{"\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(83);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9459,7 +9543,7 @@ fn ll_syntax_error_83(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_84(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_three_general" }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_three_general"} }, &[_][]const u8{"\xe1", "\xe2", "\xe3", "\xe4", "\xe5", "\xe6", "\xe7", "\xe8", "\xe9", "\xea", "\xeb", "\xec", "\xee", "\xef"});
     context.setPendingSyntaxErrorSite(84);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9467,7 +9551,7 @@ fn ll_syntax_error_84(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_85(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xed" }, &[_][]const u8{"\xed"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xed"} }, &[_][]const u8{"\xed"});
     context.setPendingSyntaxErrorSite(85);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9475,7 +9559,7 @@ fn ll_syntax_error_85(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_86(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_9f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_80_9f"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f", "\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f"});
     context.setPendingSyntaxErrorSite(86);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9483,7 +9567,7 @@ fn ll_syntax_error_86(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_87(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf0" }, &[_][]const u8{"\xf0"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xf0"} }, &[_][]const u8{"\xf0"});
     context.setPendingSyntaxErrorSite(87);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9491,7 +9575,7 @@ fn ll_syntax_error_87(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_88(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_90_bf" }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_90_bf"} }, &[_][]const u8{"\x90", "\x91", "\x92", "\x93", "\x94", "\x95", "\x96", "\x97", "\x98", "\x99", "\x9a", "\x9b", "\x9c", "\x9d", "\x9e", "\x9f", "\xa0", "\xa1", "\xa2", "\xa3", "\xa4", "\xa5", "\xa6", "\xa7", "\xa8", "\xa9", "\xaa", "\xab", "\xac", "\xad", "\xae", "\xaf", "\xb0", "\xb1", "\xb2", "\xb3", "\xb4", "\xb5", "\xb6", "\xb7", "\xb8", "\xb9", "\xba", "\xbb", "\xbc", "\xbd", "\xbe", "\xbf"});
     context.setPendingSyntaxErrorSite(88);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9499,7 +9583,7 @@ fn ll_syntax_error_88(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_89(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_lead_four_general" }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_lead_four_general"} }, &[_][]const u8{"\xf1", "\xf2", "\xf3"});
     context.setPendingSyntaxErrorSite(89);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9507,7 +9591,7 @@ fn ll_syntax_error_89(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_90(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "\xf4" }, &[_][]const u8{"\xf4"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"\xf4"} }, &[_][]const u8{"\xf4"});
     context.setPendingSyntaxErrorSite(90);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;
@@ -9515,7 +9599,7 @@ fn ll_syntax_error_90(context: *data_structures.Context, occurrence_recovery: ?*
 
 fn ll_syntax_error_91(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!void {
     @branchHint(.cold);
-    try context.recordSyntaxDiagnostic(.{ .while_parsing = "utf8_continuation_80_8f" }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
+    try context.recordSyntaxDiagnostic(.{ .while_parsing = &[_][]const u8{"utf8_continuation_80_8f"} }, &[_][]const u8{"\x80", "\x81", "\x82", "\x83", "\x84", "\x85", "\x86", "\x87", "\x88", "\x89", "\x8a", "\x8b", "\x8c", "\x8d", "\x8e", "\x8f"});
     context.setPendingSyntaxErrorSite(91);
     _ = occurrence_recovery;
     return error.ExplicitSyntaxRecovery;

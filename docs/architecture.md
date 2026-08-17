@@ -58,6 +58,44 @@ configure the limit and search window through `ParseOptions.max_errors` and
 
 ---
 
+## Syntax-Error Messages
+
+LL parsers report the innermost-first sequence of variables being parsed at a
+syntax error. The generated parser carries two compile-time constants:
+
+```zig
+pub const syntax_error_stack_depth = root.syntax_error_stack_depth;
+pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
+```
+
+The runtime resolves the depth: `-Dsyntax-error-stack-depth=N` overrides the
+default, otherwise the stack defaults to 5 variables in debug builds and 1 in
+release builds. A depth of 1 drops the feature entirely — the push/pop
+instrumentation and its deferred cleanup fold away at compile time, and the
+error handlers restore `always_tail` bail-outs, so release parsers carry no
+stack overhead unless the build was compiled with the option. When the stack
+is enabled, each LL variable parse function pushes its variable onto a ring
+(consecutive repeats of a self-recursive rule occupy one slot) and pops it on
+return.
+
+The depth is also configurable per parsing session through
+`ParseOptions.syntax_error_stack_depth` (`0` inherits the generated parser's
+constant). A session value never adds instrumentation that the build does not
+compile in, so in a release build without the build option a session cannot
+turn the stack on.
+
+The rendered message joins the captured variables innermost-first with ` <~ `:
+
+```
+SyntaxError at 3:3:
+Unexpected token "?" while parsing Symbol <~ RightHandSide <~ RightHandSideLine <~ RightHandSidesTail <~ RightHandSides.
+```
+
+ANSI rendering colorizes only the variable names; the `while parsing` prefix
+and the ` <~ ` separators stay uncolored.
+
+---
+
 ## Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)
 
 An RHS occurrence annotated `@>>` matches normally, then its matched

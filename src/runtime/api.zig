@@ -7,6 +7,14 @@ pub const config = @import("config");
 pub const error_messages = @import("error_messages");
 pub const parser = @import("parser");
 pub const ast_memory_benchmark_enabled = runtime_options.ast_memory_benchmark;
+pub const syntax_error_stack_depth_build_override = if (@hasDecl(runtime_options, "syntax_error_stack_depth") and
+    runtime_options.syntax_error_stack_depth > 0)
+    runtime_options.syntax_error_stack_depth
+else
+    0;
+pub const syntax_error_stack_depth: usize = if (syntax_error_stack_depth_build_override > 0)
+    syntax_error_stack_depth_build_override
+else if (builtin.mode == .Debug) 5 else 1;
 pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking_enabled"))
     parser.is_position_tracking_enabled
 else
@@ -38,7 +46,8 @@ pub const ParseError = error{
 
 pub const SyntaxDiagnosticContext = union(enum) {
     none,
-    while_parsing: []const u8,
+    /// Innermost-first sequence of the variables being parsed at the error.
+    while_parsing: []const []const u8,
     state: usize,
 };
 
@@ -109,6 +118,13 @@ pub const ParseOptions = struct {
     stack_overflow_recovery: bool = false,
     ast_preallocation_ratio: f64 = 2,
     ast_preallocation_cap: usize = 16_384,
+    /// Number of in-progress variables (innermost first) reported in LL syntax
+    /// error messages. `0` inherits the generated parser's default
+    /// (`syntax_error_stack_depth`); a value above 1 enables the stack. A value
+    /// below the parser's compile-time depth never adds instrumentation, so in
+    /// release builds the stack stays off unless the build was compiled with
+    /// `-Dsyntax-error-stack-depth` above 1.
+    syntax_error_stack_depth: usize = 0,
     syntax_error_reporter: ?SyntaxErrorMessageReporter = null,
 };
 
@@ -236,7 +252,13 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     });
                     switch (syntax.context) {
                         .none, .state => {},
-                        .while_parsing => |name| try writer.print(" while parsing {f}", .{string_utilities.fmtString(name)}),
+                        .while_parsing => |names| {
+                            try writer.writeAll(" while parsing ");
+                            for (names, 0..) |name, index| {
+                                if (index != 0) try writer.writeAll(" <~ ");
+                                try writer.print("{f}", .{string_utilities.fmtString(name)});
+                            }
+                        },
                     }
                     try writer.writeAll(".\nExpected tokens: '");
                     try writeExpectedTokens(writer, syntax.expected_tokens);
@@ -255,7 +277,16 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     );
                     switch (syntax.context) {
                         .none => try writer.writeAll("."),
-                        .while_parsing => |name| try writer.print(" while parsing \x1b[34m{f}\x1b[0m.", .{string_utilities.fmtString(name)}),
+                        .while_parsing => |names| {
+                            try writer.writeAll(" while parsing ");
+                            for (names, 0..) |name, index| {
+                                if (index != 0) try writer.writeAll(" <~ ");
+                                try writer.writeAll("\x1b[34m");
+                                try writer.print("{f}", .{string_utilities.fmtString(name)});
+                                try writer.writeAll("\x1b[0m");
+                            }
+                            try writer.writeAll(".");
+                        },
                         .state => |state| try writer.print(" in state {d}.", .{state}),
                     }
                     try writer.writeAll("\nExpected tokens: \x1b[32m'");
@@ -317,6 +348,9 @@ pub const Session = struct {
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
         if (options.max_errors == 0) return error.InvalidMaxErrors;
         if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
+        if (options.syntax_error_stack_depth > data_structures.max_syntax_error_stack_depth) {
+            return error.InvalidSyntaxErrorStackDepth;
+        }
         if (options.stack_overflow_recovery and !stack_overflow_recovery_available) {
             return error.StackOverflowRecoveryUnsupported;
         }
@@ -355,6 +389,10 @@ pub const Session = struct {
                 .arena_allocator = arena.allocator(),
                 .max_errors = options.max_errors,
                 .recovery_window = options.recovery_window,
+                .syntax_error_stack_depth = if (options.syntax_error_stack_depth > 0)
+                    options.syntax_error_stack_depth
+                else
+                    parser.syntax_error_stack_depth,
                 .syntax_error_reporter = options.syntax_error_reporter,
             },
             .reader_buffer = reader_buffer,
@@ -602,7 +640,7 @@ test "galley LL grammar error hook returns custom guidance" {
         .column = 1,
         .unexpected_token = "F",
         .expected_tokens = &.{ "\x00", "\n", "#", "|" },
-        .context = .{ .while_parsing = "RightHandSidesTail" },
+        .context = .{ .while_parsing = &.{"RightHandSidesTail"} },
         .recovery = .{
             .target = .{ .lhs_variable = "RightHandSideLine" },
             .terminal = "\n",
@@ -630,13 +668,48 @@ test "tracked galley LL parser uses explicit recovery" {
     try std.testing.expectEqual(parser.ErrorRecoveryMode.explicit, parser.error_recovery_mode);
 }
 
+test "syntax error stack activation is gated on build mode and build option" {
+    try std.testing.expectEqual(syntax_error_stack_depth, parser.syntax_error_stack_depth);
+    try std.testing.expectEqual(syntax_error_stack_depth > 1, parser.is_syntax_error_stack_enabled);
+}
+
+test "syntax error stack depth is configurable per session" {
+    if (builtin.mode != .Debug) return error.SkipZigTest;
+
+    const malformed =
+        \\Start
+        \\| ?
+        \\
+    ;
+
+    for ([_]usize{ 1, 3 }) |depth| {
+        var session = try Session.init(std.Io.failing, std.testing.allocator, .{ .syntax_error_stack_depth = depth });
+        defer session.deinit();
+        var context = session._makeContext(.{ .bytes = .{ .input = malformed[0 .. malformed.len + 1] } }, null);
+        if (session._parseContext(&context)) |_| {
+            return error.ExpectedSyntaxError;
+        } else |err| switch (err) {
+            ParseError.SyntaxError => {},
+            else => return err,
+        }
+        var read_guard = try session.readLatest();
+        defer read_guard.deinit();
+        const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+        const syntax = switch (diagnostic) {
+            .syntax => |value| value,
+            .indentation => return error.ExpectedSyntaxDiagnostic,
+        };
+        try std.testing.expectEqual(depth, syntax.context.while_parsing.len);
+    }
+}
+
 test "structured syntax recovery renders in plain and ANSI diagnostics" {
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
         .line = 3,
         .column = 7,
         .unexpected_token = "?",
         .expected_tokens = &.{"x"},
-        .context = .{ .while_parsing = "Child" },
+        .context = .{ .while_parsing = &.{"Child"} },
         .recovery = .{
             .target = .{ .occurrence = .{
                 .parent_variable = "Parent",
@@ -657,4 +730,29 @@ test "structured syntax recovery renders in plain and ANSI diagnostics" {
     const ansi = try renderParseDiagnostic(std.testing.allocator, diagnostic, .ansi);
     defer std.testing.allocator.free(ansi);
     try std.testing.expect(std.mem.indexOf(u8, ansi, "Recovery: occurrence Child at Parent[2].1 resumed after \";\".") != null);
+}
+
+test "while parsing stack renders with <~ separators, coloring only variables" {
+    const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .line = 3,
+        .column = 7,
+        .unexpected_token = "?",
+        .expected_tokens = &.{"x"},
+        .context = .{ .while_parsing = &.{ "_OptionalBlank", "OptionalBlank", "Value", "ArrayMembers", "Value" } },
+    } };
+
+    const plain = try renderParseDiagnostic(std.testing.allocator, diagnostic, .plain);
+    defer std.testing.allocator.free(plain);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "Unexpected token \"?\" while parsing _OptionalBlank <~ OptionalBlank <~ Value <~ ArrayMembers <~ Value.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain, ", ") == null);
+
+    const ansi = try renderParseDiagnostic(std.testing.allocator, diagnostic, .ansi);
+    defer std.testing.allocator.free(ansi);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, " while parsing ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34m_OptionalBlank\x1b[0m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34mOptionalBlank\x1b[0m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34mArrayMembers\x1b[0m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34mValue\x1b[0m <~ \x1b[34mArrayMembers\x1b[0m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34m_OptionalBlank <~") == null);
+    try std.testing.expect(std.mem.indexOf(u8, ansi, "<~ \x1b[34m\x1b[34m") == null);
 }

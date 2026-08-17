@@ -5,6 +5,7 @@ pub const languages_path = "languages";
 pub const GeneratorModules = struct {
     runtime_options_mod: *std.Build.Module,
     ast_memory_benchmark: bool,
+    syntax_error_stack_depth: usize,
     generator_common_mod: *std.Build.Module,
     generator_switch_plan_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
@@ -102,9 +103,15 @@ pub fn addGeneratorModules(
         "ast-memory-benchmark",
         "Instrument AST allocation and report final AST memory usage",
     ) orelse false;
+    const syntax_error_stack_depth = b.option(
+        usize,
+        "syntax-error-stack-depth",
+        "Override the in-progress variable stack depth used in LL syntax error messages (defaults to 5 in debug and 1 in release builds; a value above 1 enables the stack)",
+    ) orelse 0;
     const runtime_options = b.addOptions();
     runtime_options.addOption(bool, "include_tests", false);
     runtime_options.addOption(bool, "ast_memory_benchmark", ast_memory_benchmark);
+    runtime_options.addOption(usize, "syntax_error_stack_depth", syntax_error_stack_depth);
     const runtime_options_mod = runtime_options.createModule();
 
     const generator_common_mod = b.addModule("generator_common", .{
@@ -184,6 +191,7 @@ pub fn addGeneratorModules(
     return .{
         .runtime_options_mod = runtime_options_mod,
         .ast_memory_benchmark = ast_memory_benchmark,
+        .syntax_error_stack_depth = syntax_error_stack_depth,
         .generator_common_mod = generator_common_mod,
         .generator_switch_plan_mod = generator_switch_plan_mod,
         .ll_generator_mod = ll_generator_mod,
