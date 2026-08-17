@@ -69,6 +69,22 @@ pub fn addGeneratedParserModule(
     };
 }
 
+pub fn addGalleyGrammarProceduresModule(
+    b: *std.Build,
+    name: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    generator_common_mod: *std.Build.Module,
+) *std.Build.Module {
+    const procedures_mod = b.addModule(name, .{
+        .root_source_file = b.path("languages/galley/procedures.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    procedures_mod.addImport("generator_common", generator_common_mod);
+    return procedures_mod;
+}
+
 pub const GalleyCli = struct {
     generator_cli_mod: *std.Build.Module,
     generator_cli_exe: *std.Build.Step.Compile,
@@ -149,11 +165,13 @@ pub fn addGeneratorModules(
     lr_generator_mod.addImport("generator_common", generator_common_mod);
     lr_generator_mod.addImport("generator_emitter_common", generator_emitter_common_mod);
     lr_generator_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
-    const galley_grammar_procedures_mod = b.addModule("galley_grammar_procedures", .{
-        .root_source_file = b.path("languages/galley/procedures.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const galley_grammar_procedures_mod = addGalleyGrammarProceduresModule(
+        b,
+        "galley_grammar_procedures",
+        target,
+        optimize,
+        generator_common_mod,
+    );
     const galley_grammar_config_mod = b.addModule("galley_grammar_config", .{
         .root_source_file = b.path("languages/galley/config.zig"),
         .target = target,
@@ -344,10 +362,13 @@ pub fn addLanguageParserFromFile(
     );
     defer b.allocator.free(error_messages_path);
 
-    const procedures_mod = b.addModule("procedures", .{
-        .root_source_file = b.path(procedures_path),
-        .target = target,
-    });
+    const procedures_mod = if (std.mem.eql(u8, entry_path, "galley"))
+        addGalleyGrammarProceduresModule(b, "procedures", target, optimize, generator.generator_common_mod)
+    else
+        b.addModule("procedures", .{
+            .root_source_file = b.path(procedures_path),
+            .target = target,
+        });
     const config_mod = b.addModule("config", .{
         .root_source_file = b.path(config_path),
         .target = target,

@@ -4,6 +4,7 @@ const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 const Node = data_structures.Node;
 const standard_procedures = root.standard_procedures;
+const generator_common = @import("generator_common");
 
 pub const SymbolKind = enum {
     variable,
@@ -166,21 +167,104 @@ fn grammarFromAst(context: *data_structures.Context, start_address: Node.Pointer
     const rules_address = firstChildNamed(context, start_address, "Rules") orelse return error.MissingRules;
 
     var mutable_rules = std.ArrayList(MutableRule).empty;
+    var rule_addresses = std.ArrayList(Node.Pointer).empty;
     var child_address = context.node_allocator.at(rules_address).first_child;
     while (child_address != Node.invalid_pointer) {
         const next_address = context.node_allocator.at(child_address).next;
         if (nodeIs(context, child_address, "Rule")) {
             const rule = try mutableRuleFromAst(context, child_address);
-            for (mutable_rules.items) |existing| {
-                if (std.mem.eql(u8, existing.header, rule.header)) return error.DuplicateRuleHeader;
-            }
             try mutable_rules.append(allocator, rule);
+            try rule_addresses.append(allocator, child_address);
         }
         child_address = next_address;
     }
 
-    if (mutable_rules.items.len == 0) return error.EmptyGrammar;
+    if (mutable_rules.items.len == 0) {
+        reporterAt(context, start_address).report("EmptyGrammar: grammar contains no rules", .{});
+        return error.EmptyGrammar;
+    }
+    if (generator_common.findDuplicateRuleHeader(mutable_rules.items)) |duplicate| {
+        reportDuplicateRuleHeader(
+            context,
+            rule_addresses.items[duplicate.first],
+            rule_addresses.items[duplicate.second],
+            mutable_rules.items[duplicate.second].header,
+        );
+        return error.DuplicateRuleHeader;
+    }
     return try immutableGrammarFromMutableRules(allocator, mutable_rules.items);
+}
+
+fn sourcePositionOf(input: []const u8, offset: usize) struct { line: usize, column: usize } {
+    const bounded = @min(offset, input.len);
+    var line: usize = 1;
+    var line_start: usize = 0;
+    for (input[0..bounded], 0..) |byte, index| {
+        if (byte == '\n') {
+            line += 1;
+            line_start = index + 1;
+        }
+    }
+    return .{ .line = line, .column = bounded - line_start + 1 };
+}
+
+fn emitGrammarMessage(context: *data_structures.Context, message: []const u8) void {
+    if (context.runtimeConst().syntax_error_reporter) |reporter| {
+        reporter(message);
+    } else {
+        std.debug.print("{s}\n", .{message});
+    }
+}
+
+/// Routes grammar-model error messages to the parser's syntax error reporter,
+/// falling back to stderr, and appends the offending node's source position.
+/// Validation choke points that decode or check grammar text pass a reporter so
+/// every caller reports where the invalid text lives without auditing call
+/// sites individually.
+const GrammarModelReporter = struct {
+    context: *data_structures.Context,
+    node_address: Node.Pointer,
+
+    fn report(self: GrammarModelReporter, comptime format: []const u8, args: anytype) void {
+        const position = sourcePositionOf(
+            self.context.diagnosticInput(),
+            self.context.node_allocator.at(self.node_address).text_start,
+        );
+        const message = std.fmt.allocPrint(
+            self.context.runtime().arena_allocator,
+            format ++ " at line {d}, column {d}.",
+            args ++ .{ position.line, position.column },
+        ) catch return;
+        emitGrammarMessage(self.context, message);
+    }
+};
+
+fn reporterAt(context: *data_structures.Context, node_address: Node.Pointer) GrammarModelReporter {
+    return .{ .context = context, .node_address = node_address };
+}
+
+fn reportDuplicateRuleHeader(
+    context: *data_structures.Context,
+    first_address: Node.Pointer,
+    second_address: Node.Pointer,
+    header: []const u8,
+) void {
+    const allocator = context.runtime().arena_allocator;
+    const input = context.diagnosticInput();
+    const first_position = sourcePositionOf(input, context.node_allocator.at(first_address).text_start);
+    const second_position = sourcePositionOf(input, context.node_allocator.at(second_address).text_start);
+    const message = std.fmt.allocPrint(
+        allocator,
+        "DuplicateRuleHeader: rule header \"{s}\" is defined more than once (first at line {d}, column {d}; duplicate at line {d}, column {d}).",
+        .{
+            header,
+            first_position.line,
+            first_position.column,
+            second_position.line,
+            second_position.column,
+        },
+    ) catch return;
+    emitGrammarMessage(context, message);
 }
 
 fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules: []MutableRule) !*Grammar {
@@ -281,12 +365,15 @@ fn symbolFromAst(
     var verbatim_literal: ?[]const u8 = null;
     var verbatim_consume = true;
     try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &verbatim, &verbatim_literal, &verbatim_consume);
-    if (recovery_points.items.len != 0 and kind != .variable) return error.InvalidRecoveryTarget;
+    if (recovery_points.items.len != 0 and kind != .variable) {
+        reporterAt(context, symbol_address).report("InvalidRecoveryTarget: recovery points can only annotate variables", .{});
+        return error.InvalidRecoveryTarget;
+    }
 
     const id = if (kind == .generative_terminal)
         try generativeIdFromAst(context, allocator, concrete_address)
     else
-        try decodeEscapes(allocator, nodeText(context, concrete_address));
+        try decodeEscapes(allocator, nodeText(context, concrete_address), .{ .context = context, .node_address = concrete_address });
 
     return .{
         .id = id,
@@ -307,12 +394,25 @@ fn symbolFromAst(
 /// backslash can never collide with the structural delimiters the generator
 /// parses back out.
 fn generativeIdFromAst(context: *data_structures.Context, allocator: std.mem.Allocator, node_address: Node.Pointer) ![]const u8 {
-    const lowercase_address = firstChildNamed(context, node_address, "LowercaseId") orelse
+    const lowercase_address = firstChildNamed(context, node_address, "LowercaseId") orelse {
+        reporterAt(context, node_address).report("MissingGenerativeId: generative terminal is missing its lowercase id", .{});
         return error.MissingGenerativeId;
+    };
     var id = std.ArrayList(u8).empty;
     try id.appendSlice(allocator, nodeText(context, lowercase_address));
     try appendExceptionTerminals(context, allocator, &id, node_address);
-    return id.toOwnedSlice(allocator);
+    const id_slice = try id.toOwnedSlice(allocator);
+
+    var expanded: std.ArrayList([]const u8) = .empty;
+    defer expanded.deinit(allocator);
+    generator_common.expandGenerativeTerminal(allocator, &expanded, id_slice) catch |err| switch (err) {
+        error.UnknownGenerativeTerminal => {
+            reporterAt(context, node_address).report("UnknownGenerativeTerminal: unknown generative terminal \"{s}\"", .{id_slice});
+            return error.UnknownGenerativeTerminal;
+        },
+        else => return err,
+    };
+    return id_slice;
 }
 
 fn appendExceptionTerminals(context: *data_structures.Context, allocator: std.mem.Allocator, id: *std.ArrayList(u8), node_address: Node.Pointer) !void {
@@ -322,7 +422,7 @@ fn appendExceptionTerminals(context: *data_structures.Context, allocator: std.me
         if (nodeIs(context, child_address, "TerminalSymbol")) {
             try id.append(allocator, '^');
             try id.append(allocator, '"');
-            try appendEncodedTerminal(allocator, id, try decodeEscapes(allocator, nodeText(context, child_address)));
+            try appendEncodedTerminal(allocator, id, try decodeEscapes(allocator, nodeText(context, child_address), .{ .context = context, .node_address = child_address }));
             try id.append(allocator, '"');
         } else {
             try appendExceptionTerminals(context, allocator, id, child_address);
@@ -370,12 +470,19 @@ fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Po
                 if (verbatim_active) |active| {
                     active.* = true;
                 } else {
+                    reporterAt(context, child_address).report("InvalidVerbatimPlacement: verbatim capture is not allowed here", .{});
                     return error.InvalidVerbatimPlacement;
                 }
                 if (firstDescendantNamed(context, marker_address, "TerminalSymbol")) |terminal_address| {
-                    const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
-                    if (terminal.len == 0) return error.EmptyVerbatimTerminator;
-                    if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulVerbatimTerminator;
+                    const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address), reporterAt(context, terminal_address));
+                    if (terminal.len == 0) {
+                        reporterAt(context, terminal_address).report("EmptyVerbatimTerminator: verbatim terminator cannot be empty", .{});
+                        return error.EmptyVerbatimTerminator;
+                    }
+                    if (std.mem.indexOfScalar(u8, terminal, 0) != null) {
+                        reporterAt(context, terminal_address).report("NulVerbatimTerminator: verbatim terminator cannot contain a null byte", .{});
+                        return error.NulVerbatimTerminator;
+                    }
                     if (verbatim_literal) |literal| {
                         literal.* = terminal;
                     }
@@ -393,15 +500,25 @@ fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Po
                     }
                 }
             } else if (firstDescendantNamed(context, child_address, "RecoveryPoint")) |point_address| {
-                const terminal_address = firstDescendantNamed(context, point_address, "TerminalSymbol") orelse return error.MissingRecoveryTerminal;
-                const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address));
-                if (terminal.len == 0) return error.EmptyRecoveryTerminal;
-                if (std.mem.indexOfScalar(u8, terminal, 0) != null) return error.NulRecoveryTerminal;
+                const terminal_address = firstDescendantNamed(context, point_address, "TerminalSymbol") orelse {
+                    reporterAt(context, child_address).report("MissingRecoveryTerminal: recovery point is missing its terminal", .{});
+                    return error.MissingRecoveryTerminal;
+                };
+                const terminal = try decodeEscapes(allocator, nodeText(context, terminal_address), reporterAt(context, terminal_address));
+                if (terminal.len == 0) {
+                    reporterAt(context, terminal_address).report("EmptyRecoveryTerminal: recovery terminal cannot be empty", .{});
+                    return error.EmptyRecoveryTerminal;
+                }
+                if (std.mem.indexOfScalar(u8, terminal, 0) != null) {
+                    reporterAt(context, terminal_address).report("NulRecoveryTerminal: recovery terminal cannot contain a null byte", .{});
+                    return error.NulRecoveryTerminal;
+                }
                 const point_node = context.node_allocator.at(point_address);
                 const terminal_node = context.node_allocator.at(terminal_address);
                 const resume_side: RecoveryResume = if (point_node.text_start < terminal_node.text_start) .before else .after;
                 try recovery_target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
             } else {
+                reporterAt(context, child_address).report("InvalidAnnotation: unrecognized annotation", .{});
                 return error.InvalidAnnotation;
             }
         }
@@ -466,7 +583,25 @@ pub fn grammarFromAstAllocator(node_allocator: *const data_structures.ASTAllocat
     return null;
 }
 
-fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
+fn decodeEscapes(allocator: std.mem.Allocator, raw_id: []const u8, reporter: ?GrammarModelReporter) ![]const u8 {
+    return decodeEscapesImpl(allocator, raw_id) catch |err| switch (err) {
+        error.InvalidRawString, error.InvalidHexEscape, error.InvalidUnicodeEscape => {
+            if (reporter) |reporter_value| {
+                const description: []const u8 = switch (err) {
+                    error.InvalidRawString => "invalid raw string literal",
+                    error.InvalidHexEscape => "invalid hex escape",
+                    error.InvalidUnicodeEscape => "invalid unicode escape",
+                    else => "invalid terminal literal",
+                };
+                reporter_value.report("{s}: {s}", .{ @errorName(err), description });
+            }
+            return err;
+        },
+        else => return err,
+    };
+}
+
+fn decodeEscapesImpl(allocator: std.mem.Allocator, raw_id: []const u8) ![]const u8 {
     if (rawStringContent(raw_id)) |content| {
         return allocator.dupe(u8, content);
     }
@@ -603,6 +738,7 @@ test "grammar Unicode escapes decode every UTF-8 width" {
     const decoded = try decodeEscapes(
         arena.allocator(),
         "\"\\u{0}\\u{7f}\\u{80}\\u{7ff}\\u{800}\\u{ffff}\\u{10000}\\u{10ffff}\"",
+        null,
     );
     try std.testing.expectEqualSlices(
         u8,
@@ -624,7 +760,7 @@ test "grammar Unicode escapes reject non-scalars and malformed forms" {
     }) |encoded| {
         try std.testing.expectError(
             error.InvalidUnicodeEscape,
-            decodeEscapes(std.testing.allocator, encoded),
+            decodeEscapes(std.testing.allocator, encoded, null),
         );
     }
 }
@@ -642,7 +778,7 @@ test "raw string terminals decode to their verbatim content" {
         .{ .raw = "\\\"~anything here~\"", .expected = "anything here" },
     };
     for (cases) |case| {
-        const decoded = try decodeEscapes(allocator, case.raw);
+        const decoded = try decodeEscapes(allocator, case.raw, null);
         try std.testing.expectEqualStrings(case.expected, decoded);
     }
 }
@@ -659,7 +795,7 @@ test "raw string exceptions survive escape decoding for the generator" {
         .{ .raw = "character^\"\\n\"", .expected = "character^\"\n\"" },
     };
     for (cases) |case| {
-        const decoded = try decodeEscapes(allocator, case.raw);
+        const decoded = try decodeEscapes(allocator, case.raw, null);
         try std.testing.expectEqualStrings(case.expected, decoded);
     }
 }
@@ -677,7 +813,7 @@ test "malformed raw strings are rejected" {
     }) |raw| {
         try std.testing.expectError(
             error.InvalidRawString,
-            decodeEscapes(allocator, raw),
+            decodeEscapes(allocator, raw, null),
         );
     }
 }

@@ -823,6 +823,15 @@ pub const Context = struct {
             self.column_offsets.pop(length);
         }
         self.token.pop(length);
+        if (comptime builtin.mode == .Debug) {
+            if (self.verbosityLevel() > 1) {
+                std.debug.print("\n{d}:{d}:\"{f}\"\n", .{
+                    if (comptime root.position_tracking_enabled) self.line else 0,
+                    if (comptime root.position_tracking_enabled) self.column else 0,
+                    string_utilities.fmtString(self.token.items()),
+                });
+            }
+        }
     }
 
     pub fn read(self: *@This()) void {

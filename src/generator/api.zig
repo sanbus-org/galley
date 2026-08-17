@@ -439,13 +439,16 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    try std.testing.expectError(error.DuplicateRuleHeader, parseGrammar(arena.allocator(),
+    try std.testing.expectError(error.DuplicateRuleHeader, parseGrammarWithOptions(
+        arena.allocator(),
         \\Start
         \\| "a"
         \\
         \\Start
         \\| "b"
         \\
+    ,
+        .{ .syntax_error_reporter = &ignoreDiagnostic },
     ));
     try std.testing.expectError(error.InvalidRecoveryTarget, parseGrammar(arena.allocator(),
         \\Start

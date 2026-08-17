@@ -178,11 +178,20 @@ fn addCase(
     const error_messages_file_name = try common.errorMessagesFileName(b.allocator, parser_type);
     const error_messages_path = try std.fs.path.join(b.allocator, &.{ "languages", language, error_messages_file_name });
 
-    const procedures_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }), .{
-        .root_source_file = b.path(procedures_path),
-        .target = options.target,
-        .optimize = options.optimize,
-    });
+    const procedures_mod = if (std.mem.eql(u8, language, "galley"))
+        common.addGalleyGrammarProceduresModule(
+            b,
+            try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }),
+            options.target,
+            options.optimize,
+            options.generator_modules.generator_common_mod,
+        )
+    else
+        b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }), .{
+            .root_source_file = b.path(procedures_path),
+            .target = options.target,
+            .optimize = options.optimize,
+        });
     const config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-config" }), .{
         .root_source_file = b.path(config_path),
         .target = options.target,
@@ -247,11 +256,20 @@ fn addCase(
             generate_recovery_parser.addArg("--with-error-recovery");
             generate_recovery_parser.stdio = .inherit;
 
-            const recovery_procedures_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }), .{
-                .root_source_file = b.path(procedures_path),
-                .target = options.target,
-                .optimize = options.optimize,
-            });
+            const recovery_procedures_mod = if (std.mem.eql(u8, language, "galley"))
+                common.addGalleyGrammarProceduresModule(
+                    b,
+                    try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }),
+                    options.target,
+                    options.optimize,
+                    options.generator_modules.generator_common_mod,
+                )
+            else
+                b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }), .{
+                    .root_source_file = b.path(procedures_path),
+                    .target = options.target,
+                    .optimize = options.optimize,
+                });
             const recovery_config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-config" }), .{
                 .root_source_file = b.path(config_path),
                 .target = options.target,
