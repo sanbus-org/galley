@@ -1,6 +1,9 @@
 const std = @import("std");
 const generator = @import("galley_generator");
 const bootstrap_options = @import("cli_bootstrap_options");
+const ctime = @cImport({
+    @cInclude("time.h");
+});
 
 fn ignoreDiagnostic(_: []const u8) void {}
 
@@ -12,6 +15,7 @@ const CliOptions = struct {
     generator_options: generator.Options = .{},
     fill_error_messages: bool = false,
     bootstrap_zig_project: bool = false,
+    watch: bool = false,
 };
 
 const GenerationResult = struct {
@@ -27,11 +31,18 @@ pub fn main(init: std.process.Init) !void {
     const options = try parseArgs(init);
     const language_dir = options.language_dir orelse fatal("error: language directory is required\n", .{});
 
+    printRunSeparator(init);
+    const start = std.Io.Timestamp.now(init.io, .real);
     const result = try generateLanguage(init, language_dir, options);
-    try printSuccess(init, language_dir, result);
+    const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
+    try printSuccess(init, language_dir, result, elapsed_ms);
 
     if (options.bootstrap_zig_project) {
         try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result);
+    }
+
+    if (options.watch) {
+        try watchAndRegenerate(init, language_dir, options);
     }
 }
 
@@ -82,6 +93,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.fill_error_messages = true;
         } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
             result.bootstrap_zig_project = true;
+        } else if (std.mem.eql(u8, arg, "--watch")) {
+            result.watch = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             fatal("error: unknown argument: {s}\n", .{arg});
         } else if (result.language_dir == null) {
@@ -129,6 +142,9 @@ fn printUsage(init: std.process.Init) !void {
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
         \\                             files with the generated parser.
+        \\      --watch                Regenerate the parser whenever the grammar
+        \\                             file changes. Keep the previous parser
+        \\                             output if regeneration fails.
         \\
     );
     try stdout.flush();
@@ -149,38 +165,161 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
     const has_lr = fileExists(init.io, init.gpa, .cwd(), language_dir, "lr.grm");
 
     if (options.parser_type) |parser_type| {
-        switch (parser_type) {
-            .ll => {
-                if (!has_ll) fatal("error: ll.grm not found in {s}\n", .{language_dir});
-                try generateParser(init, language_dir, .ll, options.generator_options);
-                result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
-                result.generated_ll = true;
-            },
-            .lr => {
-                if (!has_lr) fatal("error: lr.grm not found in {s}\n", .{language_dir});
-                try generateParser(init, language_dir, .lr, options.generator_options);
-                result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
-                result.generated_lr = true;
-            },
-        }
+        const has = switch (parser_type) {
+            .ll => has_ll,
+            .lr => has_lr,
+        };
+        if (!has) fatal("error: {s} not found in {s}\n", .{ grammarFileName(parser_type), language_dir });
+        try generateParserType(init, language_dir, parser_type, options, &result);
     } else {
         if (!has_ll and !has_lr) fatal("error: no ll.grm or lr.grm found in {s}\n", .{language_dir});
-        if (has_ll) {
-            try generateParser(init, language_dir, .ll, options.generator_options);
-            result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
-            result.generated_ll = true;
-        }
-        if (has_lr) {
-            try generateParser(init, language_dir, .lr, options.generator_options);
-            result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
-            result.generated_lr = true;
-        }
+        if (has_ll) try generateParserType(init, language_dir, .ll, options, &result);
+        if (has_lr) try generateParserType(init, language_dir, .lr, options, &result);
     }
 
     result.created_procedures = try createFileIfMissing(init, language_dir, "procedures.zig", defaultProceduresSource);
     result.created_config = try createFileIfMissing(init, language_dir, "config.zig", defaultConfigSource);
 
     return result;
+}
+
+fn generateParserType(
+    init: std.process.Init,
+    language_dir: []const u8,
+    parser_type: generator.ParserType,
+    options: CliOptions,
+    result: *GenerationResult,
+) !void {
+    switch (parser_type) {
+        .ll => {
+            try generateParser(init, language_dir, .ll, options.generator_options);
+            result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
+            result.generated_ll = true;
+        },
+        .lr => {
+            try generateParser(init, language_dir, .lr, options.generator_options);
+            result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
+            result.generated_lr = true;
+        },
+    }
+}
+
+const WatchedGrammar = struct {
+    parser_type: generator.ParserType,
+    mtime: i96,
+    size: u64,
+};
+
+fn watchAndRegenerate(init: std.process.Init, language_dir: []const u8, options: CliOptions) !void {
+    var watched: [2]WatchedGrammar = undefined;
+    var watched_count: usize = 0;
+
+    const has_ll = fileExists(init.io, init.gpa, .cwd(), language_dir, "ll.grm");
+    const has_lr = fileExists(init.io, init.gpa, .cwd(), language_dir, "lr.grm");
+
+    if (options.parser_type) |parser_type| {
+        const has = switch (parser_type) {
+            .ll => has_ll,
+            .lr => has_lr,
+        };
+        if (!has) fatal("error: {s} not found in {s}\n", .{ grammarFileName(parser_type), language_dir });
+        watched[watched_count] = .{ .parser_type = parser_type, .mtime = 0, .size = 0 };
+        watched_count += 1;
+    } else {
+        if (has_ll) {
+            watched[watched_count] = .{ .parser_type = .ll, .mtime = 0, .size = 0 };
+            watched_count += 1;
+        }
+        if (has_lr) {
+            watched[watched_count] = .{ .parser_type = .lr, .mtime = 0, .size = 0 };
+            watched_count += 1;
+        }
+    }
+
+    for (watched[0..watched_count]) |*entry| {
+        try refreshGrammarStat(init, language_dir, entry);
+    }
+
+    printStatus(init, "watching {s} for changes; press Ctrl-C to stop\n", .{language_dir});
+
+    while (true) {
+        std.Io.sleep(init.io, .fromMilliseconds(250), .awake) catch {};
+
+        for (watched[0..watched_count]) |*entry| {
+            const changed = blk: {
+                const stat = statGrammar(init, language_dir, entry.parser_type) catch continue;
+                break :blk stat.mtime != entry.mtime or stat.size != entry.size;
+            };
+            if (!changed) continue;
+
+            printRunSeparator(init);
+            printStatus(init, "change detected in {s}; regenerating {s} parser\n", .{ grammarFileName(entry.parser_type), @tagName(entry.parser_type) });
+
+            const start = std.Io.Timestamp.now(init.io, .real);
+            var result = GenerationResult{};
+            const failure: ?anyerror = blk: {
+                var did_fail: ?anyerror = null;
+                generateParserType(init, language_dir, entry.parser_type, options, &result) catch |e| {
+                    did_fail = e;
+                };
+                break :blk did_fail;
+            };
+            const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
+
+            if (failure) |e| {
+                printStatus(init, "regeneration failed ({s}, {d}ms); keeping previous parser output\n", .{ @errorName(e), elapsed_ms });
+            } else {
+                printStatus(init, "regenerated {s} parser in {d}ms\n", .{ @tagName(entry.parser_type), elapsed_ms });
+            }
+
+            try refreshGrammarStat(init, language_dir, entry);
+        }
+    }
+}
+
+fn printStatus(init: std.process.Init, comptime fmt: []const u8, args: anytype) void {
+    var stdout_buffer: [2048]u8 = undefined;
+    const stdout_file = std.Io.File.stdout();
+    var stdout_writer = stdout_file.writer(init.io, &stdout_buffer);
+    stdout_writer.interface.print(fmt, args) catch {};
+    stdout_writer.interface.flush() catch {};
+}
+
+fn printRunSeparator(init: std.process.Init) void {
+    var buffer: [64]u8 = undefined;
+    const timestamp = runTimestamp(init, &buffer);
+    printStatus(init, "\n======================================== [{s}] ========================================\n", .{timestamp});
+}
+
+fn runTimestamp(init: std.process.Init, buffer: []u8) []const u8 {
+    const now = std.Io.Timestamp.now(init.io, .real);
+    var seconds: ctime.time_t = @intCast(@divTrunc(now.nanoseconds, std.time.ns_per_s));
+    var local: ctime.tm = undefined;
+    if (ctime.localtime_r(&seconds, &local) != null) {
+        const len = ctime.strftime(buffer.ptr, buffer.len, "%H:%M:%S", &local);
+        if (len > 0 and len < buffer.len) return buffer[0..len];
+    }
+    return "??:??:??";
+}
+
+fn grammarFileName(parser_type: generator.ParserType) []const u8 {
+    return switch (parser_type) {
+        .ll => "ll.grm",
+        .lr => "lr.grm",
+    };
+}
+
+fn statGrammar(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType) !struct { mtime: i96, size: u64 } {
+    const path = try std.fs.path.join(init.gpa, &.{ language_dir, grammarFileName(parser_type) });
+    defer init.gpa.free(path);
+    const stat = try std.Io.Dir.cwd().statFile(init.io, path, .{});
+    return .{ .mtime = stat.mtime.nanoseconds, .size = stat.size };
+}
+
+fn refreshGrammarStat(init: std.process.Init, language_dir: []const u8, entry: *WatchedGrammar) !void {
+    const stat = try statGrammar(init, language_dir, entry.parser_type);
+    entry.mtime = stat.mtime;
+    entry.size = stat.size;
 }
 
 fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.mem.Allocator, dir: std.Io.Dir, language_dir: []const u8, result: GenerationResult) !void {
@@ -684,7 +823,7 @@ fn fileExists(io: std.Io, gpa: std.mem.Allocator, dir: std.Io.Dir, dir_path: []c
     return true;
 }
 
-fn printSuccess(init: std.process.Init, language_dir: []const u8, result: GenerationResult) !void {
+fn printSuccess(init: std.process.Init, language_dir: []const u8, result: GenerationResult, elapsed_ms: i64) !void {
     var stdout_buffer: [2048]u8 = undefined;
     const stdout_file = std.Io.File.stdout();
     const color = stdout_file.supportsAnsiEscapeCodes(init.io) catch false;
@@ -717,6 +856,7 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
     if (created_count > 0) {
         try stdout.print("Created {d} support file{s}.\n", .{ created_count, if (created_count == 1) "" else "s" });
     }
+    try stdout.print("generated in {d}ms\n", .{elapsed_ms});
     try stdout.flush();
 }
 
