@@ -1,0 +1,21 @@
+Start
+| Comparison
+
+Comparison
+| Operand Tail ComparisonOperator " " Operand
+
+Tail
+| Operator " " Operand Tail
+|
+
+Operand
+| "1"
+| "2"
+| "3"
+
+Operator
+| " +"
+| " -"
+
+ComparisonOperator
+| " <"

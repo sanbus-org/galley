@@ -26,7 +26,7 @@ pub const SelfRepeatingDecision = struct {
     rule_index: usize,
     self_index: usize,
     skip_ast_construction: bool,
-    cases: []const u8,
+    tree: *switch_planning.Node,
 };
 
 pub const LLPlan = struct {
@@ -406,20 +406,20 @@ const Builder = struct {
                 if (rule.header != symbol_index) continue;
                 for (rule.rhs.items, 0..) |child, self_index| {
                     if (child != symbol_index) continue;
-                    var cases = std.ArrayList(u8).empty;
+                    var self_repeating_entries = std.ArrayList(switch_planning.Entry).empty;
                     for (self.plan.parse_table.items) |entry| {
                         if (entry.variable != symbol_index or entry.rule != rule_index) continue;
                         for (self.grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
-                            if (terminal.len > 0 and !byteContains(cases.items, terminal[0])) try cases.append(self.allocator, terminal[0]);
+                            if (terminal.len > 0) try self_repeating_entries.append(self.allocator, .{ .terminal = terminal, .target = rule_index });
                         }
                     }
-                    std.mem.sort(u8, cases.items, {}, comptime std.sort.asc(u8));
+                    const tree = try switch_planning.build(self.allocator, self_repeating_entries.items);
                     try self.plan.self_repeating_decisions.append(self.allocator, .{
                         .variable = symbol_index,
                         .rule_index = rule_index,
                         .self_index = self_index,
                         .skip_ast_construction = skip_ast_construction,
-                        .cases = try cases.toOwnedSlice(self.allocator),
+                        .tree = tree,
                     });
                 }
             }
@@ -499,11 +499,6 @@ const Builder = struct {
         try map.put(key, value);
     }
 };
-
-fn byteContains(items: []const u8, byte: u8) bool {
-    for (items) |item| if (item == byte) return true;
-    return false;
-}
 
 fn joinWithOr(allocator: std.mem.Allocator, items: []const []const u8) ![]const u8 {
     if (items.len == 0) return allocator.dupe(u8, "valid_input");
@@ -590,6 +585,67 @@ test "LL planning reports ambiguous first sets" {
     var grammar = try testAmbiguousGrammar(allocator);
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "self-repeating decisions discriminate on full terminal bytes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "ArithmeticExpressionTail", .variable);
+    const operator = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Operator", .variable);
+    const plus = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " +", .terminal);
+    const minus = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " -", .terminal);
+    const star = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " *", .terminal);
+    const slash = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " /", .terminal);
+    const comparison = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " <", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, comparison });
+    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ operator, tail });
+    try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
+    try appendTestRule(allocator, &grammar.rules, operator, "0", &.{plus});
+    try appendTestRule(allocator, &grammar.rules, operator, "1", &.{minus});
+    try appendTestRule(allocator, &grammar.rules, operator, "2", &.{star});
+    try appendTestRule(allocator, &grammar.rules, operator, "3", &.{slash});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var tail_index: usize = undefined;
+    for (grammar.symbols.items, 0..) |symbol, index| {
+        if (std.mem.eql(u8, symbol.id, "ArithmeticExpressionTail")) tail_index = index;
+    }
+
+    var rule_index: usize = undefined;
+    var self_index: usize = undefined;
+    for (grammar.rules.items, 0..) |rule, index| {
+        if (rule.header != tail_index or rule.rhs.items.len == 0) continue;
+        for (rule.rhs.items, 0..) |child, child_index| {
+            if (child == tail_index) {
+                rule_index = index;
+                self_index = child_index;
+            }
+        }
+    }
+
+    const plan = try LLPlan.build(allocator, &grammar, .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false });
+    const decision = plan.selfRepeatingDecision(tail_index, rule_index, self_index, false);
+    try std.testing.expectEqual(@as(usize, 2), decision.tree.step_length);
+
+    const heads = try switch_planning.expectedHeads(allocator, decision.tree.*);
+    var saw_plus = false;
+    var saw_comparison = false;
+    for (heads) |head| {
+        if (std.mem.eql(u8, head, " +")) saw_plus = true;
+        if (std.mem.eql(u8, head, " <")) saw_comparison = true;
+    }
+    try std.testing.expect(saw_plus);
+    try std.testing.expect(!saw_comparison);
 }
 
 test "left-factor suggestion hoists a shared RHS prefix" {
