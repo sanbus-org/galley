@@ -6,6 +6,7 @@
 - [Your First Parser](#your-first-parser)
   - [Parse existing JSON](#parse-existing-json)
   - [Try the LR parser too](#try-the-lr-parser-too)
+  - [Bootstrap a new language project](#bootstrap-a-new-language-project)
 - [Next Steps](#next-steps)
 
 ---
@@ -41,6 +42,16 @@ The separate `json-recovery` implementation demonstrates explicit recovery and c
 ./zig-out/bin/galley --parser-type ll --with-error-recovery languages/json-recovery
 zig build run-ll-json-recovery -- languages/json-recovery/recovery-demo.json
 ```
+
+### Bootstrap a new language project
+
+To turn a directory that only contains a grammar into a runnable Zig project, pass `--bootstrap-zig-project`. Galley writes `build.zig`, `build.zig.zon`, and `src/main.zig` next to the generated parser, and refuses to overwrite existing project files:
+
+```sh
+./zig-out/bin/galley --bootstrap-zig-project my-language
+```
+
+If the target directory contains no project files (`build.zig`, `build.zig.zon`, or `src/main.zig`) and no parent directory has a `build.zig`, bootstrapping happens automatically, so the flag is often optional. Pass `--no-bootstrap-zig-project` to force it off when the automatic rule would kick in.
 
 ### Try the LR parser too
 
