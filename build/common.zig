@@ -80,6 +80,8 @@ pub const GalleyCliOptions = struct {
     install_default: bool = false,
     add_galley_step: bool = false,
     include_generate_parser_file: bool = false,
+    galley_git_url: []const u8 = "https://github.com/sanbus-org/galley.git",
+    galley_git_commit: ?[]const u8 = null,
 };
 
 pub const LanguageParser = struct {
@@ -209,12 +211,28 @@ pub fn addGalleyCli(
     generator: GeneratorModules,
     options: GalleyCliOptions,
 ) GalleyCli {
+    const galley_git_commit = options.galley_git_commit orelse blk: {
+        const result = std.process.run(b.allocator, b.graph.io, .{
+            .argv = &.{ "git", "rev-parse", "HEAD" },
+        }) catch break :blk "";
+        defer b.allocator.free(result.stdout);
+        defer b.allocator.free(result.stderr);
+        if (result.term != .exited or result.term.exited != 0) break :blk "";
+        break :blk b.allocator.dupe(u8, std.mem.trim(u8, result.stdout, " \n\r")) catch "";
+    };
+
+    const cli_bootstrap_options = b.addOptions();
+    cli_bootstrap_options.addOption([]const u8, "galley_git_url", options.galley_git_url);
+    cli_bootstrap_options.addOption([]const u8, "galley_git_commit", galley_git_commit);
+    const cli_bootstrap_options_mod = cli_bootstrap_options.createModule();
+
     const generator_cli_mod = b.createModule(.{
         .root_source_file = b.path("src/cli/generator.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "galley_generator", .module = generator.galley_generator_mod },
+            .{ .name = "cli_bootstrap_options", .module = cli_bootstrap_options_mod },
         },
     });
     const generator_cli_exe = b.addExecutable(.{
