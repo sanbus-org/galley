@@ -1,5 +1,6 @@
 const std = @import("std");
 const generator = @import("galley_generator");
+const bootstrap_options = @import("cli_bootstrap_options");
 
 fn ignoreDiagnostic(_: []const u8) void {}
 
@@ -10,6 +11,7 @@ const CliOptions = struct {
     language_dir: ?[]const u8 = null,
     generator_options: generator.Options = .{},
     fill_error_messages: bool = false,
+    bootstrap_zig_project: bool = false,
 };
 
 const GenerationResult = struct {
@@ -27,6 +29,10 @@ pub fn main(init: std.process.Init) !void {
 
     const result = try generateLanguage(init, language_dir, options);
     try printSuccess(init, language_dir, result);
+
+    if (options.bootstrap_zig_project) {
+        try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result);
+    }
 }
 
 fn parseArgs(init: std.process.Init) !CliOptions {
@@ -74,6 +80,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.generator_options.ast_for_terminals = false;
         } else if (std.mem.eql(u8, arg, "--fill-error-messages")) {
             result.fill_error_messages = true;
+        } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
+            result.bootstrap_zig_project = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             fatal("error: unknown argument: {s}\n", .{arg});
         } else if (result.language_dir == null) {
@@ -117,6 +125,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --ast-for-terminals    Enables AST nodes for terminals.
         \\      --no-ast-for-terminals Disables AST nodes for terminals.
         \\      --fill-error-messages  Append missing default syntax error hooks.
+        \\      --bootstrap-zig-project
+        \\                             Create a minimal Zig project (build.zig,
+        \\                             build.zig.zon, src/main.zig) that parses
+        \\                             files with the generated parser.
         \\
     );
     try stdout.flush();
@@ -133,8 +145,8 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
 
     var result = GenerationResult{};
 
-    const has_ll = fileExists(init, language_dir, "ll.grm");
-    const has_lr = fileExists(init, language_dir, "lr.grm");
+    const has_ll = fileExists(init.io, init.gpa, .cwd(), language_dir, "ll.grm");
+    const has_lr = fileExists(init.io, init.gpa, .cwd(), language_dir, "lr.grm");
 
     if (options.parser_type) |parser_type| {
         switch (parser_type) {
@@ -169,6 +181,103 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
     result.created_config = try createFileIfMissing(init, language_dir, "config.zig", defaultConfigSource);
 
     return result;
+}
+
+fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.mem.Allocator, dir: std.Io.Dir, language_dir: []const u8, result: GenerationResult) !void {
+    const bootstrap_files = [_][]const u8{ "build.zig", "build.zig.zon", "src/main.zig" };
+    for (bootstrap_files) |basename| {
+        if (fileExists(io, gpa, dir, language_dir, basename)) {
+            std.debug.print("error: {s} already exists in {s}; refusing to overwrite\n", .{ basename, language_dir });
+            return error.BootstrapFileExists;
+        }
+    }
+
+    const package_name = try sanitizePackageName(arena_allocator, language_dir);
+
+    const fingerprint = try computeFingerprint(io, arena_allocator, package_name);
+
+    const parser_source: []const u8, const error_messages: []const u8 = if (result.generated_ll) .{
+        "_ll-parser.zig",
+        "ll_error_messages.zig",
+    } else .{ "_lr-parser.zig", "lr_error_messages.zig" };
+
+    const build_zig = try std.mem.replaceOwned(u8, arena_allocator, defaultBuildZigSource, "@@PARSER_SOURCE@@", parser_source);
+    const build_zig_1 = try std.mem.replaceOwned(u8, arena_allocator, build_zig, "@@ERROR_MESSAGES@@", error_messages);
+    const build_zig_2 = try std.mem.replaceOwned(u8, arena_allocator, build_zig_1, "@@RUNNER_NAME@@", package_name);
+
+    const src_dir = try std.fs.path.join(gpa, &.{ language_dir, "src" });
+    defer gpa.free(src_dir);
+    try dir.createDirPath(io, src_dir);
+
+    const build_zig_path = try std.fs.path.join(gpa, &.{ language_dir, "build.zig" });
+    defer gpa.free(build_zig_path);
+    try generator.atomic_file.writeAll(io, dir, build_zig_path, .create, build_zig_2);
+
+    const main_zig_path = try std.fs.path.join(gpa, &.{ language_dir, "src", "main.zig" });
+    defer gpa.free(main_zig_path);
+    try generator.atomic_file.writeAll(io, dir, main_zig_path, .create, defaultMainZigSource);
+
+    const dependency_hash = try fetchGalleyHash(io, gpa, language_dir);
+    defer gpa.free(dependency_hash);
+
+    const zon = try std.mem.replaceOwned(u8, arena_allocator, defaultZonSource, "@@NAME@@", package_name);
+    const zon_1 = try std.mem.replaceOwned(u8, arena_allocator, zon, "@@FINGERPRINT@@", fingerprint);
+    const zon_2 = try std.mem.replaceOwned(u8, arena_allocator, zon_1, "@@COMMIT@@", bootstrap_options.galley_git_commit);
+    const zon_3 = try std.mem.replaceOwned(u8, arena_allocator, zon_2, "@@HASH@@", dependency_hash);
+
+    const zon_path = try std.fs.path.join(gpa, &.{ language_dir, "build.zig.zon" });
+    defer gpa.free(zon_path);
+    try generator.atomic_file.writeAll(io, dir, zon_path, .create, zon_3);
+
+    std.debug.print("Created build.zig, build.zig.zon, and src/main.zig in {s}\n", .{language_dir});
+}
+
+fn sanitizePackageName(allocator: std.mem.Allocator, language_dir: []const u8) ![]const u8 {
+    var trimmed = language_dir;
+    while (trimmed.len > 0 and trimmed[trimmed.len - 1] == std.fs.path.sep) {
+        trimmed = trimmed[0 .. trimmed.len - 1];
+    }
+    const basename = std.fs.path.basename(trimmed);
+
+    var result: std.ArrayList(u8) = .empty;
+    if (std.ascii.isDigit(basename[0])) try result.append(allocator, '_');
+    for (basename) |byte| {
+        try result.append(allocator, switch (byte) {
+            'a'...'z', 'A'...'Z', '0'...'9', '_' => byte,
+            else => '_',
+        });
+    }
+    return result.toOwnedSlice(allocator);
+}
+
+fn computeFingerprint(io: std.Io, allocator: std.mem.Allocator, package_name: []const u8) ![]const u8 {
+    const crc32 = std.hash.Crc32.hash(package_name);
+
+    var random_bytes: [4]u8 = undefined;
+    io.random(&random_bytes);
+    var low: u32 = std.mem.bytesToValue(u32, &random_bytes);
+    if (low == 0x00000000 or low == 0xffffffff) low = 1;
+
+    return std.fmt.allocPrint(allocator, "{x:0>16}", .{(@as(u64, crc32) << 32) | low});
+}
+
+fn fetchGalleyHash(io: std.Io, gpa: std.mem.Allocator, language_dir: []const u8) ![]const u8 {
+    const git_url = try std.fmt.allocPrint(gpa, "git+{s}#{s}", .{ bootstrap_options.galley_git_url, bootstrap_options.galley_git_commit });
+    defer gpa.free(git_url);
+
+    const run_result = std.process.run(gpa, io, .{
+        .argv = &.{ "zig", "fetch", git_url },
+        .cwd = .{ .path = language_dir },
+        .stdout_limit = .limited(4096),
+    }) catch |err| fatal("error: unable to run `zig fetch`: {any}\n", .{err});
+    defer gpa.free(run_result.stdout);
+    defer gpa.free(run_result.stderr);
+
+    if (run_result.term != .exited or run_result.term.exited != 0) {
+        std.debug.print("error: `zig fetch {s}` failed:\n{s}\n", .{ git_url, run_result.stderr });
+        return error.FetchFailed;
+    }
+    return gpa.dupe(u8, std.mem.trim(u8, run_result.stdout, " \n\r")) catch unreachable;
 }
 
 fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType, options: generator.Options) !void {
@@ -518,6 +627,45 @@ test "mergeErrorMessages reports obsolete syntax error hooks" {
     try expectContains(merge.source, "pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail(args: root.SyntaxErrorMessageArgs)");
 }
 
+test "sanitizePackageName derives a valid Zig identifier from the directory name" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectEqualStrings("my_lang", try sanitizePackageName(arena.allocator(), "my-lang"));
+    try std.testing.expectEqualStrings("json", try sanitizePackageName(arena.allocator(), "json"));
+    try std.testing.expectEqualStrings("_2lang", try sanitizePackageName(arena.allocator(), "2lang"));
+    try std.testing.expectEqualStrings("path", try sanitizePackageName(arena.allocator(), "/a/b/path/"));
+}
+
+test "computeFingerprint keeps crc32 of the name in the high bits and formats 16 hex digits" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const fingerprint = try computeFingerprint(std.testing.io, arena.allocator(), "zbtest");
+    try std.testing.expectEqual(@as(usize, 16), fingerprint.len);
+    const expected_high = @as(u64, std.hash.Crc32.hash("zbtest")) << 32;
+    const value = try std.fmt.parseUnsigned(u64, fingerprint, 16);
+    try std.testing.expectEqual(expected_high, value & 0xffffffff00000000);
+}
+
+test "bootstrapZigProject refuses to overwrite an existing build.zig" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "build.zig",
+        .data = "existing",
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(
+        error.BootstrapFileExists,
+        bootstrapZigProject(std.testing.io, std.testing.allocator, arena.allocator(), tmp.dir, ".", .{}),
+    );
+}
+
 fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
     const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
     defer init.gpa.free(path);
@@ -529,10 +677,10 @@ fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: [
     return true;
 }
 
-fn fileExists(init: std.process.Init, dir_path: []const u8, basename: []const u8) bool {
-    const path = std.fs.path.join(init.gpa, &.{ dir_path, basename }) catch return false;
-    defer init.gpa.free(path);
-    std.Io.Dir.cwd().access(init.io, path, .{}) catch return false;
+fn fileExists(io: std.Io, gpa: std.mem.Allocator, dir: std.Io.Dir, dir_path: []const u8, basename: []const u8) bool {
+    const path = std.fs.path.join(gpa, &.{ dir_path, basename }) catch return false;
+    defer gpa.free(path);
+    dir.access(io, path, .{}) catch return false;
     return true;
 }
 
@@ -579,6 +727,12 @@ const defaultConfigSource = @embedFile("templates/config.zig");
 const defaultLlErrorMessagesSource = @embedFile("templates/ll_error_messages.zig");
 
 const defaultLrErrorMessagesSource = @embedFile("templates/lr_error_messages.zig");
+
+const defaultBuildZigSource = @embedFile("templates/build.zig");
+
+const defaultMainZigSource = @embedFile("templates/main.zig");
+
+const defaultZonSource = @embedFile("templates/build.zig.zon");
 
 fn errorMessagesFileName(parser_type: generator.ParserType) []const u8 {
     return switch (parser_type) {
