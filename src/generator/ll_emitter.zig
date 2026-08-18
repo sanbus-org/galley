@@ -386,35 +386,17 @@ const Generator = struct {
                 try writer.writeAll(";\n");
             }
 
-            const cases = self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).cases;
-            try writer.writeAll("\n    while (true) {\n        switch (context.head(u8, 0)) {\n            ");
-            for (cases, 0..) |byte, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.print("{d}", .{byte});
-            }
-            try writer.writeAll(" => { // ");
-            for (cases, 0..) |byte, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.writeByte('\'');
-                try emitEscapedForComment(writer, &.{byte});
-                try writer.writeByte('\'');
-            }
+            try writer.writeAll("\n    while (true) {\n");
+            try self.emitSelfRepeatingSwitch(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, 0, "        ", .{
+                .rule = rule,
+                .variable = variable,
+                .self_index = self_index,
+                .skip_ast_construction = skip_ast_construction,
+                .returns_node = returns_node,
+                .frames_mode = true,
+            });
             try writer.writeByte('\n');
-            try self.emitDebugRuleExpansion(writer, rule, variable, "                ");
-            try writer.print(
-                \\                const frame = try semantic_allocator.create(SemanticReductionFrame);
-                \\                frame.* = .{{
-                \\                    .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }},
-                \\                    .children = .{{null}} ** {d},
-                \\                }};
-                \\                try frames.append(semantic_allocator, frame);
-                \\
-            , .{ self.variableIndex(variable), rule.rhs.items.len });
-            const skip_ast_for_children = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
-            for (rule.rhs.items[0..self_index], 0..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "                ", skip_ast_for_children);
-            }
-            try writer.writeAll("            },\n            else => break,\n        }\n    }\n");
+            try writer.writeAll("    }\n");
 
             const explicit_recovery = self.uses_explicit_recovery;
             try writer.print("    var reduced_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
@@ -431,6 +413,7 @@ const Generator = struct {
             try writer.print("            frame.children[{d}] = value;\n", .{self_index});
             try writer.print("            frame.node.appendTemporaryChild(&frame.children[{d}].?);\n", .{self_index});
             try writer.writeAll("        }\n");
+            const skip_ast_for_children = (self.options.with_ast or self.options.with_procedures) and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
                 try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children);
             }
@@ -466,44 +449,17 @@ const Generator = struct {
             );
         }
 
-        const cases = self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).cases;
-
-        try writer.writeAll("\n    while (true) {\n        switch (context.head(u8, 0)) {\n            ");
-        for (cases, 0..) |byte, i| {
-            if (i != 0) try writer.writeAll(", ");
-            try writer.print("{d}", .{byte});
-        }
-        try writer.writeAll(" => { // ");
-        for (cases, 0..) |byte, i| {
-            if (i != 0) try writer.writeAll(", ");
-            try writer.writeByte('\'');
-            try emitEscapedForComment(writer, &.{byte});
-            try writer.writeByte('\'');
-        }
+        try writer.writeAll("\n    while (true) {\n");
+        try self.emitSelfRepeatingSwitch(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, 0, "        ", .{
+            .rule = rule,
+            .variable = variable,
+            .self_index = self_index,
+            .skip_ast_construction = skip_ast_construction,
+            .returns_node = returns_node,
+            .frames_mode = false,
+        });
         try writer.writeByte('\n');
-        try self.emitDebugRuleExpansion(writer, rule, variable, "                ");
-
-        if (returns_node) {
-            try writer.print(
-                \\                const temporary_address = try context.node_allocator.create(context.currentTokenSourceOffset(), {d});
-                \\                if (node_address == data_structures.Node.invalid_pointer) {{
-                \\                    node_address = temporary_address;
-                \\                }} else {{
-                \\                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
-                \\                }}
-                \\                repeating_node_address = temporary_address;
-                \\
-            , .{ self.variableIndex(variable), self_index });
-        }
-
-        const skip_ast_for_children = self.options.with_ast and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
-        for (rule.rhs.items[0..self_index], 0..) |symbol_index, child_index| {
-            try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, if (returns_node) "node" else null, if (returns_node) "repeating_node_address" else null, "                ", skip_ast_for_children);
-        }
-        if (!returns_node and rule.rhs.items.len > self_index + 1) {
-            try writer.writeAll("                counter += 1;\n");
-        }
-        try writer.writeAll("            },\n            else => break,\n        }\n    }\n");
+        try writer.writeAll("    }\n");
 
         if (returns_node) {
             const explicit_recovery = self.uses_explicit_recovery;
@@ -532,6 +488,7 @@ const Generator = struct {
                 \\    while (repeating_node_address != data_structures.Node.invalid_pointer) {{
             , .{self_index});
             try writer.writeByte('\n');
+            const skip_ast_for_children = self.options.with_ast and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
                 try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children);
             }
@@ -590,6 +547,7 @@ const Generator = struct {
             try writer.writeAll(";\n");
             if (rule.rhs.items.len > self_index + 1) {
                 try writer.writeAll("    for (0..counter) |_| {\n");
+                const skip_ast_for_children = self.options.with_ast and (skip_ast_construction or !self.symbols.items[variable].ast_enabled);
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
                     try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children);
                 }
@@ -598,6 +556,100 @@ const Generator = struct {
         }
 
         try writer.writeAll("}\n");
+    }
+
+    const SelfRepeatingLeafParams = struct {
+        rule: Rule,
+        variable: usize,
+        self_index: usize,
+        skip_ast_construction: bool,
+        returns_node: bool,
+        frames_mode: bool,
+    };
+
+    fn emitSelfRepeatingSwitch(self: *Generator, writer: *std.Io.Writer, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, params: SelfRepeatingLeafParams) !void {
+        if (node.groups.items.len == 0) {
+            if (node.fallback != null) {
+                try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
+            } else {
+                try writer.print("{s}break;\n", .{indent});
+            }
+            return;
+        }
+        const step_length = node.step_length;
+        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+        for (node.groups.items) |group| {
+            try writer.print("{s}    ", .{indent});
+            for (group.heads.items, 0..) |head, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.print("{d}", .{bytesToInt(head)});
+            }
+            try writer.writeAll(" => { // ");
+            for (group.heads.items, 0..) |head, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.writeByte('\'');
+                try emitEscapedForComment(writer, head);
+                try writer.writeByte('\'');
+            }
+            try writer.writeByte('\n');
+            if (group.child.isLeaf()) {
+                try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
+            } else {
+                var child_indent = std.ArrayList(u8).empty;
+                try child_indent.appendSlice(self.allocator, indent);
+                try child_indent.appendSlice(self.allocator, "        ");
+                try self.emitSelfRepeatingSwitch(writer, group.child, prefix_length + step_length, child_indent.items, params);
+                try writer.writeByte('\n');
+            }
+            try writer.print("{s}    }},\n", .{indent});
+        }
+        if (node.fallback != null) {
+            try writer.print("{s}    else => {{ // ''\n", .{indent});
+            try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
+            try writer.print("{s}    }},\n", .{indent});
+        } else {
+            try writer.print("{s}    else => break,\n", .{indent});
+        }
+        try writer.print("{s}}}", .{indent});
+    }
+
+    fn emitSelfRepeatingLeafBody(self: *Generator, writer: *std.Io.Writer, indent: []const u8, params: SelfRepeatingLeafParams) !void {
+        try self.emitDebugRuleExpansion(writer, params.rule, params.variable, indent);
+        if (params.frames_mode) {
+            try writer.print(
+                \\{s}const frame = try semantic_allocator.create(SemanticReductionFrame);
+                \\{s}frame.* = .{{
+                \\{s}    .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }},
+                \\{s}    .children = .{{null}} ** {d},
+                \\{s}}};
+                \\{s}try frames.append(semantic_allocator, frame);
+                \\
+            , .{ indent, indent, indent, self.variableIndex(params.variable), indent, params.rule.rhs.items.len, indent, indent });
+            const skip_ast_for_children = (self.options.with_ast or self.options.with_procedures) and (params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled);
+            for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children);
+            }
+        } else {
+            if (params.returns_node) {
+                try writer.print(
+                    \\{s}const temporary_address = try context.node_allocator.create(context.currentTokenSourceOffset(), {d});
+                    \\{s}if (node_address == data_structures.Node.invalid_pointer) {{
+                    \\{s}    node_address = temporary_address;
+                    \\{s}}} else {{
+                    \\{s}    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
+                    \\{s}}}
+                    \\{s}repeating_node_address = temporary_address;
+                    \\
+                , .{ indent, self.variableIndex(params.variable), indent, indent, indent, indent, params.self_index, indent, indent });
+            }
+            const skip_ast_for_children = self.options.with_ast and (params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled);
+            for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, if (params.returns_node) "node" else null, if (params.returns_node) "repeating_node_address" else null, indent, skip_ast_for_children);
+            }
+            if (!params.returns_node and params.rule.rhs.items.len > params.self_index + 1) {
+                try writer.print("{s}counter += 1;\n", .{indent});
+            }
+        }
     }
 
     fn emitTerminalParser(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, skip_ast_construction: bool) !void {

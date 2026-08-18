@@ -3,7 +3,7 @@ const std = @import("std");
 const Token = @import("token.zig").Token;
 
 pub const Offsets = struct {
-    pub const max_length = @max(6, root.parser.longest_terminal_length);
+    pub const max_length = @max(128, root.parser.longest_terminal_length);
     buffer: [Self.max_length * 2]u32 = undefined,
     head: usize = 0,
     len: usize = 0,
