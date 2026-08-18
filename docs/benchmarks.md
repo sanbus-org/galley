@@ -38,6 +38,9 @@ General form:
 zig build -Doptimize=ReleaseFast run-<parser>-<language> -- <file> --iterations <n> --warmup-iterations <m>
 ```
 
+`-v <n>` / `--verbosity <n>` sets the parse-time verbosity level threaded through
+`Session.init` in debug builds; `-r` is reserved for `--iterations`.
+
 ---
 
 ## AST Memory Usage
