@@ -6,9 +6,11 @@
 - [Unified No-Lexer Design](#unified-no-lexer-design)
 - [Native Call-Stack Execution](#native-call-stack-execution)
 - [Syntax-Error Recovery](#syntax-error-recovery)
-- [Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)](#verbatim-raw-capture)
+- [Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)](#verbatim-raw-capture)
 - [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
+- [Self-Repeating Decisions](#self-repeating-decisions)
+- [Ambiguity Diagnostics](#ambiguity-diagnostics)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
 - [Self-Hosting](#self-hosting)
 
@@ -16,7 +18,7 @@
 
 ## Overview
 
-Galley achieves parsing speeds tens to hundreds of times faster than traditional table-driven parser generators by fundamentally rethinking how parsers interact with memory and the CPU. Rather than interpreting state transitions at runtime, Galley directly encodes grammar semantics into compile-time Zig execution paths.
+Galley generates LL and LR parsers as native Zig source, encoding grammar rules directly into code paths rather than interpreting transition tables at runtime. It pairs that with a design centered on that goal: a single no-lexer pass that matches characters and reduces rules at the same time, the native call stack as the parse stack in both recursive-descent and recursive-ascent parsers, AST node allocation decided at generation time per symbol, and a self-hosted generator that runs ahead-of-time to emit both LL and LR parser source from a parsed grammar. None of these ideas are unique to Galley on their own, but the combination is its take on parser generation.
 
 ---
 
@@ -24,7 +26,7 @@ Galley achieves parsing speeds tens to hundreds of times faster than traditional
 
 Traditional parsers split execution into two passes: a lexer (tokenizer) that scans source text and allocates token objects on the heap, followed by a parser that consumes those tokens.
 
-Galley eliminates the separate lexer pass entirely. Character matching and structural grammar reduction happen simultaneously in a single, unified pass over the source byte buffer. By avoiding token allocation and intermediate buffering, memory bus traffic is reduced by over 50%.
+Galley eliminates the separate lexer pass entirely. Character matching and structural grammar reduction happen simultaneously in a single, unified pass over the source byte buffer, avoiding the token-allocation and intermediate-buffering overhead of a separate lexer.
 
 ---
 
@@ -32,112 +34,37 @@ Galley eliminates the separate lexer pass entirely. Character matching and struc
 
 In both generated LL recursive-descent and LR recursive-ascent parsers, Galley leverages the native CPU execution call stack as the grammar parsing stack.
 
-Instead of dynamically allocating stack frame objects or pushing/popping state IDs in an array loop, grammar transitions compile directly into native machine function calls (`call` and `ret` instructions). This allows modern CPUs to fully utilize their hardware return address stacks (RAS) and branch prediction units, resulting in near-zero overhead state transitions.
+Instead of dynamically allocating stack frame objects or pushing/popping state IDs in an array loop, grammar transitions compile directly into native machine function calls (`call` and `ret` instructions). This lets modern CPUs make use of their hardware return address stacks (RAS) and branch prediction units, avoiding the per-token dispatch and stack-array bookkeeping of table-driven parsers.
 
 ---
 
 ## Syntax-Error Recovery
 
-Generated LL and LR parsers are fail-fast by default: a mismatch records and prints one diagnostic, then returns `ParseError.SyntaxError`. Passing `with_error_recovery = true` to the generator enables recovery. Generated parsers expose `error_recovery_mode` as `.disabled`, `.automatic`, or `.explicit`, while retaining `is_error_recovery_enabled` for compatibility.
+Generated LL and LR parsers are fail-fast by default, returning `ParseError.SyntaxError` on the first mismatch. Enabling recovery produces either automatic or explicit (`@`-annotated) recovery modes, both built on the parser's native execution shape rather than a second parser stack. Recovery-enabled parsers stop after 10 syntax errors by default.
 
-An enabled grammar without recovery annotations uses automatic recovery. If any LHS variable, production, or RHS variable occurrence carries an `@` annotation, the parser instead uses explicit-only recovery with no automatic fallback. An annotation records an exact terminal and whether synchronization resumes before it (preserving it) or after it (consuming it). Disabled generation keeps annotations inert and emits one warning.
+LL parsers also report the innermost-first sequence of variables being parsed at a syntax error, rendered as `Symbol <~ RightHandSide <~ ...`. The instrumentation is optional and folds away at compile time when disabled.
 
-An automatic-mode LL syntax mismatch transfers control to a generated cold handler. The handler prints the first diagnostic at an input position, searches ahead for the failing symbol's recovery candidates, and returns a neutral parser value. The parent then continues through its ordinary generated code, naturally exposing later grammar states as recovery points.
-
-An automatic-mode LR mismatch uses the same bounded lookahead and position-based diagnostic suppression, with recovery candidates derived from the complete terminals accepted by the current LR state. Finding a candidate skips the invalid input and retries the state. If the state cannot resynchronize, an internal result unwinds one native LR frame and, when AST construction is enabled, its semantic value; the caller recognizes it and retries in its existing frame. This continues until the nearest viable state resumes or the initial state is exhausted. Unrecoverable end-of-input stops at the original diagnostic instead of inventing a terminal.
-
-Explicit recovery separates mismatch detection from synchronization. Once a production is committed, the parser tries the active RHS occurrence, selected production, LHS variable, and then enclosing committed reductions. LR recovery annotations are stored separately from canonical LR items, so adding or removing them cannot change closures, states, actions, gotos, or state numbering. Explicit LR state calls carry a small linked frame containing the canonical state and incoming symbol; after a mismatch, the recovery planner combines those active frames with canonical closure metadata to resolve committed scopes without a second LR stack. For each annotated occurrence, bounded graph reachability checks whether any productive closure path can avoid it; the occurrence is active only when no surviving path can, so shared-prefix states do not activate speculative scopes. Enclosing `(frame, item)` lineages are likewise deduplicated into a finite graph, and occurrence, production, and LHS scopes become candidates only when they dominate every productive exit. Neither analysis enumerates or copies closure paths. For consecutive terminals on one target, selection is deterministic: earliest input offset, longest terminal, then annotation source order. A successful recovery attaches the winning target, terminal, and resume side to the existing diagnostic, neutral-completes the damaged variable, discards its partial semantic state, and skips its occurrence, production, and variable hooks. Message-hook invocation is deferred until the structured recovery context is finalized.
-
-Automatic recovery does not use Zig errors for internal control flow: LL void parsers return normally, AST parsers return the invalid-node sentinel, and LR state functions return an internal recovery result when a frame must unwind. Explicit LL recovery instead propagates a private `ExplicitSyntaxRecovery` signal until a committed annotated boundary synchronizes or the public entry point converts it to `ParseError.SyntaxError`; explicit LR recovery carries the equivalent result through its state frames. A session-local target-and-position guard prevents a preserved terminal from repeatedly selecting the same explicit scope. Resynchronizing completes the current recovery and permits a later mismatch to be reported separately. Automatic LL recovery can neutral-complete a missing symbol at end-of-input, while explicit recovery requires a matching synchronization terminal.
-
-Normal automatic-mode LL child calls retain the same `try parse_child(...)` shape. Eligible automatic recovery calls use `always_tail` on the LLVM and native AArch64 backends and fall back to ordinary calls on other backends. LR state calls inspect the returned recovery result, and each state uses its existing native frame rather than a second parser stack. Neither parser scans for synchronization terminals during normal shifts or reductions; recovery lookahead allocation happens only after a mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run on partial or later-discarded trees, so an AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
-
-Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers
-configure the limit and search window through `ParseOptions.max_errors` and
-`ParseOptions.recovery_window`.
+See [Syntax-Error Recovery and Messages](/syntax_error_recovery) for the full mechanics of both topics.
 
 ---
 
-## Syntax-Error Messages
+## Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)
 
-LL parsers report the innermost-first sequence of variables being parsed at a
-syntax error. The generated parser carries two compile-time constants:
+An RHS occurrence annotated with the verbatim marker `@>>` or a literal terminator (`@>^"..."` / `@>"..."^`) captures every raw byte until a terminator reappears, without lexing, indentation translation, or escape decoding. The `^` position chooses whether the terminator stays in the input or is appended to the captured span.
 
-```zig
-pub const syntax_error_stack_depth = root.syntax_error_stack_depth;
-pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
-```
+The LL and LR generators both support it, with LR emitting verbatim reductions as default actions on all lookaheads because a captured body may begin with any byte.
 
-The runtime resolves the depth: `-Dsyntax-error-stack-depth=N` overrides the
-default, otherwise the stack defaults to 5 variables in debug builds and 1 in
-release builds. A depth of 1 drops the feature entirely — the push/pop
-instrumentation and its deferred cleanup fold away at compile time, and the
-error handlers restore `always_tail` bail-outs, so release parsers carry no
-stack overhead unless the build was compiled with the option. When the stack
-is enabled, each LL variable parse function pushes its variable onto a ring
-(consecutive repeats of a self-recursive rule occupy one slot) and pops it on
-return.
-
-The depth is also configurable per parsing session through
-`ParseOptions.syntax_error_stack_depth` (`0` inherits the generated parser's
-constant). A session value never adds instrumentation that the build does not
-compile in, so in a release build without the build option a session cannot
-turn the stack on.
-
-The rendered message joins the captured variables innermost-first with ` <~ `:
-
-```
-SyntaxError at 3:3:
-Unexpected token "?" while parsing Symbol <~ RightHandSide <~ RightHandSideLine <~ RightHandSidesTail <~ RightHandSides.
-```
-
-ANSI rendering colorizes only the variable names; the `while parsing` prefix
-and the ` <~ ` separators stay uncolored.
-
----
-
-## Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)
-
-An RHS occurrence annotated `@>>` matches normally, then its matched
-bytes act as a terminator; an occurrence annotated `@>"..."` uses the given
-terminal as a fixed terminator. Either way the runtime captures every raw byte
-until the terminator reappears, without lexing, indentation translation, or
-escape decoding. The capture consumes the terminator by default; annotating
-with a `^` before the terminator (`@>^"..."`) leaves the terminator in the input
-for the parser to match next, while a `^` after the terminator instead appends
-the terminator to the captured span. In the LL generator the capture is emitted
-at the child call site; in the LR generator a terminal occurrence captures at
-its shift and a variable occurrence captures when its rule reduces. Because a
-captured body may begin with any byte, an LR verbatim reduction is emitted as a
-default action on all lookaheads rather than being gated on the symbol's follow
-set. The reduction records the terminator symbol's span before the capture
-advances the input offset, so the annotated symbol's node covers only the
-terminator bytes.
-
-Verbatim capture scans the whole buffered input, so parsers using it enable
-source retention automatically and force `is_input_streaming_enabled = false`.
-Both the LL and LR generators support verbatim capture without node tracking;
-the marker grammar lexes only `>>` and `> "..."`, so any other marker text is a
-syntax error in the galley grammar itself.
+See [Grammar Guidelines §8](/grammar_guidelines#8-verbatim-raw-capture) for the full syntax and semantics.
 
 ---
 
 ## Optional Stack-Overflow Recovery
 
-Generated parsers use the native call stack, so excessive recursive nesting can
-exhaust the stack available to the calling thread. On Linux and macOS, Galley
-can run a parse inside a protected signal-recovery scope that converts a fault
-at the thread's stack boundary into `ParseError.StackOverflow`.
+Generated parsers use the native call stack, so excessive recursive nesting can exhaust the stack available to the calling thread. On Linux and macOS, Galley can run a parse inside a protected signal-recovery scope that converts a fault at the thread's stack boundary into `ParseError.StackOverflow`.
 
-Recovery is disabled by default because establishing that scope adds fixed
-setup and teardown work to every protected parse call. Runtime callers opt in
-with `ParseOptions.stack_overflow_recovery = true`.
+Recovery is disabled by default because establishing that scope adds fixed setup and teardown work to every protected parse call. Runtime callers opt in with `ParseOptions.stack_overflow_recovery = true`.
 
-The recovery scope installs an alternate signal stack and temporary
-`SIGSEGV`/`SIGBUS` handlers, records the current thread's stack bounds, and
-restores the previous process and thread state when parsing finishes. A memory
-fault outside the active thread's stack boundary is forwarded to the previously
-installed handler instead of being reported as parser stack overflow.
+The recovery scope installs an alternate signal stack and temporary `SIGSEGV`/`SIGBUS` handlers, records the current thread's stack bounds, and restores the previous process and thread state when parsing finishes. A memory fault outside the active thread's stack boundary is forwarded to the previously installed handler instead of being reported as parser stack overflow.
 
 ---
 
@@ -145,19 +72,27 @@ installed handler instead of being reported as parser stack overflow.
 
 When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from contiguous, preallocated memory pools (`ASTAllocator`).
 
-Furthermore, AST nodes reference their parents, children, and siblings using
-integer indices rather than memory pointers. Those indices remain valid when
-the contiguous pool grows and relocates. Session reuse retains the allocated
-pool, although reset currently clears the previously used node range before
-rewinding it.
+Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Those indices remain valid when the contiguous pool grows and relocates. Session reuse retains the allocated pool, although reset currently clears the previously used node range before rewinding it.
+
+AST allocation is also decided at generation time, per symbol: helper variables (written with a leading `_`) never allocate nodes, and the parser is emitted with exactly the node creation it needs, so no runtime branching decides whether to build a node. See [AST Node Allocations](/ast_node_allocations) for the full mechanics and the LR generator's static-analysis constraints.
+
+---
+
+## Self-Repeating Decisions
+
+Rules that repeat a variable on their own right-hand side (list and suffix shapes) are recognized statically during planning. Instead of re-parsing the repeated variable from scratch each time, the generator emits a dedicated decision that steps through the repetition and stops on the first token that no longer matches, folding the loop into the parse flow.
+
+---
+
+## Ambiguity Diagnostics
+
+When the LL planner finds two productions of a variable that share a terminal, it reports the conflict together with the derivation chain that explains each side: the reason rules that placed the terminal into FIRST or FOLLOW, the nullable derivations that let it pass through, and where the terminal is finally produced. A left-factored rewrite is suggested when the conflicting productions share a prefix. See [Grammar Guidelines §7](/grammar_guidelines#7-operator-precedence--ambiguity-free-expression-extraction) for the reported output.
 
 ---
 
 ## Role of the Self-Hosted Generator
 
-The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed
-parser for its own grammar format in `languages/galley/_ll-parser.zig`. The
-seed parser constructs the grammar model; the generator API then:
+The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parser for its own grammar format in `languages/galley/_ll-parser.zig`. The seed parser constructs the grammar model; the generator API then:
 
 1. Validates the parsed grammar model.
 2. Computes FIRST, FOLLOW, and nullable sets.
@@ -170,8 +105,4 @@ Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary c
 
 ## Self-Hosting
 
-Galley ships with a formal specification of its own grammar syntax
-(`languages/galley`). The tracked LL seed parser parses `.grm` files into the
-grammar model used by the generator API, which can emit both LL and LR parser
-source. The Galley LR parser stays generated/ignored and is used as a
-verification path rather than as a second bootstrap artifact.
+Galley ships with a formal specification of its own grammar syntax (`languages/galley`). The tracked LL seed parser parses `.grm` files into the grammar model used by the generator API, which can emit both LL and LR parser source. The Galley LR parser stays generated/ignored and is used as a verification path rather than as a second bootstrap artifact.

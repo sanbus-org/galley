@@ -40,6 +40,7 @@ export default defineConfig({
         text: 'Advanced Architecture & Performance',
         items: [
           { text: 'Architecture', link: '/architecture' },
+          { text: 'Syntax-Error Recovery & Messages', link: '/syntax_error_recovery' },
           { text: 'AST Node Allocations', link: '/ast_node_allocations' },
           { text: 'Benchmarks', link: '/benchmarks' },
           { text: 'Benchmark Layout Findings', link: '/benchmark_layout_findings' },

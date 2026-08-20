@@ -9,7 +9,7 @@
 - [5. Explicit Syntax Recovery (`@`)](#5-explicit-syntax-recovery-)
 - [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
-- [8. Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)](#8-verbatim-raw-capture)
+- [8. Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)](#8-verbatim-raw-capture)
 
 ---
 
@@ -303,37 +303,38 @@ for suffix calls, list gets, and casts.
 
 ---
 
-## 8. Verbatim Raw Capture (`@>>` / `@>"..."` / `@>^"..."`)
+## 8. Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)
 
 Annotate an RHS occurrence with the verbatim marker `@>>` (derived terminator)
-or `@>"..."` / `@>^"..."` (literal terminator) to consume a raw block of source
-bytes opaquely. For `@>>`, the occurrence still matches normally and the bytes it
-matched become a terminator; the parser captures every raw byte from just
-after the terminator until the terminator reappears in the input, then resumes
-the remaining RHS. For `@>"..."`, the given terminal is the fixed terminator and
-the annotated symbol is the anchor.
+or a literal terminator with a `^` cursor marker (`@>^"..."` or `@>"..."^`) to
+consume a raw block of source bytes opaquely. For `@>>`, the occurrence still
+matches normally and the bytes it matched become a terminator; the parser
+captures every raw byte from just after the terminator until the terminator
+reappears in the input, then resumes the remaining RHS. For a literal
+terminator, the given terminal is the fixed terminator and the annotated symbol
+is the anchor.
 
 ```text
 Program
 | "<<<" UpperPair@>> LowerTail
 | "]]]" "%%"@>> LowerTail
-| "{{{" UpperPair@>"/>" LowerTail
-| "(((" UpperPair@>^"\n" LowerTail
+| "{{{" UpperPair@>^"/>" LowerTail
+| "(((" UpperPair@>"\n"^ LowerTail
 ```
 
 - The marker grammar lexes only the three marker forms: `@>>` (derived) and
-  `@> "..."` / `@>^ "..."` (literal terminator). Any other marker text is a syntax
-  error in the galley grammar itself.
+  `@>^ "..."` / `@>"..."^` (literal terminator with the cursor marker before or
+  after the terminal). Any other marker text is a syntax error in the galley
+  grammar itself.
 - The annotated symbol may be a variable occurrence (`UpperPair@>>`) or a
   terminal occurrence (`"%%"@>>`). For a variable with `@>>`, the terminator is
   the exact source bytes the variable matched; for a terminal, the terminal's
-  literal bytes. With `@>"..."` the terminator is exactly the literal bytes.
-- The `^` prefix/suffix chooses whether the terminator is part of the captured
-  body. A marker ending in `^` after the terminator (`@>"..."^`) appends the
-  terminator to the body; a marker beginning `^` before the terminator
-  (`@>^"..."`) leaves the terminator in the input for the parser to match next.
-  The same prefix/suffix rules select the recovery anchor with `^` on recovery
-  points.
+  literal bytes. A literal terminator is exactly the terminal's bytes.
+- The `^` position chooses whether the terminator is part of the captured body.
+  A `^` after the terminator (`@>"..."^`) appends the terminator to the body; a
+  `^` before the terminator (`@>^"..."`) leaves the terminator in the input for
+  the parser to match next. The same prefix/suffix rules select the recovery
+  anchor with `^` on recovery points.
 - The captured body is not lexed: no tokenization, indentation translation, or
   escape decoding applies inside it. The search for the reappearing terminator
   is byte-exact and case-sensitive, and stops at the first occurrence.
