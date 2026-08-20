@@ -67,6 +67,10 @@ pub const LLPlan = struct {
         builder.plan.augmented_start = grammar.augmented_start;
         try builder.analyzeGrammar();
         try builder.buildParseTable();
+        if (builder.pending_ambiguity) |ambiguity| {
+            try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+            return error.AmbiguousGrammar;
+        }
         try builder.planAstSuppressedParsers();
         try builder.finishAstSuppressedOrder();
         builder.plan.recovery = try recovery_planning.build(
@@ -98,11 +102,14 @@ pub const LLPlan = struct {
     }
 };
 
+const Ambiguity = struct { variable: usize, terminal: usize, rule_a: usize, rule_b: usize };
+
 const Builder = struct {
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
     options: common.Options,
     plan: LLPlan,
+    pending_ambiguity: ?Ambiguity = null,
 
     fn analyzeGrammar(self: *Builder) !void {
         self.plan.nullable_rules = try self.allocator.alloc(?usize, self.grammar.symbols.items.len);
@@ -191,7 +198,7 @@ const Builder = struct {
                         defer next_firsts.deinit();
                         try self.firsts(next_symbol_index, &next_firsts, null);
                         var it = next_firsts.iterator();
-                        while (it.next()) |entry| try out.put(entry.key_ptr.*, entry.value_ptr.*);
+                        while (it.next()) |entry| try out.put(entry.key_ptr.*, rule_index);
                     } else {
                         try out.put(next_symbol_index, rule_index);
                     }
@@ -201,7 +208,11 @@ const Builder = struct {
                     }
                 }
                 if (propagated and rule.header != variable) {
-                    try self.follows(rule.header, out, &local_visited);
+                    var header_follow = std.AutoHashMap(usize, usize).init(self.allocator);
+                    defer header_follow.deinit();
+                    try self.follows(rule.header, &header_follow, &local_visited);
+                    var it = header_follow.iterator();
+                    while (it.next()) |entry| try out.put(entry.key_ptr.*, rule_index);
                 }
             }
         }
@@ -220,8 +231,9 @@ const Builder = struct {
         for (self.plan.parse_table.items) |existing| {
             if (existing.variable != entry.variable or existing.terminal != entry.terminal) continue;
             if (existing.rule != entry.rule) {
-                try self.reportAmbiguity(entry.variable, entry.terminal, existing.rule, entry.rule);
-                return error.AmbiguousGrammar;
+                if (self.pending_ambiguity == null) {
+                    self.pending_ambiguity = .{ .variable = entry.variable, .terminal = entry.terminal, .rule_a = existing.rule, .rule_b = entry.rule };
+                }
             }
             return;
         }
@@ -229,19 +241,216 @@ const Builder = struct {
     }
 
     fn reportAmbiguity(self: *Builder, variable: usize, terminal: usize, rule_a: usize, rule_b: usize) !void {
+        const message = try self.explainConflict(variable, terminal, rule_a, rule_b);
+        defer self.allocator.free(message);
+        std.log.warn("{s}", .{message});
+    }
+
+    fn explainConflict(self: *Builder, variable: usize, terminal: usize, rule_a: usize, rule_b: usize) ![]const u8 {
+        var out = std.ArrayList(u8).empty;
         const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
         defer self.allocator.free(variable_name);
         const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, terminal);
         defer self.allocator.free(terminal_name);
-        const rule_a_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_a]);
-        defer self.allocator.free(rule_a_text);
-        const rule_b_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_b]);
-        defer self.allocator.free(rule_b_text);
-        std.log.warn("ambiguous grammar: variable {s}, terminal {s} matches two productions:\n  {s}\n  {s}", .{ variable_name, terminal_name, rule_a_text, rule_b_text });
+        try out.appendSlice(self.allocator, "ambiguous grammar: variable ");
+        try out.appendSlice(self.allocator, variable_name);
+        try out.appendSlice(self.allocator, ", terminal ");
+        try out.appendSlice(self.allocator, terminal_name);
+        try out.appendSlice(self.allocator, " matches two productions:\n");
+        try self.appendProductionChain(&out, variable, terminal, rule_a);
+        try self.appendProductionChain(&out, variable, terminal, rule_b);
         if (try self.leftFactorSuggestion(variable, rule_a, rule_b)) |suggestion| {
             defer self.allocator.free(suggestion);
-            std.log.warn("  suggestion: left-factor the shared prefix\n  {s}", .{suggestion});
+            try out.appendSlice(self.allocator, "  suggestion: left-factor the shared prefix\n  ");
+            try out.appendSlice(self.allocator, suggestion);
+            try out.appendSlice(self.allocator, "\n");
         }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    fn appendProductionChain(self: *Builder, out: *std.ArrayList(u8), variable: usize, terminal: usize, rule_index: usize) !void {
+        const rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_index]);
+        defer self.allocator.free(rule_text);
+        try out.appendSlice(self.allocator, "  ");
+        try out.appendSlice(self.allocator, rule_text);
+        try out.appendSlice(self.allocator, "\n");
+
+        var first_visited = std.AutoHashMap(usize, void).init(self.allocator);
+        defer first_visited.deinit();
+        var follow_visited = std.AutoHashMap(usize, void).init(self.allocator);
+        defer follow_visited.deinit();
+        var null_visited = std.AutoHashMap(usize, void).init(self.allocator);
+        defer null_visited.deinit();
+
+        if (self.plan.nullable_rules[variable] == rule_index) {
+            try self.explainFollowChain(out, variable, terminal, &follow_visited, &null_visited);
+        } else {
+            try self.explainFirstProduction(out, terminal, rule_index, &first_visited, &null_visited);
+        }
+    }
+
+    /// Walks the conflicting production's RHS and descends into the first
+    /// symbol that derives `terminal`, emitting the reason chain below the
+    /// production line already rendered by `appendProductionChain`.
+    fn explainFirstProduction(self: *Builder, out: *std.ArrayList(u8), terminal: usize, rule_index: usize, visited: *std.AutoHashMap(usize, void), null_visited: *std.AutoHashMap(usize, void)) !void {
+        const rule = self.grammar.rules.items[rule_index];
+        var nullable_prefix = std.ArrayList(usize).empty;
+        defer nullable_prefix.deinit(self.allocator);
+        for (rule.rhs.items) |symbol_index| {
+            const symbol = self.grammar.symbols.items[symbol_index];
+            if (symbol.kind != .variable) return;
+            if (self.terminalInFirst(symbol_index, terminal)) {
+                try self.emitNullChains(out, nullable_prefix.items, null_visited);
+                try self.explainFirstChain(out, symbol_index, terminal, visited, null_visited);
+                return;
+            }
+            if (self.plan.nullable_rules[symbol_index] != null) {
+                try nullable_prefix.append(self.allocator, symbol_index);
+                continue;
+            }
+            return;
+        }
+    }
+
+    /// Explains why `terminal ∈ FIRST(variable)` by walking the stored reason
+    /// rule back to the rule that contains `terminal` directly.
+    fn explainFirstChain(self: *Builder, out: *std.ArrayList(u8), variable: usize, terminal: usize, visited: *std.AutoHashMap(usize, void), null_visited: *std.AutoHashMap(usize, void)) !void {
+        if (visited.contains(variable)) return;
+        const rule_index = self.reasonInFirst(variable, terminal) orelse return;
+        try visited.put(variable, {});
+        const rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_index]);
+        defer self.allocator.free(rule_text);
+        try out.appendSlice(self.allocator, "    ");
+        try out.appendSlice(self.allocator, rule_text);
+        try out.appendSlice(self.allocator, "\n");
+
+        const rule = self.grammar.rules.items[rule_index];
+        var nullable_prefix = std.ArrayList(usize).empty;
+        defer nullable_prefix.deinit(self.allocator);
+        for (rule.rhs.items) |symbol_index| {
+            const symbol = self.grammar.symbols.items[symbol_index];
+            if (symbol.kind != .variable) {
+                if (symbol_index == terminal) try self.emitNullChains(out, nullable_prefix.items, null_visited);
+                return;
+            }
+            if (self.terminalInFirst(symbol_index, terminal)) {
+                try self.emitNullChains(out, nullable_prefix.items, null_visited);
+                try self.explainFirstChain(out, symbol_index, terminal, visited, null_visited);
+                return;
+            }
+            if (self.plan.nullable_rules[symbol_index] != null) {
+                try nullable_prefix.append(self.allocator, symbol_index);
+                continue;
+            }
+            return;
+        }
+    }
+
+    /// Explains why `terminal ∈ FOLLOW(variable)` by walking the stored
+    /// containing rule, descending into a following symbol's FIRST chain or
+    /// propagating to the header's FOLLOW chain.
+    fn explainFollowChain(self: *Builder, out: *std.ArrayList(u8), variable: usize, terminal: usize, visited: *std.AutoHashMap(usize, void), null_visited: *std.AutoHashMap(usize, void)) !void {
+        if (visited.contains(variable)) return;
+        const rule_index = self.reasonInFollow(variable, terminal) orelse return;
+        try visited.put(variable, {});
+        const rule = self.grammar.rules.items[rule_index];
+        const rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, rule);
+        defer self.allocator.free(rule_text);
+        try out.appendSlice(self.allocator, "    ");
+        try out.appendSlice(self.allocator, rule_text);
+        try out.appendSlice(self.allocator, "\n");
+
+        for (rule.rhs.items, 0..) |symbol_index, rhs_pos| {
+            if (symbol_index != variable) continue;
+            if (!self.followPositionExplains(terminal, rule, rhs_pos)) continue;
+            const propagated = try self.explainFollowPosition(out, rule, rhs_pos, terminal, visited, null_visited);
+            if (propagated and rule.header != variable) {
+                try self.explainFollowChain(out, rule.header, terminal, visited, null_visited);
+            }
+            return;
+        }
+    }
+
+    /// Determines, without emitting, whether the occurrence of a variable at
+    /// `rhs_pos` in `rule` places `terminal` into its FOLLOW set: `terminal`
+    /// follows directly, `terminal ∈ FIRST` of a following symbol, or every
+    /// following symbol is nullable so the terminal propagates to the header.
+    fn followPositionExplains(self: *Builder, terminal: usize, rule: common.Rule, rhs_pos: usize) bool {
+        var next_pos = rhs_pos + 1;
+        while (next_pos < rule.rhs.items.len) : (next_pos += 1) {
+            const symbol_index = rule.rhs.items[next_pos];
+            const symbol = self.grammar.symbols.items[symbol_index];
+            if (symbol.kind != .variable) return symbol_index == terminal;
+            if (self.terminalInFirst(symbol_index, terminal)) return true;
+            if (self.plan.nullable_rules[symbol_index] == null) return false;
+        }
+        return true;
+    }
+
+    /// Emits the derivation lines explaining why `terminal` follows a variable
+    /// after position `rhs_pos` in `rule`. Returns whether the explanation
+    /// ends in propagation to the header's FOLLOW chain.
+    fn explainFollowPosition(self: *Builder, out: *std.ArrayList(u8), rule: common.Rule, rhs_pos: usize, terminal: usize, visited: *std.AutoHashMap(usize, void), null_visited: *std.AutoHashMap(usize, void)) !bool {
+        var nullable_prefix = std.ArrayList(usize).empty;
+        defer nullable_prefix.deinit(self.allocator);
+        var next_pos = rhs_pos + 1;
+        while (next_pos < rule.rhs.items.len) : (next_pos += 1) {
+            const symbol_index = rule.rhs.items[next_pos];
+            const symbol = self.grammar.symbols.items[symbol_index];
+            if (symbol.kind != .variable) {
+                if (symbol_index == terminal) try self.emitNullChains(out, nullable_prefix.items, null_visited);
+                return false;
+            }
+            if (self.terminalInFirst(symbol_index, terminal)) {
+                try self.emitNullChains(out, nullable_prefix.items, null_visited);
+                try self.explainFirstChain(out, symbol_index, terminal, visited, null_visited);
+                return false;
+            }
+            try nullable_prefix.append(self.allocator, symbol_index);
+        }
+        try self.emitNullChains(out, nullable_prefix.items, null_visited);
+        return true;
+    }
+
+    fn emitNullChains(self: *Builder, out: *std.ArrayList(u8), symbols: []const usize, null_visited: *std.AutoHashMap(usize, void)) !void {
+        for (symbols) |symbol_index| {
+            try self.explainNullChain(out, symbol_index, null_visited);
+        }
+    }
+
+    fn explainNullChain(self: *Builder, out: *std.ArrayList(u8), variable: usize, null_visited: *std.AutoHashMap(usize, void)) !void {
+        if (null_visited.contains(variable)) return;
+        const rule_index = self.plan.nullable_rules[variable] orelse return;
+        try null_visited.put(variable, {});
+        const rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[rule_index]);
+        defer self.allocator.free(rule_text);
+        try out.appendSlice(self.allocator, "    ");
+        try out.appendSlice(self.allocator, rule_text);
+        try out.appendSlice(self.allocator, "\n");
+        for (self.grammar.rules.items[rule_index].rhs.items) |child| {
+            try self.explainNullChain(out, child, null_visited);
+        }
+    }
+
+    fn terminalInFirst(self: *Builder, variable: usize, terminal: usize) bool {
+        for (self.plan.first_sets[variable]) |entry| {
+            if (entry.terminal == terminal) return true;
+        }
+        return false;
+    }
+
+    fn reasonInFirst(self: *Builder, variable: usize, terminal: usize) ?usize {
+        for (self.plan.first_sets[variable]) |entry| {
+            if (entry.terminal == terminal) return entry.rule;
+        }
+        return null;
+    }
+
+    fn reasonInFollow(self: *Builder, variable: usize, terminal: usize) ?usize {
+        for (self.plan.follow_sets[variable]) |entry| {
+            if (entry.terminal == terminal) return entry.rule;
+        }
+        return null;
     }
 
     /// When two productions of the same variable share a nonempty RHS prefix,
@@ -491,8 +700,9 @@ const Builder = struct {
     fn putUnique(self: *Builder, map: *std.AutoHashMap(usize, usize), variable: usize, key: usize, value: usize) !void {
         if (map.get(key)) |existing| {
             if (existing != value) {
-                try self.reportAmbiguity(variable, key, existing, value);
-                return error.AmbiguousGrammar;
+                if (self.pending_ambiguity == null) {
+                    self.pending_ambiguity = .{ .variable = variable, .terminal = key, .rule_a = existing, .rule_b = value };
+                }
             }
             return;
         }
@@ -585,6 +795,91 @@ test "LL planning reports ambiguous first sets" {
     var grammar = try testAmbiguousGrammar(allocator);
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "ambiguity explanation traces first and follow derivation chains" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "ConditionalBranchTail", .variable);
+    const branch = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "ConditionalBranch", .variable);
+    const x = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "X", .variable);
+    const y = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Y", .variable);
+    const z = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Z", .variable);
+    const open = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "{", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+
+    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ branch, tail });
+    try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
+    try appendTestRule(allocator, &grammar.rules, branch, "0", &.{ x, y });
+    try appendTestRule(allocator, &grammar.rules, x, "0", &.{});
+    try appendTestRule(allocator, &grammar.rules, y, "0", &.{ x, open });
+    try appendTestRule(allocator, &grammar.rules, z, "0", &.{ tail, open });
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{tail});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try builder.analyzeGrammar();
+    try builder.buildParseTable();
+
+    const ambiguity = builder.pending_ambiguity.?;
+    try std.testing.expectEqual(tail, ambiguity.variable);
+    try std.testing.expectEqual(open, ambiguity.terminal);
+
+    const message = try builder.explainConflict(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail -> ConditionalBranch ConditionalBranchTail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "    ConditionalBranch -> X Y") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "    X ->") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "    Y -> X \"{\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail ->\n    Z -> ConditionalBranchTail \"{\"") != null);
+}
+
+test "ambiguity explanation stops at a rule containing the terminal directly" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const via = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Via", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{via});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
+    try appendTestRule(allocator, &grammar.rules, via, "0", &.{a});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try builder.analyzeGrammar();
+    try builder.buildParseTable();
+
+    const ambiguity = builder.pending_ambiguity.?;
+    const message = try builder.explainConflict(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "  Root -> Via\n    Via -> \"a\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "  Root -> \"a\"\n") != null);
 }
 
 test "self-repeating decisions discriminate on full terminal bytes" {
