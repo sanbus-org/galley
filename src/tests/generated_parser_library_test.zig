@@ -168,7 +168,7 @@ test "generated_parser_api grows AST capacity from zero" {
 
         const result = try session.parseBytes(sample_input, sample_path);
         try expectParsedAll(result, sample_path, sample_input, "grow AST capacity from zero");
-        try std.testing.expect(session.node_allocator.memory.len > 1);
+        try std.testing.expect(session.node_allocator.totalNodeCapacity() > 1);
     }
 }
 

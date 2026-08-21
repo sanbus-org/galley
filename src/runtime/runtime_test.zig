@@ -43,7 +43,7 @@ test "wrapProcedure forwards ProcedureArguments" {
     );
 
     var node_allocator = try galley.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 1);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
     const address = try node_allocator.create(0, 1);
     var context: galley.data_structures.Context = .{ .node_allocator = &node_allocator };
     var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = address };

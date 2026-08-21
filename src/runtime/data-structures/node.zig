@@ -25,6 +25,29 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
     return struct {
         const NodeType = NodeWithPointer(PayloadType, PointerType, true);
         pub const max_node_capacity: usize = std.math.maxInt(NodeType.Pointer) - 1;
+        /// On platforms with lazy-commit anonymous mappings, the allocator
+        /// reserves one contiguous address-space region up front and never
+        /// relocates it: `at` compiles to base-plus-index addressing and node
+        /// addresses stay valid for the allocator's lifetime. The reservation
+        /// is virtual only; physical pages materialize on first touch.
+        const supports_reserved_arena = switch (builtin.os.tag) {
+            .linux, .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .openbsd, .netbsd, .dragonfly, .illumos => true,
+            else => false,
+        };
+        /// Nodes addressable by the reserved arena. 2^28 nodes of 64 bytes
+        /// reserve 17 GB of virtual address space, which lazy backing makes
+        /// free until used.
+        const arena_max_nodes: usize = 1 << 28;
+        /// Effective capacity ceiling for this instantiation: the arena cap,
+        /// or the pointer width's limit when that is smaller (test variants).
+        pub const capacity_limit: usize = @min(max_node_capacity, if (supports_reserved_arena) arena_max_nodes else max_node_capacity);
+        /// Nodes per growth segment in the non-arena fallback. Segments are
+        /// allocated once and never reallocated or relocated, so pointers
+        /// resolved through `at` or `atConst` survive `create` growth there
+        /// as well.
+        const segment_size: usize = 1024;
+        const segment_shift: std.math.Log2Int(usize) = @intCast(std.math.log2(segment_size));
+        const segment_mask: usize = segment_size - 1;
         const invalid_pointer: NodeType.Pointer = std.math.maxInt(NodeType.Pointer);
         const default: NodeType = .{
             .text_start = 0,
@@ -41,68 +64,161 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         allocator: std.mem.Allocator,
         counter: NodeType.Pointer = 0,
-        memory: []NodeType,
+        memory: []NodeType = &.{},
+        segments: [][]NodeType = &.{},
         memory_benchmark: if (root.ast_memory_benchmark_enabled) ASTMemoryBenchmarkCounters else void =
             if (root.ast_memory_benchmark_enabled) .{} else {},
 
         const Self = @This();
 
+        fn mapFlags() std.posix.MAP {
+            var flags: std.posix.MAP = .{ .TYPE = .PRIVATE, .ANONYMOUS = true };
+            if (@hasField(std.posix.MAP, "NORESERVE")) flags.NORESERVE = true;
+            return flags;
+        }
+
+        /// Reserves the whole arena address range once. Length is rounded up
+        /// to the system page size so narrow-pointer test variants reserve
+        /// only a page or two.
+        fn reserveArena(self: *Self) !void {
+            const bytes = std.mem.alignForward(
+                usize,
+                capacity_limit * @sizeOf(NodeType),
+                std.heap.pageSize(),
+            );
+            const raw = std.posix.mmap(
+                null,
+                bytes,
+                .{ .READ = true, .WRITE = true },
+                Self.mapFlags(),
+                -1,
+                0,
+            ) catch return error.OutOfMemory;
+            const usable_nodes = @min(raw.len / @sizeOf(NodeType), capacity_limit);
+            const base: [*]NodeType = @ptrCast(@alignCast(raw.ptr));
+            self.memory = base[0..usable_nodes];
+        }
+
         pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocatorWithPointer(PayloadType, PointerType) {
-            if (capacity > max_node_capacity) return error.ASTCapacityTooLarge;
-            const memory = try allocator.alloc(NodeType, capacity + 1);
+            if (capacity > capacity_limit) return error.ASTCapacityTooLarge;
+            var self = ASTAllocatorWithPointer(PayloadType, PointerType){ .allocator = allocator };
+            if (comptime supports_reserved_arena) {
+                if (capacity > 0) try self.reserveArena();
+            } else {
+                try self.resizeSegments(std.math.divCeil(usize, capacity, segment_size) catch unreachable);
+            }
+            return self;
+        }
 
-            @memset(memory, default);
-
-            return .{
-                .allocator = allocator,
-                .memory = memory,
-            };
+        pub fn totalNodeCapacity(self: *const Self) usize {
+            if (comptime supports_reserved_arena) {
+                return self.memory.len;
+            } else {
+                return self.segments.len * segment_size;
+            }
         }
 
         pub fn ensureCapacity(self: *Self, required_capacity: usize) !void {
-            if (required_capacity <= self.memory.len - 1) return;
-            if (required_capacity > max_node_capacity) return error.ASTCapacityTooLarge;
-            try self.resize(required_capacity);
+            if (required_capacity <= self.totalNodeCapacity()) return;
+            if (required_capacity > capacity_limit) return error.ASTCapacityTooLarge;
+            if (comptime supports_reserved_arena) {
+                if (self.memory.len == 0) try self.reserveArena();
+            } else {
+                try self.resizeSegments(std.math.divCeil(usize, required_capacity, segment_size) catch unreachable);
+            }
+        }
+
+        /// Appends whole segments until `count` segments exist. Existing
+        /// segments keep their addresses; only the segment-pointer array is
+        /// reallocated. Fallback storage for platforms without lazy-commit
+        /// anonymous mappings.
+        fn resizeSegments(self: *Self, count: usize) !void {
+            if (comptime supports_reserved_arena) unreachable;
+            const old_count = self.segments.len;
+            if (count <= old_count) return;
+            const new_segments = try self.allocator.alloc([]NodeType, count);
+            errdefer self.allocator.free(new_segments);
+            @memcpy(new_segments[0..old_count], self.segments);
+            var appended: usize = 0;
+            errdefer for (new_segments[old_count..][0..appended]) |segment| self.allocator.free(segment);
+            for (new_segments[old_count..]) |*slot| {
+                slot.* = try self.allocator.alloc(NodeType, segment_size);
+                @memset(slot.*, default);
+                appended += 1;
+            }
+            if (old_count > 0) self.allocator.free(self.segments);
+            self.segments = new_segments;
         }
 
         fn grow(self: *Self) !void {
-            const current_capacity = self.memory.len - 1;
-            if (current_capacity >= max_node_capacity) return error.ASTCapacityExceeded;
-
-            const proportional_capacity = current_capacity +| current_capacity / 2;
-            const next_capacity = @min(
-                max_node_capacity,
-                @max(@as(usize, 16), @max(current_capacity + 1, proportional_capacity)),
-            );
-            try self.resize(next_capacity);
-        }
-
-        fn resize(self: *Self, capacity: usize) !void {
-            const old_len = self.memory.len;
-            self.memory = try self.allocator.realloc(self.memory, capacity + 1);
-            @memset(self.memory[old_len..], default);
+            if (comptime supports_reserved_arena) {
+                if (self.memory.len == 0) try self.reserveArena();
+            } else {
+                if (self.counter >= max_node_capacity) return error.ASTCapacityExceeded;
+                try self.resizeSegments(self.segments.len + 1);
+            }
         }
 
         pub fn reset(self: *Self) void {
-            @memset(self.memory[0..self.counter], default);
+            var remaining: usize = self.counter;
+            if (comptime supports_reserved_arena) {
+                @memset(self.memory[0..remaining], default);
+            } else {
+                for (self.segments) |segment| {
+                    if (remaining == 0) break;
+                    const used = @min(remaining, segment.len);
+                    @memset(segment[0..used], default);
+                    remaining -= used;
+                }
+            }
             self.counter = 0;
             if (comptime root.ast_memory_benchmark_enabled) {
                 self.memory_benchmark = .{};
             }
         }
 
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            if (comptime supports_reserved_arena) {
+                if (self.memory.len > 0) std.posix.munmap(@ptrCast(@alignCast(self.memory)));
+            } else {
+                for (self.segments) |segment| allocator.free(segment);
+                if (self.segments.len > 0) allocator.free(self.segments);
+            }
+            self.memory = &.{};
+            self.segments = &.{};
+            self.counter = 0;
+        }
+
         pub inline fn at(self: *Self, address: NodeType.Pointer) *NodeType {
-            return &self.memory[address];
+            @setEvalBranchQuota(100000);
+            if (comptime supports_reserved_arena) {
+                return &self.memory[address];
+            } else {
+                return &self.segments[@as(usize, address) >> segment_shift][@as(usize, address) & segment_mask];
+            }
         }
 
         pub inline fn atConst(self: *const Self, address: NodeType.Pointer) *const NodeType {
-            return &self.memory[address];
+            @setEvalBranchQuota(100000);
+            if (comptime supports_reserved_arena) {
+                return &self.memory[address];
+            } else {
+                return &self.segments[@as(usize, address) >> segment_shift][@as(usize, address) & segment_mask];
+            }
         }
 
         pub inline fn create(self: *Self, start: usize, variable: u16) error{ ASTCapacityExceeded, OutOfMemory }!NodeType.Pointer {
-            if (@as(usize, self.counter) >= self.memory.len - 1) {
+            if (@as(usize, self.counter) >= self.totalNodeCapacity()) {
                 @branchHint(.unlikely);
-                try self.grow();
+                if (comptime supports_reserved_arena) {
+                    if (self.memory.len == 0) {
+                        try self.reserveArena();
+                    } else {
+                        return error.ASTCapacityExceeded;
+                    }
+                } else {
+                    try self.grow();
+                }
             }
 
             const address = self.counter;
@@ -116,11 +232,15 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
                 );
             }
 
-            const node = &self.memory[address];
+            const node = self.at(address);
+            node.first_child = invalid_pointer;
+            node.last_child = invalid_pointer;
+            node.parent = invalid_pointer;
+            node.prior = invalid_pointer;
+            node.next = invalid_pointer;
             node.text_start = start;
             node.variable = variable;
             node.payload = .{};
-            node.children_count = 0;
 
             return address;
         }
@@ -148,7 +268,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
                 visited.set(address);
                 reachable_nodes += 1;
 
-                const node = &self.memory[address];
+                const node = self.atConst(address);
                 if (node.first_child != invalid_pointer) {
                     try pending.append(scratch_allocator, node.first_child);
                 }
@@ -162,17 +282,13 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
                 .final_counter = self.counter,
                 .peak_counter = self.memory_benchmark.peak_counter,
                 .total_create_calls = self.memory_benchmark.total_create_calls,
-                .usable_capacity = self.memory.len - 1,
-                .preallocated_vector_items = self.memory.len,
+                .usable_capacity = self.totalNodeCapacity(),
+                .preallocated_vector_items = self.totalNodeCapacity(),
             };
         }
 
         pub inline fn terminalNode(terminal: u8) NodeType.Pointer {
             return terminal;
-        }
-
-        pub inline fn index(self: *const Self, node: *const NodeType) NodeType.Pointer {
-            return @intCast((node - &self.memory[0]) / @sizeOf(NodeType));
         }
     };
 }
@@ -841,7 +957,7 @@ const TestASTAllocator = ASTAllocator(TestPayload);
 test "AST memory benchmark counts reachable nodes and allocator usage" {
     if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 4);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     const ast_root = try node_allocator.create(0, 1);
     const first_child = try node_allocator.create(1, 2);
@@ -857,8 +973,8 @@ test "AST memory benchmark counts reachable nodes and allocator usage" {
     try std.testing.expectEqual(@as(usize, 4), stats.final_counter);
     try std.testing.expectEqual(@as(usize, 4), stats.peak_counter);
     try std.testing.expectEqual(@as(usize, 4), stats.total_create_calls);
-    try std.testing.expectEqual(@as(usize, 4), stats.usable_capacity);
-    try std.testing.expectEqual(stats.usable_capacity + 1, stats.preallocated_vector_items);
+    try std.testing.expect(stats.usable_capacity >= 4);
+    try std.testing.expectEqual(stats.usable_capacity, stats.preallocated_vector_items);
 
     const no_root_stats = try node_allocator.memoryBenchmarkStats(std.testing.allocator, null);
     try std.testing.expectEqual(@as(usize, 0), no_root_stats.reachable_nodes);
@@ -871,7 +987,7 @@ test "AST memory benchmark counts reachable nodes and allocator usage" {
 test "AST memory benchmark tracks allocation peak and resets counters" {
     if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 2);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     _ = try node_allocator.create(0, 1);
     _ = try node_allocator.create(1, 2);
@@ -891,13 +1007,13 @@ test "AST memory benchmark tracks allocation peak and resets counters" {
 test "AST allocator preserves nodes across cold-path growth" {
     if (comptime !root.parser.is_ast_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     const first = try node_allocator.create(3, 11);
     node_allocator.at(first).text_length = 7;
     const second = try node_allocator.create(5, 13);
 
-    try std.testing.expect(node_allocator.memory.len > 2);
+    try std.testing.expect(node_allocator.totalNodeCapacity() >= 2);
     try std.testing.expectEqual(@as(TestNode.Pointer, 0), first);
     try std.testing.expectEqual(@as(TestNode.Pointer, 1), second);
     try std.testing.expectEqual(@as(usize, 3), node_allocator.at(first).text_start);
@@ -914,7 +1030,7 @@ test "AST allocator reports exhaustion without corrupting state" {
         std.testing.allocator,
         ExhaustionASTAllocator.max_node_capacity,
     );
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     var index: usize = 0;
     while (index < ExhaustionASTAllocator.max_node_capacity) : (index += 1) {
@@ -935,13 +1051,56 @@ test "AST allocator reports exhaustion without corrupting state" {
     try std.testing.expectEqual(@as(usize, 17), final_node.text_length);
 }
 
+test "AST allocator keeps resolved node pointers stable across growth" {
+    if (comptime !root.parser.is_ast_enabled) return;
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    const first = try node_allocator.create(0, 1);
+    const retained = node_allocator.at(first);
+    retained.text_length = 41;
+
+    // Cross many internal storage boundaries; the resolved pointer must
+    // address the same live node throughout.
+    var index: usize = 1;
+    while (index < 5000) : (index += 1) {
+        _ = try node_allocator.create(@intCast(index), 1);
+    }
+
+    try std.testing.expectEqual(@as(usize, 41), node_allocator.at(0).text_length);
+    retained.text_length = 42;
+    try std.testing.expectEqual(@as(usize, 42), node_allocator.at(0).text_length);
+}
+
+test "procedure hook current node pointer survives node allocation" {
+    if (comptime !root.parser.is_ast_enabled) return;
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
+    defer node_allocator.deinit(std.testing.allocator);
+    var context = Context{};
+    context.node_allocator = &node_allocator;
+
+    const address = try node_allocator.create(0, 1);
+    var args = root.data_structures.ProcedureArguments{ .context = &context, .rule = null };
+    args.node_address = address;
+
+    // A hook resolves its current node, then allocates through a tree helper
+    // across many growth steps before writing through the retained pointer.
+    const node = args.currentNode().?;
+    var index: usize = 0;
+    while (index < 5000) : (index += 1) {
+        _ = try node_allocator.create(@intCast(index), 1);
+    }
+
+    node.text_length = 7;
+    try std.testing.expectEqual(@as(usize, 7), args.currentNode().?.text_length);
+}
+
 test "zero length augmented node" {
     if (comptime !root.parser.is_ast_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
-    defer std.testing.allocator.free(node_allocator.memory);
-    const nodes = node_allocator.memory;
+    defer node_allocator.deinit(std.testing.allocator);
 
-    nodes[0] = .{
+    node_allocator.at(0).* = .{
         .text_start = 0,
         .text_length = 1,
         .payload = .{},
@@ -955,14 +1114,13 @@ test "zero length augmented node" {
 test "augmented length" {
     if (comptime !root.parser.is_ast_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 20);
-    defer std.testing.allocator.free(node_allocator.memory);
-    const nodes = node_allocator.memory[0..20];
+    defer node_allocator.deinit(std.testing.allocator);
 
-    for (nodes, 0..) |*node, index| {
+    for (0..20) |index| {
         if (index > 0) {
-            nodes[index - 1].next = @intCast(index);
+            node_allocator.at(@intCast(index - 1)).next = @intCast(index);
         }
-        node.* = .{
+        node_allocator.at(@intCast(index)).* = .{
             .text_start = 0,
             .text_length = 1,
             .prior = if (index > 0) @intCast(index - 1) else TestNode.invalid_pointer,
@@ -970,7 +1128,7 @@ test "augmented length" {
         };
     }
 
-    for (nodes, 0..) |_, index| {
+    for (0..20) |index| {
         try std.testing.expectEqual(@as(usize, index), TestNode.augmentedBackLength(@intCast(index), &node_allocator));
         try std.testing.expectEqual(@as(usize, 20), TestNode.augmentedLength(@intCast(index), &node_allocator));
         try std.testing.expectEqual(@as(usize, 19 - index), TestNode.augmentedFrontLength(@intCast(index), &node_allocator));
@@ -980,14 +1138,13 @@ test "augmented length" {
 test "augmented iterate" {
     if (comptime !root.parser.is_ast_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 20);
-    defer std.testing.allocator.free(node_allocator.memory);
-    const nodes = node_allocator.memory[0..20];
+    defer node_allocator.deinit(std.testing.allocator);
 
-    for (nodes, 0..) |*node, index| {
+    for (0..20) |index| {
         if (index > 0) {
-            nodes[index - 1].next = @intCast(index);
+            node_allocator.at(@intCast(index - 1)).next = @intCast(index);
         }
-        node.* = .{
+        node_allocator.at(@intCast(index)).* = .{
             .text_start = 0,
             .text_length = 1,
             .prior = if (index > 0) @intCast(index - 1) else TestNode.invalid_pointer,
@@ -1041,8 +1198,11 @@ const TestFixture = struct {
 
         var node_allocator = try TestASTAllocator.initWithCapacity(alloc, 30);
         node_allocator.counter = 30;
-        const nodes = node_allocator.memory;
-        for (nodes[0..30]) |*node| {
+        const nodes: []TestNode = if (comptime TestASTAllocator.supports_reserved_arena)
+            node_allocator.memory[0..30]
+        else
+            node_allocator.segments[0][0..30];
+        for (nodes) |*node| {
             node.* = .{
                 .text_start = 0,
                 .text_length = 0,
@@ -1416,7 +1576,7 @@ test "augmentedText traverses deep trees iteratively" {
 
     const depth = 16 * 1024;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, depth);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     var input = [_]u8{'Z'};
     var context = testContext(&node_allocator, input[0..]);
