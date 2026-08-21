@@ -376,7 +376,7 @@ pub const Session = struct {
         const node_allocator = if (parser.is_ast_enabled)
             try data_structures.ASTAllocator.initWithCapacity(allocator, 0)
         else {};
-        errdefer if (parser.is_ast_enabled) allocator.free(node_allocator.memory);
+        errdefer if (parser.is_ast_enabled) node_allocator.deinit(allocator);
 
         return .{
             .io = io,
@@ -418,7 +418,7 @@ pub const Session = struct {
             self.owned_input = null;
         }
         if (parser.is_ast_enabled) {
-            self.allocator.free(self.node_allocator.memory);
+            self.node_allocator.deinit(self.allocator);
         }
         self.allocator.free(self.chunk_buffer);
         self.allocator.free(self.reader_buffer);
@@ -468,7 +468,7 @@ pub const Session = struct {
         const scaled_capacity = @ceil(
             @as(f64, @floatFromInt(input_length)) * self.ast_preallocation_ratio,
         );
-        const maximum_capacity = data_structures.ASTAllocator.max_node_capacity;
+        const maximum_capacity = data_structures.ASTAllocator.capacity_limit;
         const capped_capacity = @min(maximum_capacity, self.ast_preallocation_cap);
         const capacity = if (scaled_capacity >= @as(f64, @floatFromInt(capped_capacity)))
             capped_capacity

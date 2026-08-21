@@ -213,7 +213,7 @@ test "AST formatter reports the current node child count" {
     if (comptime !parser.is_ast_enabled) return;
 
     var node_allocator = try root.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 4);
-    defer std.testing.allocator.free(node_allocator.memory);
+    defer node_allocator.deinit(std.testing.allocator);
 
     const parent = try node_allocator.create(0, 0);
     const first_child = try node_allocator.create(0, 0);

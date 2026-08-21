@@ -182,10 +182,12 @@ For a terminal match enabled by `--ast-for-terminals`, only the applicable phase
 Variable hooks receive the selected variable rule in `args.rule`. Terminals do
 not have a reduction rule, so terminal hooks receive `args.rule = null`.
 `args.currentNode()` returns a direct pointer to the current `Node`; ordinary
-hooks mutate its span or payload in place. In AST mode, tree helpers may replace
-or remove the stable allocator address through `args.node_address`; `currentNode()`
-resolves from that address, so it reflects any drop or replacement performed by
-an earlier hook phase.
+hooks mutate its span or payload in place. Node storage never relocates, so the
+pointer stays valid even when the hook (or a tree helper it calls) allocates
+further nodes. In AST mode, tree helpers may replace or remove the stable
+allocator address through `args.node_address`; `currentNode()` resolves from
+that address, so it reflects any drop or replacement performed by an earlier
+hook phase.
 
 An LR parser must know the parent occurrence when a variable reduces or terminal matches. If the active LR state and lookahead correspond to multiple occurrences with different hook chains, generation fails with `error.AmbiguousProcedureHooks` rather than running a hook for the wrong position. Identical chains may share the action.
 

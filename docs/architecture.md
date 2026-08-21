@@ -70,9 +70,9 @@ The recovery scope installs an alternate signal stack and temporary `SIGSEGV`/`S
 
 ## Dense Integer Node Pooling
 
-When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from contiguous, preallocated memory pools (`ASTAllocator`).
+When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from the `ASTAllocator`'s node storage, which never relocates: on platforms with lazy-commit anonymous mappings (macOS, Linux, the BSDs) one contiguous address-space region is reserved up front and backed by the OS on first touch; other platforms use fixed-size segments that are allocated once and never moved.
 
-Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Those indices remain valid when the contiguous pool grows and relocates. Session reuse retains the allocated pool, although reset currently clears the previously used node range before rewinding it.
+Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Because the storage never relocates, element addresses are stable for the allocator's lifetime: pointers resolved from an address (for example `args.currentNode()` inside a procedure hook) remain valid across subsequent node allocations. Session reuse retains the allocated storage, although reset currently clears the previously used node range before rewinding it.
 
 AST allocation is also decided at generation time, per symbol: helper variables (written with a leading `_`) never allocate nodes, and the parser is emitted with exactly the node creation it needs, so no runtime branching decides whether to build a node. See [AST Node Allocations](/ast_node_allocations) for the full mechanics and the LR generator's static-analysis constraints.
 
