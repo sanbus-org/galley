@@ -1,0 +1,7 @@
+{
+    "ast": true,
+    "ast_for_terminals": true,
+    "position_tracking": true,
+    "error_recovery": true,
+    "procedures": false
+}

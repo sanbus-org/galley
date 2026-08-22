@@ -9,10 +9,28 @@ fn ignoreDiagnostic(_: []const u8) void {}
 
 const max_source_size = 1024 * 1024 * 1024;
 
+/// Options set through one configuration layer (galley.json or the command
+/// line). Null fields were not specified in that layer.
+const OptionOverrides = struct {
+    parser_type: ?generator.ParserType = null,
+    ast: ?bool = null,
+    procedures: ?bool = null,
+    error_recovery: ?bool = null,
+    ast_for_terminals: ?bool = null,
+    position_tracking: ?bool = null,
+    input_streaming: ?bool = null,
+    allow_no_ast_tree_procedures: ?bool = null,
+};
+
+const CONFIG_FILE_NAME = "galley.json";
+
 const CliOptions = struct {
     parser_type: ?generator.ParserType = null,
     language_dir: ?[]const u8 = null,
     generator_options: generator.Options = .{},
+    /// Options explicitly requested on the command line; they always win
+    /// over galley.json.
+    explicit: OptionOverrides = .{},
     fill_error_messages: bool = false,
     bootstrap_zig_project: bool = false,
     watch: bool = false,
@@ -27,9 +45,50 @@ const GenerationResult = struct {
     created_lr_error_messages: bool = false,
 };
 
+/// Reads `galley.json` from the language directory, if present. Returns an
+/// empty override set when the file does not exist. Malformed files are
+/// fatal: unknown keys and wrong value types are rejected so typos never
+/// silently disable options.
+fn loadConfigFileOverrides(init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !OptionOverrides {
+    var cwd = std.Io.Dir.cwd();
+    const path = std.fs.path.join(gpa, &.{ language_dir, CONFIG_FILE_NAME }) catch return error.OutOfMemory;
+    defer gpa.free(path);
+
+    const content = cwd.readFileAlloc(init.io, path, gpa, .limited(max_source_size)) catch |err| switch (err) {
+        error.FileNotFound => return OptionOverrides{},
+        else => |e| return e,
+    };
+    defer gpa.free(content);
+
+    var parsed = std.json.parseFromSlice(OptionOverrides, gpa, content, .{}) catch |err| switch (err) {
+        error.UnknownField => fatal("error: {s} contains an unknown or misspelled key\n", .{path}),
+        else => fatal("error: failed to parse {s}: {t}\n", .{ path, err }),
+    };
+    defer parsed.deinit();
+    return parsed.value;
+}
+
+/// Applies one layer of overrides. Explicit command-line options are applied
+/// after galley.json so they always win.
+fn applyOptionOverrides(options: *CliOptions, overrides: OptionOverrides) void {
+    if (overrides.parser_type) |v| options.parser_type = v;
+    if (overrides.ast) |v| options.generator_options.with_ast = v;
+    if (overrides.procedures) |v| options.generator_options.with_procedures = v;
+    if (overrides.error_recovery) |v| options.generator_options.with_error_recovery = v;
+    if (overrides.ast_for_terminals) |v| options.generator_options.ast_for_terminals = v;
+    if (overrides.position_tracking) |v| options.generator_options.with_position_tracking = v;
+    if (overrides.input_streaming) |v| options.generator_options.with_input_streaming = v;
+    if (overrides.allow_no_ast_tree_procedures) |v| options.generator_options.allow_no_ast_tree_procedures = v;
+}
+
 pub fn main(init: std.process.Init) !void {
-    const options = try parseArgs(init);
+    var options = try parseArgs(init);
     const language_dir = options.language_dir orelse fatal("error: language directory is required\n", .{});
+
+    // Precedence: built-in defaults < galley.json < explicit command-line
+    // options.
+    applyOptionOverrides(&options, try loadConfigFileOverrides(init, init.gpa, language_dir));
+    applyOptionOverrides(&options, options.explicit);
 
     printRunSeparator(init);
     const start = std.Io.Timestamp.now(init.io, .real);
@@ -60,35 +119,37 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--parser-type")) {
             const value = args.next() orelse fatal("error: --parser-type requires ll or lr\n", .{});
             result.parser_type = generator.ParserType.parse(value) orelse fatal("error: unsupported parser type: {s}\n", .{value});
+            result.explicit.parser_type = result.parser_type;
         } else if (std.mem.startsWith(u8, arg, "--parser-type=")) {
             const value = arg["--parser-type=".len..];
             result.parser_type = generator.ParserType.parse(value) orelse fatal("error: unsupported parser type: {s}\n", .{value});
+            result.explicit.parser_type = result.parser_type;
         } else if (std.mem.eql(u8, arg, "--with-ast")) {
-            result.generator_options.with_ast = true;
+            result.explicit.ast = true;
         } else if (std.mem.eql(u8, arg, "--no-ast")) {
-            result.generator_options.with_ast = false;
+            result.explicit.ast = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
-            result.generator_options.with_procedures = true;
+            result.explicit.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
-            result.generator_options.with_procedures = false;
+            result.explicit.procedures = false;
         } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
-            result.generator_options.allow_no_ast_tree_procedures = true;
+            result.explicit.allow_no_ast_tree_procedures = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
-            result.generator_options.with_error_recovery = true;
+            result.explicit.error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
-            result.generator_options.with_error_recovery = false;
+            result.explicit.error_recovery = false;
         } else if (std.mem.eql(u8, arg, "--with-position-tracking")) {
-            result.generator_options.with_position_tracking = true;
+            result.explicit.position_tracking = true;
         } else if (std.mem.eql(u8, arg, "--no-position-tracking")) {
-            result.generator_options.with_position_tracking = false;
+            result.explicit.position_tracking = false;
         } else if (std.mem.eql(u8, arg, "--with-input-streaming")) {
-            result.generator_options.with_input_streaming = true;
+            result.explicit.input_streaming = true;
         } else if (std.mem.eql(u8, arg, "--no-input-streaming")) {
-            result.generator_options.with_input_streaming = false;
+            result.explicit.input_streaming = false;
         } else if (std.mem.eql(u8, arg, "--ast-for-terminals")) {
-            result.generator_options.ast_for_terminals = true;
+            result.explicit.ast_for_terminals = true;
         } else if (std.mem.eql(u8, arg, "--no-ast-for-terminals")) {
-            result.generator_options.ast_for_terminals = false;
+            result.explicit.ast_for_terminals = false;
         } else if (std.mem.eql(u8, arg, "--fill-error-messages")) {
             result.fill_error_messages = true;
         } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
@@ -118,6 +179,10 @@ fn printUsage(init: std.process.Init) !void {
         \\
         \\Arguments:
         \\  <LANGUAGE_DIR>             Directory containing ll.grm and/or lr.grm.
+        \\
+        \\                             An optional galley.json in this directory
+        \\                             provides defaults for the options below;
+        \\                             explicit command-line flags override it.
         \\
         \\Options:
         \\  -h, --help                 Display this help and exit.
@@ -787,6 +852,25 @@ test "computeFingerprint keeps crc32 of the name in the high bits and formats 16
     const expected_high = @as(u64, std.hash.Crc32.hash("zbtest")) << 32;
     const value = try std.fmt.parseUnsigned(u64, fingerprint, 16);
     try std.testing.expectEqual(expected_high, value & 0xffffffff00000000);
+}
+
+test "galley.json sits between defaults and explicit flags" {
+    var options = CliOptions{ .generator_options = .{} };
+
+    // galley.json layer
+    applyOptionOverrides(&options, .{ .ast = false, .error_recovery = true });
+    try std.testing.expect(!options.generator_options.with_ast);
+    try std.testing.expect(options.generator_options.with_error_recovery);
+    // unspecified fields keep their built-in defaults
+    try std.testing.expect(options.generator_options.with_procedures);
+
+    // explicit command line wins over galley.json
+    applyOptionOverrides(&options, .{ .ast = true });
+    try std.testing.expect(options.generator_options.with_ast);
+    try std.testing.expect(options.generator_options.with_error_recovery);
+
+    applyOptionOverrides(&options, .{ .parser_type = .lr });
+    try std.testing.expectEqual(generator.ParserType.lr, options.parser_type.?);
 }
 
 test "bootstrapZigProject refuses to overwrite an existing build.zig" {

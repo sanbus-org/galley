@@ -38,6 +38,28 @@ zig build
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
 | `--allow-no-ast-tree-procedures` | Flag | In no-AST mode, treats standard tree-manipulation procedures as no-ops instead of failing to compile. Has no effect when AST construction is enabled. | Off |
 | `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) in the language directory that parses files with the generated parser. Refuses to overwrite existing files. | Off |
+## galley.json
+
+An optional `galley.json` file in the language directory supplies defaults
+for the generation options above. Explicit command-line flags always
+override values from the file; unspecified fields keep their built-in
+defaults.
+
+| Key | Type | Matches |
+| --- | --- | --- |
+| `parser_type` | `"ll"` or `"lr"` | `--parser-type` |
+| `ast` | boolean | `--with-ast` / `--no-ast` |
+| `procedures` | boolean | `--with-procedures` / `--no-procedures` |
+| `error_recovery` | boolean | `--with-error-recovery` / `--no-error-recovery` |
+| `ast_for_terminals` | boolean | `--ast-for-terminals` / `--no-ast-for-terminals` |
+| `position_tracking` | boolean | `--with-position-tracking` / `--no-position-tracking` |
+| `input_streaming` | boolean | `--with-input-streaming` / `--no-input-streaming` |
+| `allow_no_ast_tree_procedures` | boolean | `--allow-no-ast-tree-procedures` |
+
+Unknown keys are rejected so misspelled options never silently disable a
+feature. Action flags (`--fill-error-messages`, `--bootstrap-zig-project`,
+`--watch`) cannot appear in the file.
+
 | `--watch` | Flag | Keeps running and regenerates the parser whenever the grammar file changes. Each run is separated by a timestamped banner and reports parse duration in milliseconds; if regeneration fails (for example, mid-edit), the previous parser output is kept. | Off |
 
 `--no-ast --with-procedures` enables semantic procedures without constructing
