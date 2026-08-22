@@ -1,0 +1,8 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/config.zig
+/procedures.zig
+/ll_error_messages.zig
+/lr_error_messages.zig
+/compile_commands.json
+/build

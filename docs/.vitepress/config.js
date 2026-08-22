@@ -39,7 +39,8 @@ export default defineConfig({
       {
         text: 'Language Bindings',
         items: [
-          { text: 'C and C++', link: '/bindings_c' }
+          { text: 'C and C++', link: '/bindings_c' },
+          { text: 'Rust', link: '/bindings_rust' }
         ]
       },
       {

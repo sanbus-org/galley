@@ -1,0 +1,10 @@
+[package]
+name = "galley-rust-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+galley-bindings = { path = "../../bindings/rust" }
+
+[build-dependencies]
+galley-bindings = { path = "../../bindings/rust" }
