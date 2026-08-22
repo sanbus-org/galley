@@ -37,6 +37,12 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Language Bindings',
+        items: [
+          { text: 'C and C++', link: '/bindings_c' }
+        ]
+      },
+      {
         text: 'Advanced Architecture & Performance',
         items: [
           { text: 'Architecture', link: '/architecture' },

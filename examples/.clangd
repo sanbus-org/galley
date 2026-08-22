@@ -1,0 +1,5 @@
+# Fallback for editing before the first build: point clang at the in-repo
+# header. After a build, the generated compile_commands.json (copied next to
+# the sources) takes precedence with the exact include path.
+CompileFlags:
+  Add: [-Ibindings/c, -I../../bindings/c]
