@@ -1,0 +1,28 @@
+Document
+| PairList
+|
+
+PairList
+| Pair PairListTail
+
+PairListTail
+| "," PairList
+|
+
+Pair
+| Key ":" Number
+
+Key
+| letter KeyTail
+
+KeyTail
+| letter KeyTail
+| digit KeyTail
+|
+
+Number
+| digit NumberTail
+
+NumberTail
+| digit NumberTail
+|

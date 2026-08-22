@@ -80,20 +80,51 @@ jobs:
             --test-timeout 30m \
             -Dtest-filter=case:${{ matrix.case }}
 
+  language-examples:
+    name: language-examples (${{ matrix.language }})
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        language:
+          - c
+          - cpp
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Build and run example
+        run: |
+          cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }}
+          cmake --build build-${{ matrix.language }}
+          ./build-${{ matrix.language }}/bin/example
+
   test:
     name: test
     if: ${{ always() }}
     needs:
       - core
       - matrix
+      - language-examples
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
         env:
           CORE_RESULT: ${{ needs.core.result }}
           MATRIX_RESULT: ${{ needs.matrix.result }}
+          LANGUAGE_EXAMPLES_RESULT: ${{ needs.language-examples.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "matrix: $MATRIX_RESULT"
+          echo "language-examples: $LANGUAGE_EXAMPLES_RESULT"
           test "$CORE_RESULT" = success
           test "$MATRIX_RESULT" = success
+          test "$LANGUAGE_EXAMPLES_RESULT" = success
