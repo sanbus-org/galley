@@ -13,7 +13,7 @@ project(galley_c_example C)
 #   #    language directory; boilerplate modules are created on first run):
 #   /path/to/galley/zig-out/bin/galley \
 #       --parser-type ll --with-ast --with-position-tracking \
-#       --no-procedures --no-bootstrap-zig-project \
+#       --no-procedures \
 #       /path/to/this/dir
 #   # → _ll-parser.zig next to ll.grm
 #

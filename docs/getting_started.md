@@ -51,7 +51,7 @@ To turn a directory that only contains a grammar into a runnable Zig project, pa
 ./zig-out/bin/galley --bootstrap-zig-project my-language
 ```
 
-If the target directory contains no project files (`build.zig`, `build.zig.zon`, or `src/main.zig`) and no parent directory has a `build.zig`, bootstrapping happens automatically, so the flag is often optional. Pass `--no-bootstrap-zig-project` to force it off when the automatic rule would kick in.
+Bootstrapping is off by default; pass `--bootstrap-zig-project` to create the minimal project.
 
 ### Try the LR parser too
 
