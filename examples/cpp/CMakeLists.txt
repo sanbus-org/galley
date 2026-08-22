@@ -1,41 +1,23 @@
 cmake_minimum_required(VERSION 3.20)
 project(galley_cpp_example CXX)
 
-# Builds the keyvalue example against a Galley-generated parser.
+# Self-sufficient Galley consumer: fetching Galley, generating the parser
+# from this directory's ll.grm, and compiling it into a shared C-API library
+# all happen here automatically.
 #
-# This build does NOT generate anything. Generate the parser yourself first
-# (see README-style instructions below), then configure:
+# Generation options live in galley.json next to ll.grm — edit it and
+# rebuild to regenerate. Requires `zig` and `git` on PATH; nothing from any
+# parent directory is used. Benchmarking submodules of Galley are not needed
+# and are skipped; GIT_SHALLOW assumes GALLEY_TAG names a branch.
 #
-#   # 1. From a Galley checkout (or a fetched copy):
-#   cd /path/to/galley && zig build -Doptimize=ReleaseFast install
-#
-#   # 2. Generate the parser from ll.grm (this directory becomes the
-#   #    language directory; boilerplate modules are created on first run):
-#   /path/to/galley/zig-out/bin/galley \
-#       --parser-type ll --with-ast --with-position-tracking \
-#       --no-procedures \
-#       /path/to/this/dir
-#   # → _ll-parser.zig next to ll.grm
-#
-#   # 3. Build and run:
-#   cmake -S . -B build -DGALLEY_CHECKOUT=/path/to/galley
-#   cmake --build build
-#   ./build/bin/example
-#
-# GALLEY_CHECKOUT may be omitted to fetch Galley instead; when fetching,
-# point -Dparser-source at the copy you generated wherever you ran the CLI.
-#
-# Requires `zig` and `git` on PATH. Benchmarking submodules of Galley are
-# not needed and are skipped; GIT_SHALLOW assumes GALLEY_TAG names a branch.
+# Set GALLEY_CHECKOUT to a local Galley working tree to skip fetching (useful
+# when developing Galley itself).
 set(GALLEY_REPOSITORY "https://github.com/sanbus-org/galley.git"
     CACHE STRING "Galley repository to fetch")
 set(GALLEY_TAG "main"
     CACHE STRING "Galley revision to fetch")
 
 find_program(ZIG_EXECUTABLE NAMES zig REQUIRED)
-
-set(PARSER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/_ll-parser.zig" CACHE FILEPATH
-    "Generated parser Zig source (see generation instructions above)")
 
 set(GALLEY_CHECKOUT "" CACHE PATH
     "Existing Galley checkout to use instead of fetching one")
@@ -64,35 +46,52 @@ else()
     set(GALLEY_SOURCE_DIR "${GALLEY_CHECKOUT}")
 endif()
 
-if(NOT EXISTS "${PARSER_SOURCE}")
-    message(FATAL_ERROR
-        "Parser source '${PARSER_SOURCE}' not found.\n"
-        "Generate it first with the Galley CLI (see the instructions at the "
-        "top of this file), or pass -Dparser-source=/path/to/_ll-parser.zig.")
-endif()
-
-set(CAPI_PREFIX     "${CMAKE_BINARY_DIR}/galley-capi")
+set(GALLEY_CLI        "${GALLEY_SOURCE_DIR}/zig-out/bin/galley")
+set(CAPI_PREFIX       "${CMAKE_BINARY_DIR}/galley-capi")
 set(GALLEY_INCLUDE_DIR "${CAPI_PREFIX}/include")
+set(GENERATED_PARSER  "${CMAKE_CURRENT_SOURCE_DIR}/_ll-parser.zig")
 if(APPLE)
     set(GALLEY_LIBRARY "${CAPI_PREFIX}/lib/libkeyvalue-c.dylib")
 else()
     set(GALLEY_LIBRARY "${CAPI_PREFIX}/lib/libkeyvalue-c.so")
 endif()
 
-# Compile parser + runtime + C API into a shared library via Galley's
-# generic consumer build file.
+# 1. Build the Galley generator CLI.
+add_custom_command(
+    OUTPUT "${GALLEY_CLI}"
+    COMMAND "${ZIG_EXECUTABLE}" build -Doptimize=ReleaseFast install
+    WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
+    DEPENDS galley_sources
+    VERBATIM
+)
+
+# 2. Generate the parser from ll.grm. All generation options come from this
+#    directory's galley.json; the boilerplate modules and _ll-parser.zig are
+#    generated in place and gitignored.
+add_custom_command(
+    OUTPUT "${GENERATED_PARSER}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/config.zig" "${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/procedures.zig" "${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/ll_error_messages.zig" "${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
+    COMMAND "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}"
+    DEPENDS "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}/ll.grm" "${CMAKE_CURRENT_SOURCE_DIR}/galley.json"
+    VERBATIM
+)
+
+# 3. Compile parser + runtime + C API into a shared library via Galley's
+#    generic consumer build file.
 add_custom_command(
     OUTPUT "${GALLEY_LIBRARY}" "${GALLEY_INCLUDE_DIR}/galley.h"
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
-            "-Dparser-source=${PARSER_SOURCE}"
+            "-Dparser-source=${GENERATED_PARSER}"
             "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
             "-Doptimize=ReleaseFast"
             --prefix "${CAPI_PREFIX}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS galley_sources "${PARSER_SOURCE}"
+    DEPENDS galley_sources "${GENERATED_PARSER}"
     VERBATIM
 )
 add_custom_target(galley_c_api DEPENDS

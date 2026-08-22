@@ -22,52 +22,40 @@ both are built and executed by CI on every push.
 
 ## Build Model
 
-Generation and compilation are separate steps. **The build system never
-generates anything** — you run the generator CLI yourself, then point your
-build at the produced parser source.
+Consumers drive two commands from whatever build system they prefer — no
+Galley-side build knowledge is required:
 
-1. **Obtain Galley** — fetch the repository (the examples use CMake
-   `ExternalProject` with `GIT_SHALLOW` and skip benchmarking submodules),
-   or point `-DGALLEY_CHECKOUT=/path/to/galley` at an existing working tree
-   when developing Galley itself.
-2. **Build the generator CLI** once inside that tree:
+1. **Generate** the parser from a grammar with the generator CLI (operating
+   on a *language directory* containing `ll.grm`; boilerplate modules are
+   created automatically):
+
    ```sh
-   zig build -Doptimize=ReleaseFast install
-   # → <galley>/zig-out/bin/galley
-   ```
-3. **Generate the parser** from your grammar. The CLI operates on a
-   *language directory* containing `ll.grm` (or `lr.grm`); boilerplate
-   modules (`config.zig`, `procedures.zig`, error messages) are created
-   automatically on first run if missing:
-   ```sh
-   <galley>/zig-out/bin/galley \
-       --parser-type ll --with-ast --with-position-tracking --no-procedures \
-       /path/to/language-dir
+   <galley>/zig-out/bin/galley --parser-type ll /path/to/language-dir
    # → /path/to/language-dir/_ll-parser.zig
    ```
 
-   Generator flags are ordinary CLI options (`--with-ast` / `--no-ast`,
-   `--with-position-tracking`, `--no-procedures`, ...).
-4. **Build the C library** with Galley's generic consumer build file:
+2. **Compile** the generated parser into a shared library with Galley's
+   generic consumer build file:
+
    ```sh
    zig build --build-file <galley>/bindings/c/consumer/build.zig \
        "-Dparser-source=/path/to/language-dir/_ll-parser.zig" \
-       "-Dparser-type=ll" \
        "-Dlib-name=mylang" \
        "-Doptimize=ReleaseFast" \
        --prefix /out install
    # → /out/lib/libmylang.dylib|so and /out/include/galley.h
    ```
-5. **Compile and link** your sources against the library with
-   `include/galley.h` on the include path.
+
+Generation options come from an optional [`galley.json`](/configuration) in
+the language directory; command-line flags override it.
 
 ### What the examples' CMake does
 
-The examples' `CMakeLists.txt` covers only steps 4–5 (plus step 1): it uses
-Galley's runtime sources, compiles the library from `-Dparser-source`
-(default `_ll-parser.zig` next to the grammar), and builds `bin/example`.
-Regenerating after a grammar edit is your explicit step 3; rebuild picks up
-the new parser.
+Both examples wire steps 1–2 into CMake so a plain
+`cmake -S examples/c -B build && cmake --build build` fetches Galley, builds
+its CLI, generates the parser from the example's own `ll.grm`, compiles the
+library, builds `build/bin/example`, and runs nothing else. Generation also
+re-runs automatically whenever `ll.grm` or `galley.json` changes.
 
 Useful variables:
 
@@ -76,10 +64,15 @@ Useful variables:
 | `GALLEY_REPOSITORY` | Repository fetched when no checkout is given |
 | `GALLEY_TAG` | Revision to fetch (default `main`) |
 | `GALLEY_CHECKOUT` | Existing Galley working tree; skips fetching |
-| `PARSER_SOURCE` | Generated parser source (default `_ll-parser.zig` beside the grammar) |
 
+Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`,
+error messages) live in the example directory and are gitignored.
 After a build, `build/bin/` contains just the example executable — the
 Galley CLI stays inside its own tree.
+
+Both example directories also emit `compile_commands.json` next to their
+sources and ship a `.clangd` fallback, so editors resolve `<galley.h>` and
+offer completion before the first build.
 
 Passing a file path as the only argument parses that file and nothing
 else (exit status reports success; failures print a diagnostic):
@@ -87,10 +80,6 @@ else (exit status reports success; failures print a diagnostic):
 ```sh
 ./build/bin/example path/to/input.file
 ```
-
-Both example directories also emit `compile_commands.json` next to their
-sources and ship a `.clangd` fallback, so editors resolve `<galley.h>` and
-offer completion before the first build.
 
 ## Runtime Concepts
 
