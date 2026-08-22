@@ -37,7 +37,7 @@ zig build
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
 | `--allow-no-ast-tree-procedures` | Flag | In no-AST mode, treats standard tree-manipulation procedures as no-ops instead of failing to compile. Has no effect when AST construction is enabled. | Off |
-| `--bootstrap-zig-project` / `--no-bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) in the language directory that parses files with the generated parser. Refuses to overwrite existing files. Enabled by default when the language directory contains no project files and no parent directory has a `build.zig`; `--no-bootstrap-zig-project` disables it, and `--bootstrap-zig-project` forces it on. | Auto |
+| `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) in the language directory that parses files with the generated parser. Refuses to overwrite existing files. | Off |
 | `--watch` | Flag | Keeps running and regenerates the parser whenever the grammar file changes. Each run is separated by a timestamped banner and reports parse duration in milliseconds; if regeneration fails (for example, mid-edit), the previous parser output is kept. | Off |
 
 `--no-ast --with-procedures` enables semantic procedures without constructing

@@ -42,7 +42,6 @@ build at the produced parser source.
    ```sh
    <galley>/zig-out/bin/galley \
        --parser-type ll --with-ast --with-position-tracking --no-procedures \
-       --no-bootstrap-zig-project \
        /path/to/language-dir
    # → /path/to/language-dir/_ll-parser.zig
    ```

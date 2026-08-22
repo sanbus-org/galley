@@ -14,7 +14,7 @@ const CliOptions = struct {
     language_dir: ?[]const u8 = null,
     generator_options: generator.Options = .{},
     fill_error_messages: bool = false,
-    bootstrap_zig_project: ?bool = null,
+    bootstrap_zig_project: bool = false,
     watch: bool = false,
 };
 
@@ -37,7 +37,7 @@ pub fn main(init: std.process.Init) !void {
     const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
     try printSuccess(init, language_dir, result, elapsed_ms);
 
-    if (options.bootstrap_zig_project orelse shouldBootstrapByDefault(init.io, init.gpa, language_dir)) {
+    if (options.bootstrap_zig_project) {
         try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result);
     }
 
@@ -93,8 +93,7 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.fill_error_messages = true;
         } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
             result.bootstrap_zig_project = true;
-        } else if (std.mem.eql(u8, arg, "--no-bootstrap-zig-project")) {
-            result.bootstrap_zig_project = false;
+
         } else if (std.mem.eql(u8, arg, "--watch")) {
             result.watch = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
@@ -143,13 +142,8 @@ fn printUsage(init: std.process.Init) !void {
         \\      --bootstrap-zig-project
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
-        \\                             files with the generated parser. Enabled
-        \\                             by default when the language directory
-        \\                             contains no project files and no parent
-        \\                             directory has a build.zig.
-        \\      --no-bootstrap-zig-project
-        \\                             Skip creating a minimal Zig project even
-        \\                             when it would be enabled by default
+        \\                             files with the generated parser. Off by
+        \\                             default.
         \\      --watch                Regenerate the parser whenever the grammar
         \\                             file changes. Keep the previous parser
         \\                             output if regeneration fails.
@@ -813,44 +807,6 @@ test "bootstrapZigProject refuses to overwrite an existing build.zig" {
     );
 }
 
-test "isInsideZigProject is true when the language directory already has project files" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    try tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "build.zig",
-        .data = "",
-    });
-
-    try std.testing.expect(isInsideZigProject(std.testing.io, std.testing.allocator, tmp.dir, "."));
-}
-
-test "isInsideZigProject is true when a parent directory has a build.zig" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    try tmp.dir.createDirPath(std.testing.io, "lang");
-    try tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "build.zig",
-        .data = "",
-    });
-
-    try std.testing.expect(isInsideZigProject(std.testing.io, std.testing.allocator, tmp.dir, "lang"));
-}
-
-test "isInsideZigProject is false in a bare language directory" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    try tmp.dir.createDirPath(std.testing.io, "lang");
-    try tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "lang/ll.grm",
-        .data = "",
-    });
-
-    try std.testing.expect(!isInsideZigProject(std.testing.io, std.testing.allocator, tmp.dir, "lang"));
-}
-
 fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
     const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
     defer init.gpa.free(path);
@@ -860,27 +816,6 @@ fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: [
         else => |e| return e,
     };
     return true;
-}
-
-fn shouldBootstrapByDefault(io: std.Io, gpa: std.mem.Allocator, language_dir: []const u8) bool {
-    return !isInsideZigProject(io, gpa, .cwd(), language_dir);
-}
-
-fn isInsideZigProject(io: std.Io, gpa: std.mem.Allocator, dir: std.Io.Dir, language_dir: []const u8) bool {
-    const project_files = [_][]const u8{ "build.zig", "build.zig.zon", "src/main.zig" };
-    for (project_files) |basename| {
-        if (fileExists(io, gpa, dir, language_dir, basename)) return true;
-    }
-
-    var current: []const u8 = language_dir;
-    while (std.fs.path.dirname(current)) |parent| {
-        if (fileExists(io, gpa, dir, parent, "build.zig")) return true;
-        current = parent;
-    }
-
-    if (!std.fs.path.isAbsolute(language_dir) and fileExists(io, gpa, dir, "", "build.zig")) return true;
-
-    return false;
 }
 
 fn fileExists(io: std.Io, gpa: std.mem.Allocator, dir: std.Io.Dir, dir_path: []const u8, basename: []const u8) bool {
