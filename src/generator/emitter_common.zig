@@ -1,6 +1,16 @@
 const std = @import("std");
 const common = @import("generator_common");
 
+/// Writes the procedure-module lookup name for one grammar annotation.
+/// Every author-written hook — standard tree helpers included — is emitted
+/// under the generated `hook_` namespace so its declaration cannot collide
+/// with unrelated symbols such as libc's; only the generator-invented
+/// reduction names keep their established `reduction_` spelling.
+fn emitProcedureLookupName(writer: *std.Io.Writer, name: []const u8) !void {
+    try writer.writeAll("\"hook_\" ++ ");
+    try common.emitStringLiteral(writer, name);
+}
+
 pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const u8) !void {
     try writer.print(
         \\fn {s}(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {{
@@ -249,6 +259,7 @@ fn variableIndex(variables: []const usize, symbol_index: usize) usize {
 /// generators. The current node is resolved through the `ProcedureArguments`
 /// accessor on each hook phase, so no refresh pass is needed between calls.
 pub fn emitProcedureSupport(
+    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     rules: []const common.Rule,
     symbols: []const common.Symbol,
@@ -312,12 +323,35 @@ pub fn emitProcedureSupport(
         try writer.writeAll("    &[_][]const u8{");
         for (symbol.annotations.procedures.items, 0..) |procedure, i| {
             if (i != 0) try writer.writeAll(", ");
-            try common.emitStringLiteral(writer, procedure);
+            try emitProcedureLookupName(writer, procedure);
         }
         try writer.writeAll("},\n");
     }
+    try writer.writeAll("};\n");
+
+    // Manifest of every hook this grammar requires through its annotations,
+    // emitted under their generated `hook_` lookup names (standard tree
+    // helpers included). Binding generators scan it to declare the extern
+    // entry points the consumer must implement.
+    try writer.writeAll("\npub const user_hook_names = [_][]const u8{");
+    var user_hooks: std.ArrayList([]const u8) = .empty;
+    defer user_hooks.deinit(allocator);
+    for (rules) |rule| {
+        try collectUserHooks(allocator, &user_hooks, rule.annotations.procedures.items);
+        for (rule.rhs_annotations.items) |annotations| {
+            try collectUserHooks(allocator, &user_hooks, annotations.procedures.items);
+        }
+    }
+    for (variables) |symbol_index| {
+        try collectUserHooks(allocator, &user_hooks, symbols[symbol_index].annotations.procedures.items);
+    }
+    for (user_hooks.items) |hook_name| {
+        try writer.writeAll("\n    ");
+        try common.emitStringLiteral(writer, hook_name);
+        try writer.writeAll(",");
+    }
+    try writer.writeAll("\n};\n");
     try writer.print(
-        \\}};
         \\
         \\pub const variable_procedures = variable_procedures: {{
         \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
@@ -335,11 +369,28 @@ pub fn emitProcedureSupport(
     , .{ variables.len, variables.len });
 }
 
+/// Appends `hook_`-prefixed hook names to `user_hooks`, skipping names
+/// already present.
+fn collectUserHooks(
+    allocator: std.mem.Allocator,
+    user_hooks: *std.ArrayList([]const u8),
+    procedures_: []const []const u8,
+) !void {
+    for (procedures_) |procedure| {
+        const hook_name = try std.fmt.allocPrint(allocator, "hook_{s}", .{procedure});
+        for (user_hooks.items) |existing| {
+            if (std.mem.eql(u8, existing, hook_name)) break;
+        } else {
+            try user_hooks.append(allocator, hook_name);
+        }
+    }
+}
+
 pub fn emitProcedureSequenceExpression(writer: *std.Io.Writer, procedures_: []const []const u8) !void {
     try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
     for (procedures_, 0..) |procedure, index| {
         if (index != 0) try writer.writeAll(", ");
-        try common.emitStringLiteral(writer, procedure);
+        try emitProcedureLookupName(writer, procedure);
     }
     try writer.writeAll("})");
 }

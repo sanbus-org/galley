@@ -196,7 +196,7 @@ export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const
     const text = std.mem.sliceTo(input orelse return galley_error_null_argument, 0);
     embedded.clearRenderedDiagnostic();
     const result = embedded.session.parseSentinelBytes(text, null) catch |err| return statusForError(err);
-    embedded.last_input = text;
+    embedded.last_input = embedded.session.owned_input orelse text;
     return finishParse(embedded, result);
 }
 

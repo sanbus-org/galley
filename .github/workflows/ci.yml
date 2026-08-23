@@ -105,13 +105,102 @@ jobs:
       - name: Build and run example (cmake)
         if: ${{ matrix.language != 'rust' }}
         run: |
-          cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }}
+          cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }} \
+            -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
           cmake --build build-${{ matrix.language }}
           ./build-${{ matrix.language }}/bin/example
 
       - name: Build and run example (cargo)
         if: ${{ matrix.language == 'rust' }}
-        run: cargo run --release --manifest-path examples/rust/Cargo.toml
+        run: |
+          GALLEY_CHECKOUT="$GITHUB_WORKSPACE" \
+            cargo run --release --manifest-path examples/rust/Cargo.toml
+
+  bindings-consistency:
+    name: bindings-consistency
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Grammar and options are identical across bindings
+        run: |
+          for file in ll.grm galley.json; do
+            unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
+            count=$(printf '%s\n' "$unique" | wc -l)
+            echo "$file: $count distinct variants"
+            test "$count" = 1 || { echo "::error::$file differs across examples/c, examples/cpp, examples/rust"; exit 1; }
+          done
+
+      - name: Generated parser artifacts are identical across bindings
+        run: |
+          zig build -Doptimize=ReleaseFast install
+          for lang in c cpp rust; do
+            ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
+          done
+          for file in _ll-parser.zig procedures.zig; do
+            unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
+            count=$(printf '%s\n' "$unique" | wc -l)
+            echo "$file: $count distinct variants"
+            test "$count" = 1 || { echo "::error::generated $file differs across bindings despite identical grammar and options"; exit 1; }
+          done
+
+      - name: Procedure entry points are identical across bindings
+        run: |
+          names() {
+            grep -hoE '\b(hook_|reduction)[A-Za-z0-9_]*[[:space:]]*\(' "$1" | tr -d ' \t(' | sort -u
+          }
+          names examples/c/procedures.c > /tmp/names-c.txt
+          names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
+          names examples/rust/procedures.c > /tmp/names-rust.txt
+          diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
+          echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
+
+      - name: Example output is identical across bindings
+        run: |
+          # C: parser plus hooks compiled into one shared library.
+          zig build --build-file bindings/c/consumer/build.zig \
+            "-Dparser-source=$PWD/examples/c/_ll-parser.zig" \
+            "-Dprocedures-zig-source=$PWD/examples/c/procedures.zig" \
+            "-Dprocedures-c-source=$PWD/examples/c/procedures.c" \
+            -Dparser-type=ll -Dlib-name=keyvalue-c -Doptimize=ReleaseFast \
+            --prefix /tmp/galley-capi install
+          cc examples/c/main.c -I/tmp/galley-capi/include \
+            -L/tmp/galley-capi/lib -lkeyvalue-c \
+            -Wl,-rpath,/tmp/galley-capi/lib -o /tmp/example-c
+
+          # C++: cmake drives generation and library build.
+          cmake -S examples/cpp -B /tmp/build-cpp -DGALLEY_CHECKOUT="$PWD" >/dev/null
+          cmake --build /tmp/build-cpp >/dev/null
+
+          # Rust: cargo drives generation and library build.
+          GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml
+
+          /tmp/example-c >/tmp/out-c.txt 2>/tmp/err-c.txt
+          /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
+          examples/rust/target/release/galley-rust-example >/tmp/out-rust.txt 2>/tmp/err-rust.txt
+
+          compare() {
+            if ! diff -u "$1" "$2"; then
+              echo "::error::example output differs ($1 vs $2)"
+              echo "===== $1 ====="; cat "$1"
+              echo "===== $2 ====="; cat "$2"
+              exit 1
+            fi
+          }
+          compare /tmp/out-c.txt /tmp/out-cpp.txt
+          compare /tmp/out-c.txt /tmp/out-rust.txt
+          compare /tmp/err-c.txt /tmp/err-cpp.txt
+          compare /tmp/err-c.txt /tmp/err-rust.txt
+          echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   test:
     name: test
@@ -120,6 +209,7 @@ jobs:
       - core
       - matrix
       - language-examples
+      - bindings-consistency
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
@@ -127,10 +217,13 @@ jobs:
           CORE_RESULT: ${{ needs.core.result }}
           MATRIX_RESULT: ${{ needs.matrix.result }}
           LANGUAGE_EXAMPLES_RESULT: ${{ needs.language-examples.result }}
+          BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "matrix: $MATRIX_RESULT"
           echo "language-examples: $LANGUAGE_EXAMPLES_RESULT"
+          echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           test "$CORE_RESULT" = success
           test "$MATRIX_RESULT" = success
           test "$LANGUAGE_EXAMPLES_RESULT" = success
+          test "$BINDINGS_CONSISTENCY_RESULT" = success

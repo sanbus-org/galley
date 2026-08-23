@@ -86,7 +86,7 @@ const Generator = struct {
                 try self.emitRecoverySupport(writer);
             }
         }
-        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(writer, self.rules.items, self.symbols.items, self.variables.items);
+        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);

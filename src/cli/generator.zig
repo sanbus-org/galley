@@ -34,6 +34,7 @@ const CliOptions = struct {
     fill_error_messages: bool = false,
     bootstrap_zig_project: bool = false,
     watch: bool = false,
+    emit_metadata: bool = false,
 };
 
 const GenerationResult = struct {
@@ -96,6 +97,10 @@ pub fn main(init: std.process.Init) !void {
     const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
     try printSuccess(init, language_dir, result, elapsed_ms);
 
+    if (options.emit_metadata) {
+        try writeMetadataAndProcedures(init, language_dir);
+    }
+
     if (options.bootstrap_zig_project) {
         try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result);
     }
@@ -152,9 +157,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.explicit.ast_for_terminals = false;
         } else if (std.mem.eql(u8, arg, "--fill-error-messages")) {
             result.fill_error_messages = true;
+        } else if (std.mem.eql(u8, arg, "--emit-metadata")) {
+            result.emit_metadata = true;
         } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
             result.bootstrap_zig_project = true;
-
         } else if (std.mem.eql(u8, arg, "--watch")) {
             result.watch = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
@@ -204,6 +210,9 @@ fn printUsage(init: std.process.Init) !void {
         \\      --ast-for-terminals    Enables AST nodes for terminals.
         \\      --no-ast-for-terminals Disables AST nodes for terminals.
         \\      --fill-error-messages  Append missing default syntax error hooks.
+        \\      --emit-metadata        Write metadata.json and procedures.zig
+        \\                             next to the generated parser(s); the
+        \\                             bindings workflow consumes both.
         \\      --bootstrap-zig-project
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
@@ -977,4 +986,185 @@ fn emptyErrorMessagesSource(parser_type: generator.ParserType) []const u8 {
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.debug.print(format, args);
     std.process.exit(1);
+}
+
+/// After generating parsers, writes two files into the language directory:
+///
+/// `metadata.json` — structured description of the generated parser(s):
+/// flags, variable names, symbol names. Useful for build tooling and
+/// language-binding generators.
+///
+/// `procedures.zig` — extern declarations for every `reduction_<VariableName>`
+/// hook plus the general `reduction` fallback, and for every author-defined
+/// grammar hook under its generated `hook_<name>` lookup name. The consumer's
+/// C/C++/Rust source implements these functions; the linker resolves them
+/// when the shared library is built.
+fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) !void {
+    const meta_path = try std.fs.path.join(init.gpa, &.{ language_dir, "metadata.json" });
+    defer init.gpa.free(meta_path);
+    var file = try std.Io.Dir.cwd().createFile(init.io, meta_path, .{});
+    {
+        var buffer: [4096]u8 = undefined;
+        var fw = file.writer(init.io, &buffer);
+        const w = &fw.interface;
+
+        try w.writeAll("{\n");
+        var wrote_any = false;
+
+        const parser_types = [_][]const u8{ "ll", "lr" };
+        for (parser_types) |pt| {
+            const output_name = try std.fmt.allocPrint(init.gpa, "_{s}-parser.zig", .{pt});
+            defer init.gpa.free(output_name);
+            const path = try std.fs.path.join(init.gpa, &.{ language_dir, output_name });
+            defer init.gpa.free(path);
+
+            const exists = blk: {
+                std.Io.Dir.cwd().access(init.io, path, .{}) catch break :blk false;
+                break :blk true;
+            };
+            if (!exists) continue;
+            if (wrote_any) try w.writeAll(",\n");
+            wrote_any = true;
+            try w.print("  \"{s}\": {{\n", .{pt});
+
+            const content = std.Io.Dir.cwd().readFileAlloc(
+                init.io,
+                path,
+                init.gpa,
+                .limited(max_source_size),
+            ) catch continue;
+            defer init.gpa.free(content);
+
+            inline for (.{
+                .{ "is_ast_enabled", "is_ast_enabled" },
+                .{ "are_procedures_enabled", "are_procedures_enabled" },
+                .{ "is_error_recovery_enabled", "is_error_recovery_enabled" },
+                .{ "is_position_tracking_enabled", "position_tracking" },
+                .{ "is_input_streaming_enabled", "input_streaming" },
+                .{ "uses_verbatim", "uses_verbatim" },
+            }) |entry| {
+                const pattern = "pub const " ++ entry[0] ++ " = ";
+                if (std.mem.indexOf(u8, content, pattern)) |idx| {
+                    const rest = content[idx + pattern.len ..];
+                    if (std.mem.startsWith(u8, rest, "true")) {
+                        try w.print("    \"{s}\": true,\n", .{entry[1]});
+                    } else if (std.mem.startsWith(u8, rest, "false")) {
+                        try w.print("    \"{s}\": false,\n", .{entry[1]});
+                    }
+                }
+            }
+
+            if (std.mem.indexOf(u8, content, ".automatic") != null) {
+                try w.writeAll("    \"error_recovery_mode\": \"automatic\",\n");
+            } else if (std.mem.indexOf(u8, content, ".explicit") != null) {
+                try w.writeAll("    \"error_recovery_mode\": \"explicit\",\n");
+            } else if (std.mem.indexOf(u8, content, "ErrorRecoveryMode") != null) {
+                try w.writeAll("    \"error_recovery_mode\": \"disabled\",\n");
+            }
+
+            const table_names = [_][]const u8{ "variables", "symbols" };
+            for (table_names) |table| {
+                const prefix = try std.fmt.allocPrint(init.gpa, "pub const {s} = &[_][]const u8{{", .{table});
+                defer init.gpa.free(prefix);
+                const arr_start = std.mem.indexOf(u8, content, prefix) orelse continue;
+                const inner_start = arr_start + prefix.len;
+                const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
+                try w.print("    \"{s}\": [", .{table});
+                var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
+                var first_item = true;
+                while (items.next()) |item| {
+                    const trimmed = std.mem.trim(u8, item, " \t\r\n");
+                    if (trimmed.len < 2 or trimmed[0] != '"') continue;
+                    const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
+                    if (!first_item) try w.writeAll(", ");
+                    try w.writeByte('"');
+                    for (trimmed[1..end_q]) |ch| {
+                        switch (ch) {
+                            '"' => try w.writeAll("\\\""),
+                            '\\' => try w.writeAll("\\\\"),
+                            else => try w.writeByte(ch),
+                        }
+                    }
+                    try w.writeByte('"');
+                    first_item = false;
+                }
+                try w.writeAll("],\n");
+            }
+
+            try w.writeAll("  }");
+        }
+
+        try w.writeAll("\n}\n");
+        try w.flush();
+    }
+
+    // Generate procedures.zig with extern declarations for each hook.
+    // No prefix, no wrappers — the consumer's C functions ARE the
+    // implementations; the linker resolves them at library build time.
+    // Reduction hooks keep their established `reduction_` names; author-
+    // defined grammar hooks arrive pre-namespaced as `hook_<name>` (the
+    // generated parser's user_hook_names table lists them verbatim).
+    const proc_path = try std.fs.path.join(init.gpa, &.{ language_dir, "procedures.zig" });
+    defer init.gpa.free(proc_path);
+    var proc_file = try std.Io.Dir.cwd().createFile(init.io, proc_path, .{});
+    {
+        var buffer: [4096]u8 = undefined;
+        var fw = proc_file.writer(init.io, &buffer);
+        const w = &fw.interface;
+
+        try w.writeAll("// Auto-generated by Galley — edit your procedures C file instead.\n");
+        try w.writeAll("// Implement these functions in C; they are called directly.\n");
+        try w.writeAll("const root = @import(\"galley\");\n");
+        try w.writeAll("pub const Payload = struct {};\n\n");
+
+        const argument_type = "*root.data_structures.ProcedureArguments";
+        try w.print("pub extern fn reduction({s}) void;\n", .{argument_type});
+
+        const proc_parser_types = [_][]const u8{ "ll", "lr" };
+        for (proc_parser_types) |pt| {
+            const output_name = try std.fmt.allocPrint(init.gpa, "_{s}-parser.zig", .{pt});
+            defer init.gpa.free(output_name);
+            const path = try std.fs.path.join(init.gpa, &.{ language_dir, output_name });
+            defer init.gpa.free(path);
+
+            std.Io.Dir.cwd().access(init.io, path, .{}) catch continue;
+            const content = std.Io.Dir.cwd().readFileAlloc(
+                init.io,
+                path,
+                init.gpa,
+                .limited(max_source_size),
+            ) catch continue;
+            defer init.gpa.free(content);
+
+            const proc_prefix = "pub const variables = &[_][]const u8{";
+            if (std.mem.indexOf(u8, content, proc_prefix)) |arr_start| {
+                const inner_start = arr_start + proc_prefix.len;
+                const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
+                var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
+
+                while (items.next()) |item| {
+                    const trimmed = std.mem.trim(u8, item, " \t\r\n");
+                    if (trimmed.len < 2 or trimmed[0] != '"') continue;
+                    const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
+                    const variable_name = trimmed[1..end_q];
+                    try w.print("pub extern fn reduction_{s}({s}) void;\n", .{ variable_name, argument_type });
+                }
+            }
+
+            const hooks_prefix = "pub const user_hook_names = [_][]const u8{";
+            if (std.mem.indexOf(u8, content, hooks_prefix)) |hooks_start| {
+                const hooks_inner_start = hooks_start + hooks_prefix.len;
+                const hooks_inner_end = std.mem.indexOfPos(u8, content, hooks_inner_start, "} ;") orelse std.mem.indexOfPos(u8, content, hooks_inner_start, "\n};") orelse continue;
+                var hook_items = std.mem.splitScalar(u8, content[hooks_inner_start..hooks_inner_end], ',');
+                while (hook_items.next()) |hook_item| {
+                    const trimmed = std.mem.trim(u8, hook_item, " \t\r\n");
+                    if (trimmed.len < 2 or trimmed[0] != '"') continue;
+                    const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
+                    const hook_name = trimmed[1..end_q];
+                    try w.print("pub extern fn {s}({s}) void;\n", .{ hook_name, argument_type });
+                }
+            }
+        }
+        try w.flush();
+    }
 }

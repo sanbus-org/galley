@@ -9,12 +9,39 @@ Complete, runnable consumers live in
 [`examples/cpp`](https://github.com/sanbus-org/galley/tree/main/examples/cpp);
 both are built and executed by CI on every push.
 
+## Procedures
+
+Grammars can use `@hook_name` annotations on RHS occurrences. When Galley's
+`--emit-metadata` flag is passed during generation, it produces a
+`procedures.zig` alongside the parser with extern declarations for every
+hook. Compile your `procedures.c` into the library by passing
+`-Dprocedures-c-source=procedures.c` to the consumer build file. Reduction
+hooks keep their `reduction_<VariableName>` names (plus the general
+`reduction`); author-defined grammar hooks are declared as `hook_<name>`,
+namespacing them away from unrelated symbols:
+
+```c
+/* procedures.c */
+#include <stdio.h>
+
+void reduction_Pair(void *args) {
+    fprintf(stderr, "[hook] Pair reduced\n");
+}
+void reduction_Document(void *args) {
+    fprintf(stderr, "[hook] Document reduced\n");
+}
+void hook_my_hook(void *args) {
+    fprintf(stderr, "[hook] my_hook fired\n");
+}
+```
+
+Each hook receives an opaque pointer to the parse state; use the existing
+`galley_node_*` accessor functions via the session to inspect nodes.
+
+Semantic payloads remain unavailable through the C API.
+
 ## Phase-One Scope
 
-- Grammars must be **procedure-hook-free**: `@` annotations are tolerated by
-  generation but stay inert, and hooks cannot be implemented in C yet
-  (procedure dispatch is compile-time Zig). Semantic payloads are therefore
-  unavailable.
 - Error messages use the built-in generic renderer; custom error-message
   hooks are not exposed.
 - One shared library corresponds to one grammar. Regenerating for a changed

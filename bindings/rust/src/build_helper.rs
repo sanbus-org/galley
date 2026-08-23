@@ -14,6 +14,9 @@
 //! shallow-clones `GALLEY_REPOSITORY` at `GALLEY_TAG`, skipping submodules),
 //! builds the generator CLI, generates the parser, compiles the C-API shared
 //! library, and emits the cargo directives that link your binary against it.
+//! When the language directory contains a generated `procedures.zig` and a
+//! `procedures.c` implementing its hooks, both are compiled into the shared
+//! library — mirroring the C and C++ consumers' contract.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -129,19 +132,44 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         });
     }
 
+    // Parser generation relies on CLI flags introduced alongside the
+    // bindings workflow (--emit-metadata). Refuse with guidance when the
+    // resolved Galley predates them instead of failing deep inside
+    // generation.
+    let help = Command::new(&cli)
+        .arg("--help")
+        .output()
+        .unwrap_or_else(|e| panic!("failed to spawn {}: {e}", cli.display()));
+    if !String::from_utf8_lossy(&help.stdout).contains("--emit-metadata") {
+        panic!(
+            "the Galley at {} is too old for the bindings workflow (no --emit-metadata support); \
+             point GALLEY_CHECKOUT at a current Galley checkout, or remove the stale copy and \
+             update GALLEY_TAG so a fresh Galley is fetched",
+            galley_source.display()
+        );
+    }
+
     // Generate the parser into the language directory.
     // All generation options come from galley.json in the language dir;
     // the CLI is invoked without flags so the config file owns them.
+    // --emit-metadata also produces procedures.zig with the extern
+    // declarations for every hook the grammar requires.
     run_or_panic({
         let language_dir = language_dir
             .canonicalize()
             .expect("canonicalize language dir");
         let mut c = Command::new(&cli);
-        c.arg(&language_dir);
+        c.arg("--emit-metadata").arg(&language_dir);
         c
     });
     let generated_parser = language_dir.join("_ll-parser.zig");
     println!("cargo:rerun-if-changed={}", generated_parser.display());
+
+    // Hook implementations live next to the grammar: procedures.zig (the
+    // generated extern declarations) and procedures.c (the consumer's
+    // implementations, compiled into the shared library).
+    let procedures_zig = language_dir.join("procedures.zig");
+    let procedures_c = language_dir.join("procedures.c");
 
     // Compile the shared library through the generic consumer build file.
     let prefix = out_dir.join("galley-capi");
@@ -161,6 +189,26 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             .arg(&prefix)
             .arg("install")
             .current_dir(&galley_source);
+        if procedures_zig.exists() {
+            println!("cargo:rerun-if-changed={}", procedures_zig.display());
+            c.arg(format!(
+                "-Dprocedures-zig-source={}",
+                procedures_zig
+                    .canonicalize()
+                    .unwrap_or(procedures_zig.clone())
+                    .display()
+            ));
+        }
+        if procedures_c.exists() {
+            println!("cargo:rerun-if-changed={}", procedures_c.display());
+            c.arg(format!(
+                "-Dprocedures-c-source={}",
+                procedures_c
+                    .canonicalize()
+                    .unwrap_or(procedures_c.clone())
+                    .display()
+            ));
+        }
         c
     });
 

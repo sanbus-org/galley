@@ -10,11 +10,25 @@ A complete consumer lives in
 [`examples/rust`](https://github.com/sanbus-org/galley/tree/main/examples/rust);
 it is built and executed by CI on every push.
 
-## Phase-One Scope
+## Procedures
 
-Identical to the [C and C++](/bindings_c) phase-one scope: grammars must be
-procedure-hook-free and semantic payloads are unavailable. See the C page
-for details.
+Set `"procedures": true` in your grammar's galley.json and implement the
+hooks in a `procedures.c` file next to your grammar — the build helper
+compiles it into the shared library, mirroring the C and C++ consumers:
+
+```c
+/* procedures.c */
+#include <stdio.h>
+
+void reduction_Pair(void *args) {
+    fprintf(stderr, "[hook] Pair\n");
+}
+```
+
+Reduction hooks keep their `reduction_<VariableName>` names (plus the
+general `reduction`); author-defined grammar hooks are declared as
+`hook_<name>`. Each hook fires after the corresponding variable is reduced.
+Semantic payloads are unavailable through bindings.
 
 ## Build Model
 

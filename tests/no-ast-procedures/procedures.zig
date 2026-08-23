@@ -63,11 +63,11 @@ fn record(hook: Hook, args: *ProcedureArguments) !void {
     event_count += 1;
 }
 
-pub fn occurrenceHook(args: *ProcedureArguments) !void {
+pub fn hook_occurrenceHook(args: *ProcedureArguments) !void {
     try record(.occurrence, args);
 }
 
-pub fn productionHook(args: *ProcedureArguments) !void {
+pub fn hook_productionHook(args: *ProcedureArguments) !void {
     try record(.production, args);
     if (fail_production) return error.RequestedProcedureFailure;
 }
@@ -76,7 +76,7 @@ pub fn reduction_Start_0(args: *ProcedureArguments) !void {
     try record(.automatic_production, args);
 }
 
-pub fn lhsHook(args: *ProcedureArguments) !void {
+pub fn hook_lhsHook(args: *ProcedureArguments) !void {
     try record(.lhs, args);
 }
 
@@ -84,7 +84,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
     try record(.automatic_symbol, args);
 }
 
-pub fn terminalOccurrence(args: *ProcedureArguments) !void {
+pub fn hook_terminalOccurrence(args: *ProcedureArguments) !void {
     const node = args.currentNode() orelse return error.MissingProcedureNode;
     node.payload.value = 1;
     try record(.terminal_occurrence, args);
@@ -99,7 +99,7 @@ pub fn reduction_Empty(args: *ProcedureArguments) !void {
     node.payload.value = 5;
 }
 
-pub fn hiddenHook(args: *ProcedureArguments) !void {
+pub fn hook_hiddenHook(args: *ProcedureArguments) !void {
     try record(.hidden, args);
 }
 

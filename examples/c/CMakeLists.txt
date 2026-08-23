@@ -71,9 +71,8 @@ add_custom_command(
 add_custom_command(
     OUTPUT "${GENERATED_PARSER}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/config.zig" "${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/procedures.zig" "${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/ll_error_messages.zig" "${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
-    COMMAND "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMAND "${GALLEY_CLI}" --emit-metadata "${CMAKE_CURRENT_SOURCE_DIR}"
     DEPENDS "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}/ll.grm" "${CMAKE_CURRENT_SOURCE_DIR}/galley.json"
     VERBATIM
 )
@@ -85,6 +84,8 @@ add_custom_command(
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
             "-Dparser-source=${GENERATED_PARSER}"
+            "-Dprocedures-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
+            "-Dprocedures-c-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.c"
             "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
             "-Doptimize=ReleaseFast"

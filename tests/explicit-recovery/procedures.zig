@@ -18,11 +18,11 @@ pub fn capturedRoot() root.data_structures.Node.Pointer {
     return captured_root;
 }
 
-pub fn mark(args: *root.data_structures.ProcedureArguments) void {
+pub fn hook_mark(args: *root.data_structures.ProcedureArguments) void {
     _ = args;
     mark_count += 1;
 }
 
-pub fn capture(args: *root.data_structures.ProcedureArguments) void {
+pub fn hook_capture(args: *root.data_structures.ProcedureArguments) void {
     captured_root = args.node_address orelse root.data_structures.Node.invalid_pointer;
 }

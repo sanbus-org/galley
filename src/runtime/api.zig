@@ -502,12 +502,16 @@ pub const Session = struct {
 
     fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
         try self.prepareASTCapacity(input.len);
-        if (self.owned_input) |owned_input| {
-            self.allocator.free(owned_input);
-            self.owned_input = null;
-        }
+        // Retain a session-owned copy of the input (sentinel byte plus zero
+        // padding). The caller's buffer may be freed as soon as this call
+        // returns, while node text pointers remain valid until the next
+        // parse — so parsing must never reference caller memory.
+        const retained_length = input.len + 1;
+        const owned_input = try self.ensureOwnedInputCapacity(retained_length + input_padding_size);
+        @memcpy(owned_input[0..retained_length], input[0..retained_length]);
+        @memset(owned_input[retained_length..], 0);
 
-        var context_value = self._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, input_path);
+        var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input[0..retained_length] } }, input_path);
         return try self._parseContextUnlocked(&context_value);
     }
 
