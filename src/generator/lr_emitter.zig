@@ -69,7 +69,7 @@ const Generator = struct {
         );
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
         if (self.options.with_error_recovery and !self.uses_explicit_recovery) try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
-        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(writer, self.rules.items, self.symbols.items, self.variables.items);
+        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items);
 
         try writer.writeAll(
             \\const ReduceResult = struct {

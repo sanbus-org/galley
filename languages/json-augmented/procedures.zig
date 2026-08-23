@@ -44,9 +44,9 @@ pub fn reduction_null(args: *ProcedureArguments) !void {
     }
 }
 
-pub const dropSelf = standard_procedures.dropSelf;
-pub const dropChildren = standard_procedures.dropChildren;
-pub const replaceWithChildren = standard_procedures.replaceWithChildren;
+pub const hook_dropSelf = standard_procedures.dropSelf;
+pub const hook_dropChildren = standard_procedures.dropChildren;
+pub const hook_replaceWithChildren = standard_procedures.replaceWithChildren;
 
 pub fn reduction_Start(args: *ProcedureArguments) !void {
     if (if (args.context.verbosityLevel() > 0) args.node_address else null) |node_address| {

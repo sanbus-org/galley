@@ -74,47 +74,47 @@ fn record(hook: Hook, args: *ProcedureArguments) !void {
     event_count += 1;
 }
 
-pub fn lhsHook(args: *ProcedureArguments) !void {
+pub fn hook_lhsHook(args: *ProcedureArguments) !void {
     try record(.lhs, args);
 }
 
-pub fn rhsHook(args: *ProcedureArguments) !void {
+pub fn hook_rhsHook(args: *ProcedureArguments) !void {
     try record(.rhs, args);
 }
 
-pub fn productionHook(args: *ProcedureArguments) !void {
+pub fn hook_productionHook(args: *ProcedureArguments) !void {
     try record(.production, args);
 }
 
-pub fn chainFirst(args: *ProcedureArguments) !void {
+pub fn hook_chainFirst(args: *ProcedureArguments) !void {
     try record(.chain_first, args);
 }
 
-pub fn chainSecond(args: *ProcedureArguments) !void {
+pub fn hook_chainSecond(args: *ProcedureArguments) !void {
     try record(.chain_second, args);
 }
 
-pub fn rhsFirst(args: *ProcedureArguments) !void {
+pub fn hook_rhsFirst(args: *ProcedureArguments) !void {
     try record(.rhs_first, args);
 }
 
-pub fn rhsSecond(args: *ProcedureArguments) !void {
+pub fn hook_rhsSecond(args: *ProcedureArguments) !void {
     try record(.rhs_second, args);
 }
 
-pub fn productionFirst(args: *ProcedureArguments) !void {
+pub fn hook_productionFirst(args: *ProcedureArguments) !void {
     try record(.production_first, args);
 }
 
-pub fn productionSecond(args: *ProcedureArguments) !void {
+pub fn hook_productionSecond(args: *ProcedureArguments) !void {
     try record(.production_second, args);
 }
 
-pub fn lhsFirst(args: *ProcedureArguments) !void {
+pub fn hook_lhsFirst(args: *ProcedureArguments) !void {
     try record(.lhs_first, args);
 }
 
-pub fn lhsSecond(args: *ProcedureArguments) !void {
+pub fn hook_lhsSecond(args: *ProcedureArguments) !void {
     try record(.lhs_second, args);
 }
 
@@ -130,20 +130,20 @@ pub fn reduction_AutoTarget(args: *ProcedureArguments) !void {
     try record(.automatic_auto_target, args);
 }
 
-pub fn recursiveOccurrence(args: *ProcedureArguments) !void {
+pub fn hook_recursiveOccurrence(args: *ProcedureArguments) !void {
     try record(.recursive_occurrence, args);
 }
 
-pub fn hiddenHook(args: *ProcedureArguments) !void {
+pub fn hook_hiddenHook(args: *ProcedureArguments) !void {
     try record(.hidden, args);
 }
 
-pub fn dropOccurrence(args: *ProcedureArguments) !void {
+pub fn hook_dropOccurrence(args: *ProcedureArguments) !void {
     try record(.drop_occurrence, args);
     args.node_address = null;
 }
 
-pub fn afterDropProduction(args: *ProcedureArguments) !void {
+pub fn hook_afterDropProduction(args: *ProcedureArguments) !void {
     try record(.after_drop_production, args);
 }
 
@@ -151,7 +151,7 @@ pub fn reduction_DropTarget_0(args: *ProcedureArguments) !void {
     try record(.after_drop_automatic_production, args);
 }
 
-pub fn afterDropLhs(args: *ProcedureArguments) !void {
+pub fn hook_afterDropLhs(args: *ProcedureArguments) !void {
     try record(.after_drop_lhs, args);
 }
 
@@ -159,15 +159,15 @@ pub fn reduction_DropTarget(args: *ProcedureArguments) !void {
     try record(.after_drop_automatic_symbol, args);
 }
 
-pub fn terminalFirst(args: *ProcedureArguments) !void {
+pub fn hook_terminalFirst(args: *ProcedureArguments) !void {
     try record(.terminal_first, args);
 }
 
-pub fn terminalSecond(args: *ProcedureArguments) !void {
+pub fn hook_terminalSecond(args: *ProcedureArguments) !void {
     try record(.terminal_second, args);
 }
 
-pub fn nestedHook(args: *ProcedureArguments) !void {
+pub fn hook_nestedHook(args: *ProcedureArguments) !void {
     if (nested_callback) |callback| try callback(args);
 }
 

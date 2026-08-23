@@ -3,6 +3,11 @@ const root = @import("galley");
 const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 
+/// Implements the standard tree-manipulation procedures. Grammar
+/// annotations reach these through consumer re-exports under the generated
+/// `hook_` namespace (for example `pub const hook_dropChildren =
+/// standard_procedures.dropChildren;`), so this module's function names are
+/// an implementation detail of the runtime, not a lookup contract.
 fn requireAst() void {
     if (comptime !root.parser.is_ast_enabled and !root.parser.allow_no_ast_tree_procedures) {
         @compileError("standard tree-manipulation procedures require AST construction; generate with --allow-no-ast-tree-procedures to treat them as no-ops");

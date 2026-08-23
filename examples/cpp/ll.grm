@@ -12,7 +12,7 @@ PairListTail
 Pair
 | Key ":" Number
 
-Key
+Key@print
 | letter KeyTail
 
 KeyTail

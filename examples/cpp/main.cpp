@@ -96,23 +96,26 @@ int main(int argc, char *argv[]) {
     std::printf("diagnostic at %u:%u: %s\n", line, column, message);
 
     const long long expected_count = galley_diagnostic_expected_count(&session);
+    std::fputs("expected one of: ", stdout);
     for (long long i = 0; i < expected_count; ++i) {
         const char *token_data = nullptr;
         std::size_t token_len = 0;
         galley_diagnostic_expected_at(&session, static_cast<unsigned long long>(i),
                                       &token_data, &token_len);
-        std::printf("expected[%lld] '%.*s'\n", i,
+        std::printf("%s'%.*s'", i == 0 ? "" : ", ",
                     static_cast<int>(token_len), token_data);
     }
+    std::fputc('\n', stdout);
     const long long context_count = galley_diagnostic_context_count(&session);
+    std::fputs("while parsing (innermost first):", stdout);
     for (long long i = 0; i < context_count; ++i) {
         const char *name_data = nullptr;
         std::size_t name_len = 0;
         galley_diagnostic_context_at(&session, static_cast<unsigned long long>(i),
                                      &name_data, &name_len);
-        std::printf("while parsing [%lld] %.*s\n", i,
-                    static_cast<int>(name_len), name_data);
+        std::printf(" %.*s", static_cast<int>(name_len), name_data);
     }
+    std::fputc('\n', stdout);
 
     // File parsing and a tree edit round-trip.
     {

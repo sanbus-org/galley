@@ -49,9 +49,11 @@ fn main() {
         return;
     }
 
-    // Demo: successful parse with a tree walk.
-    let valid = "alpha:12,beta:3";
-    let parsed = session.parse_sentinel(valid).expect("unexpected failure");
+    /* Successful parse: walk the tree. */
+    let valid_sample = "alpha:12,beta:3";
+    let parsed = session
+        .parse_sentinel(valid_sample)
+        .expect("unexpected failure");
     println!("parsed {parsed} bytes, {} AST nodes", session.node_count());
     if !galley_bindings::has_ast() {
         println!("AST construction disabled; skipping tree walk");
@@ -59,17 +61,51 @@ fn main() {
         print_tree(&session, root, 1);
     }
 
-    // Demo: failed parse with the structured diagnostic.
+    /* Failed parse: inspect the diagnostic. */
     session
         .parse_sentinel("alpha:")
         .expect_err("expected the broken sample to fail");
     let diagnostic = session.diagnostic().expect("diagnostic");
     println!(
-        "diagnostic at {}:{}: {}\nwhile parsing (innermost first): {:?}\nexpected: {:?}",
-        diagnostic.line,
-        diagnostic.column,
-        diagnostic.message,
-        diagnostic.context,
-        diagnostic.expected_tokens
+        "diagnostic at {}:{}: {}",
+        diagnostic.line, diagnostic.column, diagnostic.message
     );
+    print!("expected one of: ");
+    for (index, token) in diagnostic.expected_tokens.iter().enumerate() {
+        if index != 0 {
+            print!(", ");
+        }
+        print!("'{}'", String::from_utf8_lossy(token));
+    }
+    println!();
+    print!("while parsing (innermost first):");
+    for name in &diagnostic.context {
+        print!(" {name}");
+    }
+    println!();
+
+    /* File parsing. */
+    let path = "/tmp/galley-rust-example.json";
+    std::fs::write(path, valid_sample).expect("failed to write sample file");
+    let parsed = session.parse_file(path).expect("file parse failed");
+    let info = session.info().expect("parse info");
+    let (end_line, end_column) = info.end_position.unwrap_or((0, 0));
+    println!("file parse: {parsed} bytes, ended at {end_line}:{end_column}");
+
+    /* Tree editing: detach the root's children, then reattach them. */
+    if galley_bindings::has_ast() {
+        let root = session.root_node().expect("root node");
+        let children_before = session.child_count(root);
+        let head = session
+            .tree_clean_children(root)
+            .expect("clean children")
+            .expect("expected the root to have children");
+        session
+            .tree_append_children(root, head)
+            .expect("reattach children");
+        println!(
+            "tree edit: {children_before} children before, {} after reattach",
+            session.child_count(root)
+        );
+    }
 }

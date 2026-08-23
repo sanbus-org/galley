@@ -1,20 +1,17 @@
 //! Builds a Galley-generated parser as a C-API shared library.
 //!
-//! This is the external entry point for C and C++ consumers. Invoke it from
-//! inside a Galley checkout (or a fetched copy) with the sources produced by
-//! the generator CLI:
+//! External entry point for C and C++ consumers. Invoke from inside a
+//! Galley checkout (or fetched copy) with sources produced by the generator
+//! CLI.
 //!
-//! ```sh
-//! zig build --build-file bindings/c/consumer/build.zig \
-//!     -Dparser-source=/abs/path/parser.zig \
-//!     -Dparser-type=ll \
-//!     -Dlib-name=mylang \
-//!     -Doptimize=ReleaseFast \
-//!     --prefix /abs/out install
-//! ```
+//! When `-Dprocedures-c-source=<file>` is set, the file is compiled into
+//! the shared library. The generated `procedures.zig` next to the parser
+//! declares extern entry points — `reduction_<VariableName>`, the general
+//! `reduction`, and every author-defined grammar hook as `hook_<name>` —
+//! which the C source implements directly; the linker resolves them when
+//! the shared library is built.
 //!
-//! Installs `lib<lib-name>.dylib|so` (the C API) and `include/galley.h`
-//! under the prefix.
+//! Installs `lib<lib-name>.dylib|so` and `include/galley.h`.
 
 const std = @import("std");
 
@@ -24,9 +21,11 @@ pub fn build(b: *std.Build) !void {
 
     const parser_source = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (required)") orelse
         return error.MissingParserSource;
-    const parser_type = b.option([]const u8, "parser-type", "Parser family of the grammar: ll or lr (default ll)") orelse "ll";
+    const parser_type = b.option([]const u8, "parser-type", "Parser family: ll or lr (default ll)") orelse "ll";
     const lib_name = b.option([]const u8, "lib-name", "Installed library base name (default galley-parser)") orelse "galley-parser";
     const capi_version = b.option([]const u8, "capi-version", "Version string reported by galley_version") orelse "dev";
+    const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks");
+    const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig overriding the default template");
 
     if (!std.mem.eql(u8, parser_type, "ll") and !std.mem.eql(u8, parser_type, "lr")) {
         std.log.err("invalid -Dparser-type '{s}': expected ll or lr", .{parser_type});
@@ -44,7 +43,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const procedures_mod = b.createModule(.{
-        .root_source_file = galley_dep.path("src/cli/templates/procedures.zig"),
+        .root_source_file = if (procedures_zig_source) |src|
+            .{ .cwd_relative = src }
+        else
+            galley_dep.path("src/cli/templates/procedures.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -101,6 +103,13 @@ pub fn build(b: *std.Build) !void {
         .linkage = .dynamic,
         .root_module = capi_mod,
     });
+
+    if (procedures_c_source) |c_source| {
+        capi_lib.root_module.addCSourceFile(.{
+            .file = .{ .cwd_relative = c_source },
+        });
+    }
+
     b.installArtifact(capi_lib);
     const header_install = b.addInstallFile(galley_dep.path("bindings/c/galley.h"), "include/galley.h");
     b.getInstallStep().dependOn(&header_install.step);

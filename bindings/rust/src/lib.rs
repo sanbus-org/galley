@@ -112,6 +112,9 @@ struct RawOptions {
     recovery_window: i32,
     stack_overflow_recovery: i32,
     syntax_error_stack_depth: u32,
+    verbosity: i32,
+    ast_preallocation_ratio: f64,
+    ast_preallocation_cap: u64,
 }
 
 /// Runtime options for [`Session::with_options`]. Zero/negative fields select
@@ -302,6 +305,9 @@ impl Session {
             recovery_window: options.recovery_window,
             stack_overflow_recovery: options.stack_overflow_recovery as i32,
             syntax_error_stack_depth: options.syntax_error_stack_depth,
+            verbosity: 0,
+            ast_preallocation_ratio: -1.0,
+            ast_preallocation_cap: 0,
         };
         let inner = unsafe { galley_session_create_ex(&raw) };
         if inner.is_null() {
