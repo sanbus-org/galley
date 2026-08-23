@@ -162,16 +162,27 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         c.arg("--emit-metadata").arg(&language_dir);
         c
     });
-    let generated_parser = language_dir.join("_ll-parser.zig");
-    println!("cargo:rerun-if-changed={}", generated_parser.display());
 
     // Hook implementations live next to the grammar: procedures.zig (the
     // generated extern declarations), procedures.c (the consumer's
     // implementations, compiled into the shared library), and an optional
-    // ll_error_messages.zig with customized syntax-error message hooks.
+    // ll_error_messages.zig / lr_error_messages.zig with customized
+    // syntax-error message hooks.
     let procedures_zig = language_dir.join("procedures.zig");
     let procedures_c = language_dir.join("procedures.c");
-    let error_messages_zig = language_dir.join("ll_error_messages.zig");
+
+    // One library embeds one parser; detect which family generation
+    // produced (both present is ambiguous and unsupported).
+    let (parser_source, parser_type) = match detect_parser_family(
+        generated_parser_exists(language_dir, "_ll-parser.zig"),
+        generated_parser_exists(language_dir, "_lr-parser.zig"),
+    ) {
+        Ok(detected) => detected,
+        Err(message) => panic!("{}: {}", language_dir.display(), message),
+    };
+    let generated_parser = language_dir.join(parser_source);
+    println!("cargo:rerun-if-changed={}", generated_parser.display());
+    let error_messages_zig = language_dir.join(format!("{parser_type}_error_messages.zig"));
 
     // Compile the shared library through the generic consumer build file.
     let prefix = out_dir.join("galley-capi");
@@ -184,7 +195,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             .arg("--build-file")
             .arg(galley_source.join("bindings/c/consumer/build.zig"))
             .arg(format!("-Dparser-source={}", generated_absolute.display()))
-            .arg("-Dparser-type=ll")
+            .arg(format!("-Dparser-type={parser_type}"))
             .arg("-Dlib-name=galley-rust")
             .arg("-Doptimize=ReleaseFast")
             .arg("--prefix")
@@ -251,4 +262,57 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
 
 fn zig_executable() -> String {
     env("ZIG_EXECUTABLE").unwrap_or_else(|| "zig".into())
+}
+
+fn generated_parser_exists(language_dir: &Path, file_name: &str) -> bool {
+    language_dir.join(file_name).exists()
+}
+
+/// One library embeds one parser; detect which family generation produced.
+/// Returns the generated source file name and the `-Dparser-type` value.
+fn detect_parser_family(
+    has_ll: bool,
+    has_lr: bool,
+) -> Result<(&'static str, &'static str), String> {
+    match (has_ll, has_lr) {
+        (true, false) => Ok(("_ll-parser.zig", "ll")),
+        (false, true) => Ok(("_lr-parser.zig", "lr")),
+        (false, false) => Err("generation produced no parser".to_string()),
+        (true, true) => Err(
+            "both _ll-parser.zig and _lr-parser.zig exist; one library embeds \
+             one parser — split the language dirs"
+                .to_string(),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detect_parser_family;
+
+    #[test]
+    fn detects_ll_family() {
+        assert_eq!(
+            detect_parser_family(true, false),
+            Ok(("_ll-parser.zig", "ll"))
+        );
+    }
+
+    #[test]
+    fn detects_lr_family() {
+        assert_eq!(
+            detect_parser_family(false, true),
+            Ok(("_lr-parser.zig", "lr"))
+        );
+    }
+
+    #[test]
+    fn rejects_missing_parser() {
+        assert!(detect_parser_family(false, false).is_err());
+    }
+
+    #[test]
+    fn rejects_ambiguous_families() {
+        assert!(detect_parser_family(true, true).is_err());
+    }
 }

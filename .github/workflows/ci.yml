@@ -188,6 +188,55 @@ jobs:
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
 
+      - name: LR family builds through the c abi
+        run: |
+          # The examples pin the ll family; this smoke exercises the lr half
+          # of the same contract with the same grammar: generation, consumer
+          # build with -Dparser-type=lr, capi behavior, hooks, and
+          # diagnostics. No separate lr fixture exists — the canonical
+          # binding grammar is the examples' pinned one.
+          work=/tmp/galley-lr-smoke
+          rm -rf "$work" && mkdir -p "$work"
+          cp examples/c/ll.grm "$work/lr.grm"
+          cp examples/c/galley.json examples/c/procedures.c "$work/"
+          ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
+          zig build --build-file bindings/c/consumer/build.zig \
+            "-Dparser-source=$work/_lr-parser.zig" \
+            "-Dparser-type=lr" \
+            "-Dprocedures-zig-source=$work/procedures.zig" \
+            "-Dprocedures-c-source=$work/procedures.c" \
+            "-Derror-messages-zig-source=$work/lr_error_messages.zig" \
+            -Dlib-name=keyvalue-lr -Doptimize=ReleaseFast \
+            --prefix "$work/out" install
+          cat > "$work/driver.c" <<'EOF'
+          #include <galley.h>
+          #include <stdio.h>
+          int main(void) {
+              if (galley_parser_type() != galley_parser_type_lr) {
+                  fprintf(stderr, "expected an lr library\n");
+                  return 1;
+              }
+              GalleySession *session = galley_session_create();
+              long long parsed = galley_parse_sentinel(session, "alpha:12,beta:3");
+              if (parsed != 15 || galley_node_count(session) == 0) {
+                  fprintf(stderr, "lr parse failed (parsed=%lld)\n", parsed);
+                  return 1;
+              }
+              const char *message = NULL;
+              galley_parse_sentinel(session, "alpha:");
+              if (galley_diagnostic_message(session, &message) != galley_ok || message == NULL) {
+                  fprintf(stderr, "expected a diagnostic for the broken sample\n");
+                  return 1;
+              }
+              printf("lr smoke ok: parsed %lld bytes, %llu nodes\n", parsed, galley_node_count(session));
+              galley_session_destroy(session);
+              return 0;
+          }
+          EOF
+          cc "$work/driver.c" -I"$work/out/include" -L"$work/out/lib" \
+            -lkeyvalue-lr -Wl,-rpath,"$work/out/lib" -o "$work/driver"
+          "$work/driver"
+
       - name: Example output is identical across bindings
         run: |
           # Each binding builds through its native flow, mirroring the

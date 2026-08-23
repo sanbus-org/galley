@@ -71,6 +71,30 @@ func mustAbsolute(path string) string {
 	return absolute
 }
 
+// detectParser reports which parser family generation produced (one
+// library embeds one parser; both families present is ambiguous).
+func detectParser(languageDir string) (parserSource string, parserType string, err error) {
+	var hasLL, hasLR bool
+	if _, err := os.Stat(filepath.Join(languageDir, "_ll-parser.zig")); err == nil {
+		hasLL = true
+	}
+	if _, err := os.Stat(filepath.Join(languageDir, "_lr-parser.zig")); err == nil {
+		hasLR = true
+	}
+	switch {
+	case hasLL && !hasLR:
+		return "_ll-parser.zig", "ll", nil
+	case hasLR && !hasLL:
+		return "_lr-parser.zig", "lr", nil
+	case hasLL && hasLR:
+		return "", "", fmt.Errorf(
+			"both _ll-parser.zig and _lr-parser.zig exist in %s; one library embeds one parser — split the language dirs",
+			languageDir)
+	default:
+		return "", "", fmt.Errorf("generation produced no parser in %s", languageDir)
+	}
+}
+
 // resolveGalley returns the Galley checkout to build against: the
 // GALLEY_CHECKOUT when set, otherwise a shallow clone of GALLEY_REPOSITORY
 // at GALLEY_TAG inside cacheDir. Mirrors bindings/rust/src/build_helper.rs.
@@ -147,6 +171,13 @@ func main() {
 	generate := exec.Command(cli, "--emit-metadata", languageDir)
 	run(generate)
 
+	// One library embeds one parser; detect which family generation
+	// produced (both present is ambiguous and unsupported).
+	parserSource, parserType, err := detectParser(languageDir)
+	if err != nil {
+		fatal("%v", err)
+	}
+
 	prefix := filepath.Join(cacheDir, "capi")
 	languageAbsolute, err := filepath.Abs(languageDir)
 	if err != nil {
@@ -154,8 +185,8 @@ func main() {
 	}
 	consumerBuild := exec.Command(zigExecutable(), "build",
 		"--build-file", filepath.Join(galleySource, "bindings", "c", "consumer", "build.zig"),
-		"-Dparser-source="+filepath.Join(languageAbsolute, "_ll-parser.zig"),
-		"-Dparser-type=ll",
+		"-Dparser-source="+filepath.Join(languageAbsolute, parserSource),
+		"-Dparser-type="+parserType,
 		"-Dlib-name="+libName,
 		"-Doptimize=ReleaseFast",
 		"--prefix", prefix,
@@ -170,7 +201,9 @@ func main() {
 		// path stays supported for consumers whose main package imports C.
 		{"-Dprocedures-zig-source=", []string{"procedures.zig"}},
 		{"-Dprocedures-c-source=", []string{"hooks/procedures.c", "procedures.c"}},
-		{"-Derror-messages-zig-source=", []string{"ll_error_messages.zig"}},
+		{"-Derror-messages-zig-source=", []string{
+			fmt.Sprintf("%s_error_messages.zig", parserType),
+		}},
 	} {
 		for _, relativePath := range optionalFile.paths {
 			candidate := filepath.Join(languageDir, relativePath)
