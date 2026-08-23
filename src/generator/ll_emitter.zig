@@ -916,10 +916,11 @@ const Generator = struct {
         try self.emitSyntaxErrorHookCall(writer, "error_messages.syntax_error", null, indent);
         try writer.print(
             \\{s}else
-            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
+            \\{s}context.runtime().last_rendered_message = diagnostic_message;
             \\{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
-        , .{ indent, indent, indent });
+        , .{ indent, indent, indent, indent });
     }
 
     fn emitSyntaxErrorHookCall(self: *Generator, writer: *std.Io.Writer, callee_prefix: []const u8, field_name: ?[]const u8, indent: []const u8) !void {
@@ -930,7 +931,7 @@ const Generator = struct {
                 \\{s}        .allocator = context.runtime().arena_allocator,
                 \\{s}        .context = context,
                 \\{s}        .diagnostic = diagnostic,
-                \\{s}        .style = .ansi,
+                \\{s}        .style = .plain,
                 \\{s}    }}) catch ""
                 \\
             , .{ indent, name, indent, indent, indent, indent, indent });
@@ -940,7 +941,7 @@ const Generator = struct {
                 \\{s}        .allocator = context.runtime().arena_allocator,
                 \\{s}        .context = context,
                 \\{s}        .diagnostic = diagnostic,
-                \\{s}        .style = .ansi,
+                \\{s}        .style = .plain,
                 \\{s}    }}) catch ""
                 \\
             , .{ indent, callee_prefix, indent, indent, indent, indent, indent });

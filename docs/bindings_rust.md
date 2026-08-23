@@ -30,6 +30,13 @@ general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Each hook fires after the corresponding variable is reduced.
 Semantic payloads are unavailable through bindings.
 
+## Error Messages
+
+Run `galley --fill-error-messages <language-dir>` and edit the generated
+`ll_error_messages.zig` next to your grammar. The build helper detects it
+and compiles it into the shared library; `Session::diagnostic().message`
+then returns your hooks' text instead of the built-in generic renderer.
+
 ## Build Model
 
 Add the bindings crate to your `Cargo.toml`:

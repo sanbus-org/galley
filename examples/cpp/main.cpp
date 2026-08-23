@@ -77,6 +77,8 @@ int main(int argc, char *argv[]) {
                      galley_status_string(parsed), parsed);
         return 1;
     }
+
+    /* Successful parse: walk the tree. */
     std::printf("parsed %lld bytes, %llu AST nodes\n",
                 parsed, galley_node_count(&session));
     if (!galley_has_ast()) {
@@ -85,6 +87,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Failed parse: inspect the diagnostic. */
     if (galley_parse_sentinel(&session, kBrokenSample) >= 0) {
         std::fprintf(stderr, "expected the broken sample to fail\n");
         return 1;
@@ -117,7 +120,7 @@ int main(int argc, char *argv[]) {
     }
     std::fputc('\n', stdout);
 
-    // File parsing and a tree edit round-trip.
+    /* File parsing. */
     {
         constexpr const char *kPath = "/tmp/galley-cpp-example.json";
         FILE *file = std::fopen(kPath, "wb");
@@ -136,6 +139,7 @@ int main(int argc, char *argv[]) {
         std::printf("file parse: %lld bytes, ended at %u:%u\n",
                     file_parsed, end_line, end_column);
 
+        /* Tree editing: detach the root's children, then reattach them. */
         if (galley_has_ast()) {
             const GalleyNodeAddress root = galley_root_node(&session);
             const unsigned int before = galley_node_child_count(&session, root);

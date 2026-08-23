@@ -29,6 +29,10 @@ pub const RuntimeContext = struct {
     language_options: root.config.Options = .{},
     arena_allocator: std.mem.Allocator,
     last_diagnostic: ?root.ParseDiagnostic = null,
+    /// Message rendered for `last_diagnostic` by the grammar's error-message
+    /// hooks (or their generic fallback). Arena-backed: valid until the next
+    /// parse begins. Bindings surface this through `galley_diagnostic_message`.
+    last_rendered_message: ?[]const u8 = null,
     max_errors: usize = 10,
     recovery_window: usize = 500,
     syntax_error_stack_depth: usize = 0,

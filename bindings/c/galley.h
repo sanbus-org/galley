@@ -9,9 +9,9 @@
  * Node addresses, text pointers, and diagnostic strings remain valid until
  * the next parse on the same session or session destruction.
  *
- * Phase-one scope: grammars must be procedure-hook-free (@ annotations are
- * tolerated but inert), semantic payloads are unavailable, and error
- * messages use the built-in generic renderer.
+ * Scope notes: semantic payloads are unavailable; procedure hooks and
+ * error-message hooks are compiled into the library from the consumer's
+ * procedures and error-messages files (see the bindings docs).
  */
 #ifndef GALLEY_H
 #define GALLEY_H

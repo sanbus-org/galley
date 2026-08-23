@@ -40,10 +40,23 @@ Each hook receives an opaque pointer to the parse state; use the existing
 
 Semantic payloads remain unavailable through the C API.
 
+## Error Messages
+
+Set `"error_messages"` hooks by running
+`galley --fill-error-messages examples/c`, then edit any hook body — for
+example a friendlier `syntax_error_ll_Number__expected_generative_terminal_digit`.
+Pass the file to the consumer build:
+
+```cmake
+"-Derror-messages-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
+```
+
+`galley_diagnostic_message` then returns the text your hooks render;
+without the flag (or for un-customized grammars) it returns the built-in
+generic renderer output. The `_ansi` accessor always renders generically.
+
 ## Phase-One Scope
 
-- Error messages use the built-in generic renderer; custom error-message
-  hooks are not exposed.
 - One shared library corresponds to one grammar. Regenerating for a changed
   grammar re-runs the build steps below.
 
@@ -92,8 +105,9 @@ Useful variables:
 | `GALLEY_TAG` | Revision to fetch (default `main`) |
 | `GALLEY_CHECKOUT` | Existing Galley working tree; skips fetching |
 
-Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`,
-error messages) live in the example directory and are gitignored.
+Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) live in
+the example directory and are gitignored; `ll_error_messages.zig` is
+committed so custom message hooks ship with the example.
 After a build, `build/bin/` contains just the example executable — the
 Galley CLI stays inside its own tree.
 

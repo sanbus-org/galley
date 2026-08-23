@@ -166,10 +166,12 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     println!("cargo:rerun-if-changed={}", generated_parser.display());
 
     // Hook implementations live next to the grammar: procedures.zig (the
-    // generated extern declarations) and procedures.c (the consumer's
-    // implementations, compiled into the shared library).
+    // generated extern declarations), procedures.c (the consumer's
+    // implementations, compiled into the shared library), and an optional
+    // ll_error_messages.zig with customized syntax-error message hooks.
     let procedures_zig = language_dir.join("procedures.zig");
     let procedures_c = language_dir.join("procedures.c");
+    let error_messages_zig = language_dir.join("ll_error_messages.zig");
 
     // Compile the shared library through the generic consumer build file.
     let prefix = out_dir.join("galley-capi");
@@ -206,6 +208,16 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
                 procedures_c
                     .canonicalize()
                     .unwrap_or(procedures_c.clone())
+                    .display()
+            ));
+        }
+        if error_messages_zig.exists() {
+            println!("cargo:rerun-if-changed={}", error_messages_zig.display());
+            c.arg(format!(
+                "-Derror-messages-zig-source={}",
+                error_messages_zig
+                    .canonicalize()
+                    .unwrap_or(error_messages_zig.clone())
                     .display()
             ));
         }

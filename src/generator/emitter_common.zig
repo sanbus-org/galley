@@ -104,8 +104,9 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\        .allocator = context.runtime().arena_allocator,
         \\        .context = context,
         \\        .diagnostic = context.runtime().last_diagnostic.?,
-        \\        .style = .ansi,
+        \\        .style = .plain,
         \\    }}) catch "";
+        \\    context.runtime().last_rendered_message = diagnostic_message;
         \\    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
         \\    return root.ParseError.SyntaxError;
         \\}}

@@ -71,7 +71,6 @@ add_custom_command(
 add_custom_command(
     OUTPUT "${GENERATED_PARSER}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/config.zig" "${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/ll_error_messages.zig" "${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
     COMMAND "${GALLEY_CLI}" --emit-metadata "${CMAKE_CURRENT_SOURCE_DIR}"
     DEPENDS "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}/ll.grm" "${CMAKE_CURRENT_SOURCE_DIR}/galley.json"
     VERBATIM
@@ -86,6 +85,7 @@ add_custom_command(
             "-Dparser-source=${GENERATED_PARSER}"
             "-Dprocedures-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
             "-Dprocedures-c-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.cpp"
+            "-Derror-messages-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
             "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
             "-Doptimize=ReleaseFast"

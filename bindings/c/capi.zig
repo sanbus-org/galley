@@ -11,9 +11,9 @@
 //! addresses, text pointers, and diagnostics remain valid until the next
 //! parse on the same session or session destruction.
 //!
-//! Phase-one scope: grammars must be procedure-hook-free (`@` annotations
-//! are tolerated but inert), semantic payloads are unavailable, and error
-//! messages use the built-in generic renderer.
+//! Scope notes: semantic payloads are unavailable, procedure hooks and
+//! error-message hooks are compiled into the library from the consumer's
+//! procedures and error-messages files (see the bindings docs).
 
 const std = @import("std");
 const root = @import("galley");
@@ -340,12 +340,16 @@ export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]co
         out.?.* = cached.ptr;
         return galley_ok;
     }
-    const rendered = root.renderParseDiagnostic(std.heap.c_allocator, diagnostic, .plain) catch return galley_error_out_of_memory;
-    const z = std.heap.c_allocator.dupeZ(u8, rendered) catch {
-        std.heap.c_allocator.free(rendered);
-        return galley_error_out_of_memory;
+    // Prefer the message the grammar's error-message hooks rendered during
+    // the parse; fall back to the built-in generic renderer.
+    var owned: ?[]const u8 = null;
+    defer if (owned) |rendered| std.heap.c_allocator.free(rendered);
+    const source = embedded.session.runtime_context.last_rendered_message orelse blk: {
+        const rendered = root.renderParseDiagnostic(std.heap.c_allocator, diagnostic, .plain) catch return galley_error_out_of_memory;
+        owned = rendered;
+        break :blk rendered;
     };
-    std.heap.c_allocator.free(rendered);
+    const z = std.heap.c_allocator.dupeZ(u8, source) catch return galley_error_out_of_memory;
     embedded.rendered_diagnostic = z;
     out.?.* = z.ptr;
     return galley_ok;
