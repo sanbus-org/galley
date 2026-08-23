@@ -1,8 +1,8 @@
 /* Procedure hooks for the keyvalue grammar.
  * Each function fires after the corresponding variable is reduced.
  * Author-defined grammar hooks arrive namespaced as `hook_<name>` — the
- * grammar annotates Key with `@print`, and the C entry point is
- * `hook_print`, so it can never collide with libc symbols.
+ * grammar annotates Key with `@print`, and the entry point is
+ * `hook_print`, so it can never collide with unrelated symbols.
  */
 #include <stdio.h>
 

@@ -602,6 +602,7 @@ pub const Session = struct {
 
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.last_diagnostic = null;
+        self.runtime_context.last_rendered_message = null;
         self.runtime_context.syntax_error_count = 0;
         self.runtime_context.syntax_recovery_position = null;
         self.runtime_context.explicit_recovery_position = null;

@@ -1,7 +1,7 @@
 // Procedure hooks for the keyvalue grammar.
 // Author-defined grammar hooks arrive namespaced as `hook_<name>` — the
 // grammar annotates Key with `@print`, and the entry point is `hook_print`,
-// so it can never collide with other symbols.
+// so it can never collide with unrelated symbols.
 //
 // Compiled by zig together with the shared library, so this translation
 // unit sticks to C library headers.

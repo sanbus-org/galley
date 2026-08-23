@@ -2,7 +2,7 @@
  * Each function fires after the corresponding variable is reduced.
  * Author-defined grammar hooks arrive namespaced as `hook_<name>` — the
  * grammar annotates Key with `@print`, and the entry point is `hook_print`,
- * so it can never collide with other symbols.
+ * so it can never collide with unrelated symbols.
  *
  * These implementations are compiled into the shared library by Galley's
  * consumer build file; the Rust binary only talks to the C API.

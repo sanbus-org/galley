@@ -130,9 +130,9 @@ jobs:
           tar -xf zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
-      - name: Grammar and options are identical across bindings
+      - name: Grammar, options, and error messages are identical across bindings
         run: |
-          for file in ll.grm galley.json; do
+          for file in ll.grm galley.json ll_error_messages.zig; do
             unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
             count=$(printf '%s\n' "$unique" | wc -l)
             echo "$file: $count distinct variants"
@@ -166,25 +166,15 @@ jobs:
 
       - name: Example output is identical across bindings
         run: |
-          # C: parser plus hooks compiled into one shared library.
-          zig build --build-file bindings/c/consumer/build.zig \
-            "-Dparser-source=$PWD/examples/c/_ll-parser.zig" \
-            "-Dprocedures-zig-source=$PWD/examples/c/procedures.zig" \
-            "-Dprocedures-c-source=$PWD/examples/c/procedures.c" \
-            -Dparser-type=ll -Dlib-name=keyvalue-c -Doptimize=ReleaseFast \
-            --prefix /tmp/galley-capi install
-          cc examples/c/main.c -I/tmp/galley-capi/include \
-            -L/tmp/galley-capi/lib -lkeyvalue-c \
-            -Wl,-rpath,/tmp/galley-capi/lib -o /tmp/example-c
-
-          # C++: cmake drives generation and library build.
-          cmake -S examples/cpp -B /tmp/build-cpp -DGALLEY_CHECKOUT="$PWD" >/dev/null
-          cmake --build /tmp/build-cpp >/dev/null
-
-          # Rust: cargo drives generation and library build.
+          # Each binding builds through its native flow, mirroring the
+          # language-examples job: cmake drives c and cpp, cargo drives rust.
+          for lang in c cpp; do
+            cmake -S examples/$lang -B /tmp/build-$lang -DGALLEY_CHECKOUT="$PWD" >/dev/null
+            cmake --build /tmp/build-$lang >/dev/null
+          done
           GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml
 
-          /tmp/example-c >/tmp/out-c.txt 2>/tmp/err-c.txt
+          /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
           examples/rust/target/release/galley-rust-example >/tmp/out-rust.txt 2>/tmp/err-rust.txt
 

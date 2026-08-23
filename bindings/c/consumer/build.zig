@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) !void {
     const capi_version = b.option([]const u8, "capi-version", "Version string reported by galley_version") orelse "dev";
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks");
     const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig overriding the default template");
+    const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig overriding the default template");
 
     if (!std.mem.eql(u8, parser_type, "ll") and !std.mem.eql(u8, parser_type, "lr")) {
         std.log.err("invalid -Dparser-type '{s}': expected ll or lr", .{parser_type});
@@ -56,7 +57,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const error_messages_mod = b.createModule(.{
-        .root_source_file = galley_dep.path(b.fmt("src/cli/templates/{s}_error_messages.zig", .{parser_type})),
+        .root_source_file = if (error_messages_zig_source) |src|
+            .{ .cwd_relative = src }
+        else
+            galley_dep.path(b.fmt("src/cli/templates/{s}_error_messages.zig", .{parser_type})),
         .target = target,
         .optimize = optimize,
     });

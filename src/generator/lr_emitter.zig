@@ -1429,7 +1429,7 @@ const Generator = struct {
             \\{s}    .allocator = context.runtime().arena_allocator,
             \\{s}    .context = context,
             \\{s}    .diagnostic = diagnostic,
-            \\{s}    .style = .ansi,
+            \\{s}    .style = .plain,
             \\{s}}};
             \\{s}const diagnostic_message = if (comptime @hasDecl(error_messages, "{s}"))
             \\{s}    @field(error_messages, "{s}")(message_args) catch ""
@@ -1438,7 +1438,8 @@ const Generator = struct {
             \\{s}else if (comptime @hasDecl(error_messages, "syntax_error"))
             \\{s}    error_messages.syntax_error(message_args) catch ""
             \\{s}else
-            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .ansi) catch "";
+            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
+            \\{s}context.runtime().last_rendered_message = diagnostic_message;
             \\{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
         , .{
@@ -1453,6 +1454,7 @@ const Generator = struct {
             function_name,
             indent,
             function_name,
+            indent,
             indent,
             indent,
             indent,
