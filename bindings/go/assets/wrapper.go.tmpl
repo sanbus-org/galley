@@ -1,0 +1,446 @@
+import "unsafe"
+
+func (s *Session) treeStatus(status C.longlong) error {
+	if status >= 0 {
+		return nil
+	}
+	return Error(int32(status))
+}
+
+func boolToCInt(value bool) C.int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+// cToNode converts a C node address, reporting false for invalid-node
+// results (missing links, empty chains).
+func cToNode(value C.ulonglong) (Node, bool) {
+	node := Node(value)
+	if node == InvalidNode {
+		return 0, false
+	}
+	return node, true
+}
+
+type Node uint64
+
+// InvalidNode is returned by tree queries when no node exists at the
+// requested position (the root's parent, missing links).
+const InvalidNode Node = Node(0xFFFFFFFFFFFFFFFF)
+
+// Status codes mirrored from the C API (negative values are failures).
+type Error int32
+
+const (
+	ErrNullArgument         Error = -1
+	ErrSyntax               Error = -2
+	ErrIndentation          Error = -3
+	ErrStackOverflow        Error = -4
+	ErrASTCapacityExceeded  Error = -5
+	ErrUnterminatedRawString Error = -6
+	ErrOutOfMemory          Error = -7
+	ErrInternal             Error = -8
+	ErrNoDiagnostic         Error = -9
+	ErrInvalidNode          Error = -10
+	ErrIO                   Error = -11
+)
+
+var errorDescriptions = map[Error]string{
+	ErrNullArgument:         "null argument",
+	ErrSyntax:               "syntax error",
+	ErrIndentation:          "indentation error",
+	ErrStackOverflow:        "parser stack overflow",
+	ErrASTCapacityExceeded:  "AST capacity exceeded",
+	ErrUnterminatedRawString: "unterminated raw string",
+	ErrOutOfMemory:          "out of memory",
+	ErrInternal:             "internal error",
+	ErrNoDiagnostic:         "no diagnostic available",
+	ErrInvalidNode:          "invalid node address",
+	ErrIO:                   "I/O error",
+}
+
+func (e Error) Error() string {
+	if description, ok := errorDescriptions[e]; ok {
+		return description
+	}
+	return "unknown galley error"
+}
+
+// Version returns the build-supplied version string of this library.
+func Version() string {
+	return C.GoString(C.galley_version())
+}
+
+// HasAST reports whether the library was built with AST construction.
+func HasAST() bool {
+	return C.galley_has_ast() != 0
+}
+
+// SessionOptions selects session behavior; zero/negative fields select
+// library defaults. The zero value enables every default except MaxErrors,
+// which must be set explicitly through DefaultOptions.
+type SessionOptions struct {
+	MaxErrors                int32
+	RecoveryWindow           int32
+	StackOverflowRecovery    bool
+	SyntaxErrorStackDepth    uint32
+	Verbosity                int32
+	ASTPreallocationRatio    float64
+	ASTPreallocationCap      uint64
+}
+
+// DefaultOptions mirrors the defaults of the C and Rust consumers.
+func DefaultOptions() SessionOptions {
+	return SessionOptions{
+		MaxErrors:             10,
+		RecoveryWindow:        500,
+		StackOverflowRecovery: false,
+		SyntaxErrorStackDepth: 0,
+		Verbosity:             0,
+		ASTPreallocationRatio: -1,
+		ASTPreallocationCap:   0,
+	}
+}
+
+// Session wraps one parsing session. Sessions own their IO backend and
+// allocator, and are not safe for concurrent use: keep one per goroutine or
+// guard it externally. Call Close when done.
+type Session struct {
+	ptr *C.GalleySession
+}
+
+// New creates a session with default options.
+func New() (*Session, error) {
+	return WithOptions(DefaultOptions())
+}
+
+// WithOptions creates a session with explicit options.
+func WithOptions(options SessionOptions) (*Session, error) {
+	cOptions := &C.GalleyCOptions{
+		max_errors:                C.int(options.MaxErrors),
+		recovery_window:           C.int(options.RecoveryWindow),
+		stack_overflow_recovery:   boolToCInt(options.StackOverflowRecovery),
+		syntax_error_stack_depth:  C.uint(options.SyntaxErrorStackDepth),
+		verbosity:                 C.int(options.Verbosity),
+		ast_preallocation_ratio:   C.double(options.ASTPreallocationRatio),
+		ast_preallocation_cap:     C.ulonglong(options.ASTPreallocationCap),
+	}
+	ptr := C.galley_session_create_ex(cOptions)
+	if ptr == nil {
+		return nil, ErrOutOfMemory
+	}
+	return &Session{ptr: ptr}, nil
+}
+
+// Close destroys the session. Safe to call more than once.
+func (s *Session) Close() {
+	if s.ptr != nil {
+		C.galley_session_destroy(s.ptr)
+		s.ptr = nil
+	}
+}
+
+func (s *Session) status(status C.longlong) (int, error) {
+	if status >= 0 {
+		return int(status), nil
+	}
+	return 0, Error(int32(status))
+}
+
+// Parse parses a byte buffer that may contain NUL bytes and returns the
+// number of bytes parsed.
+func (s *Session) Parse(input []byte) (int, error) {
+	var data *C.char
+	if len(input) > 0 {
+		data = (*C.char)(unsafe.Pointer(&input[0]))
+	}
+	return s.status(C.galley_parse(s.ptr, data, C.size_t(len(input))))
+}
+
+// ParseSentinel parses one NUL-free string and returns the number of bytes
+// parsed.
+func (s *Session) ParseSentinel(input string) (int, error) {
+	cInput := C.CString(input)
+	defer C.free(unsafe.Pointer(cInput))
+	return s.status(C.galley_parse_sentinel(s.ptr, cInput))
+}
+
+// ParseFile parses the file at path and returns the number of bytes parsed.
+func (s *Session) ParseFile(path string) (int, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	return s.status(C.galley_parse_file(s.ptr, cPath))
+}
+
+// ParseInfo summarizes the most recent successful parse when AST
+// construction is enabled.
+type ParseInfo struct {
+	Root              Node
+	RootValid         bool
+	EndLine, EndColumn uint32
+}
+
+// Info returns a summary of the most recent successful parse. The second
+// result is false when AST construction is disabled.
+func (s *Session) Info() (ParseInfo, bool) {
+	if !HasAST() {
+		return ParseInfo{}, false
+	}
+	info := ParseInfo{}
+	if root, ok := s.RootNode(); ok {
+		info.Root, info.RootValid = root, true
+	}
+	var line, column C.uint
+	C.galley_last_position(s.ptr, &line, &column)
+	info.EndLine, info.EndColumn = uint32(line), uint32(column)
+	return info, true
+}
+
+// NodeCount returns the number of AST nodes allocated by the most recent
+// successful parse.
+func (s *Session) NodeCount() uint64 {
+	return uint64(C.galley_node_count(s.ptr))
+}
+
+// RootNode returns the root node of the most recent successful parse.
+func (s *Session) RootNode() (Node, bool) {
+	return cToNode(C.galley_root_node(s.ptr))
+}
+
+// NodeValid reports whether the address refers to a live node.
+func (s *Session) NodeValid(node Node) bool {
+	return C.galley_node_is_valid(s.ptr, C.ulonglong(node)) != 0
+}
+
+// ChildCount returns the number of direct children of a node.
+func (s *Session) ChildCount(node Node) uint32 {
+	return uint32(C.galley_node_child_count(s.ptr, C.ulonglong(node)))
+}
+
+// FirstChild returns the first child of a node.
+func (s *Session) FirstChild(node Node) (Node, bool) {
+	return cToNode(C.galley_node_first_child(s.ptr, C.ulonglong(node)))
+}
+
+// LastChild returns the last child of a node.
+func (s *Session) LastChild(node Node) (Node, bool) {
+	return cToNode(C.galley_node_last_child(s.ptr, C.ulonglong(node)))
+}
+
+// NextSibling returns the next sibling of a node.
+func (s *Session) NextSibling(node Node) (Node, bool) {
+	return cToNode(C.galley_node_next_sibling(s.ptr, C.ulonglong(node)))
+}
+
+// PriorSibling returns the previous sibling of a node.
+func (s *Session) PriorSibling(node Node) (Node, bool) {
+	return cToNode(C.galley_node_prior_sibling(s.ptr, C.ulonglong(node)))
+}
+
+// Parent returns the parent of a node (false for the root).
+func (s *Session) Parent(node Node) (Node, bool) {
+	return cToNode(C.galley_node_parent(s.ptr, C.ulonglong(node)))
+}
+
+// Children returns the direct children of a node in document order.
+func (s *Session) Children(node Node) []Node {
+	children := []Node{}
+	for child, ok := s.FirstChild(node); ok; child, ok = s.NextSibling(child) {
+		children = append(children, child)
+	}
+	return children
+}
+
+// SymbolName returns the grammar symbol name of a node (empty for
+// terminal-only nodes).
+func (s *Session) SymbolName(node Node) ([]byte, bool) {
+	var data *C.char
+	var length C.size_t
+	if C.galley_node_symbol_name(s.ptr, C.ulonglong(node), &data, &length) != 0 {
+		return nil, false
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+}
+
+// Text returns the source text matched by a node.
+func (s *Session) Text(node Node) ([]byte, bool) {
+	var data *C.char
+	var length C.size_t
+	if C.galley_node_text(s.ptr, C.ulonglong(node), &data, &length) != 0 {
+		return nil, false
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+}
+
+// Span returns the byte offset and length of a node's matched source span.
+func (s *Session) Span(node Node) (start uint64, length uint64, ok bool) {
+	var cStart, cLength C.ulonglong
+	if C.galley_node_span(s.ptr, C.ulonglong(node), &cStart, &cLength) != 0 {
+		return 0, 0, false
+	}
+	return uint64(cStart), uint64(cLength), true
+}
+
+// LineColumn returns the 1-based line and column of a node's first byte.
+func (s *Session) LineColumn(node Node) (line uint32, column uint32, ok bool) {
+	var cLine, cColumn C.uint
+	if C.galley_node_line_column(s.ptr, C.ulonglong(node), &cLine, &cColumn) != 0 {
+		return 0, 0, false
+	}
+	return uint32(cLine), uint32(cColumn), true
+}
+
+// DiagnosticKind classifies the current diagnostic.
+type DiagnosticKind int32
+
+const (
+	DiagnosticKindNone        DiagnosticKind = 0
+	DiagnosticKindSyntax      DiagnosticKind = 1
+	DiagnosticKindIndentation DiagnosticKind = 2
+)
+
+// Diagnostic describes the failure of the most recent parse, mirroring the
+// structured diagnostic of the C API.
+type Diagnostic struct {
+	Kind           DiagnosticKind
+	Line, Column   uint32
+	Message        string
+	UnexpectedToken []byte
+	ExpectedTokens [][]byte
+	// Context lists the innermost-first "while parsing" variable chain
+	// (syntax diagnostics only).
+	Context []string
+}
+
+// Diagnostic inspects the failure of the most recent parse. The second
+// result is false when the parse succeeded.
+func (s *Session) Diagnostic() (Diagnostic, bool) {
+	if C.galley_has_diagnostic(s.ptr) == 0 {
+		return Diagnostic{}, false
+	}
+	diagnostic := Diagnostic{Kind: DiagnosticKind(C.galley_diagnostic_kind(s.ptr))}
+	var line, column C.uint
+	if C.galley_diagnostic_position(s.ptr, &line, &column) == 0 {
+		diagnostic.Line, diagnostic.Column = uint32(line), uint32(column)
+	}
+	var message *C.char
+	if C.galley_diagnostic_message(s.ptr, &message) == 0 {
+		diagnostic.Message = C.GoString(message)
+	}
+	var tokenData *C.char
+	var tokenLength C.size_t
+	if C.galley_diagnostic_unexpected_token(s.ptr, &tokenData, &tokenLength) == 0 {
+		diagnostic.UnexpectedToken = C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength))
+	}
+	if expectedCount := C.galley_diagnostic_expected_count(s.ptr); expectedCount > 0 {
+		for i := C.ulonglong(0); i < C.ulonglong(expectedCount); i++ {
+			if C.galley_diagnostic_expected_at(s.ptr, i, &tokenData, &tokenLength) == 0 {
+				diagnostic.ExpectedTokens = append(diagnostic.ExpectedTokens,
+					C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength)))
+			}
+		}
+	}
+	if contextCount := C.galley_diagnostic_context_count(s.ptr); contextCount > 0 {
+		for i := C.ulonglong(0); i < C.ulonglong(contextCount); i++ {
+			var nameData *C.char
+			var nameLength C.size_t
+			if C.galley_diagnostic_context_at(s.ptr, i, &nameData, &nameLength) == 0 {
+				diagnostic.Context = append(diagnostic.Context, C.GoStringN(nameData, C.int(nameLength)))
+			}
+		}
+	}
+	return diagnostic, true
+}
+
+// TreeAppendChildren appends chain (and its next-linked siblings) as the
+// last children of parent.
+func (s *Session) TreeAppendChildren(parent, chain Node) error {
+	return s.treeStatus(C.galley_tree_append_children(s.ptr, C.ulonglong(parent), C.ulonglong(chain)))
+}
+
+// TreeInsertBefore inserts chain immediately before target.
+func (s *Session) TreeInsertBefore(target, chain Node) error {
+	return s.treeStatus(C.galley_tree_insert_before(s.ptr, C.ulonglong(target), C.ulonglong(chain)))
+}
+
+// TreeInsertAfter inserts chain immediately after target.
+func (s *Session) TreeInsertAfter(target, chain Node) error {
+	return s.treeStatus(C.galley_tree_insert_after(s.ptr, C.ulonglong(target), C.ulonglong(chain)))
+}
+
+// TreeRemoveSiblings removes count consecutive siblings starting at node
+// and returns the detached chain head.
+func (s *Session) TreeRemoveSiblings(node Node, count int) (Node, bool, error) {
+	var head C.ulonglong
+	status := C.galley_tree_remove_siblings(s.ptr, C.ulonglong(node), C.size_t(count), &head)
+	if err := s.treeStatus(status); err != nil {
+		return 0, false, err
+	}
+	node, ok := cToNode(head)
+	return node, ok, nil
+}
+
+// TreeRemoveSelf detaches node itself from its parent and siblings.
+func (s *Session) TreeRemoveSelf(node Node) (Node, bool, error) {
+	return s.TreeRemoveSiblings(node, 1)
+}
+
+// TreePromoteChildrenOverWrapper splices the children of wrapper in place
+// of the wrapper and returns the promoted chain head.
+func (s *Session) TreePromoteChildrenOverWrapper(wrapper Node) (Node, bool, error) {
+	var head C.ulonglong
+	status := C.galley_tree_promote_children_over_wrapper(s.ptr, C.ulonglong(wrapper), &head)
+	if err := s.treeStatus(status); err != nil {
+		return 0, false, err
+	}
+	node, ok := cToNode(head)
+	return node, ok, nil
+}
+
+// TreeCleanChildren detaches all children of node and returns the detached
+// chain head.
+func (s *Session) TreeCleanChildren(node Node) (Node, bool, error) {
+	var head C.ulonglong
+	status := C.galley_tree_clean_children(s.ptr, C.ulonglong(node), &head)
+	if err := s.treeStatus(status); err != nil {
+		return 0, false, err
+	}
+	node, ok := cToNode(head)
+	return node, ok, nil
+}
+
+// TreeUnlinkWrapper detaches wrapper from its parent and sibling chains
+// without touching its children.
+func (s *Session) TreeUnlinkWrapper(wrapper Node) error {
+	return s.treeStatus(C.galley_tree_unlink_wrapper(s.ptr, C.ulonglong(wrapper)))
+}
+
+// TreeInsertChildrenAt inserts chain into the children of parent at index;
+// an index equal to the child count appends.
+func (s *Session) TreeInsertChildrenAt(parent Node, index int, chain Node) error {
+	return s.treeStatus(C.galley_tree_insert_children_at(s.ptr, C.ulonglong(parent), C.size_t(index), C.ulonglong(chain)))
+}
+
+// TreeRemoveChildrenAt removes count consecutive children of parent
+// starting at index and returns the detached chain head.
+func (s *Session) TreeRemoveChildrenAt(parent Node, index int, count int) (Node, bool, error) {
+	var head C.ulonglong
+	status := C.galley_tree_remove_children_at(s.ptr, C.ulonglong(parent), C.size_t(index), C.size_t(count), &head)
+	if err := s.treeStatus(status); err != nil {
+		return 0, false, err
+	}
+	node, ok := cToNode(head)
+	return node, ok, nil
+}
+
+// ReserveNodes preallocates node storage for at least capacity nodes.
+func (s *Session) ReserveNodes(capacity uint64) error {
+	return s.treeStatus(C.galley_reserve_nodes(s.ptr, C.ulonglong(capacity)))
+}
+
+// NodeCapacity returns the current node storage capacity in nodes.
+func (s *Session) NodeCapacity() uint64 {
+	return uint64(C.galley_node_capacity(s.ptr))
+}

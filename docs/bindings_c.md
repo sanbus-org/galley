@@ -244,5 +244,7 @@ the current capacity.
 
 - [Using Galley as a Library](/using-galley) — the language-directory
   generation flow in detail
+- [Rust](/bindings_rust) and [Go](/bindings_go) — bindings over the same
+  shared library
 - [Grammar Guidelines](/grammar_guidelines)
 - [Architecture](/architecture)

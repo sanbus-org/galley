@@ -123,5 +123,6 @@ let mut session = Session::with_options(opts).expect("session");
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI
+- [Go](/bindings_go) — cgo bindings over the same shared library
 - [Configuration](/configuration) — galley.json schema
 - [Grammar Guidelines](/grammar_guidelines)

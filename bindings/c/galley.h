@@ -163,6 +163,7 @@ unsigned int galley_node_child_count(GalleySession *session, GalleyNodeAddress n
 /* Tree navigation: return GALLEY_INVALID_NODE when the link does not exist
  * (including the root's parent). */
 GalleyNodeAddress galley_node_first_child(GalleySession *session, GalleyNodeAddress node);
+GalleyNodeAddress galley_node_last_child(GalleySession *session, GalleyNodeAddress node);
 GalleyNodeAddress galley_node_next_sibling(GalleySession *session, GalleyNodeAddress node);
 GalleyNodeAddress galley_node_prior_sibling(GalleySession *session, GalleyNodeAddress node);
 GalleyNodeAddress galley_node_parent(GalleySession *session, GalleyNodeAddress node);

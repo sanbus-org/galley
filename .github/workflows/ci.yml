@@ -91,6 +91,7 @@ jobs:
           - c
           - cpp
           - rust
+          - go
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -102,8 +103,14 @@ jobs:
           tar -xf zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
+      - name: Install Go
+        if: ${{ matrix.language == 'go' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
       - name: Build and run example (cmake)
-        if: ${{ matrix.language != 'rust' }}
+        if: ${{ matrix.language != 'rust' && matrix.language != 'go' }}
         run: |
           cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }} \
             -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
@@ -115,6 +122,16 @@ jobs:
         run: |
           GALLEY_CHECKOUT="$GITHUB_WORKSPACE" \
             cargo run --release --manifest-path examples/rust/Cargo.toml
+
+      - name: Build and run example (go)
+        if: ${{ matrix.language == 'go' }}
+        working-directory: examples/go
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          go generate ./...
+          go build -o galley-go-example .
+          ./galley-go-example
 
   bindings-consistency:
     name: bindings-consistency
@@ -129,6 +146,11 @@ jobs:
           curl -L "$URL" -o zig.tar.xz
           tar -xf zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
 
       - name: Grammar, options, and error messages are identical across bindings
         run: |
@@ -160,23 +182,31 @@ jobs:
           names examples/c/procedures.c > /tmp/names-c.txt
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.c > /tmp/names-rust.txt
+          names examples/go/hooks/procedures.c > /tmp/names-go.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
 
       - name: Example output is identical across bindings
         run: |
           # Each binding builds through its native flow, mirroring the
-          # language-examples job: cmake drives c and cpp, cargo drives rust.
+          # language-examples job: cmake drives c and cpp, cargo drives
+          # rust, go generate + go build drive go.
           for lang in c cpp; do
             cmake -S examples/$lang -B /tmp/build-$lang -DGALLEY_CHECKOUT="$PWD" >/dev/null
             cmake --build /tmp/build-$lang >/dev/null
           done
-          GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml
+          GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml >/dev/null
+          cd examples/go
+          GALLEY_CHECKOUT="$PWD/../.." go generate ./...
+          go build -o /tmp/example-go .
+          cd ../..
 
           /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
           examples/rust/target/release/galley-rust-example >/tmp/out-rust.txt 2>/tmp/err-rust.txt
+          /tmp/example-go >/tmp/out-go.txt 2>/tmp/err-go.txt
 
           compare() {
             if ! diff -u "$1" "$2"; then
@@ -188,8 +218,10 @@ jobs:
           }
           compare /tmp/out-c.txt /tmp/out-cpp.txt
           compare /tmp/out-c.txt /tmp/out-rust.txt
+          compare /tmp/out-c.txt /tmp/out-go.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
+          compare /tmp/err-c.txt /tmp/err-go.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   test:
