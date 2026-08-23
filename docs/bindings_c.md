@@ -55,11 +55,6 @@ Pass the file to the consumer build:
 without the flag (or for un-customized grammars) it returns the built-in
 generic renderer output. The `_ansi` accessor always renders generically.
 
-## Phase-One Scope
-
-- One shared library corresponds to one grammar. Regenerating for a changed
-  grammar re-runs the build steps below.
-
 ## Build Model
 
 Consumers drive two commands from whatever build system they prefer — no
