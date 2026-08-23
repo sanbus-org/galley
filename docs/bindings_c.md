@@ -54,6 +54,8 @@ Pass the file to the consumer build:
 `galley_diagnostic_message` then returns the text your hooks render;
 without the flag (or for un-customized grammars) it returns the built-in
 generic renderer output. The `_ansi` accessor always renders generically.
+LR grammars use the same flow with `lr_error_messages.zig` and
+`syntax_error_lr_*` hook names.
 
 ## Build Model
 
@@ -61,12 +63,12 @@ Consumers drive two commands from whatever build system they prefer — no
 Galley-side build knowledge is required:
 
 1. **Generate** the parser from a grammar with the generator CLI (operating
-   on a *language directory* containing `ll.grm`; boilerplate modules are
-   created automatically):
+   on a *language directory* containing `ll.grm` and/or `lr.grm`; boilerplate
+   modules are created automatically):
 
    ```sh
    <galley>/zig-out/bin/galley --parser-type ll /path/to/language-dir
-   # → /path/to/language-dir/_ll-parser.zig
+   # → /path/to/language-dir/_ll-parser.zig      (--parser-type lr → _lr-parser.zig)
    ```
 
 2. **Compile** the generated parser into a shared library with Galley's
@@ -75,11 +77,16 @@ Galley-side build knowledge is required:
    ```sh
    zig build --build-file <galley>/bindings/c/consumer/build.zig \
        "-Dparser-source=/path/to/language-dir/_ll-parser.zig" \
+       "-Dparser-type=ll" \
        "-Dlib-name=mylang" \
        "-Doptimize=ReleaseFast" \
        --prefix /out install
    # → /out/lib/libmylang.dylib|so and /out/include/galley.h
    ```
+
+   Both parser families work identically through this ABI: pass the
+   `_lr-parser.zig` source with `-Dparser-type=lr` for an LR grammar.
+   One library embeds one parser.
 
 Generation options come from an optional [`galley.json`](/configuration) in
 the language directory; command-line flags override it.
