@@ -164,10 +164,12 @@ To populate all default syntax-error hooks for the current grammar, run:
 
 This appends missing `pub fn syntax_error_*` hooks to `ll_error_messages.zig` or `lr_error_messages.zig`. Existing public hooks are preserved. Public hooks no longer produced by the current grammar are reported as obsolete; non-public helper functions are ignored.
 
-To consume the generated parser from C or C++ instead of Zig, see
-[Language Bindings: C and C++](/bindings_c) — the same language-directory
-flow applies, and Galley ships a generic consumer build file that compiles
-the generated parser into a shared library with a C header.
+To consume the generated parser from another language instead of Zig, see
+the language bindings: [C and C++](/bindings_c),
+[Rust](/bindings_rust), and [Go](/bindings_go) — the same
+language-directory flow applies, and Galley ships a generic consumer build
+file that compiles the generated parser into a shared library with a C
+header.
 
 LL hook names are semantic instead of numbered. A specific hook is named from the parser symbol and what that branch expected, for example `syntax_error_ll_Value__expected_String_or_Number`. If the specific LL hook is not present, the generated parser checks broader hooks at comptime in this order: `syntax_error_ll_Value`, `syntax_error_ll`, `syntax_error`, then Galley's default renderer.
 
