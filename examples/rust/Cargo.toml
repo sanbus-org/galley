@@ -8,3 +8,12 @@ galley-bindings = { path = "../../bindings/rust" }
 
 [build-dependencies]
 galley-bindings = { path = "../../bindings/rust" }
+
+# procedures.rs is compiled into the parser shared library by the galley
+# build helper (rustc --crate-type=staticlib); declaring it here as the
+# same kind of target gives rust-analyzer and cargo test ownership of the
+# file. Plain `cargo build` and `cargo run` never touch it.
+[[example]]
+name = "procedures"
+path = "procedures.rs"
+crate-type = ["staticlib"]

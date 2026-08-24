@@ -181,7 +181,7 @@ jobs:
           }
           names examples/c/procedures.c > /tmp/names-c.txt
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
-          names examples/rust/procedures.c > /tmp/names-rust.txt
+          names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/hooks/procedures.c > /tmp/names-go.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
