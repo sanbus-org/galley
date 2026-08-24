@@ -4,12 +4,21 @@
 //! Galley checkout (or fetched copy) with sources produced by the generator
 //! CLI.
 //!
-//! When `-Dprocedures-c-source=<file>` is set, the file is compiled into
-//! the shared library. The generated `procedures.zig` next to the parser
-//! declares extern entry points — `reduction_<VariableName>`, the general
-//! `reduction`, and every author-defined grammar hook as `hook_<name>` —
-//! which the C source implements directly; the linker resolves them when
-//! the shared library is built.
+//! Procedure hook implementations enter the shared library through one of
+//! two inputs:
+//!
+//! - `-Dprocedures-c-source=<file>` compiles a C source file into the
+//!   library (the C and C++ consumers' native tongue).
+//! - `-Dprocedures-object=<file>` links a prebuilt object file or static
+//!   archive produced by another native toolchain (for example rustc's
+//!   `--crate-type=staticlib` output) whose symbols implement the hooks.
+//!
+//! The generated `procedures.zig` next to the parser declares extern entry
+//! points — `reduction_<VariableName>`, the general `reduction`, and every
+//! author-defined grammar hook as `hook_<name>` — which the input
+//! implements directly; the linker resolves them when the shared library
+//! is built. Passing both inputs fails: one implementation owns the entry
+//! points.
 //!
 //! Installs `lib<lib-name>.dylib|so` and `include/galley.h`.
 
@@ -25,8 +34,14 @@ pub fn build(b: *std.Build) !void {
     const lib_name = b.option([]const u8, "lib-name", "Installed library base name (default galley-parser)") orelse "galley-parser";
     const capi_version = b.option([]const u8, "capi-version", "Version string reported by galley_version") orelse "dev";
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks");
+    const procedures_object = b.option([]const u8, "procedures-object", "Prebuilt object file or static archive implementing procedure hooks");
     const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig overriding the default template");
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig overriding the default template");
+
+    if (procedures_c_source != null and procedures_object != null) {
+        std.log.err("pass either -Dprocedures-c-source or -Dprocedures-object, not both: one implementation owns the procedure entry points", .{});
+        return error.ConflictingProcedureInputs;
+    }
 
     if (!std.mem.eql(u8, parser_type, "ll") and !std.mem.eql(u8, parser_type, "lr")) {
         std.log.err("invalid -Dparser-type '{s}': expected ll or lr", .{parser_type});
@@ -112,6 +127,9 @@ pub fn build(b: *std.Build) !void {
         capi_lib.root_module.addCSourceFile(.{
             .file = .{ .cwd_relative = c_source },
         });
+    }
+    if (procedures_object) |object| {
+        capi_lib.root_module.addObjectFile(.{ .cwd_relative = object });
     }
 
     b.installArtifact(capi_lib);
