@@ -57,6 +57,23 @@ generic renderer output. The `_ansi` accessor always renders generically.
 LR grammars use the same flow with `lr_error_messages.zig` and
 `syntax_error_lr_*` hook names.
 
+### Message Overrides
+
+To replace a site's message with a fixed string — no Zig file at all —
+register an override. Names follow the same fallback order the sites use
+(exact hook name, then variable-level family, then the general
+`syntax_error`), and overrides take priority over hooks:
+
+```c
+galley_session_set_message_override(session,
+    "syntax_error_ll_Number__expected_generative_terminal_digit",
+    sizeof("syntax_error_ll_Number__expected_generative_terminal_digit") - 1,
+    "expected a number after ':' (digits only)",
+    sizeof("expected a number after ':' (digits only)") - 1);
+```
+
+Both strings are copied; overrides persist for the session's lifetime.
+
 ## Build Model
 
 Consumers drive two commands from whatever build system they prefer — no

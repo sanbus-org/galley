@@ -9613,7 +9613,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
     switch (site) {
         0 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Start__expected_Rules"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Start__expected_Rules")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Start")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Start__expected_Rules"))
                 @field(error_messages, "syntax_error_ll_Start__expected_Rules")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9648,7 +9660,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         1 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules__expected_Rule"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Rules__expected_Rule")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Rules")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Rules__expected_Rule"))
                 @field(error_messages, "syntax_error_ll_Rules__expected_Rule")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9683,7 +9707,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         2 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Rule__expected_VariableSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Rule")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol"))
                 @field(error_messages, "syntax_error_ll_Rule__expected_VariableSymbol")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9718,7 +9754,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         3 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RulesTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail"))
                 @field(error_messages, "syntax_error_ll_RulesTail__expected_NewLines_or_end_of_RulesTail")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9753,7 +9801,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         4 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_NewLines__expected_generative_terminal_new_line")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_NewLines")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line"))
                 @field(error_messages, "syntax_error_ll_NewLines__expected_generative_terminal_new_line")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9788,7 +9848,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         5 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_new_line")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9823,7 +9895,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         6 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_NewLinesTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35"))
                 @field(error_messages, "syntax_error_ll_NewLinesTail__expected_end_of_NewLinesTail_or_generative_terminal_new_line_or_terminal__x35")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9858,7 +9942,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         7 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x35__expected_terminal__x35")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x35")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35"))
                 @field(error_messages, "syntax_error_ll_terminal__x35__expected_terminal__x35")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9893,7 +9989,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         8 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_AnyContent")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
                 @field(error_messages, "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9928,7 +10036,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         9 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_VariableSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__"))
                 @field(error_messages, "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9963,7 +10083,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         10 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_AnnotationTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64"))
                 @field(error_messages, "syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -9998,7 +10130,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         11 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RightHandSides__expected_RightHandSideLine")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RightHandSides")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine"))
                 @field(error_messages, "syntax_error_ll_RightHandSides__expected_RightHandSideLine")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10033,7 +10177,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         12 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RightHandSideLine")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35"))
                 @field(error_messages, "syntax_error_ll_RightHandSideLine__expected_terminal__x124_or_terminal__x35")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10068,7 +10224,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         13 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RightHandSidesTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail"))
                 @field(error_messages, "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10103,7 +10271,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         14 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x124__expected_terminal__x124")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x124")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124"))
                 @field(error_messages, "syntax_error_ll_terminal__x124__expected_terminal__x124")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10138,7 +10318,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         15 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RightHandSide")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space"))
                 @field(error_messages, "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10173,7 +10365,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         16 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_space__expected_generative_terminal_space")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_space")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10208,7 +10412,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         17 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_TerminalSymbol"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Symbol__expected_TerminalSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Symbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_TerminalSymbol"))
                 @field(error_messages, "syntax_error_ll_Symbol__expected_TerminalSymbol")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10243,7 +10459,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         18 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Symbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol"))
                 @field(error_messages, "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10278,7 +10506,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         19 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RightHandSideTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space"))
                 @field(error_messages, "syntax_error_ll_RightHandSideTail__expected_end_of_RightHandSideTail_or_generative_terminal_space")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10313,7 +10553,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         20 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_TerminalSymbol__expected_RawString")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_TerminalSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString"))
                 @field(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10348,7 +10600,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         21 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_TerminalSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34"))
                 @field(error_messages, "syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10383,7 +10647,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         22 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_GenerativeTerminalSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId"))
                 @field(error_messages, "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10418,7 +10694,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         23 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_UppercaseId")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter"))
                 @field(error_messages, "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10453,7 +10741,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         24 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal____expected_terminal__"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal____expected_terminal__")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal____expected_terminal__"))
                 @field(error_messages, "syntax_error_ll_terminal____expected_terminal__")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10488,7 +10788,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         25 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RawString__expected_terminal__x92_x92_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RawString__expected_terminal__x92_x92_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RawString")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RawString__expected_terminal__x92_x92_x34"))
                 @field(error_messages, "syntax_error_ll_RawString__expected_terminal__x92_x92_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10523,7 +10835,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         26 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x34__expected_terminal__x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34"))
                 @field(error_messages, "syntax_error_ll_terminal__x34__expected_terminal__x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10558,7 +10882,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         27 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_SimpleStringContent")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
                 @field(error_messages, "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10593,7 +10929,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         28 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92_x92_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34"))
                 @field(error_messages, "syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10628,7 +10976,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         29 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RawIndicator")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
                 @field(error_messages, "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10663,7 +11023,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         30 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10698,7 +11070,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         31 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_LowercaseId")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter"))
                 @field(error_messages, "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10733,7 +11117,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         32 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_GenerativeTerminalExceptions")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94"))
                 @field(error_messages, "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10768,7 +11164,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         33 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x94__expected_terminal__x94")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x94")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94"))
                 @field(error_messages, "syntax_error_ll_terminal__x94__expected_terminal__x94")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10803,7 +11211,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         34 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x64__expected_terminal__x64")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x64")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64"))
                 @field(error_messages, "syntax_error_ll_terminal__x64__expected_terminal__x64")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10838,7 +11258,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         35 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Annotation")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62"))
                 @field(error_messages, "syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10873,7 +11305,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         36 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_Procedure__expected_CamelCaseId"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_Procedure__expected_CamelCaseId")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_Procedure")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_Procedure__expected_CamelCaseId"))
                 @field(error_messages, "syntax_error_ll_Procedure__expected_CamelCaseId")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10908,7 +11352,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         37 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x33__expected_terminal__x33"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x33__expected_terminal__x33")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x33")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x33__expected_terminal__x33"))
                 @field(error_messages, "syntax_error_ll_terminal__x33__expected_terminal__x33")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10943,7 +11399,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         38 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RecoveryPoint")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor"))
                 @field(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -10978,7 +11446,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         39 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_RecoveryPoint")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor"))
                 @field(error_messages, "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11013,7 +11493,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         40 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62__expected_terminal__x62"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x62__expected_terminal__x62")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x62")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x62__expected_terminal__x62"))
                 @field(error_messages, "syntax_error_ll_terminal__x62__expected_terminal__x62")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11048,7 +11540,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         41 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_VerbatimMarker")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor"))
                 @field(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11083,7 +11587,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         42 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_VerbatimMarker")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62"))
                 @field(error_messages, "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11118,7 +11634,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         43 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_CamelCaseId")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter"))
                 @field(error_messages, "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11153,7 +11681,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         44 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_TerminalAndCursor")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol"))
                 @field(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11188,7 +11728,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         45 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_TerminalAndCursor")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94"))
                 @field(error_messages, "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11223,7 +11775,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         46 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11258,7 +11822,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         47 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8Scalar")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
                 @field(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11293,7 +11869,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         48 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8TwoByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11328,7 +11916,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         49 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8ThreeByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11363,7 +11963,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         50 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8FourByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11398,7 +12010,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         51 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11433,7 +12057,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         52 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11468,7 +12104,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         53 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xe0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11503,7 +12151,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         54 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_a0_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11538,7 +12198,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         55 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_three_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11573,7 +12245,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         56 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11608,7 +12292,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         57 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_9f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11643,7 +12339,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         58 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11678,7 +12386,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         59 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_90_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11713,7 +12433,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         60 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_four_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11748,7 +12480,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         61 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11783,7 +12527,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         62 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_8f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11818,7 +12574,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         63 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_ControlCharacter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02"))
                 @field(error_messages, "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11853,7 +12621,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         64 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92x01__expected_terminal__x92x01")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92x01")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01"))
                 @field(error_messages, "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11888,7 +12668,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         65 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92x02__expected_terminal__x92x02")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92x02")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02"))
                 @field(error_messages, "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11923,7 +12715,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         66 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11958,7 +12762,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         67 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_AnyContentTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34"))
                 @field(error_messages, "syntax_error_ll_AnyContentTail__expected_ControlCharacter_or_end_of_AnyContentTail_or_generative_terminal_character_x94_x34_x92_x92n_x34")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -11993,7 +12809,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         68 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_IdTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__"))
                 @field(error_messages, "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12028,7 +12856,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         69 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12063,7 +12903,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         70 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_digit")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12098,7 +12950,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         71 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_lowercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12133,7 +12997,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         72 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_uppercase_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12168,7 +13044,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         73 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_CamelCaseIdTail")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter"))
                 @field(error_messages, "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12203,7 +13091,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         74 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__AugmentedStart__expected_Start")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__AugmentedStart")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__AugmentedStart__expected_Start"))
                 @field(error_messages, "syntax_error_ll__AugmentedStart__expected_Start")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12238,7 +13138,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         75 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_special_EOF__expected_special_EOF")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_special_EOF")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF"))
                 @field(error_messages, "syntax_error_ll_special_EOF__expected_special_EOF")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12273,7 +13185,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         76 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8Scalar")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte"))
                 @field(error_messages, "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12308,7 +13232,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         77 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8TwoByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12343,7 +13279,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         78 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8ThreeByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12378,7 +13326,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         79 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll__Utf8FourByte")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12413,7 +13373,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         80 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_two")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12448,7 +13420,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         81 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12483,7 +13467,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         82 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xe0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12518,7 +13514,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         83 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_a0_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12553,7 +13561,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         84 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_three_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12588,7 +13608,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         85 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xed")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12623,7 +13655,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         86 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_9f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12658,7 +13702,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         87 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf0")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12693,7 +13749,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         88 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_90_bf")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12728,7 +13796,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         89 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_lead_four_general")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12763,7 +13843,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         90 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_terminal__x92xf4")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4"))
                 @field(error_messages, "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,
@@ -12798,7 +13890,19 @@ fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
         },
         91 => {
             const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
+            const diagnostic_message =             if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll_generative_terminal_utf8_continuation_80_8f")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error_ll")) |overridden|
+                overridden
+            else
+            if (context.runtime().messageOverride("syntax_error")) |overridden|
+                overridden
+            else
+            if (comptime @hasDecl(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f"))
                 @field(error_messages, "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f")(.{
                     .allocator = context.runtime().arena_allocator,
                     .context = context,

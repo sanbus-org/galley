@@ -31,11 +31,20 @@ fn print_tree(session: &Session, node: NodeHandle, depth: usize) {
 
 fn main() {
     println!("galley version: {}", galley_bindings::version());
-    let mut session = match Session::with_options(Default::default()) {
-        Ok(session) => session,
-        Err(_) => {
-            eprintln!("failed to create a parser session");
-            std::process::exit(1);
+    let mut session = {
+        let options = galley_bindings::SessionOptions {
+            message_overrides: vec![(
+                "syntax_error_ll_Number__expected_generative_terminal_digit".to_string(),
+                "expected a number after ':' (digits only, overridden)".to_string(),
+            )],
+            ..Default::default()
+        };
+        match Session::with_options(options) {
+            Ok(session) => session,
+            Err(_) => {
+                eprintln!("failed to create a parser session");
+                std::process::exit(1);
+            }
         }
     };
 

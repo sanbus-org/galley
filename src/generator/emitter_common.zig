@@ -112,6 +112,8 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\}}
         \\
         \\fn {s}FailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
+        \\    if (args.context.runtime().messageOverride("{s}")) |overridden| return overridden;
+        \\    if (args.context.runtime().messageOverride("syntax_error")) |overridden| return overridden;
         \\    if (comptime @hasDecl(error_messages, "{s}"))
         \\        return error_messages.{s}(args);
         \\    if (comptime @hasDecl(error_messages, "syntax_error"))
@@ -119,7 +121,7 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
         \\}}
         \\
-    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl });
+    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl, error_messages_decl });
 }
 
 /// Emits a fail-fast syntax error message renderer function shared by the LL
@@ -127,6 +129,9 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
 /// messages namespace decls to try before `fallback_message_function`.
 pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8, fallback_message_function: []const u8) !void {
     try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{\n", .{function_name});
+    for (error_message_fields) |field| {
+        try writer.print("    if (args.context.runtime().messageOverride(\"{s}\")) |overridden| return overridden;\n", .{field});
+    }
     for (error_message_fields) |field| {
         try writer.print("    if (comptime @hasDecl(error_messages, \"{s}\"))\n        return @field(error_messages, \"{s}\")(args);\n", .{ field, field });
     }

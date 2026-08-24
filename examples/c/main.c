@@ -43,6 +43,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }
+    if (galley_session_set_message_override(
+            session,
+            "syntax_error_ll_Number__expected_generative_terminal_digit",
+            sizeof("syntax_error_ll_Number__expected_generative_terminal_digit") - 1,
+            "expected a number after ':' (digits only, overridden)",
+            sizeof("expected a number after ':' (digits only, overridden)") - 1) != galley_ok) {
+        fprintf(stderr, "failed to register the message override\n");
+        galley_session_destroy(session);
+        return 1;
+    }
 
     /* With a path argument: parse the file and nothing else. */
     if (argc > 1) {

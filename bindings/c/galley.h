@@ -118,6 +118,15 @@ GalleySession *galley_session_create_ex(const GalleyCOptions *options);
 /* Destroys a session created by galley_session_create. NULL is ignored. */
 void galley_session_destroy(GalleySession *session);
 
+/* Registers one message override: when a syntax-error site's resolution
+ * chain contains name (an exact hook name, its variable-level family, or
+ * the general "syntax_error"), the site reports message verbatim, taking
+ * priority over grammar hooks and the built-in renderer. Both strings are
+ * copied; the override persists for the session's lifetime. */
+long long galley_session_set_message_override(GalleySession *session,
+                                              const char *name, size_t name_len,
+                                              const char *message, size_t message_len);
+
 /* Parses one NUL-terminated input string. Returns the number of bytes
  * parsed on success, or a negative status code on failure. */
 long long galley_parse_sentinel(GalleySession *session, const char *input);

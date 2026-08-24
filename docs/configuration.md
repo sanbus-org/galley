@@ -55,6 +55,7 @@ defaults.
 | `position_tracking` | boolean | `--with-position-tracking` / `--no-position-tracking` |
 | `input_streaming` | boolean | `--with-input-streaming` / `--no-input-streaming` |
 | `allow_no_ast_tree_procedures` | boolean | `--allow-no-ast-tree-procedures` |
+| `error_messages` | object of string → string | Ignored during generation; the Rust and Go bindings read it at session creation and register its entries as syntax-error message overrides (see their docs). C, C++, and Zig consumers use the same override concept through the session API instead. |
 
 Unknown keys are rejected so misspelled options never silently disable a
 feature. Action flags (`--fill-error-messages`, `--bootstrap-zig-project`,

@@ -42,7 +42,11 @@ func printTree(session *galley.Session, node galley.Node, depth int) {
 
 func main() {
 	fmt.Printf("galley version: %s\n", galley.Version())
-	session, err := galley.WithOptions(galley.DefaultOptions())
+	options := galley.DefaultOptions()
+	options.MessageOverrides = map[string]string{
+		"syntax_error_ll_Number__expected_generative_terminal_digit": "expected a number after ':' (digits only, overridden)",
+	}
+	session, err := galley.WithOptions(options)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create a parser session\n")
 		os.Exit(1)

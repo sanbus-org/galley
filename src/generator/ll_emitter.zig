@@ -906,7 +906,16 @@ const Generator = struct {
 
     fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, exact_name: []const u8, symbol_name: []const u8, indent: []const u8) !void {
         try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
-        try writer.print("{s}const diagnostic_message = if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, exact_name });
+        try writer.print("{s}const diagnostic_message = ", .{indent});
+        for ([_][]const u8{ exact_name, symbol_name, "syntax_error_ll", "syntax_error" }) |override_name| {
+            try writer.print(
+                \\{s}if (context.runtime().messageOverride("{s}")) |overridden|
+                \\{s}    overridden
+                \\{s}else
+                \\
+            , .{ indent, override_name, indent, indent });
+        }
+        try writer.print("{s}if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, exact_name });
         try self.emitSyntaxErrorHookCall(writer, "", exact_name, indent);
         try writer.print("{s}else if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, symbol_name });
         try self.emitSyntaxErrorHookCall(writer, "", symbol_name, indent);
