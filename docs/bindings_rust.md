@@ -13,22 +13,37 @@ it is built and executed by CI on every push.
 ## Procedures
 
 Set `"procedures": true` in your grammar's galley.json and implement the
-hooks in a `procedures.c` file next to your grammar — the build helper
-compiles it into the shared library, mirroring the C and C++ consumers:
+hooks in a `procedures.rs` file next to your grammar — the build helper
+compiles it with rustc into a static archive and links it into the shared
+library. Hooks are ordinary Rust: no C anywhere on the consumer side.
 
-```c
-/* procedures.c */
-#include <stdio.h>
-
-void reduction_Pair(void *args) {
-    fprintf(stderr, "[hook] Pair\n");
+```rust
+/* procedures.rs */
+#[no_mangle]
+pub extern "C" fn reduction_Pair(_args: *mut core::ffi::c_void) {
+    eprintln!("[hook] Pair");
 }
 ```
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Each hook fires after the corresponding variable is reduced.
-Semantic payloads are unavailable through bindings.
+The helper compiles `procedures.rs` with `panic=abort`, so a panic inside a
+hook aborts rather than unwinding through generated parser code. Semantic
+payloads are unavailable through bindings.
+
+Because the helper drives rustc directly, editors would see
+`procedures.rs` as outside any module tree. The example's Cargo.toml
+therefore declares it as a staticlib example target — mirroring exactly
+what the helper builds — so rust-analyzer links it as its own crate and
+`cargo test` keeps it compiling:
+
+```toml
+[[example]]
+name = "procedures"
+path = "procedures.rs"
+crate-type = ["staticlib"]
+```
 
 ## Error Messages
 

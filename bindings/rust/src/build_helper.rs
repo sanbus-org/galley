@@ -14,9 +14,10 @@
 //! shallow-clones `GALLEY_REPOSITORY` at `GALLEY_TAG`, skipping submodules),
 //! builds the generator CLI, generates the parser, compiles the C-API shared
 //! library, and emits the cargo directives that link your binary against it.
-//! When the language directory contains a generated `procedures.zig` and a
-//! `procedures.c` implementing its hooks, both are compiled into the shared
-//! library — mirroring the C and C++ consumers' contract.
+//! Hooks are written in Rust: when the language directory contains a
+//! generated `procedures.zig` and a `procedures.rs` implementing its hooks,
+//! the helper compiles `procedures.rs` with rustc into a static archive and
+//! links it into the shared library — no C anywhere on the consumer side.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -164,12 +165,12 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     });
 
     // Hook implementations live next to the grammar: procedures.zig (the
-    // generated extern declarations), procedures.c (the consumer's
-    // implementations, compiled into the shared library), and an optional
-    // ll_error_messages.zig / lr_error_messages.zig with customized
-    // syntax-error message hooks.
+    // generated extern declarations), procedures.rs (the consumer's Rust
+    // implementations, compiled here into a static archive and linked into
+    // the shared library), and an optional ll_error_messages.zig /
+    // lr_error_messages.zig with customized syntax-error message hooks.
     let procedures_zig = language_dir.join("procedures.zig");
-    let procedures_c = language_dir.join("procedures.c");
+    let procedures_rs = language_dir.join("procedures.rs");
 
     // One library embeds one parser; detect which family generation
     // produced (both present is ambiguous and unsupported).
@@ -212,15 +213,10 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
                     .display()
             ));
         }
-        if procedures_c.exists() {
-            println!("cargo:rerun-if-changed={}", procedures_c.display());
-            c.arg(format!(
-                "-Dprocedures-c-source={}",
-                procedures_c
-                    .canonicalize()
-                    .unwrap_or(procedures_c.clone())
-                    .display()
-            ));
+        if procedures_rs.exists() {
+            println!("cargo:rerun-if-changed={}", procedures_rs.display());
+            let archive = compile_procedures_archive(&procedures_rs, &out_dir);
+            c.arg(format!("-Dprocedures-object={}", archive.display()));
         }
         if error_messages_zig.exists() {
             println!("cargo:rerun-if-changed={}", error_messages_zig.display());
@@ -262,6 +258,28 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
 
 fn zig_executable() -> String {
     env("ZIG_EXECUTABLE").unwrap_or_else(|| "zig".into())
+}
+
+/// Compiles the consumer's `procedures.rs` into a static archive with
+/// rustc so the generic consumer build file can link it into the shared
+/// library. `panic=abort` keeps unwinding from ever crossing the parser's
+/// call frames: hooks are `extern "C"` functions, and a panic inside one
+/// aborts the process rather than unwinding through generated Zig code.
+fn compile_procedures_archive(source: &Path, out_dir: &Path) -> PathBuf {
+    let archive = out_dir.join("libgalley_procedures.a");
+    run_or_panic({
+        let mut c = Command::new(env("RUSTC").unwrap_or_else(|| "rustc".into()));
+        c.arg("--edition=2021")
+            .arg("--crate-name=galley_procedures")
+            .arg("--crate-type=staticlib")
+            .arg("-Cpanic=abort")
+            .arg("-Copt-level=3")
+            .arg("-o")
+            .arg(&archive)
+            .arg(source);
+        c
+    });
+    archive
 }
 
 fn generated_parser_exists(language_dir: &Path, file_name: &str) -> bool {
