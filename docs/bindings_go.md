@@ -40,32 +40,38 @@ $ ./my-parser-consumer
 `GALLEY_CHECKOUT` (existing working tree) wins over `GALLEY_REPOSITORY` +
 `GALLEY_TAG` (default `main`); `ZIG_EXECUTABLE` selects zig. It generates
 the parser, builds the shared library, detects optional hook files next to
-your grammar (`procedures.zig`, `procedures.c`, `ll_error_messages.zig`),
-and emits `<language-dir>/galley/galley.go` — a generated cgo bridge bound
+your grammar (`hooks/procedures.go`, `ll_error_messages.zig`), and emits
+`<language-dir>/galley/galley.go` — a generated cgo bridge bound
 to this library. Regenerate after changing the grammar; commit nothing it
 generates.
 
 ## Procedures
 
 Set `"procedures": true` in your grammar's galley.json and implement the
-hooks in a `hooks/procedures.c` file next to your grammar (the hooks
-subdirectory keeps C sources out of the Go package, which refuses them):
-the gen command compiles it into the shared library, mirroring the C,
-C++, and Rust consumers:
+hooks in Go in a `hooks/procedures.go` file next to your grammar — an
+ordinary Go package compiled into your own binary by your ordinary
+`go build`. No C anywhere on the consumer side:
 
-```c
-/* hooks/procedures.c */
-#include <stdio.h>
+```go
+package hooks
 
-void reduction_Pair(void *args) {
-    fprintf(stderr, "[hook] Pair\n");
+//export reduction_Pair
+func reduction_Pair(_ unsafe.Pointer) {
+	os.Stderr.WriteString("[hook] Pair\n")
 }
 ```
 
+Mechanically, gen reads the grammar's generated hook list and produces a
+Zig shim module containing one nullable function-pointer slot per hook;
+your binary's init registers each `//export`ed address into its slot. The
+parser calls through those slots directly, so hook code executes in *your*
+process under *your* Go runtime — the shared library stays runtime-free,
+which is what keeps loading it from Go programs safe (embedding a second
+Go runtime via c-archive segfaults on linux/amd64). Each hook fires after
+the corresponding variable is reduced; unregistered slots are no-ops.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
-`hook_<name>`. Each hook fires after the corresponding variable is reduced.
-Semantic payloads are unavailable through bindings.
+`hook_<name>`. Semantic payloads are unavailable through bindings.
 
 ## Error Messages
 

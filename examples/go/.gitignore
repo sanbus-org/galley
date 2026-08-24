@@ -2,6 +2,7 @@
 /_lr-parser.zig
 /config.zig
 /procedures.zig
+/procedures_go.zig
 
 /lr_error_messages.zig
 /metadata.json
