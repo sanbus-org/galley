@@ -161,7 +161,7 @@ pub const SessionReadGuard = struct {
     }
 
     pub fn lastDiagnostic(self: *const SessionReadGuard) ?ParseDiagnostic {
-        return self.session.runtime_context.last_diagnostic;
+        return self.session.runtime_context.lastDiagnostic();
     }
 
     pub fn syntaxErrorCount(self: *const SessionReadGuard) usize {
@@ -601,7 +601,7 @@ pub const Session = struct {
         defer runtime_registration.unregister();
 
         _ = self.arena.reset(.retain_capacity);
-        self.runtime_context.last_diagnostic = null;
+        self.runtime_context.recorded_diagnostics = .empty;
         self.runtime_context.last_rendered_message = null;
         self.runtime_context.syntax_error_count = 0;
         self.runtime_context.syntax_recovery_position = null;

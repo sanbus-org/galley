@@ -103,7 +103,7 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    const diagnostic_message = render_message(.{{
         \\        .allocator = context.runtime().arena_allocator,
         \\        .context = context,
-        \\        .diagnostic = context.runtime().last_diagnostic.?,
+        \\        .diagnostic = context.runtime().lastDiagnostic().?,
         \\        .style = .plain,
         \\    }}) catch "";
         \\    context.runtime().last_rendered_message = diagnostic_message;

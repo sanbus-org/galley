@@ -1,3 +1,5 @@
+/* Parses a small key/value document through the Galley C API, mirroring
+ * examples/cpp, examples/rust, and examples/go byte-for-byte in output. */
 #include <galley.h>
 
 #include <stdio.h>
@@ -5,6 +7,7 @@
 
 static const char *valid_sample = "alpha:12,beta:3";
 static const char *broken_sample = "alpha:";
+static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
 
 static int print_tree(GalleySession *session, GalleyNodeAddress node, unsigned depth) {
     const char *name_data = NULL;
@@ -69,7 +72,13 @@ int main(int argc, char **argv) {
     printf("parsed %lld bytes, %llu AST nodes\n",
            parsed, galley_node_count(session));
     if (galley_has_ast()) {
-        if (print_tree(session, galley_root_node(session), 1) != 0) {
+        GalleyNodeAddress root = galley_root_node(session);
+        if (root == GALLEY_INVALID_NODE) {
+            fprintf(stderr, "expected a root node\n");
+            galley_session_destroy(session);
+            return 1;
+        }
+        if (print_tree(session, root, 1) != 0) {
             galley_session_destroy(session);
             return 1;
         }
@@ -110,6 +119,32 @@ int main(int argc, char **argv) {
     }
     fputc('\n', stdout);
 
+    /* Multi-error parse: every recorded diagnostic stays addressable. */
+    parsed = galley_parse_sentinel(session, multi_error_sample);
+    if (parsed >= 0) {
+        fprintf(stderr, "expected the multi-error sample to fail\n");
+        galley_session_destroy(session);
+        return 1;
+    }
+    long long recorded_count = galley_recorded_diagnostic_count(session);
+    printf("recorded diagnostics: %lld\n", recorded_count);
+    for (long long i = 0; i < recorded_count; ++i) {
+        unsigned int recorded_line = 0, recorded_column = 0;
+        galley_recorded_diagnostic_position(session, (unsigned long long)i,
+                                            &recorded_line, &recorded_column);
+        long long kind = galley_recorded_diagnostic_kind(session, (unsigned long long)i);
+        const char *kind_name = kind == galley_diagnostic_kind_syntax     ? "syntax"
+                                : kind == galley_diagnostic_kind_indentation ? "indentation"
+                                                                             : "none";
+        const char *unexpected_data = NULL;
+        size_t unexpected_len = 0;
+        galley_recorded_unexpected_token(session, (unsigned long long)i,
+                                         &unexpected_data, &unexpected_len);
+        printf("  [%lld] %s at %u:%u near '%.*s'\n",
+               i, kind_name, recorded_line, recorded_column,
+               (int)unexpected_len, unexpected_data);
+    }
+
     /* File parsing. */
     const char *path = "/tmp/galley-c-example.json";
     FILE *file = fopen(path, "wb");
@@ -142,7 +177,13 @@ int main(int argc, char **argv) {
             galley_session_destroy(session);
             return 1;
         }
-        galley_tree_append_children(session, root, head);
+        long long reattached = galley_tree_append_children(session, root, head);
+        if (reattached != galley_ok) {
+            fprintf(stderr, "failed to reattach children: %s (%lld)\n",
+                    galley_status_string(reattached), reattached);
+            galley_session_destroy(session);
+            return 1;
+        }
         printf("tree edit: %u children before, %u after reattach\n",
                child_count_before, galley_node_child_count(session, root));
     }

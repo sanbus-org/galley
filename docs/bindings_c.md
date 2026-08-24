@@ -224,6 +224,24 @@ if (galley_has_diagnostic(session)) {
 `galley_syntax_error_count` reports how many errors a recovery-enabled
 parse recorded.
 
+Recovery-enabled parses retain every diagnostic they record, addressable by
+index (0-based, in recording order) until the next parse:
+
+```c
+long long recorded = galley_recorded_diagnostic_count(session);
+for (long long i = 0; i < recorded; ++i) {
+    unsigned int line, column;
+    galley_recorded_diagnostic_position(session, i, &line, &column);
+    long long kind = galley_recorded_diagnostic_kind(session, i);
+    /* plus recorded_{unexpected_token,expected_count,expected_token,
+       context_count,context_name,indentation,recovery_*}, mirroring the
+       singular accessors above; messages render generically via
+       galley_recorded_diagnostic_message */
+}
+```
+
+The singular accessors report the most recent diagnostic.
+
 ### Parser Metadata
 
 `galley_parser_type`, `galley_error_recovery_mode`, `galley_has_ast`,

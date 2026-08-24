@@ -1424,7 +1424,7 @@ const Generator = struct {
     fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, function_name: []const u8, indent: []const u8) !void {
         _ = self;
         try writer.print(
-            \\{s}const diagnostic = context.runtime().last_diagnostic.?;
+            \\{s}const diagnostic = context.runtime().lastDiagnostic().?;
             \\{s}const message_args = root.SyntaxErrorMessageArgs{{
             \\{s}    .allocator = context.runtime().arena_allocator,
             \\{s}    .context = context,

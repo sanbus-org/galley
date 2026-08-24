@@ -11,6 +11,12 @@ import (
 	galley "github.com/sanbus-org/galley/examples/go/galley"
 )
 
+const (
+	validSample      = "alpha:12,beta:3"
+	brokenSample     = "alpha:"
+	multiErrorSample = "alpha:13x,beta:,gamma:q"
+)
+
 //go:generate go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen .
 
 func printTree(session *galley.Session, node galley.Node, depth int) {
@@ -61,7 +67,6 @@ func main() {
 	}
 
 	/* Successful parse: walk the tree. */
-	const validSample = "alpha:12,beta:3"
 	parsed, err := session.ParseSentinel(validSample)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unexpected failure: %v\n", err)
@@ -70,12 +75,17 @@ func main() {
 	fmt.Printf("parsed %d bytes, %d AST nodes\n", parsed, session.NodeCount())
 	if !galley.HasAST() {
 		fmt.Println("AST construction disabled; skipping tree walk")
-	} else if root, ok := session.RootNode(); ok {
+	} else {
+		root, ok := session.RootNode()
+		if !ok {
+			fmt.Fprintf(os.Stderr, "expected a root node\n")
+			os.Exit(1)
+		}
 		printTree(session, root, 1)
 	}
 
 	/* Failed parse: inspect the diagnostic. */
-	if _, err := session.ParseSentinel("alpha:"); err == nil {
+	if _, err := session.ParseSentinel(brokenSample); err == nil {
 		fmt.Fprintf(os.Stderr, "expected the broken sample to fail\n")
 		os.Exit(1)
 	}
@@ -99,6 +109,25 @@ func main() {
 		fmt.Printf(" %s", name)
 	}
 	fmt.Println()
+
+	// Multi-error parse: every recorded diagnostic stays addressable.
+	if _, err := session.Parse([]byte(multiErrorSample)); err == nil {
+		fmt.Fprintln(os.Stderr, "expected the multi-error sample to fail")
+		os.Exit(1)
+	}
+	recorded := session.Diagnostics()
+	fmt.Printf("recorded diagnostics: %d\n", len(recorded))
+	for index, d := range recorded {
+		kindName := "none"
+		switch d.Kind {
+		case galley.DiagnosticKindSyntax:
+			kindName = "syntax"
+		case galley.DiagnosticKindIndentation:
+			kindName = "indentation"
+		}
+		fmt.Printf("  [%d] %s at %d:%d near '%s'\n",
+			index, kindName, d.Line, d.Column, d.UnexpectedToken)
+	}
 
 	/* File parsing. */
 	const path = "/tmp/galley-go-example.json"

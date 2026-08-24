@@ -304,54 +304,90 @@ const (
 // Diagnostic describes the failure of the most recent parse, mirroring the
 // structured diagnostic of the C API.
 type Diagnostic struct {
-	Kind           DiagnosticKind
-	Line, Column   uint32
-	Message        string
+	Kind            DiagnosticKind
+	Line, Column    uint32
+	Message         string
 	UnexpectedToken []byte
-	ExpectedTokens [][]byte
+	ExpectedTokens  [][]byte
 	// Context lists the innermost-first "while parsing" variable chain
 	// (syntax diagnostics only).
 	Context []string
 }
 
-// Diagnostic inspects the failure of the most recent parse. The second
-// result is false when the parse succeeded.
-func (s *Session) Diagnostic() (Diagnostic, bool) {
-	if C.galley_has_diagnostic(s.ptr) == 0 {
+// diagnosticAt snapshots the diagnostic recorded at diagIndex (0-based, in
+// recording order) of the most recent parse. The message always uses the
+// built-in generic renderer.
+func (s *Session) diagnosticAt(diagIndex C.ulonglong) (Diagnostic, bool) {
+	var diagnostic Diagnostic
+	var line, column C.uint
+	if C.galley_recorded_diagnostic_position(s.ptr, diagIndex, &line, &column) != 0 {
 		return Diagnostic{}, false
 	}
-	diagnostic := Diagnostic{Kind: DiagnosticKind(C.galley_diagnostic_kind(s.ptr))}
-	var line, column C.uint
-	if C.galley_diagnostic_position(s.ptr, &line, &column) == 0 {
-		diagnostic.Line, diagnostic.Column = uint32(line), uint32(column)
-	}
+	diagnostic.Line, diagnostic.Column = uint32(line), uint32(column)
+	diagnostic.Kind = DiagnosticKind(C.galley_recorded_diagnostic_kind(s.ptr, diagIndex))
 	var message *C.char
-	if C.galley_diagnostic_message(s.ptr, &message) == 0 {
+	if C.galley_recorded_diagnostic_message(s.ptr, diagIndex, &message) == 0 {
 		diagnostic.Message = C.GoString(message)
 	}
 	var tokenData *C.char
 	var tokenLength C.size_t
-	if C.galley_diagnostic_unexpected_token(s.ptr, &tokenData, &tokenLength) == 0 {
+	if C.galley_recorded_unexpected_token(s.ptr, diagIndex, &tokenData, &tokenLength) == 0 {
 		diagnostic.UnexpectedToken = C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength))
 	}
-	if expectedCount := C.galley_diagnostic_expected_count(s.ptr); expectedCount > 0 {
+	if expectedCount := C.galley_recorded_expected_count(s.ptr, diagIndex); expectedCount > 0 {
 		for i := C.ulonglong(0); i < C.ulonglong(expectedCount); i++ {
-			if C.galley_diagnostic_expected_at(s.ptr, i, &tokenData, &tokenLength) == 0 {
+			if C.galley_recorded_expected_token(s.ptr, diagIndex, i, &tokenData, &tokenLength) == 0 {
 				diagnostic.ExpectedTokens = append(diagnostic.ExpectedTokens,
 					C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength)))
 			}
 		}
 	}
-	if contextCount := C.galley_diagnostic_context_count(s.ptr); contextCount > 0 {
+	if contextCount := C.galley_recorded_context_count(s.ptr, diagIndex); contextCount > 0 {
 		for i := C.ulonglong(0); i < C.ulonglong(contextCount); i++ {
 			var nameData *C.char
 			var nameLength C.size_t
-			if C.galley_diagnostic_context_at(s.ptr, i, &nameData, &nameLength) == 0 {
+			if C.galley_recorded_context_name(s.ptr, diagIndex, i, &nameData, &nameLength) == 0 {
 				diagnostic.Context = append(diagnostic.Context, C.GoStringN(nameData, C.int(nameLength)))
 			}
 		}
 	}
 	return diagnostic, true
+}
+
+// Diagnostic inspects the failure of the most recent parse (the most
+// recently recorded diagnostic). The second result is false when the parse
+// succeeded. Its message prefers the text rendered by the grammar's
+// error-message hooks during the parse.
+func (s *Session) Diagnostic() (Diagnostic, bool) {
+	count := C.galley_recorded_diagnostic_count(s.ptr)
+	if count <= 0 {
+		return Diagnostic{}, false
+	}
+	diagnostic, ok := s.diagnosticAt(C.ulonglong(count - 1))
+	if !ok {
+		return Diagnostic{}, false
+	}
+	var message *C.char
+	if C.galley_diagnostic_message(s.ptr, &message) == 0 {
+		diagnostic.Message = C.GoString(message)
+	}
+	return diagnostic, true
+}
+
+// Diagnostics returns every diagnostic recorded during the most recent
+// parse, in recording order. Nil when the parse succeeded.
+func (s *Session) Diagnostics() []Diagnostic {
+	count := C.galley_recorded_diagnostic_count(s.ptr)
+	if count <= 0 {
+		return nil
+	}
+	diagnostics := make([]Diagnostic, 0, count)
+	for i := C.ulonglong(0); i < C.ulonglong(count); i++ {
+		if diagnostic, ok := s.diagnosticAt(i); ok {
+			diagnostics = append(diagnostics, diagnostic)
+		}
+	}
+	return diagnostics
 }
 
 // TreeAppendChildren appends chain (and its next-linked siblings) as the

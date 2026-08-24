@@ -325,7 +325,25 @@ export fn galley_node_text(
 /// Returns nonzero when the previous parse produced a diagnostic.
 export fn galley_has_diagnostic(session_ptr: ?*GalleySession) i32 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    return if (embedded.session.runtime_context.last_diagnostic != null) 1 else 0;
+    return if (embedded.session.runtime_context.lastDiagnostic() != null) 1 else 0;
+}
+
+/// Returns the diagnostic recorded at `diag_index` during the most recent
+/// parse (0-based, in recording order), or null when the index is out of
+/// range.
+fn recordedDiagnostic(embedded: *Embedded, diag_index: u64) ?root.ParseDiagnostic {
+    const records = embedded.session.runtime_context.recorded_diagnostics.items;
+    if (diag_index >= records.len) return null;
+    return records[@intCast(diag_index)];
+}
+
+/// Returns the syntax diagnostic recorded at `diag_index`, or null when the
+/// index is out of range or the record is an indentation diagnostic.
+fn recordedSyntaxDiagnostic(embedded: *Embedded, diag_index: u64) ?root.SyntaxDiagnostic {
+    return switch (recordedDiagnostic(embedded, diag_index) orelse return null) {
+        .syntax => |syntax| syntax,
+        .indentation => null,
+    };
 }
 
 /// Writes the rendered diagnostic message (plain text, newline-terminated)
@@ -335,7 +353,7 @@ export fn galley_has_diagnostic(session_ptr: ?*GalleySession) i32 {
 export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]const u8) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
+    const diagnostic = embedded.session.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
     if (embedded.rendered_diagnostic) |cached| {
         out.?.* = cached.ptr;
         return galley_ok;
@@ -355,17 +373,35 @@ export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]co
     return galley_ok;
 }
 
-/// Writes the 1-based line and column of a diagnostic. Fails with
-/// `galley_error_no_diagnostic` when the previous parse succeeded.
-export fn galley_diagnostic_position(
+/// Writes a rendered message (plain text, newline-terminated) for the
+/// diagnostic recorded at `diag_index` into `out`. Unlike
+/// `galley_diagnostic_message`, which prefers the text the grammar's
+/// error-message hooks rendered during the parse, recorded messages always
+/// use the built-in generic renderer. The string is NUL-terminated and
+/// remains valid until the next parse or session destruction.
+export fn galley_recorded_diagnostic_message(
     session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out: ?*[*:0]const u8,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out == null) return galley_error_null_argument;
+    const diagnostic = recordedDiagnostic(embedded, diag_index) orelse return galley_error_no_diagnostic;
+    const arena = embedded.session.arena.allocator();
+    const rendered = root.renderParseDiagnostic(arena, diagnostic, .plain) catch return galley_error_out_of_memory;
+    const z = arena.dupeZ(u8, rendered) catch return galley_error_out_of_memory;
+    out.?.* = z.ptr;
+    return galley_ok;
+}
+
+/// Writes the 1-based line and column of a diagnostic. Fails with
+/// `galley_error_no_diagnostic` when the diagnostic is null.
+fn writeDiagnosticPosition(
+    diagnostic: ?root.ParseDiagnostic,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_line == null or out_column == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
-    switch (diagnostic) {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
         .syntax => |syntax| {
             out_line.?.* = syntax.line;
             out_column.?.* = syntax.column;
@@ -376,6 +412,46 @@ export fn galley_diagnostic_position(
         },
     }
     return galley_ok;
+}
+
+/// Writes the 1-based line and column of a diagnostic. Fails with
+/// `galley_error_no_diagnostic` when the previous parse succeeded.
+export fn galley_diagnostic_position(
+    session_ptr: ?*GalleySession,
+    out_line: ?*u32,
+    out_column: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_line == null or out_column == null) return galley_error_null_argument;
+    return writeDiagnosticPosition(embedded.session.runtime_context.lastDiagnostic(), out_line, out_column);
+}
+
+/// Writes the 1-based line and column of the diagnostic recorded at
+/// `diag_index` during the most recent parse. Fails with
+/// `galley_error_no_diagnostic` when the index is out of range.
+export fn galley_recorded_diagnostic_position(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_line: ?*u32,
+    out_column: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_line == null or out_column == null) return galley_error_null_argument;
+    return writeDiagnosticPosition(recordedDiagnostic(embedded, diag_index), out_line, out_column);
+}
+
+/// Writes the unexpected token bytes of a syntax diagnostic into
+/// `out_data`/`out_len`. Fails with `galley_error_no_diagnostic` when the
+/// diagnostic is null or not a syntax error.
+fn writeUnexpectedToken(diagnostic: ?root.ParseDiagnostic, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
+        .syntax => |syntax| {
+            out_data.?.* = syntax.unexpected_token.ptr;
+            out_len.?.* = syntax.unexpected_token.len;
+            return galley_ok;
+        },
+        .indentation => return galley_error_no_diagnostic,
+    }
 }
 
 /// Writes the unexpected token bytes of a syntax diagnostic into
@@ -389,15 +465,22 @@ export fn galley_diagnostic_unexpected_token(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
-    switch (diagnostic) {
-        .syntax => |syntax| {
-            out_data.?.* = syntax.unexpected_token.ptr;
-            out_len.?.* = syntax.unexpected_token.len;
-            return galley_ok;
-        },
-        .indentation => return galley_error_no_diagnostic,
-    }
+    return writeUnexpectedToken(embedded.session.runtime_context.lastDiagnostic(), out_data, out_len);
+}
+
+/// Writes the unexpected token bytes of the diagnostic recorded at
+/// `diag_index` into `out_data`/`out_len`. Fails with
+/// `galley_error_no_diagnostic` when the index is out of range or the record
+/// is not a syntax error.
+export fn galley_recorded_unexpected_token(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    return writeUnexpectedToken(recordedDiagnostic(embedded, diag_index), out_data, out_len);
 }
 
 /// Renders a status code as a static, NUL-terminated description, or null
@@ -421,16 +504,29 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
     };
 }
 
+/// Returns the number of expected tokens of a syntax diagnostic, or a
+/// negative status when the diagnostic is null or not a syntax error.
+fn countExpectedTokens(diagnostic: ?root.ParseDiagnostic) i64 {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
+        .syntax => |syntax| return @intCast(syntax.expected_tokens.len),
+        .indentation => return galley_error_no_diagnostic,
+    }
+}
+
 /// Returns the number of expected tokens of the current syntax diagnostic,
 /// or a negative status when there is no diagnostic or it is not a syntax
 /// error.
 export fn galley_diagnostic_expected_count(session_ptr: ?*GalleySession) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
-    return switch (diagnostic) {
-        .syntax => |syntax| @intCast(syntax.expected_tokens.len),
-        .indentation => galley_error_no_diagnostic,
-    };
+    return countExpectedTokens(embedded.session.runtime_context.lastDiagnostic());
+}
+
+/// Returns the number of expected tokens of the diagnostic recorded at
+/// `diag_index`, or a negative status when the index is out of range or the
+/// record is not a syntax error.
+export fn galley_recorded_expected_count(session_ptr: ?*GalleySession, diag_index: u64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    return countExpectedTokens(recordedDiagnostic(embedded, diag_index));
 }
 
 /// Writes the expected token at `index` (see
@@ -444,7 +540,31 @@ export fn galley_diagnostic_expected_at(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
+    const diagnostic = embedded.session.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
+    return writeExpectedToken(diagnostic, index, out_data, out_len);
+}
+
+/// Writes the expected token at `token_index` of the diagnostic recorded at
+/// `diag_index` into `out_data`/`out_len`.
+export fn galley_recorded_expected_token(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    token_index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    const diagnostic = recordedDiagnostic(embedded, diag_index) orelse return galley_error_no_diagnostic;
+    return writeExpectedToken(diagnostic, token_index, out_data, out_len);
+}
+
+fn writeExpectedToken(
+    diagnostic: root.ParseDiagnostic,
+    index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
     switch (diagnostic) {
         .syntax => |syntax| {
             if (index >= syntax.expected_tokens.len) return galley_error_invalid_node;
@@ -458,18 +578,32 @@ export fn galley_diagnostic_expected_at(
 }
 
 /// Returns the number of variables in the innermost-first "while parsing"
+/// context chain of a syntax diagnostic, or a negative status when the
+/// diagnostic is null or not a syntax error.
+fn countContextNames(diagnostic: ?root.ParseDiagnostic) i64 {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
+        .syntax => |syntax| switch (syntax.context) {
+            .while_parsing => |names| return @intCast(names.len),
+            else => return 0,
+        },
+        .indentation => return galley_error_no_diagnostic,
+    }
+}
+
+/// Returns the number of variables in the innermost-first "while parsing"
 /// context chain of the current syntax diagnostic, or a negative status when
 /// there is no diagnostic or it is not a syntax error.
 export fn galley_diagnostic_context_count(session_ptr: ?*GalleySession) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
-    return switch (diagnostic) {
-        .syntax => |syntax| switch (syntax.context) {
-            .while_parsing => |names| @intCast(names.len),
-            else => 0,
-        },
-        .indentation => galley_error_no_diagnostic,
-    };
+    return countContextNames(embedded.session.runtime_context.lastDiagnostic());
+}
+
+/// Returns the number of variables in the context chain of the diagnostic
+/// recorded at `diag_index`, or a negative status when the index is out of
+/// range or the record is not a syntax error.
+export fn galley_recorded_context_count(session_ptr: ?*GalleySession, diag_index: u64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    return countContextNames(recordedDiagnostic(embedded, diag_index));
 }
 
 /// Writes the variable name at `index` of the context chain (0 is
@@ -483,7 +617,31 @@ export fn galley_diagnostic_context_at(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
+    const diagnostic = embedded.session.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
+    return writeContextName(diagnostic, index, out_data, out_len);
+}
+
+/// Writes the variable name at `context_index` of the context chain of the
+/// diagnostic recorded at `diag_index` into `out_data`/`out_len`.
+export fn galley_recorded_context_name(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    context_index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    const diagnostic = recordedDiagnostic(embedded, diag_index) orelse return galley_error_no_diagnostic;
+    return writeContextName(diagnostic, context_index, out_data, out_len);
+}
+
+fn writeContextName(
+    diagnostic: root.ParseDiagnostic,
+    index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
     switch (diagnostic) {
         .syntax => |syntax| switch (syntax.context) {
             .while_parsing => |names| {
@@ -574,7 +732,7 @@ export fn galley_last_position(
 export fn galley_diagnostic_message_ansi(session_ptr: ?*GalleySession, out: ?*[*:0]const u8) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
+    const diagnostic = embedded.session.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
     const rendered = root.renderParseDiagnostic(std.heap.c_allocator, diagnostic, .ansi) catch return galley_error_out_of_memory;
     const z = std.heap.c_allocator.dupeZ(u8, rendered) catch {
         std.heap.c_allocator.free(rendered);
@@ -763,15 +921,27 @@ export fn galley_tree_clean_children(
 // Diagnostic classification and multi-error state.
 // ---------------------------------------------------------------------------
 
+/// Returns the kind of a diagnostic, or `galley_diagnostic_kind_none` when
+/// the diagnostic is null.
+fn diagnosticKindValue(diagnostic: ?root.ParseDiagnostic) i64 {
+    switch (diagnostic orelse return galley_diagnostic_kind_none) {
+        .syntax => return galley_diagnostic_kind_syntax,
+        .indentation => return galley_diagnostic_kind_indentation,
+    }
+}
+
 /// Returns the kind of the current diagnostic: `galley_diagnostic_kind_none`,
 /// `galley_diagnostic_kind_syntax`, or `galley_diagnostic_kind_indentation`.
 export fn galley_diagnostic_kind(session_ptr: ?*GalleySession) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_diagnostic_kind_none));
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_diagnostic_kind_none;
-    return switch (diagnostic) {
-        .syntax => galley_diagnostic_kind_syntax,
-        .indentation => galley_diagnostic_kind_indentation,
-    };
+    return diagnosticKindValue(embedded.session.runtime_context.lastDiagnostic());
+}
+
+/// Returns the kind of the diagnostic recorded at `diag_index`, or
+/// `galley_diagnostic_kind_none` when the index is out of range.
+export fn galley_recorded_diagnostic_kind(session_ptr: ?*GalleySession, diag_index: u64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_diagnostic_kind_none));
+    return diagnosticKindValue(recordedDiagnostic(embedded, diag_index));
 }
 
 /// Returns how many syntax errors the most recent recovery-enabled parse
@@ -781,25 +951,29 @@ export fn galley_syntax_error_count(session_ptr: ?*GalleySession) i64 {
     return @intCast(embedded.session.runtime_context.syntax_error_count);
 }
 
+/// Returns how many diagnostics the most recent parse retained, in recording
+/// order. Valid until the next parse begins.
+export fn galley_recorded_diagnostic_count(session_ptr: ?*GalleySession) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
+    return @intCast(embedded.session.runtime_context.recorded_diagnostics.items.len);
+}
+
 fn currentSyntaxDiagnostic(embedded: *Embedded) ?root.SyntaxDiagnostic {
-    return switch (embedded.session.runtime_context.last_diagnostic orelse return null) {
+    return switch (embedded.session.runtime_context.lastDiagnostic() orelse return null) {
         .syntax => |syntax| syntax,
         .indentation => null,
     };
 }
 
 /// Writes the indentation width and emitted spaces of an indentation
-/// diagnostic. Fails with `galley_error_no_diagnostic` when there is no
-/// diagnostic or it is not an indentation diagnostic.
-export fn galley_diagnostic_indentation(
-    session_ptr: ?*GalleySession,
+/// diagnostic. Fails with `galley_error_no_diagnostic` when the diagnostic
+/// is null or not an indentation diagnostic.
+fn writeIndentationFields(
+    diagnostic: ?root.ParseDiagnostic,
     out_spaces: ?*u32,
     out_indentation_width: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
-    const diagnostic = embedded.session.runtime_context.last_diagnostic orelse return galley_error_no_diagnostic;
-    switch (diagnostic) {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
         .indentation => |indentation| {
             out_spaces.?.* = indentation.spaces;
             out_indentation_width.?.* = indentation.indentation_width;
@@ -809,9 +983,55 @@ export fn galley_diagnostic_indentation(
     }
 }
 
+export fn galley_diagnostic_indentation(
+    session_ptr: ?*GalleySession,
+    out_spaces: ?*u32,
+    out_indentation_width: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
+    return writeIndentationFields(embedded.session.runtime_context.lastDiagnostic(), out_spaces, out_indentation_width);
+}
+
+/// Writes the indentation width and emitted spaces of the diagnostic
+/// recorded at `diag_index`. Fails with `galley_error_no_diagnostic` when
+/// the index is out of range or the record is not an indentation diagnostic.
+export fn galley_recorded_indentation(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_spaces: ?*u32,
+    out_indentation_width: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
+    return writeIndentationFields(recordedDiagnostic(embedded, diag_index), out_spaces, out_indentation_width);
+}
+
 // ---------------------------------------------------------------------------
-// Recovery information of the current syntax diagnostic.
+// Recovery information of a syntax diagnostic. Each field is exposed for
+// the current diagnostic and, with a leading `diag_index`, for any
+// diagnostic recorded during the most recent parse.
 // ---------------------------------------------------------------------------
+
+fn recordedRecovery(
+    embedded: *Embedded,
+    diag_index: u64,
+) ?root.SyntaxRecovery {
+    const syntax = recordedSyntaxDiagnostic(embedded, diag_index) orelse return null;
+    return syntax.recovery;
+}
+
+/// Returns the recovery target kind of a syntax diagnostic:
+/// `galley_recovery_target_none` when there is no syntax diagnostic or no
+/// recovery information, otherwise the matching target constant.
+fn recoveryKindValue(syntax: ?root.SyntaxDiagnostic) i64 {
+    const recovery = (syntax orelse return galley_recovery_target_none).recovery orelse return galley_recovery_target_none;
+    return switch (recovery.target) {
+        .lhs_variable => galley_recovery_target_lhs_variable,
+        .production => galley_recovery_target_production,
+        .occurrence => galley_recovery_target_occurrence,
+    };
+}
 
 /// Returns the recovery target kind of the current syntax diagnostic:
 /// `galley_recovery_target_none`, `galley_recovery_target_lhs_variable`,
@@ -819,13 +1039,23 @@ export fn galley_diagnostic_indentation(
 /// `galley_recovery_target_occurrence`.
 export fn galley_diagnostic_recovery_kind(session_ptr: ?*GalleySession) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_recovery_target_none));
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_recovery_target_none;
-    const recovery = syntax.recovery orelse return galley_recovery_target_none;
-    return switch (recovery.target) {
-        .lhs_variable => galley_recovery_target_lhs_variable,
-        .production => galley_recovery_target_production,
-        .occurrence => galley_recovery_target_occurrence,
-    };
+    return recoveryKindValue(currentSyntaxDiagnostic(embedded));
+}
+
+/// Returns the recovery target kind of the diagnostic recorded at
+/// `diag_index`.
+export fn galley_recorded_diagnostic_recovery_kind(session_ptr: ?*GalleySession, diag_index: u64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_recovery_target_none));
+    return recoveryKindValue(recordedSyntaxDiagnostic(embedded, diag_index));
+}
+
+/// Writes the recovery terminal bytes of a syntax diagnostic into
+/// `out_data`/`out_len`.
+fn writeRecoveryTerminal(syntax: ?root.SyntaxDiagnostic, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
+    const recovery = (syntax orelse return galley_error_no_diagnostic).recovery orelse return galley_error_no_diagnostic;
+    out_data.?.* = recovery.terminal.ptr;
+    out_len.?.* = recovery.terminal.len;
+    return galley_ok;
 }
 
 /// Writes the recovery terminal bytes into `out_data`/`out_len`.
@@ -836,21 +1066,27 @@ export fn galley_diagnostic_recovery_terminal(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_error_no_diagnostic;
-    const recovery = syntax.recovery orelse return galley_error_no_diagnostic;
-    out_data.?.* = recovery.terminal.ptr;
-    out_len.?.* = recovery.terminal.len;
-    return galley_ok;
+    return writeRecoveryTerminal(currentSyntaxDiagnostic(embedded), out_data, out_len);
 }
 
-/// Writes the resume side of the recovery: `galley_resume_before` (the
-/// terminal is preserved for the parser to match) or `galley_resume_after`
-/// (the terminal is consumed).
-export fn galley_diagnostic_recovery_resume(session_ptr: ?*GalleySession, out: ?*i64) i64 {
+/// Writes the recovery terminal bytes of the diagnostic recorded at
+/// `diag_index` into `out_data`/`out_len`.
+export fn galley_recorded_recovery_terminal(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out == null) return galley_error_null_argument;
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_error_no_diagnostic;
-    const recovery = syntax.recovery orelse return galley_error_no_diagnostic;
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    return writeRecoveryTerminal(recordedSyntaxDiagnostic(embedded, diag_index), out_data, out_len);
+}
+
+/// Writes the resume side of a syntax diagnostic's recovery into `out`:
+/// `galley_resume_before` (the terminal is preserved for the parser to
+/// match) or `galley_resume_after` (the terminal is consumed).
+fn writeRecoveryResume(syntax: ?root.SyntaxDiagnostic, out: ?*i64) i64 {
+    const recovery = (syntax orelse return galley_error_no_diagnostic).recovery orelse return galley_error_no_diagnostic;
     out.?.* = switch (recovery.@"resume") {
         .before => galley_resume_before,
         .after => galley_resume_after,
@@ -858,17 +1094,24 @@ export fn galley_diagnostic_recovery_resume(session_ptr: ?*GalleySession, out: ?
     return galley_ok;
 }
 
+export fn galley_diagnostic_recovery_resume(session_ptr: ?*GalleySession, out: ?*i64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out == null) return galley_error_null_argument;
+    return writeRecoveryResume(currentSyntaxDiagnostic(embedded), out);
+}
+
+/// Writes the resume side of the recovery of the diagnostic recorded at
+/// `diag_index`.
+export fn galley_recorded_recovery_resume(session_ptr: ?*GalleySession, diag_index: u64, out: ?*i64) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out == null) return galley_error_null_argument;
+    return writeRecoveryResume(recordedSyntaxDiagnostic(embedded, diag_index), out);
+}
+
 /// Writes the LHS variable name of a `lhs_variable` recovery target into
 /// `out_data`/`out_len`.
-export fn galley_diagnostic_recovery_lhs_variable(
-    session_ptr: ?*GalleySession,
-    out_data: ?*[*]const u8,
-    out_len: ?*usize,
-) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_data == null or out_len == null) return galley_error_null_argument;
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_error_no_diagnostic;
-    const recovery = syntax.recovery orelse return galley_error_no_diagnostic;
+fn writeRecoveryLhsVariable(syntax: ?root.SyntaxDiagnostic, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
+    const recovery = (syntax orelse return galley_error_no_diagnostic).recovery orelse return galley_error_no_diagnostic;
     switch (recovery.target) {
         .lhs_variable => |name| {
             out_data.?.* = name.ptr;
@@ -879,18 +1122,38 @@ export fn galley_diagnostic_recovery_lhs_variable(
     }
 }
 
+export fn galley_diagnostic_recovery_lhs_variable(
+    session_ptr: ?*GalleySession,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    return writeRecoveryLhsVariable(currentSyntaxDiagnostic(embedded), out_data, out_len);
+}
+
+/// Writes the LHS variable name of the `lhs_variable` recovery target of the
+/// diagnostic recorded at `diag_index`.
+export fn galley_recorded_recovery_lhs_variable(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    return writeRecoveryLhsVariable(recordedSyntaxDiagnostic(embedded, diag_index), out_data, out_len);
+}
+
 /// Writes the variable name and production index of a `production` recovery
 /// target into `out_variable`/`out_variable_len` and `out_rhs_index`.
-export fn galley_diagnostic_recovery_production(
-    session_ptr: ?*GalleySession,
+fn writeRecoveryProduction(
+    syntax: ?root.SyntaxDiagnostic,
     out_variable: ?*[*]const u8,
     out_variable_len: ?*usize,
     out_rhs_index: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_error_no_diagnostic;
-    const recovery = syntax.recovery orelse return galley_error_no_diagnostic;
+    const recovery = (syntax orelse return galley_error_no_diagnostic).recovery orelse return galley_error_no_diagnostic;
     switch (recovery.target) {
         .production => |production| {
             out_variable.?.* = production.variable.ptr;
@@ -902,9 +1165,58 @@ export fn galley_diagnostic_recovery_production(
     }
 }
 
+export fn galley_diagnostic_recovery_production(
+    session_ptr: ?*GalleySession,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+    out_rhs_index: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
+    return writeRecoveryProduction(currentSyntaxDiagnostic(embedded), out_variable, out_variable_len, out_rhs_index);
+}
+
+/// Writes the production recovery coordinates of the diagnostic recorded at
+/// `diag_index`.
+export fn galley_recorded_recovery_production(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+    out_rhs_index: ?*u32,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
+    return writeRecoveryProduction(recordedSyntaxDiagnostic(embedded, diag_index), out_variable, out_variable_len, out_rhs_index);
+}
+
 /// Writes the occurrence coordinates of an `occurrence` recovery target:
 /// parent variable name, production index, symbol index within the
 /// production, and the occurrence variable name.
+fn writeRecoveryOccurrence(
+    syntax: ?root.SyntaxDiagnostic,
+    out_parent_variable: ?*[*]const u8,
+    out_parent_variable_len: ?*usize,
+    out_rhs_index: ?*u32,
+    out_symbol_index: ?*u32,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+) i64 {
+    const recovery = (syntax orelse return galley_error_no_diagnostic).recovery orelse return galley_error_no_diagnostic;
+    switch (recovery.target) {
+        .occurrence => |occurrence| {
+            out_parent_variable.?.* = occurrence.parent_variable.ptr;
+            out_parent_variable_len.?.* = occurrence.parent_variable.len;
+            out_rhs_index.?.* = @intCast(occurrence.rhs_index);
+            out_symbol_index.?.* = @intCast(occurrence.symbol_index);
+            out_variable.?.* = occurrence.variable.ptr;
+            out_variable_len.?.* = occurrence.variable.len;
+            return galley_ok;
+        },
+        else => return galley_error_no_diagnostic,
+    }
+}
+
 export fn galley_diagnostic_recovery_occurrence(
     session_ptr: ?*GalleySession,
     out_parent_variable: ?*[*]const u8,
@@ -918,20 +1230,26 @@ export fn galley_diagnostic_recovery_occurrence(
     if (out_parent_variable == null or out_parent_variable_len == null or
         out_rhs_index == null or out_symbol_index == null or
         out_variable == null or out_variable_len == null) return galley_error_null_argument;
-    const syntax = currentSyntaxDiagnostic(embedded) orelse return galley_error_no_diagnostic;
-    const recovery = syntax.recovery orelse return galley_error_no_diagnostic;
-    switch (recovery.target) {
-        .occurrence => |occurrence| {
-            out_parent_variable.?.* = occurrence.parent_variable.ptr;
-            out_parent_variable_len.?.* = occurrence.parent_variable.len;
-            out_rhs_index.?.* = @intCast(occurrence.rhs_index);
-            out_symbol_index.?.* = @intCast(occurrence.symbol_index);
-            out_variable.?.* = occurrence.variable.ptr;
-            out_variable_len.?.* = occurrence.variable.len;
-            return galley_ok;
-        },
-        else => return galley_error_no_diagnostic,
-    }
+    return writeRecoveryOccurrence(currentSyntaxDiagnostic(embedded), out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
+}
+
+/// Writes the occurrence recovery coordinates of the diagnostic recorded at
+/// `diag_index`.
+export fn galley_recorded_recovery_occurrence(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_parent_variable: ?*[*]const u8,
+    out_parent_variable_len: ?*usize,
+    out_rhs_index: ?*u32,
+    out_symbol_index: ?*u32,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_parent_variable == null or out_parent_variable_len == null or
+        out_rhs_index == null or out_symbol_index == null or
+        out_variable == null or out_variable_len == null) return galley_error_null_argument;
+    return writeRecoveryOccurrence(recordedSyntaxDiagnostic(embedded, diag_index), out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
 }
 
 // ---------------------------------------------------------------------------

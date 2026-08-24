@@ -905,7 +905,7 @@ const Generator = struct {
     }
 
     fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, exact_name: []const u8, symbol_name: []const u8, indent: []const u8) !void {
-        try writer.print("{s}const diagnostic = context.runtime().last_diagnostic.?;\n", .{indent});
+        try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
         try writer.print("{s}const diagnostic_message = if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, exact_name });
         try self.emitSyntaxErrorHookCall(writer, "", exact_name, indent);
         try writer.print("{s}else if (comptime @hasDecl(error_messages, \"{s}\"))\n", .{ indent, symbol_name });

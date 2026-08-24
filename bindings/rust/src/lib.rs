@@ -103,6 +103,47 @@ extern "C" {
         out_spaces: *mut u32,
         out_width: *mut u32,
     ) -> i64;
+    fn galley_recorded_diagnostic_count(session: *mut GalleySessionRaw) -> i64;
+    fn galley_recorded_diagnostic_message(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        out: *mut *const c_char,
+    ) -> i64;
+    fn galley_recorded_diagnostic_kind(session: *mut GalleySessionRaw, diag_index: u64) -> i64;
+    fn galley_recorded_diagnostic_position(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        out_line: *mut u32,
+        out_column: *mut u32,
+    ) -> i64;
+    fn galley_recorded_unexpected_token(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
+    ) -> i64;
+    fn galley_recorded_expected_count(session: *mut GalleySessionRaw, diag_index: u64) -> i64;
+    fn galley_recorded_expected_token(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        token_index: u64,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
+    ) -> i64;
+    fn galley_recorded_context_count(session: *mut GalleySessionRaw, diag_index: u64) -> i64;
+    fn galley_recorded_context_name(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        context_index: u64,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
+    ) -> i64;
+    fn galley_recorded_indentation(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        out_spaces: *mut u32,
+        out_width: *mut u32,
+    ) -> i64;
     fn galley_status_string(status: i64) -> *const c_char;
 }
 
@@ -460,54 +501,94 @@ impl Session {
         }
     }
 
-    /// Structured diagnostic of the failed parse, if any. Owned copy.
-    pub fn diagnostic(&self) -> Option<Diagnostic> {
-        if unsafe { galley_has_diagnostic(self.inner) } == 0 {
-            return None;
-        }
+    /// Builds an owned snapshot of the diagnostic recorded at `diag_index`
+    /// (0-based, in recording order) of the most recent parse. The message
+    /// always uses the built-in generic renderer.
+    fn recorded_diagnostic_at(&self, diag_index: u64) -> Option<Diagnostic> {
         let mut d = Diagnostic::default();
         unsafe {
-            galley_diagnostic_position(self.inner, &mut d.line, &mut d.column);
+            if galley_recorded_diagnostic_position(
+                self.inner,
+                diag_index,
+                &mut d.line,
+                &mut d.column,
+            ) != 0
+            {
+                return None;
+            }
 
-            d.kind = match galley_diagnostic_kind(self.inner) {
+            d.kind = match galley_recorded_diagnostic_kind(self.inner, diag_index) {
                 1 => DiagnosticKind::Syntax,
                 2 => DiagnosticKind::Indentation,
                 _ => DiagnosticKind::None,
             };
 
             let mut msg: *const c_char = std::ptr::null();
-            galley_diagnostic_message(self.inner, &mut msg);
-            d.message = cstr(msg).unwrap_or("").to_owned();
+            if galley_recorded_diagnostic_message(self.inner, diag_index, &mut msg) == 0 {
+                d.message = cstr(msg).unwrap_or("").to_owned();
+            }
 
             let mut tok: *const c_char = std::ptr::null();
             let mut tl = 0usize;
-            if galley_diagnostic_unexpected_token(self.inner, &mut tok, &mut tl) == 0 {
+            if galley_recorded_unexpected_token(self.inner, diag_index, &mut tok, &mut tl) == 0 {
                 d.unexpected_token = bytes(tok, tl).to_vec();
             }
 
-            for i in 0..galley_diagnostic_expected_count(self.inner).max(0) as u64 {
+            for i in 0..galley_recorded_expected_count(self.inner, diag_index).max(0) as u64 {
                 let mut td: *const c_char = std::ptr::null();
                 let mut tdl = 0usize;
-                if galley_diagnostic_expected_at(self.inner, i, &mut td, &mut tdl) == 0 {
+                if galley_recorded_expected_token(self.inner, diag_index, i, &mut td, &mut tdl) == 0
+                {
                     d.expected_tokens.push(bytes(td, tdl).to_vec());
                 }
             }
 
-            for i in 0..galley_diagnostic_context_count(self.inner).max(0) as u64 {
+            for i in 0..galley_recorded_context_count(self.inner, diag_index).max(0) as u64 {
                 let mut cd: *const c_char = std::ptr::null();
                 let mut cdl = 0usize;
-                if galley_diagnostic_context_at(self.inner, i, &mut cd, &mut cdl) == 0 {
+                if galley_recorded_context_name(self.inner, diag_index, i, &mut cd, &mut cdl) == 0 {
                     d.context.push(cstr(cd).unwrap_or("").to_owned());
                 }
             }
 
             let mut sp = 0u32;
             let mut iw = 0u32;
-            if galley_diagnostic_indentation(self.inner, &mut sp, &mut iw) == 0 {
+            if galley_recorded_indentation(self.inner, diag_index, &mut sp, &mut iw) == 0 {
                 d.indentation = Some(IndentationInfo {
                     spaces: sp,
                     indentation_width: iw,
                 });
+            }
+        }
+        Some(d)
+    }
+
+    /// Structured diagnostics of the failed parse, in recording order. Owned
+    /// copies; empty when the parse succeeded.
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
+        let count = unsafe { galley_recorded_diagnostic_count(self.inner) }.max(0) as u64;
+        let mut out = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            if let Some(d) = self.recorded_diagnostic_at(i) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    /// Structured diagnostic of the failed parse, if any (the most recently
+    /// recorded one). Owned copy. Its message prefers the text rendered by
+    /// the grammar's error-message hooks during the parse.
+    pub fn diagnostic(&self) -> Option<Diagnostic> {
+        let count = unsafe { galley_recorded_diagnostic_count(self.inner) };
+        if count <= 0 {
+            return None;
+        }
+        let mut d = self.recorded_diagnostic_at((count - 1) as u64)?;
+        unsafe {
+            let mut msg: *const c_char = std::ptr::null();
+            if galley_diagnostic_message(self.inner, &mut msg) == 0 {
+                d.message = cstr(msg).unwrap_or("").to_owned();
             }
         }
         Some(d)

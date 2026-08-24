@@ -28,10 +28,15 @@ pub const RuntimeContext = struct {
     input_path: ?[]const u8 = null,
     language_options: root.config.Options = .{},
     arena_allocator: std.mem.Allocator,
-    last_diagnostic: ?root.ParseDiagnostic = null,
-    /// Message rendered for `last_diagnostic` by the grammar's error-message
-    /// hooks (or their generic fallback). Arena-backed: valid until the next
-    /// parse begins. Bindings surface this through `galley_diagnostic_message`.
+    /// Every diagnostic recorded during the current parse, in recording
+    /// order. Bounded by the generated parsers' limit checks against
+    /// `max_errors` (indentation records at most once per parse).
+    /// Arena-backed: valid until the next parse begins.
+    recorded_diagnostics: std.ArrayList(root.ParseDiagnostic) = .empty,
+    /// Message rendered for the most recent diagnostic by the grammar's
+    /// error-message hooks (or their generic fallback). Arena-backed: valid
+    /// until the next parse begins. Bindings surface this through
+    /// `galley_diagnostic_message`.
     last_rendered_message: ?[]const u8 = null,
     max_errors: usize = 10,
     recovery_window: usize = 500,
@@ -42,6 +47,13 @@ pub const RuntimeContext = struct {
     explicit_recovery_target_id: ?usize = null,
     pending_syntax_error_site: ?usize = null,
     syntax_error_reporter: ?root.SyntaxErrorMessageReporter = null,
+
+    /// Returns the most recently recorded diagnostic of the current (or
+    /// previous) parse, if any.
+    pub fn lastDiagnostic(self: *const RuntimeContext) ?root.ParseDiagnostic {
+        if (self.recorded_diagnostics.items.len == 0) return null;
+        return self.recorded_diagnostics.items[self.recorded_diagnostics.items.len - 1];
+    }
 };
 
 var runtime_registry_mutex: std.atomic.Mutex = .unlocked;
@@ -205,6 +217,13 @@ pub const Context = struct {
         if (comptime root.parser.is_syntax_error_stack_enabled) self.syntax_error_stack.pop();
     }
 
+    /// Retains `diagnostic` in the parse's recorded-diagnostics list. The
+    /// arena allocation keeps every record valid until the next parse begins.
+    fn retainDiagnostic(self: *Self, diagnostic: root.ParseDiagnostic) !void {
+        const runtime_context = self.runtime();
+        try runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, diagnostic);
+    }
+
     pub fn recordSyntaxDiagnostic(
         self: *@This(),
         diagnostic_context: root.SyntaxDiagnosticContext,
@@ -227,7 +246,7 @@ pub const Context = struct {
             }
         }
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.diagnosticTokenItems());
-        self.runtime().last_diagnostic = .{
+        try self.retainDiagnostic(.{
             .syntax = .{
                 .line = if (comptime root.position_tracking_enabled) self.line else 0,
                 .column = if (comptime root.position_tracking_enabled) self.column else 0,
@@ -235,7 +254,7 @@ pub const Context = struct {
                 .expected_tokens = expected_tokens,
                 .context = effective_diagnostic_context,
             },
-        };
+        });
         self.runtime().syntax_error_count += 1;
     }
 
@@ -330,7 +349,9 @@ pub const Context = struct {
     }
 
     pub fn attachSyntaxRecovery(self: *Self, recovery: root.SyntaxRecovery) !void {
-        const diagnostic = &(self.runtime().last_diagnostic orelse return error.MissingSyntaxDiagnostic);
+        const records = &self.runtime().recorded_diagnostics;
+        if (records.items.len == 0) return error.MissingSyntaxDiagnostic;
+        const diagnostic = &records.items[records.items.len - 1];
         switch (diagnostic.*) {
             .syntax => |*syntax| syntax.recovery = recovery,
             .indentation => return error.MissingSyntaxDiagnostic,
@@ -688,7 +709,7 @@ pub const Context = struct {
         const unexpected_token = try arena.dupe(u8, self.diagnosticTokenItems());
         const expected_tokens = try arena.alloc([]const u8, 1);
         expected_tokens[0] = try arena.dupe(u8, terminator);
-        self.runtime().last_diagnostic = .{
+        try self.retainDiagnostic(.{
             .syntax = .{
                 .line = if (comptime root.position_tracking_enabled) self.line else 0,
                 .column = if (comptime root.position_tracking_enabled) self.column else 0,
@@ -696,7 +717,7 @@ pub const Context = struct {
                 .expected_tokens = expected_tokens,
                 .context = .none,
             },
-        };
+        });
         self.runtime().syntax_error_count += 1;
     }
 
@@ -1042,14 +1063,16 @@ pub const Context = struct {
         comptime std.debug.assert(root.config.indentation_syntax);
 
         self.indentation_error = true;
-        const runtime_context = self.runtime();
         const diagnostic: root.ParseDiagnostic = .{ .indentation = .{
             .line = if (comptime root.position_tracking_enabled) self.line + 1 else 0,
             .column = if (comptime root.position_tracking_enabled) 1 else 0,
             .spaces = line_spaces,
             .indentation_width = self.indent_width,
         } };
-        runtime_context.last_diagnostic = diagnostic;
+        // The lexer path is infallible, so arena exhaustion here degrades to
+        // dropping the retained copy; the parse still reports the
+        // indentation error itself.
+        self.retainDiagnostic(diagnostic) catch {};
     }
 
     inline fn ensureInputLoaded(self: *@This(), needed_len: usize) void {
