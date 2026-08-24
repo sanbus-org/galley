@@ -1,3 +1,5 @@
+// Parses a small key/value document through the Galley C API, mirroring
+// examples/c, examples/rust, and examples/go byte-for-byte in output.
 #include <galley.h>
 
 #include <cstdio>
@@ -7,6 +9,7 @@ namespace {
 
 constexpr const char *kValidSample = "alpha:12,beta:3";
 constexpr const char *kBrokenSample = "alpha:";
+constexpr const char *kMultiErrorSample = "alpha:13x,beta:,gamma:q";
 
 struct SessionGuard {
     GalleySession *session;
@@ -83,8 +86,15 @@ int main(int argc, char *argv[]) {
                 parsed, galley_node_count(&session));
     if (!galley_has_ast()) {
         std::puts("AST construction disabled; skipping tree walk");
-    } else if (!printTree(session, galley_root_node(&session), 1)) {
-        return 1;
+    } else {
+        const GalleyNodeAddress root = galley_root_node(&session);
+        if (root == GALLEY_INVALID_NODE) {
+            std::fprintf(stderr, "expected a root node\n");
+            return 1;
+        }
+        if (!printTree(session, root, 1)) {
+            return 1;
+        }
     }
 
     /* Failed parse: inspect the diagnostic. */
@@ -120,11 +130,38 @@ int main(int argc, char *argv[]) {
     }
     std::fputc('\n', stdout);
 
+    /* Multi-error parse: every recorded diagnostic stays addressable. */
+    if (galley_parse_sentinel(&session, kMultiErrorSample) >= 0) {
+        std::fprintf(stderr, "expected the multi-error sample to fail\n");
+        return 1;
+    }
+    const long long recorded_count = galley_recorded_diagnostic_count(&session);
+    std::printf("recorded diagnostics: %lld\n", recorded_count);
+    for (long long i = 0; i < recorded_count; ++i) {
+        unsigned int recorded_line = 0, recorded_column = 0;
+        galley_recorded_diagnostic_position(&session, static_cast<unsigned long long>(i),
+                                            &recorded_line, &recorded_column);
+        const long long kind = galley_recorded_diagnostic_kind(&session, static_cast<unsigned long long>(i));
+        const char *kind_name = kind == galley_diagnostic_kind_syntax     ? "syntax"
+                                : kind == galley_diagnostic_kind_indentation ? "indentation"
+                                                                             : "none";
+        const char *unexpected_data = nullptr;
+        std::size_t unexpected_len = 0;
+        galley_recorded_unexpected_token(&session, static_cast<unsigned long long>(i),
+                                         &unexpected_data, &unexpected_len);
+        std::printf("  [%lld] %s at %u:%u near '%.*s'\n",
+                    i, kind_name, recorded_line, recorded_column,
+                    static_cast<int>(unexpected_len), unexpected_data);
+    }
+
     /* File parsing. */
     {
         constexpr const char *kPath = "/tmp/galley-cpp-example.json";
         FILE *file = std::fopen(kPath, "wb");
-        if (file == nullptr) return 1;
+        if (file == nullptr) {
+            std::fprintf(stderr, "failed to write %s\n", kPath);
+            return 1;
+        }
         std::fwrite(kValidSample, 1, std::strlen(kValidSample), file);
         std::fclose(file);
 
@@ -149,7 +186,12 @@ int main(int argc, char *argv[]) {
                 std::fprintf(stderr, "expected the root to have children\n");
                 return 1;
             }
-            galley_tree_append_children(&session, root, head);
+            const long long reattached = galley_tree_append_children(&session, root, head);
+            if (reattached != galley_ok) {
+                std::fprintf(stderr, "failed to reattach children: %s (%lld)\n",
+                             galley_status_string(reattached), reattached);
+                return 1;
+            }
             std::printf("tree edit: %u children before, %u after reattach\n",
                         before, galley_node_child_count(&session, root));
         }

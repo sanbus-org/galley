@@ -394,7 +394,11 @@ func emitHookBinding(outputPath string, userHooks []string) error {
 		"\t\t\tfmt.Fprintln(os.Stderr, \"galley-bindings: grammar declares no hook named\", target.name)\n" +
 		"\t\t}\n" +
 		"\t}\n}\n")
-	return os.WriteFile(outputPath, []byte(builder.String()), 0o644)
+	formatted, err := format.Source([]byte(builder.String()))
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(outputPath, formatted, 0o644)
 }
 
 // emitBridge writes <language-dir>/galley/galley.go: the generated cgo

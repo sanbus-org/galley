@@ -348,6 +348,58 @@ long long galley_diagnostic_recovery_occurrence(GalleySession *session,
                                                 unsigned int *out_rhs_index, unsigned int *out_symbol_index,
                                                 const char **out_variable, size_t *out_variable_len);
 
+/* Recorded diagnostics of the most recent parse. Every diagnostic the parse
+ * recorded (bounded by its error limit) stays addressable by diag_index
+ * (0-based, in recording order) until the next parse begins. The singular
+ * accessors above remain available for the most recent diagnostic.
+ *
+ * galley_recorded_diagnostic_count returns how many diagnostics were
+ * retained; out-of-range indexes return galley_error_no_diagnostic (kind
+ * accessors return galley_diagnostic_kind_none /
+ * galley_recovery_target_none). */
+long long galley_recorded_diagnostic_count(GalleySession *session);
+
+/* Kind, position, unexpected token, and rendered message of a recorded
+ * diagnostic; the indentation width and spaces of a recorded indentation
+ * diagnostic. Messages use the built-in generic renderer and remain valid
+ * until the next parse. */
+long long galley_recorded_diagnostic_kind(GalleySession *session, unsigned long long diag_index);
+long long galley_recorded_diagnostic_position(GalleySession *session, unsigned long long diag_index,
+                                              unsigned int *out_line, unsigned int *out_column);
+long long galley_recorded_unexpected_token(GalleySession *session, unsigned long long diag_index,
+                                           const char **out_data, size_t *out_len);
+long long galley_recorded_diagnostic_message(GalleySession *session, unsigned long long diag_index,
+                                             const char **out);
+long long galley_recorded_indentation(GalleySession *session, unsigned long long diag_index,
+                                      unsigned int *out_spaces, unsigned int *out_indentation_width);
+
+/* Expected tokens and "while parsing" context chain of a recorded
+ * diagnostic. */
+long long galley_recorded_expected_count(GalleySession *session, unsigned long long diag_index);
+long long galley_recorded_expected_token(GalleySession *session, unsigned long long diag_index,
+                                         unsigned long long token_index,
+                                         const char **out_data, size_t *out_len);
+long long galley_recorded_context_count(GalleySession *session, unsigned long long diag_index);
+long long galley_recorded_context_name(GalleySession *session, unsigned long long diag_index,
+                                       unsigned long long context_index,
+                                       const char **out_data, size_t *out_len);
+
+/* Recovery information attached to a recorded diagnostic. */
+long long galley_recorded_recovery_kind(GalleySession *session, unsigned long long diag_index);
+long long galley_recorded_recovery_terminal(GalleySession *session, unsigned long long diag_index,
+                                            const char **out_data, size_t *out_len);
+long long galley_recorded_recovery_resume(GalleySession *session, unsigned long long diag_index,
+                                          long long *out);
+long long galley_recorded_recovery_lhs_variable(GalleySession *session, unsigned long long diag_index,
+                                                const char **out_data, size_t *out_len);
+long long galley_recorded_recovery_production(GalleySession *session, unsigned long long diag_index,
+                                              const char **out_variable, size_t *out_variable_len,
+                                              unsigned int *out_rhs_index);
+long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned long long diag_index,
+                                              const char **out_parent_variable, size_t *out_parent_variable_len,
+                                              unsigned int *out_rhs_index, unsigned int *out_symbol_index,
+                                              const char **out_variable, size_t *out_variable_len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
