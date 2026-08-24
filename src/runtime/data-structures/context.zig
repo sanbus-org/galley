@@ -47,12 +47,23 @@ pub const RuntimeContext = struct {
     explicit_recovery_target_id: ?usize = null,
     pending_syntax_error_site: ?usize = null,
     syntax_error_reporter: ?root.SyntaxErrorMessageReporter = null,
+    /// Session-owned message override table, wired at parse start. Lookup
+    /// happens only inside cold syntax-error paths.
+    message_overrides: ?*const std.StringHashMapUnmanaged([]const u8) = null,
 
     /// Returns the most recently recorded diagnostic of the current (or
     /// previous) parse, if any.
     pub fn lastDiagnostic(self: *const RuntimeContext) ?root.ParseDiagnostic {
         if (self.recorded_diagnostics.items.len == 0) return null;
         return self.recorded_diagnostics.items[self.recorded_diagnostics.items.len - 1];
+    }
+
+    /// Returns the override message recorded for `name`, if the session
+    /// registered one. Call sites consult their candidate names in fallback
+    /// order, so a general key applies wherever no more specific entry hit.
+    pub fn messageOverride(self: *const RuntimeContext, name: []const u8) ?[]const u8 {
+        const overrides = self.message_overrides orelse return null;
+        return overrides.get(name);
     }
 };
 

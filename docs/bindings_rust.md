@@ -52,6 +52,26 @@ Run `galley --fill-error-messages <language-dir>` and edit the generated
 and compiles it into the shared library; `Session::diagnostic().message`
 then returns your hooks' text instead of the built-in generic renderer.
 
+To replace a site's message with a fixed string — no Zig file at all —
+pass `message_overrides` in `SessionOptions`. Names follow the same
+fallback order the sites use (exact hook name, then variable-level
+family, then the general `syntax_error`), and overrides take priority
+over hooks:
+
+```rust
+let options = galley_bindings::SessionOptions {
+    message_overrides: vec![(
+        "syntax_error_ll_Number__expected_generative_terminal_digit".into(),
+        "expected a number after ':' (digits only)".into(),
+    )],
+    ..Default::default()
+};
+```
+
+`galley_bindings::galley_json_message_overrides("galley.json")` reads the
+optional `error_messages` object of a galley.json file into that same
+shape; missing or malformed files yield an empty vector.
+
 ## Build Model
 
 Add the bindings crate to your `Cargo.toml`:

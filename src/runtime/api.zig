@@ -109,6 +109,16 @@ pub const DiagnosticStyle = enum {
 
 pub const SyntaxErrorMessageReporter = *const fn (message: []const u8) void;
 
+/// One message override: when a syntax-error site's resolution chain
+/// contains `name` (a generated hook name such as
+/// `syntax_error_ll_Number__expected_generative_terminal_digit`, its
+/// variable-level family, or the general `syntax_error`), the recorded
+/// message is replaced by `message` verbatim.
+pub const MessageOverride = struct {
+    name: []const u8,
+    message: []const u8,
+};
+
 pub const ParseOptions = struct {
     language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
@@ -126,6 +136,11 @@ pub const ParseOptions = struct {
     /// `-Dsyntax-error-stack-depth` above 1.
     syntax_error_stack_depth: usize = 0,
     syntax_error_reporter: ?SyntaxErrorMessageReporter = null,
+    /// Message overrides copied into the session at creation. Entries are
+    /// matched against syntax-error site names in the same fallback order
+    /// the sites use (exact hook name, then family, then general), and take
+    /// priority over both grammar hooks and the built-in renderer.
+    message_overrides: []const MessageOverride = &.{},
 };
 
 pub const SyntaxErrorMessageArgs = struct {
@@ -344,6 +359,11 @@ pub const Session = struct {
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
     session_lock: std.Io.RwLock = .init,
     generation: usize = 0,
+    /// Message overrides owned by the session (copied from `ParseOptions`
+    /// at creation, extendable through the C API's override setter).
+    /// Allocated from `allocator`, never from the parse arena, so entries
+    /// survive across parses.
+    message_overrides: std.StringHashMapUnmanaged([]const u8) = .empty,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
         if (options.max_errors == 0) return error.InvalidMaxErrors;
@@ -373,7 +393,17 @@ pub const Session = struct {
         const chunk_buffer = try allocator.alloc(u8, chunk_buffer_size);
         errdefer allocator.free(chunk_buffer);
 
-        const node_allocator = if (parser.is_ast_enabled)
+        var message_overrides: std.StringHashMapUnmanaged([]const u8) = .empty;
+        errdefer message_overrides.deinit(allocator);
+        for (options.message_overrides) |override| {
+            const name = try allocator.dupe(u8, override.name);
+            errdefer allocator.free(name);
+            const message = try allocator.dupe(u8, override.message);
+            errdefer allocator.free(message);
+            try message_overrides.put(allocator, name, message);
+        }
+
+        var node_allocator = if (parser.is_ast_enabled)
             try data_structures.ASTAllocator.initWithCapacity(allocator, 0)
         else {};
         errdefer if (parser.is_ast_enabled) node_allocator.deinit(allocator);
@@ -398,6 +428,7 @@ pub const Session = struct {
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
             .node_allocator = node_allocator,
+            .message_overrides = message_overrides,
             .verbosity = if (builtin.mode == .Debug) options.verbosity else {},
             .stack_overflow_recovery = options.stack_overflow_recovery,
             .ast_preallocation_ratio = if (parser.is_ast_enabled) options.ast_preallocation_ratio else {},
@@ -420,9 +451,21 @@ pub const Session = struct {
         if (parser.is_ast_enabled) {
             self.node_allocator.deinit(self.allocator);
         }
+        self.freeMessageOverrides();
         self.allocator.free(self.chunk_buffer);
         self.allocator.free(self.reader_buffer);
         self.arena.deinit();
+    }
+
+    /// Frees every override entry owned by the session. The map itself is a
+    /// plain field, so only the copied keys and values need releasing.
+    fn freeMessageOverrides(self: *Session) void {
+        var iterator = self.message_overrides.iterator();
+        while (iterator.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.message_overrides.deinit(self.allocator);
     }
 
     pub fn read(self: *Session, result: ParseResult) error{ SessionInUse, StaleParseResult }!SessionReadGuard {
@@ -601,6 +644,7 @@ pub const Session = struct {
         defer runtime_registration.unregister();
 
         _ = self.arena.reset(.retain_capacity);
+        self.runtime_context.message_overrides = &self.message_overrides;
         self.runtime_context.recorded_diagnostics = .empty;
         self.runtime_context.last_rendered_message = null;
         self.runtime_context.syntax_error_count = 0;
@@ -706,6 +750,58 @@ test "syntax error stack depth is configurable per session" {
         };
         try std.testing.expectEqual(depth, syntax.context.while_parsing.len);
     }
+}
+
+test "message overrides replace rendered syntax errors and beat hooks" {
+    if (builtin.mode != .Debug) return error.SkipZigTest;
+
+    const malformed =
+        \\Start
+        \\| ?
+        \\
+    ;
+
+    const run = struct {
+        fn parse(overrides: []const MessageOverride, allocator: std.mem.Allocator) ![]u8 {
+            var session = try Session.init(std.Io.failing, allocator, .{
+                .message_overrides = overrides,
+            });
+            errdefer session.deinit();
+            var context = session._makeContext(.{ .bytes = .{ .input = malformed[0 .. malformed.len + 1] } }, null);
+            if (session._parseContext(&context)) |_| {
+                return error.ExpectedSyntaxError;
+            } else |err| switch (err) {
+                ParseError.SyntaxError => {},
+                else => return err,
+            }
+            const rendered = session.runtime_context.last_rendered_message orelse return error.MissingRenderedMessage;
+            const copy = try allocator.dupe(u8, rendered);
+            session.deinit();
+            return copy;
+        }
+    }.parse;
+
+    const baseline = try run(&.{}, std.testing.allocator);
+    defer std.testing.allocator.free(baseline);
+    try std.testing.expect(baseline.len > 0);
+
+    const overridden = try run(&.{.{
+        .name = "syntax_error",
+        .message = "override text beats every hook",
+    }}, std.testing.allocator);
+    defer std.testing.allocator.free(overridden);
+    try std.testing.expectEqualStrings("override text beats every hook", overridden);
+    try std.testing.expect(!std.mem.eql(u8, baseline, overridden));
+
+    // An exact entry for a site this input never reaches simply never
+    // matches: resolution walks candidates in order and falls through to
+    // the hooks/builtin chain.
+    const scoped = try run(&.{.{
+        .name = "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail",
+        .message = "unreachable exact override",
+    }}, std.testing.allocator);
+    defer std.testing.allocator.free(scoped);
+    try std.testing.expect(!std.mem.eql(u8, scoped, "unreachable exact override"));
 }
 
 test "structured syntax recovery renders in plain and ANSI diagnostics" {

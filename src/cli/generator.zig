@@ -20,6 +20,10 @@ const OptionOverrides = struct {
     position_tracking: ?bool = null,
     input_streaming: ?bool = null,
     allow_no_ast_tree_procedures: ?bool = null,
+    /// Accepted but ignored during generation: language bindings read this
+    /// section themselves and register its entries as session message
+    /// overrides.
+    error_messages: ?std.json.Value = null,
 };
 
 const CONFIG_FILE_NAME = "galley.json";
@@ -61,12 +65,21 @@ fn loadConfigFileOverrides(init: std.process.Init, gpa: std.mem.Allocator, langu
     };
     defer gpa.free(content);
 
-    var parsed = std.json.parseFromSlice(OptionOverrides, gpa, content, .{}) catch |err| switch (err) {
+    var parsed = parseConfigOverrides(gpa, content) catch |err| switch (err) {
         error.UnknownField => fatal("error: {s} contains an unknown or misspelled key\n", .{path}),
         else => fatal("error: failed to parse {s}: {t}\n", .{ path, err }),
     };
     defer parsed.deinit();
+    // `OptionOverrides` currently holds only optional primitives, so the
+    // value outlives its parsing arena safely. The ignored `error_messages`
+    // section must stay that way — its contents reference the arena.
     return parsed.value;
+}
+
+/// Parses galley.json contents without any process-level failure handling,
+/// so tests can assert rejection behavior directly.
+fn parseConfigOverrides(gpa: std.mem.Allocator, content: []const u8) !std.json.Parsed(OptionOverrides) {
+    return std.json.parseFromSlice(OptionOverrides, gpa, content, .{});
 }
 
 /// Applies one layer of overrides. Explicit command-line options are applied
@@ -704,6 +717,29 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
         std.debug.print("missing expected text:\n{s}\n", .{needle});
         return error.MissingExpectedText;
     }
+}
+
+test "galley.json accepts the error_messages section for language bindings" {
+    var parsed = try parseConfigOverrides(std.testing.allocator,
+        \\{
+        \\  "ast": true,
+        \\  "error_messages": {
+        \\    "syntax_error": "parse failed",
+        \\    "weird } brace { key": "with \"escapes\" and : colons"
+        \\  }
+        \\}
+    );
+    defer parsed.deinit();
+    // Generation ignores the contents entirely; acceptance is the contract
+    // (the Rust and Go bindings read this section host-side).
+    try std.testing.expect(parsed.value.error_messages != null);
+}
+
+test "galley.json still rejects unknown keys" {
+    try std.testing.expectError(
+        error.UnknownField,
+        parseConfigOverrides(std.testing.allocator, "{\"ast_typo\": false}"),
+    );
 }
 
 test "failed parser generation preserves the previous output" {

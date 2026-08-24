@@ -170,6 +170,39 @@ export fn galley_session_destroy(session_ptr: ?*GalleySession) void {
     std.heap.c_allocator.destroy(embedded);
 }
 
+/// Registers one message override: when a syntax-error site's resolution
+/// chain contains `name`, the site reports `message` verbatim instead of
+/// consulting grammar hooks or the built-in renderer. Overrides set here
+/// take priority over `ParseOptions.message_overrides` entries and persist
+/// for the session's lifetime.
+export fn galley_session_set_message_override(
+    session_ptr: ?*GalleySession,
+    name_ptr: ?[*]const u8,
+    name_len: usize,
+    message_ptr: ?[*]const u8,
+    message_len: usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (name_ptr == null or message_ptr == null) return galley_error_null_argument;
+    const allocator = embedded.session.allocator;
+    const name = allocator.dupe(u8, name_ptr.?[0..name_len]) catch return galley_error_out_of_memory;
+    const message = allocator.dupe(u8, message_ptr.?[0..message_len]) catch {
+        allocator.free(name);
+        return galley_error_out_of_memory;
+    };
+    const gop = embedded.session.message_overrides.getOrPut(allocator, name) catch {
+        allocator.free(name);
+        allocator.free(message);
+        return galley_error_out_of_memory;
+    };
+    if (gop.found_existing) {
+        allocator.free(name);
+        allocator.free(gop.value_ptr.*);
+    }
+    gop.value_ptr.* = message;
+    return galley_ok;
+}
+
 fn statusForError(err: anyerror) i64 {
     return switch (err) {
         error.SyntaxError => galley_error_syntax,

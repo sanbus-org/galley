@@ -1,4 +1,25 @@
-import "unsafe"
+import (
+	"encoding/json"
+	"os"
+	"unsafe"
+)
+
+// GalleyJSONMessageOverrides reads the optional top-level "error_messages"
+// object of a galley.json file (flat string → string entries). A missing or
+// malformed file yields nil.
+func GalleyJSONMessageOverrides(path string) map[string]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var document struct {
+		ErrorMessages map[string]string `json:"error_messages"`
+	}
+	if json.Unmarshal(data, &document) != nil {
+		return nil
+	}
+	return document.ErrorMessages
+}
 
 func (s *Session) treeStatus(status C.longlong) error {
 	if status >= 0 {
@@ -82,13 +103,17 @@ func HasAST() bool {
 // library defaults. The zero value enables every default except MaxErrors,
 // which must be set explicitly through DefaultOptions.
 type SessionOptions struct {
-	MaxErrors                int32
-	RecoveryWindow           int32
-	StackOverflowRecovery    bool
-	SyntaxErrorStackDepth    uint32
-	Verbosity                int32
-	ASTPreallocationRatio    float64
-	ASTPreallocationCap      uint64
+	MaxErrors               int32
+	RecoveryWindow          int32
+	StackOverflowRecovery   bool
+	SyntaxErrorStackDepth   uint32
+	Verbosity               int32
+	ASTPreallocationRatio   float64
+	ASTPreallocationCap     uint64
+	// MessageOverrides registers syntax-error message overrides: when a
+	// site's resolution chain contains the name, it reports the message
+	// verbatim, ahead of grammar hooks and the built-in renderer.
+	MessageOverrides map[string]string
 }
 
 // DefaultOptions mirrors the defaults of the C and Rust consumers.
@@ -131,7 +156,15 @@ func WithOptions(options SessionOptions) (*Session, error) {
 	if ptr == nil {
 		return nil, ErrOutOfMemory
 	}
-	return &Session{ptr: ptr}, nil
+	session := &Session{ptr: ptr}
+	for name, message := range options.MessageOverrides {
+		cName := C.CString(name)
+		cMessage := C.CString(message)
+		C.galley_session_set_message_override(session.ptr, cName, C.size_t(len(name)), cMessage, C.size_t(len(message)))
+		C.free(unsafe.Pointer(cName))
+		C.free(unsafe.Pointer(cMessage))
+	}
+	return session, nil
 }
 
 // Close destroys the session. Safe to call more than once.

@@ -1431,7 +1431,18 @@ const Generator = struct {
             \\{s}    .diagnostic = diagnostic,
             \\{s}    .style = .plain,
             \\{s}}};
-            \\{s}const diagnostic_message = if (comptime @hasDecl(error_messages, "{s}"))
+        , .{ indent, indent, indent, indent, indent, indent, indent });
+        try writer.print("{s}const diagnostic_message = ", .{indent});
+        for ([_][]const u8{ function_name, "syntax_error_lr", "syntax_error" }) |override_name| {
+            try writer.print(
+                \\{s}if (context.runtime().messageOverride("{s}")) |overridden|
+                \\{s}    overridden
+                \\{s}else
+                \\
+            , .{ indent, override_name, indent, indent });
+        }
+        try writer.print(
+            \\{s}if (comptime @hasDecl(error_messages, "{s}"))
             \\{s}    @field(error_messages, "{s}")(message_args) catch ""
             \\{s}else if (comptime @hasDecl(error_messages, "syntax_error_lr"))
             \\{s}    error_messages.syntax_error_lr(message_args) catch ""
@@ -1443,13 +1454,6 @@ const Generator = struct {
             \\{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
             \\
         , .{
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
             indent,
             function_name,
             indent,

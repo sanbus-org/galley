@@ -144,6 +144,13 @@ extern "C" {
         out_spaces: *mut u32,
         out_width: *mut u32,
     ) -> i64;
+    fn galley_session_set_message_override(
+        session: *mut GalleySessionRaw,
+        name: *const c_char,
+        name_len: usize,
+        message: *const c_char,
+        message_len: usize,
+    ) -> i64;
     fn galley_status_string(status: i64) -> *const c_char;
 }
 
@@ -160,12 +167,17 @@ struct RawOptions {
 
 /// Runtime options for [`Session::with_options`]. Zero/negative fields select
 /// library defaults.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SessionOptions {
     pub max_errors: i32,
     pub recovery_window: i32,
     pub stack_overflow_recovery: bool,
     pub syntax_error_stack_depth: u32,
+    /// Message overrides applied to the session after creation: when a
+    /// syntax-error site's resolution chain contains the name, the site
+    /// reports the message verbatim, ahead of grammar hooks and the
+    /// built-in renderer.
+    pub message_overrides: Vec<(String, String)>,
 }
 
 impl Default for SessionOptions {
@@ -175,6 +187,7 @@ impl Default for SessionOptions {
             recovery_window: 500,
             stack_overflow_recovery: false,
             syntax_error_stack_depth: 0,
+            message_overrides: Vec::new(),
         }
     }
 }
@@ -354,10 +367,22 @@ impl Session {
         if inner.is_null() {
             return Err(Error::OutOfMemory);
         }
-        Ok(Session {
+        let session = Session {
             inner,
             _not_send: PhantomData,
-        })
+        };
+        for (name, message) in &options.message_overrides {
+            unsafe {
+                galley_session_set_message_override(
+                    session.inner,
+                    name.as_ptr().cast(),
+                    name.len(),
+                    message.as_ptr().cast(),
+                    message.len(),
+                );
+            }
+        }
+        Ok(session)
     }
 
     fn status_to_result(&self, status: i64) -> Result<usize, Error> {
@@ -737,5 +762,274 @@ fn map_status(status: i64) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::from_status(status))
+    }
+}
+
+// ---- galley.json message overrides --------------------------------------
+//
+// Reads the optional top-level "error_messages" object of a galley.json
+// file (flat string → string entries) without pulling in a JSON
+// dependency. Anything unexpected — missing key, malformed JSON, wrong
+// value types — yields an empty list rather than a partial result.
+
+/// Reads `path` (typically `"galley.json"` next to the program's working
+/// directory) and returns its `error_messages` entries. A missing or
+/// malformed file yields an empty vector.
+pub fn galley_json_message_overrides(path: &str) -> Vec<(String, String)> {
+    match std::fs::read(path) {
+        Ok(bytes) => extract_error_messages_json(&bytes),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn extract_error_messages_json(json: &[u8]) -> Vec<(String, String)> {
+    let mut parser = JsonParser { bytes: json, at: 0 };
+    let mut out = Vec::new();
+    if !parser.consume_object_start() {
+        return out;
+    }
+    if parser.peek() == Some(b'}') {
+        return out;
+    }
+    loop {
+        let Some(key) = parser.parse_string() else {
+            return Vec::new();
+        };
+        if !parser.expect_colon() {
+            return Vec::new();
+        }
+        if key == "error_messages" {
+            if !parser.parse_string_pairs(&mut out) {
+                return Vec::new();
+            }
+        } else if !parser.skip_value() {
+            return Vec::new();
+        }
+        match parser.next_member_tail() {
+            MemberTail::Comma => continue,
+            MemberTail::ObjectEnd => return out,
+            MemberTail::Malformed => return Vec::new(),
+        }
+    }
+}
+
+enum MemberTail {
+    Comma,
+    ObjectEnd,
+    Malformed,
+}
+
+struct JsonParser<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+
+impl<'a> JsonParser<'a> {
+    fn skip_ws(&mut self) {
+        while let Some(byte) = self.bytes.get(self.at) {
+            match byte {
+                b' ' | b'\t' | b'\n' | b'\r' => self.at += 1,
+                _ => break,
+            }
+        }
+    }
+
+    fn peek(&mut self) -> Option<u8> {
+        self.skip_ws();
+        self.bytes.get(self.at).copied()
+    }
+
+    fn consume_object_start(&mut self) -> bool {
+        self.peek() == Some(b'{') && {
+            self.at += 1;
+            true
+        }
+    }
+
+    fn expect_colon(&mut self) -> bool {
+        self.peek() == Some(b':') && {
+            self.at += 1;
+            true
+        }
+    }
+
+    /// After a member's value: expects `,` (more members follow) or `}`.
+    fn next_member_tail(&mut self) -> MemberTail {
+        match self.peek() {
+            Some(b',') => {
+                self.at += 1;
+                MemberTail::Comma
+            }
+            Some(b'}') => {
+                self.at += 1;
+                MemberTail::ObjectEnd
+            }
+            _ => MemberTail::Malformed,
+        }
+    }
+
+    /// Parses a quoted JSON string into an owned String, resolving the
+    /// standard escapes. Returns None on malformed input.
+    fn parse_string(&mut self) -> Option<String> {
+        if self.peek() != Some(b'"') {
+            return None;
+        }
+        self.at += 1;
+        let mut out = String::new();
+        loop {
+            let byte = *self.bytes.get(self.at)?;
+            self.at += 1;
+            match byte {
+                b'"' => return Some(out),
+                b'\\' => {
+                    let escape = *self.bytes.get(self.at)?;
+                    self.at += 1;
+                    match escape {
+                        b'"' => out.push('"'),
+                        b'\\' => out.push('\\'),
+                        b'/' => out.push('/'),
+                        b'b' => out.push('\u{0008}'),
+                        b'f' => out.push('\u{000C}'),
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'u' => {
+                            let hex = self.bytes.get(self.at..self.at + 4)?;
+                            self.at += 4;
+                            let code =
+                                u32::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+                            out.push(char::from_u32(code)?);
+                        }
+                        _ => return None,
+                    }
+                }
+                _ => out.push(byte as char),
+            }
+        }
+    }
+
+    /// Parses the `{ "name": "message", ... }` body of error_messages.
+    fn parse_string_pairs(&mut self, out: &mut Vec<(String, String)>) -> bool {
+        if self.peek() != Some(b'{') {
+            return false;
+        }
+        self.at += 1;
+        if self.peek() == Some(b'}') {
+            self.at += 1;
+            return true;
+        }
+        loop {
+            let Some(name) = self.parse_string() else {
+                return false;
+            };
+            if !self.expect_colon() {
+                return false;
+            }
+            let Some(message) = self.parse_string() else {
+                return false;
+            };
+            out.push((name, message));
+            match self.next_member_tail() {
+                MemberTail::Comma => continue,
+                MemberTail::ObjectEnd => return true,
+                MemberTail::Malformed => return false,
+            }
+        }
+    }
+
+    /// Skips one arbitrary JSON value (string, number, literal, object, or
+    /// array), staying string-aware so braces inside strings never confuse
+    /// the depth walk.
+    fn skip_value(&mut self) -> bool {
+        match self.peek() {
+            Some(b'"') => self.parse_string().is_some(),
+            Some(b'{') | Some(b'[') => {
+                let opening = self.bytes[self.at];
+                let closing = if opening == b'{' { b'}' } else { b']' };
+                self.at += 1;
+                let mut depth = 1usize;
+                while depth > 0 {
+                    let Some(byte) = self.bytes.get(self.at) else {
+                        return false;
+                    };
+                    self.at += 1;
+                    if *byte == b'"' {
+                        self.at -= 1;
+                        if self.parse_string().is_none() {
+                            return false;
+                        }
+                    } else if *byte == opening {
+                        depth += 1;
+                    } else if *byte == closing {
+                        depth -= 1;
+                    }
+                }
+                true
+            }
+            Some(_) => {
+                while let Some(byte) = self.bytes.get(self.at) {
+                    if matches!(byte, b',' | b'}' | b']' | b' ' | b'\t' | b'\n' | b'\r') {
+                        break;
+                    }
+                    self.at += 1;
+                }
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_error_messages_from_galley_json() {
+        let json = br#"{
+            "ast": true,
+            "position_tracking": true,
+            "error_recovery": true,
+            "error_messages": {
+                "syntax_error_ll_Number__expected_generative_terminal_digit":
+                    "expected a number after ':' (digits only)",
+                "syntax_error": "parse failed near line 7"
+            },
+            "procedures": { "nested": {"ignore": "me"} }
+        }"#;
+        let overrides = extract_error_messages_json(json);
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(
+            overrides[0],
+            (
+                "syntax_error_ll_Number__expected_generative_terminal_digit".to_string(),
+                "expected a number after ':' (digits only)".to_string()
+            )
+        );
+        assert_eq!(
+            overrides[1],
+            (
+                "syntax_error".to_string(),
+                "parse failed near line 7".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn escapes_and_braces_inside_strings_survive() {
+        let json =
+            br#"{"error_messages":{"a":"brace } colon : quote \" end","b":"tab\tnewline\n"}}"#;
+        let overrides = extract_error_messages_json(json);
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(overrides[0].1, "brace } colon : quote \" end");
+        assert_eq!(overrides[1].1, "tab\tnewline\n");
+    }
+
+    #[test]
+    fn malformed_or_missing_input_yields_empty() {
+        assert!(extract_error_messages_json(b"not json").is_empty());
+        assert!(extract_error_messages_json(br#"{"other": 1}"#).is_empty());
+        assert!(extract_error_messages_json(br#"{"error_messages": {"k": 12}}"#).is_empty());
+        assert!(extract_error_messages_json(br#"{"error_messages": {"k": "unclosed}"#).is_empty());
     }
 }

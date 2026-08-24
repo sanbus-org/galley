@@ -81,6 +81,23 @@ and compiles it into the shared library;
 `session.Diagnostic().Message` then returns your hooks' text instead of
 the built-in generic renderer.
 
+To replace a site's message with a fixed string — no Zig file at all —
+pass `MessageOverrides` in the session options. Names follow the same
+fallback order the sites use (exact hook name, then variable-level
+family, then the general `syntax_error`), and overrides take priority
+over hooks:
+
+```go
+options.MessageOverrides = map[string]string{
+    "syntax_error_ll_Number__expected_generative_terminal_digit":
+        "expected a number after ':' (digits only)",
+}
+```
+
+`galley.GalleyJSONMessageOverrides("galley.json")` reads the optional
+`error_messages` object of a galley.json file into that same shape;
+missing or malformed files yield nil.
+
 ## Sessions
 
 ```go
