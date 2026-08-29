@@ -228,29 +228,9 @@ func main() {
 		consumerBuild.Args = append(consumerBuild.Args,
 			"-Dprocedures-zig-source="+procedureZigSource)
 	}
-	for _, optionalFile := range []struct {
-		flag  string
-		paths []string
-	}{
-		{"-Derror-messages-zig-source=", []string{
-			fmt.Sprintf("%s_error_messages.zig", parserType),
-		}},
-	} {
-		for _, relativePath := range optionalFile.paths {
-			candidate := filepath.Join(languageDir, relativePath)
-			if _, err := os.Stat(candidate); err != nil {
-				continue
-			}
-			consumerBuild.Args = append(consumerBuild.Args,
-				optionalFile.flag+mustAbsolute(candidate))
-			break
-		}
-	}
-	if configCandidate := filepath.Join(languageDir, "config.zig"); true {
-		if _, err := os.Stat(configCandidate); err == nil {
-			consumerBuild.Args = append(consumerBuild.Args, "-Dconfig-zig-source="+mustAbsolute(configCandidate))
-		}
-	}
+	// config.zig and {ll,lr}_error_messages.zig next to the parser are
+	// inferred by the consumer build when omitted, so no explicit flags
+	// are needed for standard layouts.
 	run(consumerBuild)
 
 	emitBridge(languageAbsolute, prefix, hooksPresent)

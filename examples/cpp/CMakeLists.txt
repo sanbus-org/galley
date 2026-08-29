@@ -77,15 +77,17 @@ add_custom_command(
 )
 
 # 3. Compile parser + runtime + C API into a shared library via Galley's
-#    generic consumer build file.
+#    generic consumer build file. All language-owned sources next to the
+#    parser (config.zig, procedures.zig, procedures.cpp) are inferred
+#    automatically — only the parser location and family are explicit.
+#    Override with -Dconfig-zig-source / -Dprocedures-zig-source /
+#    -Dprocedures-c-source / -Derror-messages-zig-source for non-standard
+#    layouts.
 add_custom_command(
     OUTPUT "${GALLEY_LIBRARY}" "${GALLEY_INCLUDE_DIR}/galley.h"
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
             "-Dparser-source=${GENERATED_PARSER}"
-            "-Dconfig-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
-            "-Dprocedures-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
-            "-Dprocedures-c-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.cpp"
             "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
             "-Doptimize=ReleaseFast"
