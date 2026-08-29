@@ -45,10 +45,9 @@ int main(int argc, char **argv) {
     }
     if (galley_session_set_message_override(
             session,
-            "syntax_error_ll_Number__expected_generative_terminal_digit",
-            sizeof("syntax_error_ll_Number__expected_generative_terminal_digit") - 1,
-            "expected a number after ':' (digits only, overridden)",
-            sizeof("expected a number after ':' (digits only, overridden)") - 1) != galley_ok) {
+            "Number", sizeof("Number") - 1,
+            "expected a number after ':' (digits only) at line {line}",
+            sizeof("expected a number after ':' (digits only) at line {line}") - 1) != galley_ok) {
         fprintf(stderr, "failed to register the message override\n");
         galley_session_destroy(session);
         return 1;

@@ -44,7 +44,7 @@ func main() {
 	fmt.Printf("galley version: %s\n", galley.Version())
 	options := galley.DefaultOptions()
 	options.MessageOverrides = map[string]string{
-		"syntax_error_ll_Number__expected_generative_terminal_digit": "expected a number after ':' (digits only, overridden)",
+		"Number": "expected a number after ':' (digits only) at line {line}",
 	}
 	session, err := galley.WithOptions(options)
 	if err != nil {
@@ -52,6 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer session.Close()
+
 
 	/* With a path argument: parse the file and nothing else. */
 	args := os.Args[1:]

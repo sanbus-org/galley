@@ -1,25 +1,6 @@
 import (
-	"encoding/json"
-	"os"
 	"unsafe"
 )
-
-// GalleyJSONMessageOverrides reads the optional top-level "error_messages"
-// object of a galley.json file (flat string → string entries). A missing or
-// malformed file yields nil.
-func GalleyJSONMessageOverrides(path string) map[string]string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var document struct {
-		ErrorMessages map[string]string `json:"error_messages"`
-	}
-	if json.Unmarshal(data, &document) != nil {
-		return nil
-	}
-	return document.ErrorMessages
-}
 
 func (s *Session) treeStatus(status C.longlong) error {
 	if status >= 0 {

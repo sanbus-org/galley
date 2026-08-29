@@ -36,13 +36,13 @@ pub const allow_no_ast_tree_procedures = false;
 /// true  - recovery runs automatically, or through the grammar's
 ///         explicit @recovery(...) points when the grammar declares any.
 /// false - parsing stops at the first syntax error.
-pub const error_recovery = false;
+pub const error_recovery = true;
 
 /// Include terminal tokens as AST leaf nodes.
 ///
 /// true  - terminals appear in the tree alongside variables.
 /// false - only variables produce AST nodes.
-pub const ast_for_terminals = false;
+pub const ast_for_terminals = true;
 
 /// Track line and column positions during lexing.
 ///
@@ -50,7 +50,7 @@ pub const ast_for_terminals = false;
 ///        ReleaseSafe (better diagnostics) and disabled in ReleaseFast
 ///        (best throughput).
 /// true / false - force tracking on or off regardless of build mode.
-pub const position_tracking: ?bool = null;
+pub const position_tracking: ?bool = true;
 
 /// Read large input files incrementally instead of loading them whole.
 ///
@@ -82,4 +82,4 @@ pub const indentation_syntax = false;
 /// Dynamic per-session overrides take precedence over these entries;
 /// entries here take precedence over the generated default-message
 /// hooks.
-pub const error_messages = .{};
+pub const error_messages = .{ .@"*" = "parse failed at {line}:{column} near {unexpected}" };

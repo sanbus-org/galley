@@ -57,16 +57,15 @@ int main(int argc, char *argv[]) {
         std::fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }
+    GalleySession &session = *guard.session;
     if (galley_session_set_message_override(
-            guard.session,
-            "syntax_error_ll_Number__expected_generative_terminal_digit",
-            sizeof("syntax_error_ll_Number__expected_generative_terminal_digit") - 1,
-            "expected a number after ':' (digits only, overridden)",
-            sizeof("expected a number after ':' (digits only, overridden)") - 1) != galley_ok) {
+            &session,
+            "Number", sizeof("Number") - 1,
+            "expected a number after ':' (digits only) at line {line}",
+            sizeof("expected a number after ':' (digits only) at line {line}") - 1) != galley_ok) {
         std::fprintf(stderr, "failed to register the message override\n");
         return 1;
     }
-    GalleySession &session = *guard.session;
 
     /* With a path argument: parse the file and nothing else. */
     if (argc > 1) {

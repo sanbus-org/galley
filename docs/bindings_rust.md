@@ -12,7 +12,7 @@ it is built and executed by CI on every push.
 
 ## Procedures
 
-Set `"procedures": true` in your grammar's galley.json and implement the
+Set `pub const procedures = true;` in your grammar's `config.zig` and implement the
 hooks in a `procedures.rs` file next to your grammar — the build helper
 compiles it with rustc into a static archive and links it into the shared
 library. Hooks are ordinary Rust: no C anywhere on the consumer side.
@@ -47,30 +47,26 @@ crate-type = ["staticlib"]
 
 ## Error Messages
 
-Run `galley --fill-error-messages <language-dir>` and edit the generated
-`ll_error_messages.zig` next to your grammar. The build helper detects it
-and compiles it into the shared library; `Session::diagnostic().message`
-then returns your hooks' text instead of the built-in generic renderer.
-
-To replace a site's message with a fixed string — no Zig file at all —
-pass `message_overrides` in `SessionOptions`. Names follow the same
-fallback order the sites use (exact hook name, then variable-level
-family, then the general `syntax_error`), and overrides take priority
-over hooks:
+To replace messages with fixed strings — no Zig file at all — pass
+`message_overrides` in `SessionOptions`. Keys are structured identities:
+the innermost in-progress variable name (for example `"Number"`), or
+`"*"` for every syntax and indentation error. Variable keys win over
+`"*"`, and overrides take priority over hooks. Placeholders expand
+against the failing diagnostic:
 
 ```rust
 let options = galley_bindings::SessionOptions {
     message_overrides: vec![(
-        "syntax_error_ll_Number__expected_generative_terminal_digit".into(),
-        "expected a number after ':' (digits only)".into(),
+        "Number".into(),
+        "expected a number after ':' (digits only) at line {line}".into(),
     )],
     ..Default::default()
 };
 ```
 
-`galley_bindings::galley_json_message_overrides("galley.json")` reads the
-optional `error_messages` object of a galley.json file into that same
-shape; missing or malformed files yield an empty vector.
+Override messages may contain `{line}`, `{column}`, `{unexpected}`,
+`{expected}`, and `{context}` placeholders, expanded against the failing
+diagnostic.
 
 ## Build Model
 
@@ -95,12 +91,12 @@ fn main() {
 The helper resolves Galley (`GALLEY_CHECKOUT` env var wins; otherwise it
 shallow-clones `GALLEY_REPOSITORY` at `GALLEY_TAG`, skipping benchmarking
 submodules), builds the generator CLI, generates the parser from your
-grammar's `ll.grm` and `galley.json`, compiles the C-API shared library,
+grammar's `ll.grm`, compiles the C-API shared library,
 and emits the cargo directives that link your binary against it.
 
-Generation options come from an optional
-[`galley.json`](/configuration) in the language directory — edit it and
-rebuild; the build script re-runs when either `ll.grm` or `galley.json`
+Generation-time options come from
+[`config.zig`](/configuration) in the language directory — edit it and
+rebuild; the build script re-runs when either `ll.grm` or `config.zig`
 changes.
 
 ## Usage
@@ -159,5 +155,5 @@ let mut session = Session::with_options(opts).expect("session");
 
 - [C and C++](/bindings_c) — the underlying C ABI
 - [Go](/bindings_go) — cgo bindings over the same shared library
-- [Configuration](/configuration) — galley.json schema
+- [Configuration](/configuration) — the config.zig contract
 - [Grammar Guidelines](/grammar_guidelines)

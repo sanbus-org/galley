@@ -1,12 +1,21 @@
 const root = @import("galley");
 
-// Syntax error message hooks for the keyvalue grammar.
-// Filled by `galley --fill-error-messages examples/c`; every hook falls back
-// to the built-in renderer until you customize its body. Hook names encode
-// the parse state: `syntax_error_ll_<Variable>__expected_<symbols>`.
-
-/// Showcase customization: a friendlier message than the generic renderer.
-pub fn syntax_error_ll_Number__expected_generative_terminal_digit(args: root.SyntaxErrorMessageArgs) ![]const u8 {
-    _ = args;
-    return "expected a number after ':' (digits only, for example \"alpha:42\")";
-}
+// Optional LL syntax error message hooks.
+// Run `galley --fill-error-messages <LANGUAGE_DIR>` to append default hooks
+// for the current grammar. Edit any generated function body to customize it.
+//
+// Example:
+//
+// pub fn syntax_error_ll_Value__expected_String_or_Number(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+//     return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+// }
+//
+// Broader LL fallbacks are also supported:
+//
+// pub fn syntax_error_ll_Value(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+//     return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+// }
+//
+// pub fn syntax_error_ll(args: root.SyntaxErrorMessageArgs) ![]const u8 {
+//     return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
+// }

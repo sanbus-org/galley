@@ -162,6 +162,10 @@ pub fn prepareGrammar(
     options: Options,
     add_generative_terminal: bool,
 ) !PreparedGrammar {
+    // `options` no longer shapes grammar preparation: every field of the
+    // prepared grammar is a grammar fact. Configuration is applied at
+    // comptime inside the generated parser.
+    _ = options;
     try validateGrammar(grammar);
 
     var result = PreparedGrammar{
@@ -169,7 +173,10 @@ pub fn prepareGrammar(
         .eof = undefined,
         .has_recovery_annotations = grammarHasRecoveryPoints(grammar),
     };
-    result.uses_explicit_recovery = options.with_error_recovery and result.has_recovery_annotations;
+    // Grammar fact only: explicit-recovery machinery must exist in the
+    // generated file whenever the grammar declares annotations, because the
+    // active recovery style is selected at comptime per configuration.
+    result.uses_explicit_recovery = result.has_recovery_annotations;
 
     var rhs_counts = std.AutoHashMap(usize, usize).init(allocator);
     defer rhs_counts.deinit();
@@ -201,10 +208,11 @@ pub fn prepareGrammar(
                     try cloneAnnotations(allocator, symbol.annotations),
                 );
                 if (@hasField(@TypeOf(symbol.annotations), "verbatim") and symbol.annotations.verbatim) result.uses_verbatim = true;
-                if (options.with_procedures and
-                    symbol.annotations.procedures.len != 0 and
-                    symbolReturnsNode(result.symbols.items[symbol_index], options))
-                {
+                // Grammar fact only: whether ANY annotated procedure
+                // occurrence exists. Which occurrences actually run is a
+                // configuration decision made at comptime inside the
+                // generated parser, so this must not depend on options here.
+                if (symbol.annotations.procedures.len != 0) {
                     result.has_occurrence_procedures = true;
                 }
             }

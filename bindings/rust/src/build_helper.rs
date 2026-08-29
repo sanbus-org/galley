@@ -1,7 +1,7 @@
 //! Build-script helper for consuming a Galley-generated parser from Rust.
 //!
 //! Call [`generate_and_link`] from your `build.rs` with the directory that
-//! contains your grammar (`ll.grm`) and optional `galley.json`:
+//! contains your grammar (`ll.grm`) and the language's `config.zig`:
 //!
 //! ```no_run
 //! // build.rs
@@ -96,8 +96,8 @@ fn resolve_galley(out_dir: &Path) -> PathBuf {
     source_dir
 }
 
-/// Generates the parser for `language_dir` (must contain `ll.grm` and an
-/// optional `galley.json`) and emits cargo directives linking the current
+/// Generates the parser for `language_dir` (must contain `ll.grm` and the
+/// language's `config.zig`) and emits cargo directives linking the current
 /// crate's binary against the resulting shared library.
 ///
 /// Environment overrides: `GALLEY_CHECKOUT`, `GALLEY_REPOSITORY`,
@@ -115,7 +115,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     );
     println!(
         "cargo:rerun-if-changed={}",
-        language_dir.join("galley.json").display()
+        language_dir.join("config.zig").display()
     );
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
@@ -151,8 +151,8 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     }
 
     // Generate the parser into the language directory.
-    // All generation options come from galley.json in the language dir;
-    // the CLI is invoked without flags so the config file owns them.
+    // All generation-time options come from config.zig in the language
+    // dir; the CLI is invoked without flags so the config file owns them.
     // --emit-metadata also produces procedures.zig with the extern
     // declarations for every hook the grammar requires.
     run_or_panic({
@@ -225,6 +225,17 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
                 error_messages_zig
                     .canonicalize()
                     .unwrap_or(error_messages_zig.clone())
+                    .display()
+            ));
+        }
+        let config_zig = language_dir.join("config.zig");
+        if config_zig.exists() {
+            println!("cargo:rerun-if-changed={}", config_zig.display());
+            c.arg(format!(
+                "-Dconfig-zig-source={}",
+                config_zig
+                    .canonicalize()
+                    .unwrap_or(config_zig.clone())
                     .display()
             ));
         }

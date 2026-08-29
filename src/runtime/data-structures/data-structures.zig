@@ -7,6 +7,37 @@ const are_procedures_enabled = if (@hasDecl(root.parser, "are_procedures_enabled
 pub const Payload = if (are_procedures_enabled) root.procedures.Payload else struct {};
 pub const Node = @import("node.zig").Node(Payload, root.parser.is_ast_enabled);
 pub const ASTAllocator = @import("node.zig").ASTAllocator(Payload);
+
+/// The value a generated variable-parser returns for a node-returning
+/// symbol. Comptime-specialized per configuration: a pointer into the AST
+/// allocator when AST construction is enabled, an optional stack-local node
+/// otherwise. No runtime branching — the type itself is the decision.
+pub const VariableResult = if (root.parser.is_ast_enabled)
+    Node.Pointer
+else
+    ?Node;
+
+/// The neutral `VariableResult` used where a generated parser would push or
+/// return "no node" (mirrors `Node.invalid_pointer` / `null` under the two
+/// configurations).
+pub const invalid_variable_node: VariableResult = if (root.parser.is_ast_enabled)
+    Node.invalid_pointer
+else
+    null;
+
+/// The local handle a generated rule body manipulates while assembling a
+/// variable's node: a pointer under AST mode, a by-value node otherwise.
+pub const VariableNodeHandle = if (root.parser.is_ast_enabled)
+    Node.Pointer
+else
+    Node;
+
+/// The stack-slot value carried for a symbol that produced a node, shared by
+/// both parser families' semantic stacks.
+pub const StackNode = if (root.parser.is_ast_enabled)
+    Node.Pointer
+else
+    ?Node;
 pub const ASTMemoryBenchmarkStats = @import("node.zig").ASTMemoryBenchmarkStats;
 pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;

@@ -124,8 +124,12 @@ Generating source is only the first half of the pipeline. A generated parser dep
 - Galley's parser runtime;
 - the generated `_ll-parser.zig` or `_lr-parser.zig` file;
 - `config.zig` for language-specific runtime options; and
-- `procedures.zig` for reduction hooks and AST payloads;
-- `ll_error_messages.zig` or `lr_error_messages.zig` for optional syntax-error message hooks.
+- `procedures.zig` for reduction hooks and AST payloads.
+
+`ll_error_messages.zig` / `lr_error_messages.zig` are *optional*: they
+exist only if you create them (or run `--fill-error-messages`), and a
+grammar without them simply uses the built-in message renderer — or, in
+the language bindings, message overrides and host renderers.
 
 First build the generator from the Galley checkout:
 
@@ -140,29 +144,36 @@ Create a directory containing `ll.grm`, `lr.grm`, or both, then generate the par
 ./zig-out/bin/galley --parser-type ll ../my-language
 ```
 
-In addition to `_ll-parser.zig`, the first run creates any missing support files:
+In addition to `_ll-parser.zig`, the first run creates the support files a
+compilable grammar needs:
 
 ```text
 my-language/
 ├── _ll-parser.zig
 ├── config.zig
-├── ll_error_messages.zig
 ├── ll.grm
 └── procedures.zig
 ```
 
 Support files are never overwritten by normal generation. Regenerating updates
-the selected parser file while preserving configuration, procedures, and
-error-message hooks. Generated parser files are underscore-prefixed
+the selected parser file while preserving configuration and procedures.
+Generated parser files are underscore-prefixed
 (`_ll-parser.zig`, `_lr-parser.zig`) to signal that Galley owns them.
 
-To populate all default syntax-error hooks for the current grammar, run:
+To customize syntax-error messages in Zig, create the hooks file (and
+populate all default hooks for the current grammar) with:
 
 ```sh
 ./zig-out/bin/galley --parser-type ll --fill-error-messages ../my-language
 ```
 
-This appends missing `pub fn syntax_error_*` hooks to `ll_error_messages.zig` or `lr_error_messages.zig`. Existing public hooks are preserved. Public hooks no longer produced by the current grammar are reported as obsolete; non-public helper functions are ignored.
+This creates — or appends missing `pub fn syntax_error_*` hooks to —
+`ll_error_messages.zig` or `lr_error_messages.zig`. Existing public hooks
+are preserved. Public hooks no longer produced by the current grammar are
+reported as obsolete; non-public helper functions are ignored. For fixed
+strings instead of Zig code, prefer message overrides or host renderers
+(see the [C](/bindings_c), [Rust](/bindings_rust), and [Go](/bindings_go)
+binding docs).
 
 To consume the generated parser from another language instead of Zig, see
 the language bindings: [C and C++](/bindings_c),

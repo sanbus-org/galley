@@ -29,7 +29,6 @@ pub const State = struct {
     items: std.ArrayList(Item) = .empty,
     actions: std.ArrayList(Action) = .empty,
     gotos: std.ArrayList(GotoEntry) = .empty,
-    uses_semantic_stack: bool = false,
 };
 
 pub const RecoveryClosureEdge = recovery_planning.RecoveryClosureEdge;
@@ -54,7 +53,6 @@ pub const LRPlan = struct {
     error_message_specs: std.ArrayList(common.ErrorMessageSpec) = .empty,
     syntax_error_handlers: std.ArrayList(SyntaxErrorHandler) = .empty,
     variable_indices: []?usize = &.{},
-    symbol_returns_stack_node: []bool = &.{},
     longest_terminal_length: usize = 0,
     augmented_start: usize = 0,
     eof: usize = 0,
@@ -70,7 +68,6 @@ pub const LRPlan = struct {
         try builder.buildStates();
         try builder.buildParseTable();
         try common.validateVerbatimSymbols(allocator, grammar);
-        builder.planSemanticStackRequirements();
         builder.plan.recovery = try recovery_planning.build(allocator, grammar, options, builder.plan.states.items);
         try builder.planStateDecisionsAndDiagnostics();
         try builder.planMetadata();
@@ -285,26 +282,6 @@ const Builder = struct {
         return false;
     }
 
-    fn planSemanticStackRequirements(self: *Builder) void {
-        for (self.plan.states.items) |*state| {
-            if (state.gotos.items.len > 0) {
-                state.uses_semantic_stack = true;
-                continue;
-            }
-            for (state.actions.items) |action| switch (action.kind) {
-                .shift => {
-                    state.uses_semantic_stack = true;
-                    break;
-                },
-                .reduce => if (self.options.with_ast or self.options.with_procedures or self.grammar.uses_verbatim) {
-                    state.uses_semantic_stack = true;
-                    break;
-                },
-                .accept => {},
-            };
-        }
-    }
-
     fn planStateDecisionsAndDiagnostics(self: *Builder) !void {
         for (self.plan.states.items, 0..) |state, state_index| {
             var entries = std.ArrayList(switch_planning.Entry).empty;
@@ -353,12 +330,8 @@ const Builder = struct {
 
     fn planMetadata(self: *Builder) !void {
         self.plan.variable_indices = try self.allocator.alloc(?usize, self.grammar.symbols.items.len);
-        self.plan.symbol_returns_stack_node = try self.allocator.alloc(bool, self.grammar.symbols.items.len);
         @memset(self.plan.variable_indices, null);
         for (self.grammar.variables.items, 0..) |symbol_index, variable_index| self.plan.variable_indices[symbol_index] = variable_index;
-        for (self.grammar.symbols.items, 0..) |symbol, symbol_index| {
-            self.plan.symbol_returns_stack_node[symbol_index] = common.symbolReturnsNode(symbol, self.options);
-        }
         self.plan.longest_terminal_length = common.longestTerminalLengthWithRecovery(self.grammar);
     }
 };

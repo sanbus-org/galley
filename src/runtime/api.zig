@@ -109,18 +109,16 @@ pub const DiagnosticStyle = enum {
 
 pub const SyntaxErrorMessageReporter = *const fn (message: []const u8) void;
 
-/// One message override: when a syntax-error site's resolution chain
-/// contains `name` (a generated hook name such as
-/// `syntax_error_ll_Number__expected_generative_terminal_digit`, its
-/// variable-level family, or the general `syntax_error`), the recorded
-/// message is replaced by `message` verbatim.
+/// One message override: when a syntax error's innermost in-progress
+/// variable equals `name`, or when `name` is `"*"` and no variable entry
+/// matched, the recorded message replaces hooks and the built-in renderer
+/// (placeholders expanded against the diagnostic).
 pub const MessageOverride = struct {
     name: []const u8,
     message: []const u8,
 };
 
 pub const ParseOptions = struct {
-    language_options: config.Options = .{},
     input_path: ?[]const u8 = null,
     verbosity: usize = 0,
     max_errors: usize = 10,
@@ -149,6 +147,36 @@ pub const SyntaxErrorMessageArgs = struct {
     diagnostic: ParseDiagnostic,
     style: DiagnosticStyle,
 };
+
+/// Full syntax-message resolution shared by every generated diagnostic site.
+/// Chain order: session overrides and `config.zig` `error_messages` entries
+/// (via the runtime's template resolver), then each named hook declaration
+/// in `hooks_module`, then null — callers append their builtin fallback
+/// expression. Hook failures fall through to the next source, matching the
+/// historical per-site behavior.
+pub fn resolveSyntaxErrorMessage(
+    context: *data_structures.Context,
+    diagnostic: ParseDiagnostic,
+    comptime config_messages: anytype,
+    comptime hooks_module: anytype,
+    comptime hook_names: anytype,
+) ?[]const u8 {
+    const runtime_context = context.runtime();
+    if (runtime_context.resolveMessageOverride(diagnostic, config_messages)) |message| return message;
+    inline for (hook_names) |hook_name| {
+        if (@hasDecl(hooks_module, hook_name)) {
+            if (@field(hooks_module, hook_name)(.{
+                .allocator = runtime_context.arena_allocator,
+                .context = context,
+                .diagnostic = diagnostic,
+                .style = .plain,
+            })) |rendered| {
+                return rendered;
+            } else |_| {}
+        }
+    }
+    return null;
+}
 
 pub const ParseResult = struct {
     parsed_bytes: usize,
@@ -415,7 +443,6 @@ pub const Session = struct {
             .runtime_context = .{
                 .io = io,
                 .input_path = options.input_path,
-                .language_options = options.language_options,
                 .arena_allocator = arena.allocator(),
                 .max_errors = options.max_errors,
                 .recovery_window = options.recovery_window,
@@ -786,22 +813,102 @@ test "message overrides replace rendered syntax errors and beat hooks" {
     try std.testing.expect(baseline.len > 0);
 
     const overridden = try run(&.{.{
-        .name = "syntax_error",
+        .name = "*",
         .message = "override text beats every hook",
     }}, std.testing.allocator);
     defer std.testing.allocator.free(overridden);
     try std.testing.expectEqualStrings("override text beats every hook", overridden);
     try std.testing.expect(!std.mem.eql(u8, baseline, overridden));
 
-    // An exact entry for a site this input never reaches simply never
-    // matches: resolution walks candidates in order and falls through to
-    // the hooks/builtin chain.
+    // A variable-scoped entry for a variable this input never fails in
+    // falls through to the hooks/builtin chain.
     const scoped = try run(&.{.{
-        .name = "syntax_error_ll_RightHandSidesTail__expected_RightHandSideLine_or_end_of_RightHandSidesTail",
-        .message = "unreachable exact override",
+        .name = "Document",
+        .message = "unreachable variable override",
     }}, std.testing.allocator);
     defer std.testing.allocator.free(scoped);
-    try std.testing.expect(!std.mem.eql(u8, scoped, "unreachable exact override"));
+    try std.testing.expect(!std.mem.eql(u8, scoped, "unreachable variable override"));
+}
+
+test "message templates resolve session overrides then config entries" {
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    var overrides = std.StringHashMapUnmanaged([]const u8){};
+    defer overrides.deinit(std.testing.allocator);
+    try overrides.put(std.testing.allocator, "*", "session-star {column}");
+
+    const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .line = 4,
+        .column = 9,
+        .unexpected_token = "?",
+        .expected_tokens = &.{"digit"},
+        .context = .{ .while_parsing = &.{"Number"} },
+    } };
+
+    // Stand-in for a consumer's `config.error_messages` table.
+    const config_tables = .{
+        .Number = "config-number saw {unexpected}",
+        .@"*" = "config-star",
+    };
+
+    // A session entry beats both config entries for the same diagnostic.
+    var runtime_with_session = data_structures.RuntimeContext{
+        .io = io,
+        .arena_allocator = arena_state.allocator(),
+        .message_overrides = &overrides,
+    };
+    try std.testing.expectEqualStrings("session-star 9", runtime_with_session.resolveMessageOverride(diagnostic, config_tables).?);
+
+    // Without session entries, the config's variable-specific template wins
+    // over its universal entry and expands placeholders.
+    var runtime_plain = data_structures.RuntimeContext{
+        .io = io,
+        .arena_allocator = arena_state.allocator(),
+    };
+    try std.testing.expectEqualStrings("config-number saw ?", runtime_plain.resolveMessageOverride(diagnostic, config_tables).?);
+
+    // The universal config entry applies to every other variable.
+    const other: ParseDiagnostic = .{ .syntax = .{
+        .line = 1,
+        .column = 2,
+        .unexpected_token = "x",
+        .expected_tokens = &.{},
+        .context = .{ .while_parsing = &.{"String"} },
+    } };
+    try std.testing.expectEqualStrings("config-star", runtime_plain.resolveMessageOverride(other, config_tables).?);
+}
+
+test "message override placeholders expand against the diagnostic" {
+    if (builtin.mode != .Debug) return error.SkipZigTest;
+
+    const malformed =
+        \\Start
+        \\| ?
+        \\
+    ;
+
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{
+        .message_overrides = &.{.{
+            .name = "*",
+            .message = "line {line} col {column} saw '{unexpected}' want {expected} | {context} | keep {unknown}",
+        }},
+    });
+    defer session.deinit();
+    var context = session._makeContext(.{ .bytes = .{ .input = malformed[0 .. malformed.len + 1] } }, null);
+    if (session._parseContext(&context)) |_| {
+        return error.ExpectedSyntaxError;
+    } else |err| switch (err) {
+        ParseError.SyntaxError => {},
+        else => return err,
+    }
+    const message = session.runtime_context.last_rendered_message orelse return error.MissingRenderedMessage;
+    try std.testing.expect(std.mem.startsWith(u8, message, "line 2 col 3 saw '?' want '"));
+    try std.testing.expect(std.mem.indexOf(u8, message, " <~ ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "keep {unknown}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "{line}") == null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "{context}") == null);
 }
 
 test "structured syntax recovery renders in plain and ANSI diagnostics" {

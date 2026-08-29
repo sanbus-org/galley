@@ -331,10 +331,10 @@ fn addGalleyRecoveryComparison(
     options: Options,
     filters: []const []const u8,
 ) !GalleyRecoveryComparison {
-    const automatic_parser_path = addGalleyRecoveryComparisonGeneration(b, options, "automatic", true);
-    const explicit_parser_path = addGalleyRecoveryComparisonGeneration(b, options, "explicit", false);
-    const automatic_parser = addGalleyRecoveryComparisonParser(b, options, "automatic", automatic_parser_path);
-    const explicit_parser = addGalleyRecoveryComparisonParser(b, options, "explicit", explicit_parser_path);
+    const automatic_generation = addGalleyRecoveryComparisonGeneration(b, options, "automatic", true);
+    const explicit_generation = addGalleyRecoveryComparisonGeneration(b, options, "explicit", false);
+    const automatic_parser = addGalleyRecoveryComparisonParser(b, options, "automatic", automatic_generation);
+    const explicit_parser = addGalleyRecoveryComparisonParser(b, options, "explicit", explicit_generation);
 
     const automatic_artifacts = addGalleyRecoveryComparisonArtifacts(b, options, "automatic", false, automatic_parser, filters);
     const explicit_artifacts = addGalleyRecoveryComparisonArtifacts(b, options, "explicit", true, explicit_parser, filters);
@@ -389,33 +389,40 @@ fn addGalleyRecoveryComparisonArtifacts(
     };
 }
 
+const ComparisonGenerationOutput = struct {
+    parser: std.Build.LazyPath,
+    config: std.Build.LazyPath,
+};
+
 fn addGalleyRecoveryComparisonGeneration(
     b: *std.Build,
     options: Options,
     mode: []const u8,
     strip_recovery_annotations: bool,
-) std.Build.LazyPath {
+) ComparisonGenerationOutput {
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
     generate_parser.addArg("--grammar");
     generate_parser.addFileArg(b.path("languages/galley/ll.grm"));
     generate_parser.addArg("--parser-type");
     generate_parser.addArg("ll");
     generate_parser.addArg("--output");
-    const output = generate_parser.addOutputFileArg(b.fmt("galley-recovery-comparison-{s}.zig", .{mode}));
+    const parser = generate_parser.addOutputFileArg(b.fmt("galley-recovery-comparison-{s}.zig", .{mode}));
+    generate_parser.addArg("--config-output");
+    const config = generate_parser.addOutputFileArg(b.fmt("galley-recovery-comparison-{s}-config.zig", .{mode}));
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
         "--with-error-recovery",
     });
     if (strip_recovery_annotations) generate_parser.addArg("--strip-recovery-annotations");
-    return output;
+    return .{ .parser = parser, .config = config };
 }
 
 fn addGalleyRecoveryComparisonParser(
     b: *std.Build,
     options: Options,
     mode: []const u8,
-    parser_path: std.Build.LazyPath,
+    generation: ComparisonGenerationOutput,
 ) common.GeneratedParserModule {
     const procedures_mod = b.createModule(.{
         .root_source_file = b.path("tests/explicit-recovery/procedures.zig"),
@@ -423,7 +430,7 @@ fn addGalleyRecoveryComparisonParser(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .root_source_file = generation.config,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -438,7 +445,7 @@ fn addGalleyRecoveryComparisonParser(
         options.optimize,
         b.fmt("galley-recovery-comparison-{s}", .{mode}),
         b.fmt("galley-recovery-comparison-{s}-source", .{mode}),
-        parser_path,
+        generation.parser,
         procedures_mod,
         config_mod,
         error_messages_mod,
@@ -462,6 +469,8 @@ fn addSelfRepeatingTests(
     generate_parser.addArg(b.fmt("{s}/self-repeating/tests", .{parser_type}));
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
@@ -473,7 +482,7 @@ fn addSelfRepeatingTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/self-repeating/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -525,6 +534,8 @@ fn addSymbolKindIdentityTests(
     generate_parser.addArg(b.fmt("{s}/symbol-kind-identity/tests", .{parser_type}));
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
@@ -536,7 +547,7 @@ fn addSymbolKindIdentityTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/symbol-kind-identity/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -588,6 +599,8 @@ fn addProcedureHookTests(
     generate_parser.addArg(try std.fmt.allocPrint(b.allocator, "{s}/procedure-hooks/tests", .{parser_type}));
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(generated_name);
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(try std.fmt.allocPrint(b.allocator, "procedure-hooks-{s}-config.zig", .{parser_type}));
     generate_parser.addArgs(&.{
         "--with-ast",
         "--with-procedures",
@@ -601,7 +614,7 @@ fn addProcedureHookTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/procedure-hooks/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -656,6 +669,8 @@ fn addNoAstProcedureTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArg(if (with_ast) "--with-ast" else "--no-ast");
     generate_parser.addArgs(&.{ "--with-procedures", "--ast-for-terminals", "--with-input-streaming", "--with-error-recovery" });
     generate_parser.stdio = .inherit;
@@ -666,7 +681,7 @@ fn addNoAstProcedureTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/no-ast-procedures/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -718,6 +733,8 @@ fn addNoAstTreeHelpersTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{ "--no-ast", "--with-procedures", "--allow-no-ast-tree-procedures", "--ast-for-terminals" });
     generate_parser.stdio = .inherit;
 
@@ -727,7 +744,7 @@ fn addNoAstTreeHelpersTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/no-ast-tree-helpers/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -779,6 +796,8 @@ fn addNoAstTerminalTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{ "--no-ast", "--with-procedures" });
     generate_parser.stdio = .inherit;
 
@@ -788,7 +807,7 @@ fn addNoAstTerminalTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/no-ast-terminal/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -840,7 +859,9 @@ fn addNoAstIndentTextTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
-    generate_parser.addArgs(&.{ "--no-ast", "--with-procedures", "--with-position-tracking", "--no-input-streaming" });
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
+    generate_parser.addArgs(&.{ "--no-ast", "--with-procedures", "--with-position-tracking", "--no-input-streaming", "--indentation-syntax" });
     generate_parser.stdio = .inherit;
 
     const procedures_mod = b.createModule(.{
@@ -849,7 +870,7 @@ fn addNoAstIndentTextTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/no-ast-indent-text/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -905,6 +926,8 @@ fn addExplicitRecoveryTests(
     generate_parser.addArg(try std.fmt.allocPrint(b.allocator, "{s}/explicit-recovery/tests", .{parser_type}));
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(generated_name);
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(try std.fmt.allocPrint(b.allocator, "explicit-recovery-{s}-config.zig", .{parser_type}));
     generate_parser.addArgs(&.{
         "--with-ast",
         "--with-procedures",
@@ -918,7 +941,7 @@ fn addExplicitRecoveryTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -973,12 +996,15 @@ fn addVerbatimTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--with-ast",
         "--with-procedures",
         "--with-position-tracking",
         "--with-input-streaming",
     });
+    if (indent) generate_parser.addArg("--indentation-syntax");
     generate_parser.stdio = .inherit;
 
     const procedures_mod = b.createModule(.{
@@ -987,7 +1013,7 @@ fn addVerbatimTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path(if (indent) "tests/verbatim/config-indent.zig" else "tests/verbatim/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1039,11 +1065,14 @@ fn addVerbatimNullableTests(
     generate_parser.addArg(parser_name);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--with-ast",
         "--with-procedures",
         "--with-position-tracking",
         "--with-input-streaming",
+        "--indentation-syntax",
     });
     generate_parser.stdio = .inherit;
 
@@ -1053,7 +1082,7 @@ fn addVerbatimNullableTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/verbatim-nullable/config.zig"),
+        .root_source_file = generated_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1102,6 +1131,8 @@ fn addGalleyRecoveryTests(
     generate_parser.addArg(parser_type);
     generate_parser.addArg("--output");
     const parser_path = generate_parser.addOutputFileArg(b.fmt("galley-recovery-{s}-parser.zig", .{parser_type}));
+    generate_parser.addArg("--config-output");
+    const config_path = generate_parser.addOutputFileArg(b.fmt("galley-recovery-{s}-config.zig", .{parser_type}));
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
@@ -1114,7 +1145,7 @@ fn addGalleyRecoveryTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("tests/explicit-recovery/config.zig"),
+        .root_source_file = config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1162,6 +1193,8 @@ fn addJsonRecoveryTests(
     generate_parser.addArg(parser_type);
     generate_parser.addArg("--output");
     const parser_path = generate_parser.addOutputFileArg(b.fmt("json-recovery-{s}-parser.zig", .{parser_type}));
+    generate_parser.addArg("--config-output");
+    const config_path = generate_parser.addOutputFileArg(b.fmt("json-recovery-{s}-config.zig", .{parser_type}));
     generate_parser.addArgs(&.{
         "--no-ast",
         "--no-procedures",
@@ -1174,7 +1207,7 @@ fn addJsonRecoveryTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path("languages/json-recovery/config.zig"),
+        .root_source_file = config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1238,6 +1271,8 @@ fn addInputStreamingTests(
     generate_parser.addArg(b.fmt("{s}/input-streaming/{s}", .{ parser_type, label }));
     generate_parser.addArg("--output");
     const parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
     generate_parser.addArgs(&.{
         "--no-procedures",
         "--with-position-tracking",
@@ -1253,6 +1288,7 @@ fn addInputStreamingTests(
         generate_parser.addArg("--no-ast");
     }
     if (kind == .recovery_eof) generate_parser.addArg("--with-error-recovery");
+    if (kind == .indentation or kind == .indentation_no_streaming) generate_parser.addArg("--indentation-syntax");
 
     const procedures_mod = b.createModule(.{
         .root_source_file = b.path(b.fmt("languages/{s}/procedures.zig", .{language})),
@@ -1260,7 +1296,7 @@ fn addInputStreamingTests(
         .optimize = options.optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path(b.fmt("languages/{s}/config.zig", .{language})),
+        .root_source_file = config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -1440,6 +1476,8 @@ fn addLrBackedGenerator(
     generate_lr_parser.addFileArg(b.path("languages/galley/lr.grm"));
     generate_lr_parser.addArgs(&.{ "--parser-type", "lr", "--with-error-recovery", "--output" });
     const parser_source = generate_lr_parser.addOutputFileArg("galley-lr-bootstrap.zig");
+    generate_lr_parser.addArg("--config-output");
+    const config_source = generate_lr_parser.addOutputFileArg("galley-lr-bootstrap-config.zig");
 
     const procedures_mod = common.addGalleyGrammarProceduresModule(
         b,
@@ -1449,7 +1487,7 @@ fn addLrBackedGenerator(
         generator.generator_common_mod,
     );
     const config_mod = b.addModule("galley-bootstrap-parity-config", .{
-        .root_source_file = b.path("languages/galley/config.zig"),
+        .root_source_file = config_source,
         .target = target,
         .optimize = optimize,
     });
@@ -1477,6 +1515,7 @@ fn addLrBackedGenerator(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "generator_common", .module = generator.generator_common_mod },
+            .{ .name = "generator_config_file", .module = generator.generator_config_file_mod },
             .{ .name = "galley_grammar", .module = generated_parser.runtime_mod },
             .{ .name = "ll_generator", .module = generator.ll_generator_mod },
             .{ .name = "lr_generator", .module = generator.lr_generator_mod },

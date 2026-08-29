@@ -8,6 +8,7 @@ pub const GeneratorModules = struct {
     syntax_error_stack_depth: usize,
     generator_common_mod: *std.Build.Module,
     generator_switch_plan_mod: *std.Build.Module,
+    generator_config_file_mod: *std.Build.Module,
     ll_generator_mod: *std.Build.Module,
     lr_generator_mod: *std.Build.Module,
     galley_grammar_procedures_mod: *std.Build.Module,
@@ -149,6 +150,12 @@ pub fn addGeneratorModules(
         .optimize = optimize,
     });
     generator_switch_plan_mod.addImport("generator_common", generator_common_mod);
+    const generator_config_file_mod = b.addModule("generator_config_file", .{
+        .root_source_file = b.path("src/generator/config_file.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generator_config_file_mod.addImport("generator_common", generator_common_mod);
     const ll_generator_mod = b.addModule("ll_generator", .{
         .root_source_file = b.path("src/generator/ll.zig"),
         .target = target,
@@ -202,6 +209,7 @@ pub fn addGeneratorModules(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "generator_common", .module = generator_common_mod },
+            .{ .name = "generator_config_file", .module = generator_config_file_mod },
             .{ .name = "galley_grammar", .module = galley_grammar_library_mod },
             .{ .name = "ll_generator", .module = ll_generator_mod },
             .{ .name = "lr_generator", .module = lr_generator_mod },
@@ -214,6 +222,7 @@ pub fn addGeneratorModules(
         .syntax_error_stack_depth = syntax_error_stack_depth,
         .generator_common_mod = generator_common_mod,
         .generator_switch_plan_mod = generator_switch_plan_mod,
+        .generator_config_file_mod = generator_config_file_mod,
         .ll_generator_mod = ll_generator_mod,
         .lr_generator_mod = lr_generator_mod,
         .galley_grammar_procedures_mod = galley_grammar_procedures_mod,

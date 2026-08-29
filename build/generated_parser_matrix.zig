@@ -31,30 +31,30 @@ const MatrixVariant = struct {
 const matrix_variants = [_]MatrixVariant{
     .{
         .name = "no-ast-no-procedures",
-        .args = &.{ "--no-ast", "--no-procedures", "--no-ast-for-terminals" },
+        .args = &.{ "--no-ast", "--no-procedures", "--no-ast-for-terminals", "--no-error-recovery" },
         .large_sample_api_coverage = true,
     },
     .{
         .name = "no-ast-procedures-no-terminal-ast",
-        .args = &.{ "--no-ast", "--with-procedures", "--no-ast-for-terminals" },
+        .args = &.{ "--no-ast", "--with-procedures", "--no-ast-for-terminals", "--no-error-recovery" },
         .large_sample_api_coverage = true,
         .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast" },
     },
     .{
         .name = "ast-no-procedures-no-terminal-ast",
-        .args = &.{ "--with-ast", "--no-procedures", "--no-ast-for-terminals" },
+        .args = &.{ "--with-ast", "--no-procedures", "--no-ast-for-terminals", "--no-error-recovery" },
     },
     .{
         .name = "ast-no-procedures-terminal-ast",
-        .args = &.{ "--with-ast", "--no-procedures", "--ast-for-terminals" },
+        .args = &.{ "--with-ast", "--no-procedures", "--ast-for-terminals", "--no-error-recovery" },
     },
     .{
         .name = "ast-procedures-no-terminal-ast",
-        .args = &.{ "--with-ast", "--with-procedures", "--no-ast-for-terminals" },
+        .args = &.{ "--with-ast", "--with-procedures", "--no-ast-for-terminals", "--no-error-recovery" },
     },
     .{
         .name = "ast-procedures-terminal-ast",
-        .args = &.{ "--with-ast", "--with-procedures", "--ast-for-terminals" },
+        .args = &.{ "--with-ast", "--with-procedures", "--ast-for-terminals", "--no-error-recovery" },
     },
 };
 
@@ -161,6 +161,7 @@ fn addCase(
     const case_name = try std.mem.concat(b.allocator, u8, &.{ "generated-", parser_type, "-", language, "-", variant.name });
     const case_label = b.fmt("{s}/{s}/{s}", .{ parser_type, language, variant.name });
     const parser_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, ".zig" });
+    const config_basename = try std.mem.concat(b.allocator, u8, &.{ case_name, "-config.zig" });
 
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
     generate_parser.addArg("--grammar");
@@ -171,10 +172,14 @@ fn addCase(
     generate_parser.addArg(case_label);
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(parser_basename);
+    const config_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "config.zig" });
+    generate_parser.addArg("--config-output");
+    const written_config_path = generate_parser.addOutputFileArg(config_basename);
+    generate_parser.addArg("--config-base");
+    generate_parser.addFileArg(b.path(config_path));
     generate_parser.addArgs(variant.args);
     generate_parser.stdio = .inherit;
     const procedures_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "procedures.zig" });
-    const config_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "config.zig" });
     const error_messages_file_name = try common.errorMessagesFileName(b.allocator, parser_type);
     const error_messages_path = try std.fs.path.join(b.allocator, &.{ "languages", language, error_messages_file_name });
 
@@ -193,7 +198,7 @@ fn addCase(
             .optimize = options.optimize,
         });
     const config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-config" }), .{
-        .root_source_file = b.path(config_path),
+        .root_source_file = written_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
@@ -243,6 +248,7 @@ fn addCase(
             const recovery_case_name = try std.mem.concat(b.allocator, u8, &.{ case_name, "-error-recovery" });
             const recovery_case_label = b.fmt("{s}/error-recovery", .{case_label});
             const recovery_parser_basename = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, ".zig" });
+            const recovery_config_basename = try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-config.zig" });
             const generate_recovery_parser = b.addRunArtifact(options.generate_parser_file_exe);
             generate_recovery_parser.addArg("--grammar");
             generate_recovery_parser.addFileArg(b.path(grammar_path));
@@ -252,6 +258,10 @@ fn addCase(
             generate_recovery_parser.addArg(recovery_case_label);
             generate_recovery_parser.addArg("--output");
             const recovery_parser_path = generate_recovery_parser.addOutputFileArg(recovery_parser_basename);
+            generate_recovery_parser.addArg("--config-output");
+            const recovery_written_config_path = generate_recovery_parser.addOutputFileArg(recovery_config_basename);
+            generate_recovery_parser.addArg("--config-base");
+            generate_recovery_parser.addFileArg(b.path(config_path));
             generate_recovery_parser.addArgs(variant.args);
             generate_recovery_parser.addArg("--with-error-recovery");
             generate_recovery_parser.stdio = .inherit;
@@ -271,7 +281,7 @@ fn addCase(
                     .optimize = options.optimize,
                 });
             const recovery_config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-config" }), .{
-                .root_source_file = b.path(config_path),
+                .root_source_file = recovery_written_config_path,
                 .target = options.target,
                 .optimize = options.optimize,
             });
