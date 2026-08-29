@@ -25,7 +25,7 @@ Explicit recovery separates mismatch detection from synchronization. Once a prod
 
 Automatic recovery does not use Zig errors for internal control flow: LL void parsers return normally, AST parsers return the invalid-node sentinel, and LR state functions return an internal recovery result when a frame must unwind. Explicit LL recovery instead propagates a private `ExplicitSyntaxRecovery` signal until a committed annotated boundary synchronizes or the public entry point converts it to `ParseError.SyntaxError`; explicit LR recovery carries the equivalent result through its state frames. A session-local target-and-position guard prevents a preserved terminal from repeatedly selecting the same explicit scope. Resynchronizing completes the current recovery and permits a later mismatch to be reported separately. Automatic LL recovery can neutral-complete a missing symbol at end-of-input, while explicit recovery requires a matching synchronization terminal.
 
-Normal automatic-mode LL child calls retain the same `try parse_child(...)` shape. Eligible automatic recovery calls use `always_tail` on the LLVM and native AArch64 backends and fall back to ordinary calls on other backends. LR state calls inspect the returned recovery result, and each state uses its existing native frame rather than a second parser stack. Neither parser scans for synchronization terminals during normal shifts or reductions; recovery lookahead allocation happens only after a mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run on partial or later-discarded trees, so an AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
+Normal automatic-mode LL child calls retain the same `try parse_child(...)` shape. Eligible automatic recovery calls return directly. LR state calls inspect the returned recovery result, and each state uses its existing native frame rather than a second parser stack. Neither parser scans for synchronization terminals during normal shifts or reductions; recovery lookahead allocation happens only after a mismatch. For indentation-sensitive languages, the search distance counts parser input units, including generated indent and dedent symbols. Procedures may run on partial or later-discarded trees, so an AST from erroneous input is diagnostic data rather than a guaranteed-valid syntax tree.
 
 Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers
 configure the limit and search window through `ParseOptions.max_errors` and
@@ -46,8 +46,7 @@ pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
 The runtime resolves the depth: `-Dsyntax-error-stack-depth=N` overrides the
 default, otherwise the stack defaults to 5 variables in debug builds and 1 in
 release builds. A depth of 1 drops the feature entirely — the push/pop
-instrumentation and its deferred cleanup fold away at compile time, and the
-error handlers restore `always_tail` bail-outs, so release parsers carry no
+instrumentation and its deferred cleanup fold away at compile time, so release parsers carry no
 stack overhead unless the build was compiled with the option. When the stack
 is enabled, each LL variable parse function pushes its variable onto a ring
 (consecutive repeats of a self-recursive rule occupy one slot) and pops it on

@@ -18,11 +18,10 @@ const LLPlan = planning.LLPlan;
 
 /// The LL backend tracks the in-progress variable stack whenever the generated
 /// parser is compiled with the stack enabled (`syntax_error_stack_depth > 1`).
-/// The generated source gates the push/pop instrumentation and the
-/// `@call(.always_tail, ...)` error bail-out on the comptime
-/// `is_syntax_error_stack_enabled` const: when the stack is enabled, the plain
-/// return must be used so the `defer` that pops the stack always runs; when
-/// disabled, the whole instrumentation folds away and the tail call returns.
+/// The generated source gates the push/pop instrumentation on the comptime
+/// `is_syntax_error_stack_enabled` const: when the stack is enabled, the
+/// `defer` that pops the stack always runs; when disabled, the whole
+/// instrumentation folds away.
 const Generator = struct {
     allocator: std.mem.Allocator,
     options: Options,
@@ -876,15 +875,9 @@ const Generator = struct {
         handler_name: []const u8,
         indent: []const u8,
     ) !void {
-        const can_tail_call = symbol_index != self.plan.augmented_start and
-            self.symbols.items[symbol_index].kind != .end and
-            !self.has_occurrence_procedures and (!self.options.with_ast or
-            (self.symbols.items[symbol_index].kind == .variable and !self.symbolReturnsNode(symbol_index, skip_ast_construction)));
-        if (can_tail_call) {
-            try writer.print("{s}if (comptime !is_syntax_error_stack_enabled and (builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64)) {{\n", .{indent});
-            try writer.print("{s}    return @call(.always_tail, {s}, .{{context}});\n", .{ indent, handler_name });
-            try writer.print("{s}}}\n", .{indent});
-        }
+        _ = self;
+        _ = symbol_index;
+        _ = skip_ast_construction;
         try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
     }
 
