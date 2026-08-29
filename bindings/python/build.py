@@ -196,6 +196,12 @@ def main():
 
     output_path = language_dir / f"galley{sysconfig.get_config_var('EXT_SUFFIX')}"
     compile_extension(galley_source, parser_source, parser_type, prefix, output_path)
+    # Ship the PEP 484 stub alongside the extension so `ty`/`mypy`/`pyright`
+    # resolve `import galley` (compiled extensions expose no Python source).
+    stub_source = galley_source / "bindings" / "python" / "galley.pyi"
+    stub_target = language_dir / "galley.pyi"
+    if stub_source.is_file():
+        stub_target.write_bytes(stub_source.read_bytes())
     print(f"galley-bindings: built {output_path}; import galley from {language_dir}")
 
 
