@@ -1,0 +1,8 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/procedures.zig
+
+/compile_commands.json
+/build
+/metadata.json
+/galley.*.so

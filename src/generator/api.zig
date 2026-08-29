@@ -880,9 +880,6 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "fn llRecoveryOffset(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
     _ = try expectContains(output, "try parse_Item(context)");
-    _ = try expectContains(output, "builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64");
-    _ = try expectContains(output, "comptime !is_syntax_error_stack_enabled");
-    _ = try expectContains(output, "return @call(.always_tail, ll_syntax_error_");
     _ = try expectContains(output, "return ll_syntax_error_");
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "context.finishSyntaxRecovery();");
@@ -1074,7 +1071,7 @@ test "generateParserAlloc emits explicit-only recovery when annotations exist" {
     _ = try expectContains(lr_output, "context.tryExplicitRecovery(scope.id, scope.target, scope.points)");
 }
 
-test "LL syntax error recovery restores tail calls when the stack is disabled" {
+test "LL syntax error recovery uses regular returns" {
     const source =
         \\Start
         \\| "a"
@@ -1090,8 +1087,6 @@ test "LL syntax error recovery restores tail calls when the stack is disabled" {
         .with_error_recovery = true,
     });
     const no_ast_terminal = try generatedFunction(no_ast_output, "inline fn parse_terminal_a(");
-    _ = try expectContains(no_ast_terminal, "comptime !is_syntax_error_stack_enabled and (builtin.zig_backend == .stage2_llvm or builtin.zig_backend == .stage2_aarch64)");
-    _ = try expectContains(no_ast_terminal, "return @call(.always_tail, ll_syntax_error_");
     _ = try expectContains(no_ast_terminal, "return ll_syntax_error_");
 
     const terminal_ast_output = try generateParserAlloc(arena.allocator(), source, .ll, .{
@@ -1102,4 +1097,26 @@ test "LL syntax error recovery restores tail calls when the stack is disabled" {
     });
     const terminal_ast_parser = try generatedFunction(terminal_ast_output, "inline fn parse_terminal_a(");
     _ = try expectContains(terminal_ast_parser, "return ll_syntax_error_");
+}
+
+test "no-ast no-procedures LL parser does not emit invalid tail call to noinline handler" {
+    const source =
+        \\Start
+        \\| "a"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = false,
+        .with_procedures = false,
+        .with_error_recovery = true,
+    });
+    _ = try expectContains(output, "noinline fn ll_syntax_error_");
+    _ = try expectContains(output, "linksection(if (builtin.os.tag == .macos) \"__TEXT,__unlikely\" else \".text.unlikely\")");
+    try std.testing.expect(std.mem.indexOf(u8, output, "always_tail") == null);
+    const terminal = try generatedFunction(output, "inline fn parse_terminal_a(");
+    _ = try expectContains(terminal, "return ll_syntax_error_");
 }

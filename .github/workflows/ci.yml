@@ -92,6 +92,7 @@ jobs:
           - cpp
           - rust
           - go
+          - python
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -110,7 +111,7 @@ jobs:
           go-version: stable
 
       - name: Build and run example (cmake)
-        if: ${{ matrix.language != 'rust' && matrix.language != 'go' }}
+        if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
         run: |
           cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }} \
             -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
@@ -144,6 +145,13 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           go test -count=1 ./...
+      - name: Build and run example (python)
+        if: ${{ matrix.language == 'python' }}
+        working-directory: examples/python
+        run: |
+          python3 ../../bindings/python/build.py .
+          python3 main.py
+          PYTHONPATH="$PWD" python3 ../../bindings/python/tests/test_bindings.py
 
   bindings-consistency:
     name: bindings-consistency
@@ -176,7 +184,7 @@ jobs:
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust; do
+          for lang in c cpp rust python; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
           for file in _ll-parser.zig procedures.zig; do
@@ -195,9 +203,11 @@ jobs:
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/hooks/procedures.go > /tmp/names-go.txt
+          names examples/python/procedures.c > /tmp/names-python.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-python.txt || { echo "::error::C and Python procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
 
       - name: LR family builds through the c abi
@@ -260,6 +270,10 @@ jobs:
           GALLEY_CHECKOUT="$PWD/../.." go generate ./...
           go build -o /tmp/example-go .
           cd ../..
+          cd examples/python
+          python3 ../../bindings/python/build.py . >/dev/null
+          python3 main.py >/tmp/out-python.txt 2>/tmp/err-python.txt
+          cd ../..
 
           /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
@@ -277,9 +291,11 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-cpp.txt
           compare /tmp/out-c.txt /tmp/out-rust.txt
           compare /tmp/out-c.txt /tmp/out-go.txt
+          compare /tmp/out-c.txt /tmp/out-python.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
           compare /tmp/err-c.txt /tmp/err-go.txt
+          compare /tmp/err-c.txt /tmp/err-python.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   test:
