@@ -6,3 +6,4 @@
 /build
 /metadata.json
 /galley.*.so
+/galley.pyi
