@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) !void {
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks");
     const procedures_object = b.option([]const u8, "procedures-object", "Prebuilt object file or static archive implementing procedure hooks");
     const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig overriding the default template");
+    const config_zig_source = b.option([]const u8, "config-zig-source", "Path to config.zig (default: config.zig next to parser)");
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig overriding the default template");
 
     if (procedures_c_source != null and procedures_object != null) {
@@ -67,7 +68,13 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const config_mod = b.createModule(.{
-        .root_source_file = galley_dep.path("src/cli/templates/config.zig"),
+        .root_source_file = if (config_zig_source) |src|
+            .{ .cwd_relative = src }
+        else blk: {
+            const parser_dir = std.fs.path.dirname(parser_source) orelse ".";
+            const candidate = b.pathJoin(&.{ parser_dir, "config.zig" });
+            break :blk .{ .cwd_relative = candidate };
+        },
         .target = target,
         .optimize = optimize,
     });

@@ -2,8 +2,9 @@
 
 ## Table of Contents
 - [Overview](#overview)
+- [The config.zig Contract](#the-configzig-contract)
 - [Generator CLI Options](#generator-cli-options)
-- [Language Configuration](#language-configuration)
+- [Syntax Error Message Overrides](#syntax-error-message-overrides)
 - [Runtime API Options](#runtime-api-options)
 - [Quick Reference](#quick-reference)
 
@@ -13,6 +14,40 @@
 
 Galley's pipeline consists of two distinct stages: generating parser source via
 `galley`, then assembling and consuming the parser through its Zig API.
+
+Generated parsers are **configuration-independent artifacts**: they read every
+generation-time option from your language's `config.zig` at compile time
+(`comptime`). Changing configuration therefore requires **recompiling** the
+consuming project — never regenerating the parser.
+
+---
+
+## The config.zig Contract
+
+Each language directory contains a user-owned `config.zig`. Its contract:
+
+- **Constants only.** Never define functions in this file.
+- **Generation-time options only.** Every value is compiled into the parser
+  when the consuming project is built.
+- **Parse-time configuration does not belong here.** Per-session settings
+  (maximum error count, dynamic message overrides, reporters) are set through
+  parse/session options in your code.
+
+| Constant | Type | Meaning |
+| :--- | :--- | :--- |
+| `ast` | `bool` | Construct an abstract syntax tree and expose tree APIs. `false` skips AST construction entirely for maximum throughput; procedure hooks still run. |
+| `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@procedures(...)`). |
+| `allow_no_ast_tree_procedures` | `bool` | In no-AST mode, treat standard tree-manipulation procedures as no-ops instead of failing to compile. |
+| `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
+| `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. |
+| `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
+| `input_streaming` | `bool` | Stream files incrementally. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. |
+| `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. |
+| `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
+
+The file is created with documented defaults when missing (for example by
+running the generator once). Galley never rewrites an existing `config.zig`
+on its own.
 
 ---
 
@@ -25,67 +60,65 @@ zig build
 ./zig-out/bin/galley [OPTIONS] <LANGUAGE_DIR>
 ```
 
-| Flag | Argument | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `<LANGUAGE_DIR>` | `<PATH>` | Directory containing `ll.grm` and/or `lr.grm`. | None |
-| `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. | All available |
-| `--with-ast` / `--no-ast` | Flag | Enables or disables AST construction. | `--with-ast` |
-| `--with-procedures` / `--no-procedures` | Flag | Enables or disables executing reduction hooks defined in `procedures.zig`. | `--with-procedures` |
-| `--with-error-recovery` / `--no-error-recovery` | Flag | Enables or disables generated syntax recovery. Enabled unannotated grammars use automatic recovery; grammars containing `@` annotations use explicit-only recovery. | `--no-error-recovery` |
-| `--with-position-tracking` / `--no-position-tracking` | Flag | Enables or disables generated line and column tracking. Without either flag, tracking is enabled except in `ReleaseFast`. | Build-mode dependent |
-| `--with-input-streaming` / `--no-input-streaming` | Flag | Streams files incrementally or loads them completely before parsing. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. | `--no-input-streaming` |
-| `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Controls whether individual terminal characters allocate AST nodes. Disabling terminal nodes keeps AST allocations minimal. | `--no-ast-for-terminals` |
-| `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. | Off |
-| `--allow-no-ast-tree-procedures` | Flag | In no-AST mode, treats standard tree-manipulation procedures as no-ops instead of failing to compile. Has no effect when AST construction is enabled. | Off |
-| `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) in the language directory that parses files with the generated parser. Refuses to overwrite existing files. | Off |
-## galley.json
+Option flags **edit `config.zig` in place**: an explicit flag rewrites its
+constant (`--with-ast` writes `ast = true`, `--no-ast` writes `ast = false`);
+an absent flag leaves the value untouched. Edits are surgical — surrounding
+comments and formatting are preserved. After editing, Galley regenerates the
+parser files; consumers pick up new configuration when they next compile.
 
-An optional `galley.json` file in the language directory supplies defaults
-for the generation options above. Explicit command-line flags always
-override values from the file; unspecified fields keep their built-in
-defaults.
+| Flag | Argument | Description |
+| :--- | :--- | :--- |
+| `<LANGUAGE_DIR>` | `<PATH>` | Directory containing `ll.grm` and/or `lr.grm`, plus the language's `config.zig`. | 
+| `--parser-type` | `ll` \| `lr` | Limits generation to one parser type. Without it, Galley generates every parser type with a matching grammar file. This flag does not touch `config.zig`. |
+| `--with-ast` / `--no-ast` | Flag | Writes `ast = true` / `false`. |
+| `--with-procedures` / `--no-procedures` | Flag | Writes `procedures = true` / `false`. |
+| `--with-error-recovery` / `--no-error-recovery` | Flag | Writes `error_recovery = true` / `false`. |
+| `--with-position-tracking` / `--no-position-tracking` | Flag | Writes `position_tracking = true` / `false`. |
+| `--with-input-streaming` / `--no-input-streaming` | Flag | Writes `input_streaming = true` / `false`. |
+| `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Writes `ast_for_terminals = true` / `false`. |
+| `--indentation-syntax` / `--no-indentation-syntax` | Flag | Writes `indentation_syntax = true` / `false`. |
+| `--allow-no-ast-tree-procedures` | Flag | Writes `allow_no_ast_tree_procedures = true`. |
+| `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |
+| `--emit-metadata` | Flag | Write metadata.json and procedures.zig next to the generated parser(s); the bindings workflow consumes both. |
+| `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) that parses files with the generated parser. Refuses to overwrite existing files. |
+| `--watch` | Flag | Keeps running and regenerates the parser whenever the grammar file changes. If regeneration fails (for example mid-edit), the previous parser output is kept. |
 
-| Key | Type | Matches |
-| --- | --- | --- |
-| `parser_type` | `"ll"` or `"lr"` | `--parser-type` |
-| `ast` | boolean | `--with-ast` / `--no-ast` |
-| `procedures` | boolean | `--with-procedures` / `--no-procedures` |
-| `error_recovery` | boolean | `--with-error-recovery` / `--no-error-recovery` |
-| `ast_for_terminals` | boolean | `--ast-for-terminals` / `--no-ast-for-terminals` |
-| `position_tracking` | boolean | `--with-position-tracking` / `--no-position-tracking` |
-| `input_streaming` | boolean | `--with-input-streaming` / `--no-input-streaming` |
-| `allow_no_ast_tree_procedures` | boolean | `--allow-no-ast-tree-procedures` |
-| `error_messages` | object of string → string | Ignored during generation; the Rust and Go bindings read it at session creation and register its entries as syntax-error message overrides (see their docs). C, C++, and Zig consumers use the same override concept through the session API instead. |
+`ast = false` with `procedures = true` enables semantic procedures without
+constructing an AST. The same `procedures.zig` module works in both modes. In
+no-AST mode, hooks receive temporary `Node` values containing source spans,
+symbol identity, payload, and direct-child links; tree mutation APIs are
+unavailable.
 
-Unknown keys are rejected so misspelled options never silently disable a
-feature. Action flags (`--fill-error-messages`, `--bootstrap-zig-project`,
-`--watch`) cannot appear in the file.
-
-| `--watch` | Flag | Keeps running and regenerates the parser whenever the grammar file changes. Each run is separated by a timestamped banner and reports parse duration in milliseconds; if regeneration fails (for example, mid-edit), the previous parser output is kept. | Off |
-
-`--no-ast --with-procedures` enables semantic procedures without constructing
-an AST. The same `procedures.zig` module works in both modes. In no-AST mode,
-hooks receive temporary `Node` values containing source spans, symbol identity,
-payload, and direct-child links; tree mutation APIs are unavailable.
-
-Parser files named `_ll-parser.zig` and `_lr-parser.zig` are underscore-prefixed because Galley overwrites them on every generation. User-owned support files such as `config.zig`, `procedures.zig`, and `ll_error_messages.zig` / `lr_error_messages.zig` are not underscore-prefixed because Galley preserves existing content.
+Parser files named `_ll-parser.zig` and `_lr-parser.zig` are underscore-prefixed because Galley overwrites them on every generation. User-owned support files such as `config.zig` and `procedures.zig` are not underscore-prefixed because Galley preserves existing content; error-message hook files are never touched by plain generation — only `--fill-error-messages` creates or updates them.
 
 ---
 
-## Language Configuration
+## Syntax Error Message Overrides
 
-Each language's `config.zig` declares compile-time parser configuration:
+There are three layers of message customization, tried in order:
+
+1. **Session overrides** — per-parse, set programmatically through
+   `ParseOptions.message_overrides`.
+2. **Config templates** — the `error_messages` struct in `config.zig`.
+3. **Hook functions** — declarations in `ll_error_messages.zig` /
+   `lr_error_messages.zig` (created or extended by `--fill-error-messages`),
+   followed by Galley's built-in renderer.
+
+Both override tables share one key rule: entries are looked up by the
+innermost variable name where the error occurs, falling back to the universal
+`"*"` key. Config-table keys are plain field names; non-identifier keys need
+`@"..."` quoting:
 
 ```zig
-pub const indentation_syntax = true; // or false
-pub const Options = struct {};
+pub const error_messages = .{
+    .Number = "digits only at line {line}",
+    .@"*" = "parse failed: {unexpected}",
+};
 ```
 
-When `indentation_syntax` is set to `true`, the parser tracks indentation changes at the beginning of lines and emits virtual `block_start` (`\x01`) and `block_end` (`\x02`) tokens for indentation-sensitive grammars.
-
-`Options` defines arbitrary per-session state made available to procedures
-through `ParseOptions.language_options`. Both declarations are required, even
-when a language does not need indentation or custom options.
+Template values may contain placeholders expanded against each diagnostic:
+`{line}`, `{column}`, `{unexpected}`, `{expected}`, `{context}`. Unknown
+placeholders are emitted verbatim.
 
 ---
 
@@ -96,7 +129,6 @@ Pass runtime behavior to `Session.init` or one-shot parse helpers through
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{
-    .language_options = .{},
     .input_path = "input.json",
     .verbosity = 0,
     .max_errors = 10,
@@ -106,11 +138,11 @@ var session = try parser.Session.init(io, allocator, .{
 defer session.deinit();
 ```
 
-`language_options` has the language-defined `config.Options` type and is
-available to arbitrary reduction procedures. `max_errors` and
-`recovery_window` configure generated error recovery.
+`max_errors` and `recovery_window` configure generated error recovery.
 `stack_overflow_recovery` enables the optional native recovery boundary and is
-disabled by default.
+disabled by default. `message_overrides` registers dynamic per-session syntax
+message overrides (layer 1 above); `syntax_error_reporter` receives each
+rendered message instead of the default stderr printer.
 
 ReleaseFast builds compile out debugging instrumentation and position tracking
 where configured to maximize throughput.

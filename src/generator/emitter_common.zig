@@ -97,7 +97,7 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    diagnostic_context: root.SyntaxDiagnosticContext,
         \\    expected_tokens: []const []const u8,
         \\    render_message: {s}FailFastMessageRenderer,
-        \\) anyerror {{
+        \\) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror {{
         \\    @branchHint(.cold);
         \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
         \\    const diagnostic_message = render_message(.{{
@@ -111,9 +111,9 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    return root.ParseError.SyntaxError;
         \\}}
         \\
-        \\fn {s}FailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{
-        \\    if (args.context.runtime().messageOverride("{s}")) |overridden| return overridden;
-        \\    if (args.context.runtime().messageOverride("syntax_error")) |overridden| return overridden;
+        \\fn {s}FailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {{
+        \\    @branchHint(.cold);
+        \\    if (args.context.runtime().resolveMessageOverride(args.diagnostic, root.config.error_messages)) |overridden| return overridden;
         \\    if (comptime @hasDecl(error_messages, "{s}"))
         \\        return error_messages.{s}(args);
         \\    if (comptime @hasDecl(error_messages, "syntax_error"))
@@ -121,20 +121,20 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
         \\}}
         \\
-    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl, error_messages_decl });
+    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl });
 }
 
 /// Emits a fail-fast syntax error message renderer function shared by the LL
 /// and LR backends. `error_message_fields` is the ordered list of error
 /// messages namespace decls to try before `fallback_message_function`.
 pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8, fallback_message_function: []const u8) !void {
-    try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {{\n", .{function_name});
-    for (error_message_fields) |field| {
-        try writer.print("    if (args.context.runtime().messageOverride(\"{s}\")) |overridden| return overridden;\n", .{field});
+    try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) \"__TEXT,__unlikely\" else \".text.unlikely\") anyerror![]const u8 {{\n", .{function_name});
+    try writer.writeAll("    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    for (error_message_fields, 0..) |field, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("\"{s}\"", .{field});
     }
-    for (error_message_fields) |field| {
-        try writer.print("    if (comptime @hasDecl(error_messages, \"{s}\"))\n        return @field(error_messages, \"{s}\")(args);\n", .{ field, field });
-    }
+    try writer.writeAll("})) |message| return message;\n");
     try writer.print("    return {s}(args);\n}}\n\n", .{fallback_message_function});
 }
 
@@ -163,26 +163,174 @@ pub fn emitErrorMessageFile(
     }
 }
 
+/// Recovery styles a generated function body can be rendered under. Shared
+/// by the LL and LR emitters' mode-gated body driver.
+pub const BodyRecoveryMode = enum { disabled, automatic, explicit };
+
+/// Renders one generated function body under every configuration that
+/// `config.zig` can select, deduplicates identical texts, and emits them
+/// chained behind `comptime` gates on the generated constants. Exactly
+/// one branch is analyzed per compilation; disabled branches cost
+/// nothing. This is what makes the generated file independent of the
+/// options present at generation time.
+///
+/// Shared single implementation: both parser-family emitters delegate here.
+/// The generator type must expose `allocator`, mutable `options`
+/// (`with_ast`, `with_procedures`, `ast_for_terminals`,
+/// `with_error_recovery`), and fact `uses_explicit_recovery`.
+pub fn emitModeGatedBody(
+    comptime Generator: type,
+    generator: *Generator,
+    writer: *std.Io.Writer,
+    comptime Params: type,
+    params: Params,
+    has_occurrence_procedures_parameter: bool,
+    comptime render_fn: fn (*Generator, *std.Io.Writer, Params) anyerror!void,
+) !void {
+    const Combo = struct {
+        ast: bool,
+        procedures: bool,
+        terminals: bool,
+        mode: BodyRecoveryMode,
+    };
+    // Every configuration dimension a body's shape can depend on. Four
+    // dimensions ⇒ up to 24 renders; identical bodies deduplicate, and
+    // irrelevant dimensions collapse naturally (e.g. terminals is inert
+    // when no symbol returns nodes).
+    var all_combos: [24]Combo = undefined;
+    var combo_count: usize = 0;
+    const modes = [_]BodyRecoveryMode{ .explicit, .automatic, .disabled };
+    const bools = [_]bool{ true, false };
+    for (modes) |mode| {
+        for (bools) |ast| {
+            for (bools) |procedures| {
+                for (bools) |terminals| {
+                    all_combos[combo_count] = .{
+                        .ast = ast,
+                        .procedures = procedures,
+                        .terminals = terminals,
+                        .mode = mode,
+                    };
+                    combo_count += 1;
+                }
+            }
+        }
+    }
+    const saved_options = generator.options;
+    defer generator.options = saved_options;
+
+    var texts: [all_combos.len][]const u8 = undefined;
+    var group_members: [all_combos.len][]Combo = undefined;
+    var group_counts: [all_combos.len]usize = undefined;
+    var kept_count: usize = 0;
+    for (all_combos[0..combo_count]) |combo| {
+        generator.options.with_ast = combo.ast;
+        generator.options.with_procedures = combo.procedures;
+        generator.options.ast_for_terminals = combo.terminals;
+        generator.options.with_error_recovery = combo.mode != .disabled;
+        // Gate clauses derive each combo's effective recovery style from
+        // the combo itself (annotation-free grammars render automatic
+        // bodies under recovery-on combos). This keeps labels aligned
+        // with what runtime `error_recovery_mode` can resolve to.
+        var buffer = std.Io.Writer.Allocating.init(generator.allocator);
+        defer buffer.deinit();
+        try render_fn(generator, &buffer.writer, params);
+        const rendered = buffer.written();
+        // When a variant never touches an optional parameter, take its
+        // address to silence unused-parameter errors: unlike a discard,
+        // this stays legal in variants that do use the parameter.
+        const text = if (has_occurrence_procedures_parameter and
+            std.mem.indexOf(u8, rendered, "occurrence_procedures") == null)
+            try std.fmt.allocPrint(
+                generator.allocator,
+                "    _ = &occurrence_procedures;\n{s}",
+                .{rendered},
+            )
+        else
+            try generator.allocator.dupe(u8, rendered);
+        var duplicate_index: ?usize = null;
+        for (texts[0..kept_count], 0..) |existing, gi| {
+            if (std.mem.eql(u8, existing, text)) {
+                duplicate_index = gi;
+                break;
+            }
+        }
+        if (duplicate_index) |gi| {
+            generator.allocator.free(text);
+            // Record membership so this exact configuration is covered by
+            // the group's gate disjunction.
+            group_members[gi][group_counts[gi]] = combo;
+            group_counts[gi] += 1;
+        } else {
+            texts[kept_count] = text;
+            group_members[kept_count] = try generator.allocator.alloc(Combo, all_combos.len);
+            group_members[kept_count][0] = combo;
+            group_counts[kept_count] = 1;
+            kept_count += 1;
+        }
+    }
+
+    // One gated branch per distinct body; each gate is a disjunction over
+    // every configuration that produced this body, so the chain covers
+    // the full configuration space exhaustively — no fall-through, no
+    // mismatched pairing.
+    for (texts[0..kept_count], group_members[0..kept_count], 0..) |text, members, index| {
+        if (index != 0) try writer.writeAll("} else ");
+        try writer.writeAll("if (comptime ");
+        for (members[0..group_counts[index]], 0..) |combo, mi| {
+            if (mi != 0) try writer.writeAll(" or ");
+            try writer.print(
+                "(error_recovery_mode == .{s} and is_ast_enabled == {s} and are_procedures_enabled == {s} and ast_for_terminals == {s})",
+                .{
+                    if (combo.mode == .disabled)
+                        "disabled"
+                    else if (generator.uses_explicit_recovery)
+                        "explicit"
+                    else
+                        "automatic",
+                    if (combo.ast) "true" else "false",
+                    if (combo.procedures) "true" else "false",
+                    if (combo.terminals) "true" else "false",
+                },
+            );
+        }
+        try writer.writeAll(") {\n");
+        try writer.writeAll(text);
+    }
+    try writer.writeAll("}\n");
+}
+
+/// Emits the parser metadata header shared by LL and LR generated parsers.
+///
+/// Option values are no longer baked here: every option is a comptime
+/// expression over the consumer's `config.zig`, so changing configuration
+/// requires recompilation only — never regeneration. What stays baked is
+/// grammar *content* (recovery-annotation presence, verbatim usage, longest
+/// terminal) and family capability (parser type, syntax-error stack support).
 pub fn emitParserMetadata(
     writer: *std.Io.Writer,
     parser_type: []const u8,
-    options: common.Options,
-    uses_explicit_recovery: bool,
+    has_recovery_annotations: bool,
     longest_terminal_length: usize,
     uses_verbatim: bool,
     syntax_error_stack_supported: bool,
 ) !void {
     try writer.print(
         \\
+        \\pub const config = root.config;
         \\pub const parser_type = data_structures.ParserType.{s};
         \\pub const ErrorRecoveryMode = enum {{ disabled, automatic, explicit }};
-        \\pub const is_ast_enabled = {};
-        \\pub const are_procedures_enabled = {};
-        \\pub const allow_no_ast_tree_procedures = {};
-        \\pub const is_error_recovery_enabled = {};
-        \\pub const error_recovery_mode: ErrorRecoveryMode = .{s};
-        \\pub const is_position_tracking_enabled = {s};
-        \\pub const is_input_streaming_enabled = {};
+        \\pub const is_ast_enabled = config.ast;
+        \\pub const are_procedures_enabled = config.procedures;
+        \\pub const allow_no_ast_tree_procedures = config.allow_no_ast_tree_procedures;
+        \\pub const is_error_recovery_enabled = config.error_recovery;
+        \\pub const ast_for_terminals = config.ast_for_terminals;
+        \\pub const has_recovery_annotations = {};
+        \\pub const error_recovery_mode: ErrorRecoveryMode =
+        \\    if (!is_error_recovery_enabled) .disabled else if (has_recovery_annotations) .explicit else .automatic;
+        \\pub const is_position_tracking_enabled =
+        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .ReleaseFast;
+        \\pub const is_input_streaming_enabled = config.input_streaming;
         \\pub const syntax_error_stack_depth = {s};
         \\pub const is_syntax_error_stack_enabled = {s};
         \\{s}pub const longest_terminal_length = {d};
@@ -190,13 +338,7 @@ pub fn emitParserMetadata(
         \\
     , .{
         parser_type,
-        options.with_ast,
-        options.with_procedures,
-        options.allow_no_ast_tree_procedures,
-        options.with_error_recovery,
-        if (!options.with_error_recovery) "disabled" else if (uses_explicit_recovery) "explicit" else "automatic",
-        if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "builtin.mode != .ReleaseFast",
-        options.with_input_streaming,
+        has_recovery_annotations,
         if (syntax_error_stack_supported)
             "root.syntax_error_stack_depth"
         else
@@ -216,6 +358,7 @@ pub fn emitGrammarTables(
     symbols: []const common.Symbol,
     variables: []const usize,
     rules: []const common.Rule,
+    end_symbol: usize,
 ) !void {
     try writer.writeAll("pub const symbols = &[_][]const u8{\n");
     for (symbols, 0..) |symbol, index| {
@@ -227,7 +370,12 @@ pub fn emitGrammarTables(
     for (symbols) |symbol| try writer.print("    {},\n", .{symbol.kind != .variable});
     try writer.writeAll("};\n\npub const is_generative_terminal = &[_]bool{\n");
     for (symbols) |symbol| try writer.print("    {},\n", .{symbol.kind == .generative_terminal});
-    try writer.writeAll("};\n\npub const variables = &[_][]const u8{\n");
+    try writer.writeAll("};\n\npub const is_variable = &[_]bool{\n");
+    for (symbols) |symbol| try writer.print("    {},\n", .{symbol.kind == .variable});
+    try writer.print("}};\n\npub const end_symbol = {d};\n", .{end_symbol});
+    try writer.writeAll("\n/// Per-symbol grammar fact: whether AST construction was enabled for this\n/// symbol by its grammar annotations (`@ast(...)`). Consumed at comptime by\n/// the generated `symbolReturnsNode` derivation.\npub const ast_enabled = &[_]bool{\n");
+    for (symbols) |symbol| try writer.print("    {},\n", .{symbol.ast_enabled});
+    try writer.writeAll("};\n\n/// Comptime derivation shared by all generated parsers (ruling #1, Option\n/// A): mirrors generator-side `common.symbolReturnsNode`, but reads its\n/// option half from `config.zig` so configuration changes never require\n/// regeneration.\npub fn symbolReturnsNode(comptime symbol_index: usize) bool {\n    if (!is_ast_enabled and !are_procedures_enabled) return false;\n    if (comptime symbol_index == end_symbol) return false;\n    if (comptime is_variable[symbol_index]) return ast_enabled[symbol_index];\n    return ast_for_terminals;\n}\n\npub const variables = &[_][]const u8{\n");
     for (variables) |symbol_index| {
         try writer.writeAll("    ");
         try common.emitStringLiteral(writer, symbols[symbol_index].id);

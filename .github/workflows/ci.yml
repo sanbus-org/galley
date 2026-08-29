@@ -123,6 +123,10 @@ jobs:
           GALLEY_CHECKOUT="$GITHUB_WORKSPACE" \
             cargo run --release --manifest-path examples/rust/Cargo.toml
 
+      - name: Test bindings (cargo)
+        if: ${{ matrix.language == 'rust' }}
+        run: cargo test --release --manifest-path bindings/rust/Cargo.toml
+
       - name: Build and run example (go)
         if: ${{ matrix.language == 'go' }}
         working-directory: examples/go
@@ -132,6 +136,14 @@ jobs:
           go generate ./...
           go build -o galley-go-example .
           ./galley-go-example
+
+      - name: Test bindings (go)
+        if: ${{ matrix.language == 'go' }}
+        working-directory: examples/go
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          go test -count=1 ./...
 
   bindings-consistency:
     name: bindings-consistency
@@ -154,7 +166,7 @@ jobs:
 
       - name: Grammar, options, and error messages are identical across bindings
         run: |
-          for file in ll.grm galley.json ll_error_messages.zig; do
+          for file in ll.grm config.zig ll_error_messages.zig; do
             unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
             count=$(printf '%s\n' "$unique" | wc -l)
             echo "$file: $count distinct variants"
@@ -198,14 +210,14 @@ jobs:
           work=/tmp/galley-lr-smoke
           rm -rf "$work" && mkdir -p "$work"
           cp examples/c/ll.grm "$work/lr.grm"
-          cp examples/c/galley.json examples/c/procedures.c "$work/"
+          cp examples/c/config.zig examples/c/procedures.c "$work/"
           ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
           zig build --build-file bindings/c/consumer/build.zig \
             "-Dparser-source=$work/_lr-parser.zig" \
+            "-Dconfig-zig-source=$work/config.zig" \
             "-Dparser-type=lr" \
             "-Dprocedures-zig-source=$work/procedures.zig" \
             "-Dprocedures-c-source=$work/procedures.c" \
-            "-Derror-messages-zig-source=$work/lr_error_messages.zig" \
             -Dlib-name=keyvalue-lr -Doptimize=ReleaseFast \
             --prefix "$work/out" install
           cat > "$work/driver.c" <<'EOF'

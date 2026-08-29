@@ -5,8 +5,8 @@ project(galley_cpp_example CXX)
 # from this directory's ll.grm, and compiling it into a shared C-API library
 # all happen here automatically.
 #
-# Generation options live in galley.json next to ll.grm — edit it and
-# rebuild to regenerate. Requires `zig` and `git` on PATH; nothing from any
+# Generation options live in config.zig next to ll.grm — edit it and
+# rebuild consumers to pick them up. Requires `zig` and `git` on PATH; nothing from any
 # parent directory is used. Benchmarking submodules of Galley are not needed
 # and are skipped; GIT_SHALLOW assumes GALLEY_TAG names a branch.
 #
@@ -65,14 +65,14 @@ add_custom_command(
     VERBATIM
 )
 
-# 2. Generate the parser from ll.grm. All generation options come from this
-#    directory's galley.json; the boilerplate modules and _ll-parser.zig are
-#    generated in place and gitignored.
+# 2. Generate the parser from ll.grm. All generation-time options come from
+#    this directory's config.zig (created from documented defaults when
+#    missing); the boilerplate modules and _ll-parser.zig are generated in
+#    place and gitignored.
 add_custom_command(
     OUTPUT "${GENERATED_PARSER}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GALLEY_SOURCE_DIR}/src/cli/templates/config.zig" "${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
     COMMAND "${GALLEY_CLI}" --emit-metadata "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEPENDS "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}/ll.grm" "${CMAKE_CURRENT_SOURCE_DIR}/galley.json"
+    DEPENDS "${GALLEY_CLI}" "${CMAKE_CURRENT_SOURCE_DIR}/ll.grm" "${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
     VERBATIM
 )
 
@@ -83,9 +83,9 @@ add_custom_command(
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
             "-Dparser-source=${GENERATED_PARSER}"
+            "-Dconfig-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/config.zig"
             "-Dprocedures-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.zig"
             "-Dprocedures-c-source=${CMAKE_CURRENT_SOURCE_DIR}/procedures.cpp"
-            "-Derror-messages-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
             "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
             "-Doptimize=ReleaseFast"

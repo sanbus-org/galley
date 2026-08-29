@@ -34,8 +34,8 @@ fn main() {
     let mut session = {
         let options = galley_bindings::SessionOptions {
             message_overrides: vec![(
-                "syntax_error_ll_Number__expected_generative_terminal_digit".to_string(),
-                "expected a number after ':' (digits only, overridden)".to_string(),
+                "Number".to_string(),
+                "expected a number after ':' (digits only) at line {line}".to_string(),
             )],
             ..Default::default()
         };

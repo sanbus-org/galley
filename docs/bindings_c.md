@@ -42,10 +42,14 @@ Semantic payloads remain unavailable through the C API.
 
 ## Error Messages
 
-Set `"error_messages"` hooks by running
-`galley --fill-error-messages examples/c`, then edit any hook body — for
-example a friendlier `syntax_error_ll_Number__expected_generative_terminal_digit`.
-Pass the file to the consumer build:
+Messages are customizable without any Zig: message **overrides** (fixed
+strings with placeholders) and host-side **renderers** (dynamic
+callbacks) cover virtually every need — see the two sections below.
+
+The advanced escape hatch remains a generated Zig hook file: run
+`galley --fill-error-messages examples/c`, edit any hook body (for
+example `syntax_error_ll_Number__expected_generative_terminal_digit`),
+and pass the file to the consumer build:
 
 ```cmake
 "-Derror-messages-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
@@ -59,20 +63,25 @@ LR grammars use the same flow with `lr_error_messages.zig` and
 
 ### Message Overrides
 
-To replace a site's message with a fixed string — no Zig file at all —
-register an override. Names follow the same fallback order the sites use
-(exact hook name, then variable-level family, then the general
-`syntax_error`), and overrides take priority over hooks:
+To replace messages with fixed strings — no Zig file at all — register
+overrides keyed by structured identity: the innermost in-progress
+variable name (for example `"Number"`), or `"*"` for every syntax and
+indentation error. Variable keys win over `"*"`; overrides take priority
+over hooks. Placeholders expand against the failing diagnostic:
 
 ```c
 galley_session_set_message_override(session,
-    "syntax_error_ll_Number__expected_generative_terminal_digit",
-    sizeof("syntax_error_ll_Number__expected_generative_terminal_digit") - 1,
-    "expected a number after ':' (digits only)",
-    sizeof("expected a number after ':' (digits only)") - 1);
+    "Number", sizeof("Number") - 1,
+    "expected a number after ':' (digits only) at line {line}",
+    sizeof("expected a number after ':' (digits only) at line {line}") - 1);
 ```
 
 Both strings are copied; overrides persist for the session's lifetime.
+
+Placeholders inside override messages expand against the failing
+diagnostic: `{line}`, `{column}`, `{unexpected}`, `{expected}` (rendered
+as `'a', 'b'`), and `{context}` (innermost-first chain joined with
+` <~ `). Unknown names pass through untouched.
 
 ## Build Model
 
@@ -105,8 +114,8 @@ Galley-side build knowledge is required:
    `_lr-parser.zig` source with `-Dparser-type=lr` for an LR grammar.
    One library embeds one parser.
 
-Generation options come from an optional [`galley.json`](/configuration) in
-the language directory; command-line flags override it.
+Generation-time options come from [`config.zig`](/configuration) in the
+language directory; CLI flags edit its constants in place.
 
 ### What the examples' CMake does
 
@@ -114,7 +123,7 @@ Both examples wire steps 1–2 into CMake so a plain
 `cmake -S examples/c -B build && cmake --build build` fetches Galley, builds
 its CLI, generates the parser from the example's own `ll.grm`, compiles the
 library, builds `build/bin/example`, and runs nothing else. Generation also
-re-runs automatically whenever `ll.grm` or `galley.json` changes.
+re-runs automatically whenever `ll.grm` or `config.zig` changes.
 
 Useful variables:
 
@@ -125,8 +134,7 @@ Useful variables:
 | `GALLEY_CHECKOUT` | Existing Galley working tree; skips fetching |
 
 Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) live in
-the example directory and are gitignored; `ll_error_messages.zig` is
-committed so custom message hooks ship with the example.
+the example directory and are gitignored.
 After a build, `build/bin/` contains just the example executable — the
 Galley CLI stays inside its own tree.
 

@@ -38,7 +38,6 @@ pub const LLPlan = struct {
     symbol_reprs: [][]const u8 = &.{},
     emitted_symbols: []const usize = &.{},
     has_parse_entries: []bool = &.{},
-    symbol_returns_node: []bool = &.{},
     variable_indices: []?usize = &.{},
     longest_terminal_length: usize = 0,
     parser_decisions: std.ArrayList(ParserDecision) = .empty,
@@ -511,7 +510,10 @@ const Builder = struct {
     }
 
     fn planAstSuppressedParsers(self: *Builder) !void {
-        if (!self.options.with_ast and !self.options.with_procedures) return;
+        // Purely structural: which parsers may be referenced from an
+        // AST-suppressed call site is a grammar fact, independent of any
+        // generation-time configuration, so every variant's config can find
+        // its suppressed parsers present.
         for (self.grammar.variables.items) |variable| {
             if (self.hasParseEntries(variable)) try self.planAstSuppressedChildren(variable, false);
         }
@@ -573,7 +575,6 @@ const Builder = struct {
     fn planEmissionMetadata(self: *Builder) !void {
         const symbol_count = self.grammar.symbols.items.len;
         self.plan.has_parse_entries = try self.allocator.alloc(bool, symbol_count);
-        self.plan.symbol_returns_node = try self.allocator.alloc(bool, symbol_count);
         self.plan.variable_indices = try self.allocator.alloc(?usize, symbol_count);
         @memset(self.plan.has_parse_entries, false);
         @memset(self.plan.variable_indices, null);
@@ -583,7 +584,6 @@ const Builder = struct {
 
         var emitted = std.ArrayList(usize).empty;
         for (self.grammar.symbols.items, 0..) |symbol, symbol_index| {
-            self.plan.symbol_returns_node[symbol_index] = common.symbolReturnsNode(symbol, self.options);
             if (symbol.kind != .variable or self.plan.has_parse_entries[symbol_index]) try emitted.append(self.allocator, symbol_index);
         }
         self.plan.emitted_symbols = try emitted.toOwnedSlice(self.allocator);

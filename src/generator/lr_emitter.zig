@@ -31,7 +31,9 @@ const Generator = struct {
     rules: std.ArrayList(Rule),
     plan: *const LRPlan,
     uses_explicit_recovery: bool,
+    has_recovery_annotations: bool,
     uses_verbatim: bool,
+    end_symbol: usize,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LRPlan) Generator {
         return .{
@@ -42,7 +44,9 @@ const Generator = struct {
             .rules = grammar.rules,
             .plan = plan,
             .uses_explicit_recovery = grammar.uses_explicit_recovery,
+            .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
+            .end_symbol = grammar.eof,
         };
     }
 
@@ -51,7 +55,6 @@ const Generator = struct {
             \\const builtin = @import("builtin");
             \\const std = @import("std");
             \\const root = @import("galley");
-            \\const config = root.config;
             \\const procedures = root.procedures;
             \\const error_messages = root.error_messages;
             \\const data_structures = root.data_structures;
@@ -61,37 +64,73 @@ const Generator = struct {
         try emitter_common.emitParserMetadata(
             writer,
             "lr",
-            self.options,
-            self.uses_explicit_recovery,
+            self.has_recovery_annotations,
             self.longestTerminalLength(),
             self.uses_verbatim,
             false,
         );
-        try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items);
-        if (self.options.with_error_recovery and !self.uses_explicit_recovery) try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
-        if (self.options.with_procedures) try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items);
+        try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items, self.end_symbol);
+        // Recovery/procedure support is emitted unconditionally: which style
+        // or feature-set is active is selected at comptime per configuration
+        // (LL parity), and unused support folds away under lazy analysis.
+        try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items);
 
         try writer.writeAll(
             \\const ReduceResult = struct {
             \\    variable: u16,
             \\    pops_remaining: u16,
             \\    is_accept: bool,
-        );
-        if (self.options.with_error_recovery) try writer.writeAll("    is_recovery: bool,\n");
-        try writer.writeAll(
+            \\    // Unconditional with a default: recovery styles that never mark
+            \\    // results still construct this type, and omitted fields keep
+            \\    // every configuration's constructions valid.
+            \\    is_recovery: bool = false,
+            \\
             \\};
             \\
+            \\// The semantic value's `node` payload is comptime-typed per
+            \\// configuration: a tree address under AST builds, an optional
+            \\// temporary node under procedure-only builds, and nothing when
+            \\// neither feature is enabled. Defaults keep position-only
+            \\// constructions legal everywhere.
+            \\const NodeFieldType =
+            \\    if (is_ast_enabled)
+            \\        data_structures.Node.Pointer
+            \\    else if (are_procedures_enabled)
+            \\        ?data_structures.Node
+            \\    else
+            \\        void;
+            \\const node_field_default: NodeFieldType =
+            \\    if (NodeFieldType == data_structures.Node.Pointer)
+            \\        data_structures.Node.invalid_pointer
+            \\    else if (NodeFieldType == ?data_structures.Node)
+            \\        null
+            \\    else {};
             \\const SemanticValue = struct {
             \\    start_pos: usize,
-        );
-        if (self.options.with_ast) {
-            try writer.writeAll("    node: data_structures.Node.Pointer = data_structures.Node.invalid_pointer,\n");
-        } else if (self.options.with_procedures) {
-            try writer.writeAll("    node: ?data_structures.Node = null,\n");
-        }
-        try writer.writeAll(
+            \\    node: NodeFieldType = node_field_default,
             \\};
             \\
+            \\// One handler return vocabulary across all recovery styles; each
+            \\// style resolves it to its own contract at comptime.
+            \\
+        );
+        if (!self.uses_explicit_recovery) {
+            try writer.writeAll("const SyntaxHandlerReturn = if (error_recovery_mode == .disabled) anyerror!ReduceResult else anyerror!bool;\n\n");
+        } else {
+            try writer.writeAll(
+                \\const SyntaxHandlerReturn =
+                \\    if (error_recovery_mode == .disabled)
+                \\        anyerror!ReduceResult
+                \\    else if (error_recovery_mode == .explicit)
+                \\        anyerror!?ExplicitRecoveryResult
+                \\    else
+                \\        anyerror!bool;
+                \\
+                \\
+            );
+        }
+        try writer.writeAll(
             \\const SemanticStack = struct {
             \\    storage: std.ArrayList(SemanticValue) = .empty,
             \\    allocator: std.mem.Allocator,
@@ -120,7 +159,9 @@ const Generator = struct {
             try self.emitStateFunction(writer, state, index);
             try writer.writeByte('\n');
         }
-        if (self.options.with_error_recovery and !self.uses_explicit_recovery) try self.emitStateRecoveryCandidateTables(writer);
+        // Fact-gated only: automatic-mode candidate tables exist whenever the
+        // grammar uses automatic recovery, independent of configuration.
+        if (!self.uses_explicit_recovery) try self.emitStateRecoveryCandidateTables(writer);
         try self.emitSyntaxErrorHandlers(writer);
         if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
 
@@ -129,52 +170,52 @@ const Generator = struct {
             \\    var stack = SemanticStack{ .allocator = context.runtime().arena_allocator };
             \\    defer stack.deinit();
             \\
+            \\
         );
+        // Under explicit-recovery grammars the unified state-function
+        // signature takes a frame argument in every style; only the explicit
+        // style has a real frame to thread.
         if (self.uses_explicit_recovery) {
             try writer.writeAll(
-                \\    const recovery_root = LRRecoveryFrame{ .parent = null, .state = 0, .incoming_symbol = null };
-                \\    const result = try state_0(context, &stack, &recovery_root);
+                \\    const result = if (comptime error_recovery_mode == .explicit) blk: {
+                \\        const recovery_root = LRRecoveryFrame{ .parent = null, .state = 0, .incoming_symbol = null };
+                \\        break :blk try state_0(context, &stack, &recovery_root);
+                \\    } else try state_0(context, &stack, null);
+                \\
             );
         } else {
             try writer.writeAll("    const result = try state_0(context, &stack);\n");
         }
-        if (self.options.with_error_recovery) {
-            try writer.writeAll(
-                \\    if (result.is_recovery or !result.is_accept) {
-                \\        return root.ParseError.SyntaxError;
-                \\    }
-                \\    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
-                \\
-            );
-        } else {
-            try writer.writeAll(
-                \\    if (!result.is_accept) {
-                \\        return root.ParseError.SyntaxError;
-                \\    }
-                \\
-            );
-        }
         try writer.writeAll(
+            \\    if (comptime error_recovery_mode == .disabled) {
+            \\        if (!result.is_accept) {
+            \\            return root.ParseError.SyntaxError;
+            \\        }
+            \\    } else {
+            \\        if (result.is_recovery or !result.is_accept) {
+            \\            return root.ParseError.SyntaxError;
+            \\        }
+            \\        if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
+            \\    }
             \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
             \\
+            \\    const ast_root = if (comptime is_ast_enabled)
+            \\        (if (stack.storage.items[stack.storage.items.len - 1].node != data_structures.Node.invalid_pointer)
+            \\            stack.storage.items[stack.storage.items.len - 1].node
+            \\        else
+            \\            null)
+            \\    else
+            \\        null;
+            \\    const semantic_root =
+            \\        if (comptime !is_ast_enabled and are_procedures_enabled)
+            \\            (if (stack.storage.items[stack.storage.items.len - 1].node) |node| node.payload else null)
+            \\        else if (comptime is_ast_enabled and are_procedures_enabled)
+            \\            (if (ast_root) |address| context.node_allocator.at(address).payload else null)
+            \\        else {};
+            \\
         );
-        if (self.options.with_ast) {
-            try writer.writeAll(
-                \\    const root_node = stack.storage.items[stack.storage.items.len - 1].node;
-                \\    const ast_root = if (root_node != data_structures.Node.invalid_pointer) root_node else null;
-            );
-        } else {
-            try writer.writeAll("    const ast_root = null;\n");
-        }
-        if (!self.options.with_ast and self.options.with_procedures) {
-            try writer.writeAll("    const semantic_root = if (stack.storage.items[stack.storage.items.len - 1].node) |node| node.payload else null;\n");
-        } else if (self.options.with_ast and self.options.with_procedures) {
-            try writer.writeAll("    const semantic_root = if (ast_root) |address| context.node_allocator.at(address).payload else null;\n");
-        } else {
-            try writer.writeAll("    const semantic_root = {};\n");
-        }
         try writer.writeAll(
             \\    return .{
             \\        .parsed_bytes = context.pos() - if (comptime config.indentation_syntax) 1 else 0,
@@ -190,58 +231,114 @@ const Generator = struct {
             \\}
             \\
         );
+        // Cold fail-fast support at the very end so the large
+        // `lrFailFastDefaultMessage` (session → config → hooks chain) does
+        // not sit between the hot state functions and displace them.
+        try self.emitFailFastSyntaxErrorSupport(writer);
     }
 
+    const StateBody = struct {
+        state: State,
+        state_index: usize,
+    };
+
+    /// Emits one state parser with a configuration-unified signature: the
+    /// optional recovery-frame parameter exists whenever the grammar carries
+    /// explicit-recovery annotations (a grammar fact), typed optional so
+    /// every recovery style can supply an argument. Which shape the body
+    /// takes is decided at comptime per configuration.
     fn emitStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
-        if (!self.options.with_error_recovery) return self.emitFailFastStateFunction(writer, state, state_index);
-
-        try self.emitRecoveryStateFunction(writer, state, state_index);
+        try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack", .{ state_index, state_index });
+        if (self.uses_explicit_recovery) try writer.writeAll(", recovery_frame: ?*const LRRecoveryFrame");
+        try writer.writeAll(") anyerror!ReduceResult {\n");
+        try emitter_common.emitModeGatedBody(Generator, self, writer, StateBody, .{ .state = state, .state_index = state_index }, false, renderStateBody);
+        try writer.writeAll("}\n");
     }
 
-    fn emitFailFastStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
-        try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack) anyerror!ReduceResult {{\n", .{ state_index, state_index });
-        try writer.writeAll("    var result: ReduceResult = undefined;\n");
-        if (!state.uses_semantic_stack) try writer.writeAll("    _ = stack;\n");
+    /// Shared goto-dispatch emission for state bodies. `syntax_error_indent`
+    /// positions the empty-gotos diagnostic; `line_indent` positions the
+    /// switch itself and its arms. Frame threading follows the active
+    /// configuration: explicit-style states chain child frames, styles
+    /// without frames pass null (the parameter exists by grammar fact).
+    fn emitStateGotos(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        state: State,
+        diagnostic: ?usize,
+        syntax_error_indent: []const u8,
+        line_indent: []const u8,
+    ) !void {
+        if (state.gotos.items.len == 0) {
+            try self.emitStateSyntaxError(writer, diagnostic.?, syntax_error_indent);
+            return;
+        }
+        try writer.print("{s}result = switch (result.variable) {{\n", .{line_indent});
+        const thread_frames = self.options.with_error_recovery and self.uses_explicit_recovery;
+        for (state.gotos.items) |goto| {
+            const variable_index = self.variableIndex(goto.variable);
+            const symbol_id = self.symbols.items[goto.variable].id;
+            if (thread_frames) {
+                try writer.print(
+                    "{s}{d} => next: {{ const next_recovery_frame = LRRecoveryFrame{{ .parent = recovery_frame, .state = {d}, .incoming_symbol = {d} }}; break :next try state_{d}(context, stack, &next_recovery_frame); }}, // {s}\n",
+                    .{ line_indent, variable_index, goto.state, goto.variable, goto.state, symbol_id },
+                );
+            } else if (self.uses_explicit_recovery) {
+                try writer.print("{s}{d} => try state_{d}(context, stack, null), // {s}\n", .{ line_indent, variable_index, goto.state, symbol_id });
+            } else {
+                try writer.print("{s}{d} => try state_{d}(context, stack), // {s}\n", .{ line_indent, variable_index, goto.state, symbol_id });
+            }
+        }
+        try writer.print("{s}else => unreachable,\n{s}}};\n", .{ line_indent, line_indent });
+        // Automatic-style retry loopback exists only where a goto dispatch
+        // can produce a marked result; the empty-gotos diagnostic above
+        // always diverts control itself.
+        if (self.options.with_error_recovery and !self.uses_explicit_recovery) {
+            try writer.print("{s}if (result.is_recovery) continue :state_recovery;\n", .{line_indent});
+        }
+    }
+
+    fn renderStateBody(self: *Generator, writer: *std.Io.Writer, params: StateBody) !void {
+        const state = params.state;
+        const state_index = params.state_index;
+        // Silencer that stays legal whether or not this variant touches the
+        // semantic stack.
+        try writer.writeAll("    _ = &stack;\n");
+        if (self.uses_explicit_recovery and !(self.options.with_error_recovery and self.uses_explicit_recovery)) {
+            try writer.writeAll("    _ = &recovery_frame;\n");
+        }
 
         const decision = self.plan.state_decisions.items[state_index];
-        if (decision.action_tree.entries.len == 0) {
-            try self.emitStateSyntaxError(writer, decision.action_tree.diagnostic.?, "    ");
-        } else {
-            try self.emitActionSwitch(writer, state, decision.action_tree, 0, "    ");
-            try writer.writeByte('\n');
-        }
 
-        try writer.writeAll(
-            \\    while (true) {
-            \\        if (result.is_accept) return result;
-            \\        if (result.pops_remaining > 0) {
-            \\            result.pops_remaining -= 1;
-            \\            return result;
-            \\        }
-            \\
-        );
-        if (state.gotos.items.len == 0) {
-            try self.emitStateSyntaxError(writer, decision.goto_diagnostic.?, "        ");
-        } else {
-            try writer.writeAll("        result = switch (result.variable) {\n");
-            for (state.gotos.items) |goto| {
-                try writer.print("            {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
+        if (!self.options.with_error_recovery) {
+            try writer.writeAll("    var result: ReduceResult = undefined;\n");
+            if (decision.action_tree.entries.len == 0) {
+                try self.emitStateSyntaxError(writer, decision.action_tree.diagnostic.?, "    ");
+            } else {
+                try self.emitActionSwitch(writer, state, decision.action_tree, 0, "    ");
+                try writer.writeByte('\n');
             }
-            try writer.writeAll("            else => unreachable,\n        };\n");
-        }
-        try writer.writeAll("    }\n}\n");
-    }
 
-    fn emitRecoveryStateFunction(self: *Generator, writer: *std.Io.Writer, state: State, state_index: usize) !void {
-        try writer.print("// LR parser state {d}\nfn state_{d}(context: *data_structures.Context, stack: *SemanticStack{s}) anyerror!ReduceResult {{\n", .{
-            state_index,
-            state_index,
-            if (self.uses_explicit_recovery) ", recovery_frame: *const LRRecoveryFrame" else "",
-        });
-        try writer.writeAll(if (self.uses_explicit_recovery) "    while (true) {\n" else "    state_recovery: while (true) {\n");
+            try writer.writeAll(
+                \\    while (true) {
+                \\        if (result.is_accept) return result;
+                \\        if (result.pops_remaining > 0) {
+                \\            result.pops_remaining -= 1;
+                \\            return result;
+                \\        }
+                \\
+            );
+            try self.emitStateGotos(writer, state, decision.goto_diagnostic, "        ", "            ");
+            try writer.writeAll("    }\n");
+            return;
+        }
+
+        if (self.uses_explicit_recovery) {
+            try writer.writeAll("    while (true) {\n");
+        } else {
+            try writer.writeAll("    state_recovery: while (true) {\n");
+        }
         try writer.writeAll("        var result: ReduceResult = undefined;\n");
 
-        const decision = self.plan.state_decisions.items[state_index];
         if (decision.action_tree.entries.len == 0) {
             try self.emitStateSyntaxError(writer, decision.action_tree.diagnostic.?, "        ");
         } else {
@@ -258,24 +355,8 @@ const Generator = struct {
             \\            }
             \\
         );
-        if (state.gotos.items.len == 0) {
-            try self.emitStateSyntaxError(writer, decision.goto_diagnostic.?, "            ");
-        } else {
-            try writer.writeAll("            result = switch (result.variable) {\n");
-            for (state.gotos.items) |goto| {
-                if (self.uses_explicit_recovery) {
-                    try writer.print(
-                        "                {d} => next: {{ const next_recovery_frame = LRRecoveryFrame{{ .parent = recovery_frame, .state = {d}, .incoming_symbol = {d} }}; break :next try state_{d}(context, stack, &next_recovery_frame); }}, // {s}\n",
-                        .{ self.variableIndex(goto.variable), goto.state, goto.variable, goto.state, self.symbols.items[goto.variable].id },
-                    );
-                } else {
-                    try writer.print("                {d} => try state_{d}(context, stack), // {s}\n", .{ self.variableIndex(goto.variable), goto.state, self.symbols.items[goto.variable].id });
-                }
-            }
-            try writer.writeAll("                else => unreachable,\n            };\n");
-            if (!self.uses_explicit_recovery) try writer.writeAll("            if (result.is_recovery) continue :state_recovery;\n");
-        }
-        try writer.writeAll("        }\n    }\n}\n");
+        try self.emitStateGotos(writer, state, decision.goto_diagnostic, "            ", "                ");
+        try writer.writeAll("        }\n    }\n");
     }
 
     fn emitActionSwitch(self: *Generator, writer: *std.Io.Writer, state: State, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8) !void {
@@ -323,9 +404,9 @@ const Generator = struct {
                     \\{s}        std.debug.print("Accept!\n", .{{}});
                     \\{s}    }}
                     \\{s}}}
-                    \\{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = true{s} }};
+                    \\{s}return ReduceResult{{ .variable = 0, .pops_remaining = 0, .is_accept = true }};
                     \\
-                , .{ indent, indent, indent, indent, indent, indent, if (self.options.with_error_recovery) ", .is_recovery = false" else "" });
+                , .{ indent, indent, indent, indent, indent, indent });
             },
             .shift => {
                 if (self.options.with_ast or self.options.with_procedures or self.uses_verbatim) {
@@ -377,9 +458,11 @@ const Generator = struct {
                     \\{s}}}
                     \\
                 , .{ indent, indent });
-                if (self.uses_explicit_recovery) {
+                if (self.options.with_error_recovery and self.uses_explicit_recovery) {
                     try writer.print("{s}const next_recovery_frame = LRRecoveryFrame{{ .parent = recovery_frame, .state = {d}, .incoming_symbol = {d} }};\n", .{ indent, action.state, action.terminal });
                     try writer.print("{s}result = try state_{d}(context, stack, &next_recovery_frame);\n", .{ indent, action.state });
+                } else if (self.uses_explicit_recovery) {
+                    try writer.print("{s}result = try state_{d}(context, stack, null);\n", .{ indent, action.state });
                 } else {
                     try writer.print("{s}result = try state_{d}(context, stack);\n", .{ indent, action.state });
                 }
@@ -462,12 +545,11 @@ const Generator = struct {
         }
 
         try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, indent);
-        try writer.print("{s}{s} ReduceResult{{ .variable = {d}, .pops_remaining = {d}, .is_accept = false{s} }};\n", .{
+        try writer.print("{s}{s} ReduceResult{{ .variable = {d}, .pops_remaining = {d}, .is_accept = false }};\n", .{
             indent,
             if (rhs_len > 0) "return" else "result =",
             variable_index,
             if (rhs_len > 0) rhs_len - 1 else 0,
-            if (self.options.with_error_recovery) ", .is_recovery = false" else "",
         });
     }
 
@@ -562,7 +644,13 @@ const Generator = struct {
         indent: []const u8,
     ) !void {
         if (!self.options.with_error_recovery) {
-            try writer.print("{s}return {s}(context);\n", .{ indent, spec.name });
+            // The unified handler signature always takes the semantic stack
+            // (and a null frame under explicit-recovery grammars).
+            try writer.print("{s}return {s}(context, stack{s});\n", .{
+                indent,
+                spec.name,
+                if (self.uses_explicit_recovery) ", null" else "",
+            });
             return;
         }
         if (self.uses_explicit_recovery) {
@@ -667,20 +755,28 @@ const Generator = struct {
             \\) !?ExplicitRecoveryResult {
             \\    if (!try context.tryExplicitRecovery(scope.id, scope.target, scope.points)) return null;
         );
-        if (self.options.with_ast or self.options.with_procedures or self.uses_verbatim) {
-            try writer.writeAll(
-                \\    {
-                \\        var start_pos = context.currentTokenSourceOffset();
-                \\        for (0..unwind_count) |_| {
-                \\            const discarded = stack.pop() orelse unreachable;
-                \\            start_pos = discarded.start_pos;
-                \\        }
-                \\        try stack.append(.{ .start_pos = start_pos });
-                \\    }
-            );
-        } else {
-            try writer.writeAll("    _ = stack;\n");
-        }
+        // Whether the explicit-recovery unwind tracks captured positions
+        // follows from the active configuration, decided at comptime in the
+        // generated file; the verbatim half is a grammar fact resolved here.
+        const unwind_condition = if (self.uses_verbatim)
+            "is_ast_enabled or are_procedures_enabled or uses_verbatim"
+        else
+            "is_ast_enabled or are_procedures_enabled";
+        try writer.print("    if (comptime {s}) {{\n", .{unwind_condition});
+        try writer.writeAll(
+            \\        var start_pos = context.currentTokenSourceOffset();
+            \\        for (0..unwind_count) |_| {
+            \\            const discarded = stack.pop() orelse unreachable;
+            \\            start_pos = discarded.start_pos;
+            \\        }
+            \\        try stack.append(.{ .start_pos = start_pos });
+            \\    } else {
+            \\        // Address-take silencer: sibling gated branches of other
+            \\        // functions may use the stack; a plain discard would read
+            \\        // as pointless against any such use.
+            \\        _ = &stack;
+            \\    }
+        );
         try writer.writeAll(
             \\    try lrFlushSyntaxDiagnostic(context);
             \\    return .{
@@ -1327,75 +1423,97 @@ const Generator = struct {
         try writer.writeAll(" }");
     }
 
+    const HandlerBody = struct {
+        spec: SyntaxErrorHandlerSpec,
+        site_index: usize,
+    };
+
+    const BodyRecoveryMode = emitter_common.BodyRecoveryMode;
+
+    fn bodyRecoveryMode(self: *const Generator) BodyRecoveryMode {
+        if (!self.options.with_error_recovery) return .disabled;
+        return if (self.uses_explicit_recovery) .explicit else .automatic;
+    }
+
     fn emitSyntaxErrorHandlers(self: *Generator, writer: *std.Io.Writer) !void {
-        if (!self.options.with_error_recovery) {
-            try self.emitFailFastSyntaxErrorSupport(writer);
-        }
         for (self.plan.syntax_error_handlers.items, 0..) |spec, site_index| {
-            const parameters = if (!self.options.with_error_recovery)
-                ""
-            else if (self.uses_explicit_recovery)
-                ", stack: *SemanticStack, recovery_frame: *const LRRecoveryFrame"
-            else
-                ", stack: *SemanticStack";
-            const return_type = if (!self.options.with_error_recovery)
-                "ReduceResult"
-            else if (self.uses_explicit_recovery)
-                "?ExplicitRecoveryResult"
-            else
-                "bool";
-            try writer.print("{s}fn {s}(context: *data_structures.Context{s}) anyerror!{s} {{\n", .{
-                if (!self.options.with_error_recovery) "noinline " else "",
-                spec.name,
-                parameters,
-                return_type,
-            });
+            // One configuration-unified signature: the return vocabulary is
+            // resolved per recovery style by `SyntaxHandlerReturn`, and the
+            // optional recovery-frame parameter exists by grammar fact so
+            // every style can supply an argument.
+            try writer.print("\nnoinline fn {s}(context: *data_structures.Context, stack: *SemanticStack", .{spec.name});
+            if (self.uses_explicit_recovery) try writer.writeAll(", recovery_frame: ?*const LRRecoveryFrame");
+            try writer.writeAll(") linksection(if (builtin.os.tag == .macos) \"__TEXT,__unlikely\" else \".text.unlikely\") SyntaxHandlerReturn {\n");
             try writer.writeAll("    @branchHint(.cold);\n");
-            if (!self.options.with_error_recovery) {
-                try writer.print("    return lrFailFastSyntaxError(context, .{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
-                try self.emitStringSliceItems(writer, spec.expected_tokens);
-                try writer.print("}}, {s}_message);\n}}\n", .{spec.name});
-                try self.emitFailFastSyntaxErrorMessageRenderer(writer, spec);
-                continue;
-            }
-            if (self.uses_explicit_recovery) {
-                try writer.print("    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
-                try self.emitStringSliceItems(writer, spec.expected_tokens);
-                try writer.writeAll("});\n");
-                try writer.print("    context.setPendingSyntaxErrorSite({d});\n", .{site_index});
-                if (spec.recoverable) {
-                    try writer.writeAll("    if (try lrTryExplicitRecovery(context, stack, recovery_frame)) |recovery| return recovery;\n");
-                } else {
-                    try writer.writeAll("    _ = stack;\n    _ = recovery_frame;\n");
-                }
-                try writer.writeAll("    try lrFlushSyntaxDiagnostic(context);\n");
-                try writer.writeAll("    return null;\n}\n\n");
-                continue;
-            }
-            const pops_stack = spec.recoverable and spec.state_index != 0 and (self.options.with_ast or self.options.with_procedures or self.uses_verbatim);
-            if (!pops_stack) try writer.writeAll("    _ = stack;\n");
-            try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
-            try writer.writeAll("    if (report_syntax_error) {\n");
-            try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+            try emitter_common.emitModeGatedBody(Generator, self, writer, HandlerBody, .{ .spec = spec, .site_index = site_index }, false, renderHandlerBody);
+            try writer.writeAll("}\n");
+            try self.emitFailFastSyntaxErrorMessageRenderer(writer, spec);
+        }
+    }
+
+    fn renderHandlerBody(self: *Generator, writer: *std.Io.Writer, params: HandlerBody) !void {
+        const spec = params.spec;
+        const site_index = params.site_index;
+        // Recovery styles this grammar can never select are comptime-
+        // unreachable; a stub keeps the gate chain exhaustive without
+        // touching mode-specific tables that do not exist for this grammar.
+        switch (self.bodyRecoveryMode()) {
+            .automatic => if (self.uses_explicit_recovery) {
+                try writer.writeAll("    unreachable;\n");
+                return;
+            },
+            .explicit => if (!self.uses_explicit_recovery) {
+                try writer.writeAll("    unreachable;\n");
+                return;
+            },
+            .disabled => {},
+        }
+        if (!self.options.with_error_recovery) {
+            try writer.writeAll("    _ = &stack;\n");
+            if (self.uses_explicit_recovery) try writer.writeAll("    _ = &recovery_frame;\n");
+            try writer.print("    return lrFailFastSyntaxError(context, .{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+            try self.emitStringSliceItems(writer, spec.expected_tokens);
+            try writer.print("}}, {s}_message);\n", .{spec.name});
+            return;
+        }
+        if (self.uses_explicit_recovery) {
+            try writer.print("    try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
             try self.emitStringSliceItems(writer, spec.expected_tokens);
             try writer.writeAll("});\n");
-            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "        ");
-            try writer.writeAll("    }\n");
-            try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
+            try writer.print("    context.setPendingSyntaxErrorSite({d});\n", .{site_index});
             if (spec.recoverable) {
-                try writer.print("    if (try lrRecoveryOffset(context, lr_recovery_candidates_{d}, if (report_syntax_error) 1 else 0)) |recovery_offset| {{\n", .{spec.state_index});
-                try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
-                try writer.writeAll("        return true;\n");
-                try writer.writeAll("    }\n");
-                try writer.writeAll("    if (context.head(u8, 0) == 0) return root.ParseError.SyntaxError;\n");
-                if ((self.options.with_ast or self.options.with_procedures or self.uses_verbatim) and spec.state_index != 0) {
-                    try writer.writeAll("    _ = stack.pop() orelse unreachable;\n");
-                }
-                try writer.writeAll("    return false;\n");
+                try writer.writeAll("    if (try lrTryExplicitRecovery(context, stack, recovery_frame.?)) |recovery| return recovery;\n");
             } else {
-                try writer.writeAll("    return root.ParseError.SyntaxError;\n");
+                try writer.writeAll("    _ = &stack;\n    _ = &recovery_frame;\n");
             }
-            try writer.writeAll("}\n\n");
+            try writer.writeAll("    try lrFlushSyntaxDiagnostic(context);\n");
+            try writer.writeAll("    return null;\n");
+            return;
+        }
+        const pops_stack = spec.recoverable and spec.state_index != 0 and (self.options.with_ast or self.options.with_procedures or self.uses_verbatim);
+        // Address-take silencer: other gated branches of this function may
+        // touch the stack, so a plain discard would read as pointless.
+        if (!pops_stack) try writer.writeAll("    _ = &stack;\n");
+        try writer.writeAll("    const report_syntax_error = context.beginSyntaxRecovery();\n");
+        try writer.writeAll("    if (report_syntax_error) {\n");
+        try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
+        try self.emitStringSliceItems(writer, spec.expected_tokens);
+        try writer.writeAll("});\n");
+        try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "        ");
+        try writer.writeAll("    }\n");
+        try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
+        if (spec.recoverable) {
+            try writer.print("    if (try lrRecoveryOffset(context, lr_recovery_candidates_{d}, if (report_syntax_error) 1 else 0)) |recovery_offset| {{\n", .{spec.state_index});
+            try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
+            try writer.writeAll("        return true;\n");
+            try writer.writeAll("    }\n");
+            try writer.writeAll("    if (context.head(u8, 0) == 0) return root.ParseError.SyntaxError;\n");
+            if ((self.options.with_ast or self.options.with_procedures or self.uses_verbatim) and spec.state_index != 0) {
+                try writer.writeAll("    _ = stack.pop() orelse unreachable;\n");
+            }
+            try writer.writeAll("    return false;\n");
+        } else {
+            try writer.writeAll("    return root.ParseError.SyntaxError;\n");
         }
     }
 
@@ -1423,54 +1541,22 @@ const Generator = struct {
 
     fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, function_name: []const u8, indent: []const u8) !void {
         _ = self;
+        try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
         try writer.print(
-            \\{s}const diagnostic = context.runtime().lastDiagnostic().?;
-            \\{s}const message_args = root.SyntaxErrorMessageArgs{{
-            \\{s}    .allocator = context.runtime().arena_allocator,
-            \\{s}    .context = context,
-            \\{s}    .diagnostic = diagnostic,
-            \\{s}    .style = .plain,
-            \\{s}}};
-        , .{ indent, indent, indent, indent, indent, indent, indent });
-        try writer.print("{s}const diagnostic_message = ", .{indent});
-        for ([_][]const u8{ function_name, "syntax_error_lr", "syntax_error" }) |override_name| {
-            try writer.print(
-                \\{s}if (context.runtime().messageOverride("{s}")) |overridden|
-                \\{s}    overridden
-                \\{s}else
-                \\
-            , .{ indent, override_name, indent, indent });
-        }
+            "{s}const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{{ \"{s}\", \"syntax_error_lr\", \"syntax_error\" }}) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch \"\";\n",
+            .{ indent, function_name },
+        );
         try writer.print(
-            \\{s}if (comptime @hasDecl(error_messages, "{s}"))
-            \\{s}    @field(error_messages, "{s}")(message_args) catch ""
-            \\{s}else if (comptime @hasDecl(error_messages, "syntax_error_lr"))
-            \\{s}    error_messages.syntax_error_lr(message_args) catch ""
-            \\{s}else if (comptime @hasDecl(error_messages, "syntax_error"))
-            \\{s}    error_messages.syntax_error(message_args) catch ""
-            \\{s}else
-            \\{s}    root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            \\{s}context.runtime().last_rendered_message = diagnostic_message;
-            \\{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
-            \\
-        , .{
-            indent,
-            function_name,
-            indent,
-            function_name,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-            indent,
-        });
+            "{s}context.runtime().last_rendered_message = diagnostic_message;\n{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print(\"{{s}}\", .{{diagnostic_message}});\n",
+            .{ indent, indent },
+        );
     }
 
     fn symbolReturnsStackNode(self: *Generator, symbol_index: usize) bool {
-        return self.plan.symbol_returns_stack_node[symbol_index];
+        // Derived per configuration (LL parity): mode-gated renders call this
+        // under combo-mutated options, so linkage follows the active config
+        // rather than values frozen at plan time.
+        return common.symbolReturnsNode(self.symbols.items[symbol_index], self.options);
     }
 
     fn variableIndex(self: *Generator, symbol_index: usize) usize {

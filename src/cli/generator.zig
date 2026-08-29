@@ -9,10 +9,14 @@ fn ignoreDiagnostic(_: []const u8) void {}
 
 const max_source_size = 1024 * 1024 * 1024;
 
-/// Options set through one configuration layer (galley.json or the command
-/// line). Null fields were not specified in that layer.
-const OptionOverrides = struct {
-    parser_type: ?generator.ParserType = null,
+/// Option flags materialize as in-place edits to the language's
+/// `config.zig`: a flag present on the command line rewrites its constant
+/// (surgically, preserving all other bytes); an absent flag leaves the
+/// value untouched.
+///
+/// Generation itself never sees these values — emitted parsers are
+/// configuration-independent and read `config.zig` at comptime.
+const ConfigEdits = struct {
     ast: ?bool = null,
     procedures: ?bool = null,
     error_recovery: ?bool = null,
@@ -20,21 +24,56 @@ const OptionOverrides = struct {
     position_tracking: ?bool = null,
     input_streaming: ?bool = null,
     allow_no_ast_tree_procedures: ?bool = null,
-    /// Accepted but ignored during generation: language bindings read this
-    /// section themselves and register its entries as session message
-    /// overrides.
-    error_messages: ?std.json.Value = null,
-};
+    indentation_syntax: ?bool = null,
 
-const CONFIG_FILE_NAME = "galley.json";
+    fn apply(self: ConfigEdits, init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !void {
+        const path = try std.fs.path.join(gpa, &.{ language_dir, "config.zig" });
+        defer gpa.free(path);
+        var cwd = std.Io.Dir.cwd();
+        const existing = cwd.readFileAlloc(init.io, path, gpa, .limited(max_source_size)) catch |err| switch (err) {
+            error.FileNotFound => fatal("error: {s} not found\n", .{path}),
+            else => |e| return e,
+        };
+        defer gpa.free(existing);
+
+        // Each edit allocates a fresh buffer owned here; the previous one is
+        // freed as it is replaced.
+        var updated: ?[]const u8 = null;
+        defer if (updated) |buffer| gpa.free(buffer);
+        inline for (.{
+            .{ "ast", self.ast },
+            .{ "procedures", self.procedures },
+            .{ "error_recovery", self.error_recovery },
+            .{ "ast_for_terminals", self.ast_for_terminals },
+            .{ "position_tracking", self.position_tracking },
+            .{ "input_streaming", self.input_streaming },
+            .{ "allow_no_ast_tree_procedures", self.allow_no_ast_tree_procedures },
+            .{ "indentation_syntax", self.indentation_syntax },
+        }) |edit| {
+            if (edit[1]) |value| {
+                const next = try generator.config_file.editedConstantSource(
+                    gpa,
+                    updated orelse existing,
+                    edit[0],
+                    if (value) "true" else "false",
+                );
+                if (updated) |previous| gpa.free(previous);
+                updated = next;
+            }
+        }
+        if (updated) |buffer| {
+            if (!std.mem.eql(u8, buffer, existing)) {
+                var cwd_write = std.Io.Dir.cwd();
+                try cwd_write.writeFile(init.io, .{ .sub_path = path, .data = buffer });
+            }
+        }
+    }
+};
 
 const CliOptions = struct {
     parser_type: ?generator.ParserType = null,
     language_dir: ?[]const u8 = null,
-    generator_options: generator.Options = .{},
-    /// Options explicitly requested on the command line; they always win
-    /// over galley.json.
-    explicit: OptionOverrides = .{},
+    edits: ConfigEdits = .{},
     fill_error_messages: bool = false,
     bootstrap_zig_project: bool = false,
     watch: bool = false,
@@ -50,59 +89,9 @@ const GenerationResult = struct {
     created_lr_error_messages: bool = false,
 };
 
-/// Reads `galley.json` from the language directory, if present. Returns an
-/// empty override set when the file does not exist. Malformed files are
-/// fatal: unknown keys and wrong value types are rejected so typos never
-/// silently disable options.
-fn loadConfigFileOverrides(init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !OptionOverrides {
-    var cwd = std.Io.Dir.cwd();
-    const path = std.fs.path.join(gpa, &.{ language_dir, CONFIG_FILE_NAME }) catch return error.OutOfMemory;
-    defer gpa.free(path);
-
-    const content = cwd.readFileAlloc(init.io, path, gpa, .limited(max_source_size)) catch |err| switch (err) {
-        error.FileNotFound => return OptionOverrides{},
-        else => |e| return e,
-    };
-    defer gpa.free(content);
-
-    var parsed = parseConfigOverrides(gpa, content) catch |err| switch (err) {
-        error.UnknownField => fatal("error: {s} contains an unknown or misspelled key\n", .{path}),
-        else => fatal("error: failed to parse {s}: {t}\n", .{ path, err }),
-    };
-    defer parsed.deinit();
-    // `OptionOverrides` currently holds only optional primitives, so the
-    // value outlives its parsing arena safely. The ignored `error_messages`
-    // section must stay that way — its contents reference the arena.
-    return parsed.value;
-}
-
-/// Parses galley.json contents without any process-level failure handling,
-/// so tests can assert rejection behavior directly.
-fn parseConfigOverrides(gpa: std.mem.Allocator, content: []const u8) !std.json.Parsed(OptionOverrides) {
-    return std.json.parseFromSlice(OptionOverrides, gpa, content, .{});
-}
-
-/// Applies one layer of overrides. Explicit command-line options are applied
-/// after galley.json so they always win.
-fn applyOptionOverrides(options: *CliOptions, overrides: OptionOverrides) void {
-    if (overrides.parser_type) |v| options.parser_type = v;
-    if (overrides.ast) |v| options.generator_options.with_ast = v;
-    if (overrides.procedures) |v| options.generator_options.with_procedures = v;
-    if (overrides.error_recovery) |v| options.generator_options.with_error_recovery = v;
-    if (overrides.ast_for_terminals) |v| options.generator_options.ast_for_terminals = v;
-    if (overrides.position_tracking) |v| options.generator_options.with_position_tracking = v;
-    if (overrides.input_streaming) |v| options.generator_options.with_input_streaming = v;
-    if (overrides.allow_no_ast_tree_procedures) |v| options.generator_options.allow_no_ast_tree_procedures = v;
-}
-
 pub fn main(init: std.process.Init) !void {
-    var options = try parseArgs(init);
+    const options = try parseArgs(init);
     const language_dir = options.language_dir orelse fatal("error: language directory is required\n", .{});
-
-    // Precedence: built-in defaults < galley.json < explicit command-line
-    // options.
-    applyOptionOverrides(&options, try loadConfigFileOverrides(init, init.gpa, language_dir));
-    applyOptionOverrides(&options, options.explicit);
 
     printRunSeparator(init);
     const start = std.Io.Timestamp.now(init.io, .real);
@@ -137,37 +126,39 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--parser-type")) {
             const value = args.next() orelse fatal("error: --parser-type requires ll or lr\n", .{});
             result.parser_type = generator.ParserType.parse(value) orelse fatal("error: unsupported parser type: {s}\n", .{value});
-            result.explicit.parser_type = result.parser_type;
         } else if (std.mem.startsWith(u8, arg, "--parser-type=")) {
             const value = arg["--parser-type=".len..];
             result.parser_type = generator.ParserType.parse(value) orelse fatal("error: unsupported parser type: {s}\n", .{value});
-            result.explicit.parser_type = result.parser_type;
         } else if (std.mem.eql(u8, arg, "--with-ast")) {
-            result.explicit.ast = true;
+            result.edits.ast = true;
         } else if (std.mem.eql(u8, arg, "--no-ast")) {
-            result.explicit.ast = false;
+            result.edits.ast = false;
+        } else if (std.mem.eql(u8, arg, "--indentation-syntax")) {
+            result.edits.indentation_syntax = true;
+        } else if (std.mem.eql(u8, arg, "--no-indentation-syntax")) {
+            result.edits.indentation_syntax = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
-            result.explicit.procedures = true;
+            result.edits.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
-            result.explicit.procedures = false;
+            result.edits.procedures = false;
         } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
-            result.explicit.allow_no_ast_tree_procedures = true;
+            result.edits.allow_no_ast_tree_procedures = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
-            result.explicit.error_recovery = true;
+            result.edits.error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
-            result.explicit.error_recovery = false;
+            result.edits.error_recovery = false;
         } else if (std.mem.eql(u8, arg, "--with-position-tracking")) {
-            result.explicit.position_tracking = true;
+            result.edits.position_tracking = true;
         } else if (std.mem.eql(u8, arg, "--no-position-tracking")) {
-            result.explicit.position_tracking = false;
+            result.edits.position_tracking = false;
         } else if (std.mem.eql(u8, arg, "--with-input-streaming")) {
-            result.explicit.input_streaming = true;
+            result.edits.input_streaming = true;
         } else if (std.mem.eql(u8, arg, "--no-input-streaming")) {
-            result.explicit.input_streaming = false;
+            result.edits.input_streaming = false;
         } else if (std.mem.eql(u8, arg, "--ast-for-terminals")) {
-            result.explicit.ast_for_terminals = true;
+            result.edits.ast_for_terminals = true;
         } else if (std.mem.eql(u8, arg, "--no-ast-for-terminals")) {
-            result.explicit.ast_for_terminals = false;
+            result.edits.ast_for_terminals = false;
         } else if (std.mem.eql(u8, arg, "--fill-error-messages")) {
             result.fill_error_messages = true;
         } else if (std.mem.eql(u8, arg, "--emit-metadata")) {
@@ -199,29 +190,36 @@ fn printUsage(init: std.process.Init) !void {
         \\Arguments:
         \\  <LANGUAGE_DIR>             Directory containing ll.grm and/or lr.grm.
         \\
-        \\                             An optional galley.json in this directory
-        \\                             provides defaults for the options below;
-        \\                             explicit command-line flags override it.
-        \\
         \\Options:
         \\  -h, --help                 Display this help and exit.
         \\      --parser-type ll|lr    Generate only one parser type.
-        \\      --with-ast             Enables AST construction.
-        \\      --no-ast               Disables AST construction.
-        \\      --with-procedures      Enables procedure hooks.
-        \\      --no-procedures        Disables procedure hooks.
+        \\
+        \\Option flags edit `config.zig` in this directory in place (the file
+        \\is created from documented defaults when missing). An explicit flag
+        \\rewrites its constant; an absent flag leaves the value untouched.
+        \\Generated parsers read these constants at compile time, so changing
+        \\configuration requires recompiling consumers, never regenerating.
+        \\
+        \\      --with-ast             Writes `ast = true`.
+        \\      --no-ast               Writes `ast = false`.
+        \\      --with-procedures      Writes `procedures = true`.
+        \\      --no-procedures        Writes `procedures = false`.
         \\      --allow-no-ast-tree-procedures
-        \\                             Treats standard tree-manipulation helpers as
-        \\                             no-ops in no-AST mode instead of a compile error.
-        \\      --with-error-recovery  Enables syntax-error recovery.
-        \\      --no-error-recovery    Disables syntax-error recovery.
+        \\                             Writes `allow_no_ast_tree_procedures =
+        \\                             true` (standard tree-manipulation
+        \\                             helpers become no-ops in no-AST mode).
+        \\      --with-error-recovery  Writes `error_recovery = true`.
+        \\      --no-error-recovery    Writes `error_recovery = false`.
         \\      --with-position-tracking
-        \\                             Enables line and column tracking.
-        \\      --no-position-tracking Disables line and column tracking.
-        \\      --with-input-streaming Enables incremental file input.
-        \\      --no-input-streaming   Loads complete files before parsing.
-        \\      --ast-for-terminals    Enables AST nodes for terminals.
-        \\      --no-ast-for-terminals Disables AST nodes for terminals.
+        \\                             Writes `position_tracking = true`.
+        \\      --no-position-tracking Writes `position_tracking = false`.
+        \\      --with-input-streaming Writes `input_streaming = true`.
+        \\      --no-input-streaming   Writes `input_streaming = false`.
+        \\      --ast-for-terminals    Writes `ast_for_terminals = true`.
+        \\      --no-ast-for-terminals Writes `ast_for_terminals = false`.
+        \\      --indentation-syntax   Writes `indentation_syntax = true`.
+        \\      --no-indentation-syntax
+        \\                             Writes `indentation_syntax = false`.
         \\      --fill-error-messages  Append missing default syntax error hooks.
         \\      --emit-metadata        Write metadata.json and procedures.zig
         \\                             next to the generated parser(s); the
@@ -250,6 +248,15 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
 
     var result = GenerationResult{};
 
+    // The config file is ensured first (created from documented defaults
+    // when missing) so that flag edits below always have a target; edits
+    // then rewrite constants in place before any parser is emitted.
+    var config_source = std.Io.Writer.Allocating.init(init.gpa);
+    defer config_source.deinit();
+    try generator.config_file.write(&config_source.writer, .{}, false);
+    result.created_config = try createFileIfMissing(init.io, init.gpa, language_dir, "config.zig", config_source.written());
+    try options.edits.apply(init, init.gpa, language_dir);
+
     const has_ll = fileExists(init.io, init.gpa, .cwd(), language_dir, "ll.grm");
     const has_lr = fileExists(init.io, init.gpa, .cwd(), language_dir, "lr.grm");
 
@@ -266,8 +273,7 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
         if (has_lr) try generateParserType(init, language_dir, .lr, options, &result);
     }
 
-    result.created_procedures = try createFileIfMissing(init, language_dir, "procedures.zig", defaultProceduresSource);
-    result.created_config = try createFileIfMissing(init, language_dir, "config.zig", defaultConfigSource);
+    result.created_procedures = try createFileIfMissing(init.io, init.gpa, language_dir, "procedures.zig", defaultProceduresSource);
 
     return result;
 }
@@ -281,13 +287,17 @@ fn generateParserType(
 ) !void {
     switch (parser_type) {
         .ll => {
-            try generateParser(init, language_dir, .ll, options.generator_options);
-            result.created_ll_error_messages = try ensureErrorMessages(init, language_dir, .ll, options.generator_options, options.fill_error_messages);
+            try generateParser(init, language_dir, .ll);
+            if (options.fill_error_messages) {
+                result.created_ll_error_messages = try fillErrorMessages(init.io, init.gpa, init.arena.allocator(), language_dir, .ll);
+            }
             result.generated_ll = true;
         },
         .lr => {
-            try generateParser(init, language_dir, .lr, options.generator_options);
-            result.created_lr_error_messages = try ensureErrorMessages(init, language_dir, .lr, options.generator_options, options.fill_error_messages);
+            try generateParser(init, language_dir, .lr);
+            if (options.fill_error_messages) {
+                result.created_lr_error_messages = try fillErrorMessages(init.io, init.gpa, init.arena.allocator(), language_dir, .lr);
+            }
             result.generated_lr = true;
         },
     }
@@ -433,6 +443,12 @@ fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.
     const build_zig_1 = try std.mem.replaceOwned(u8, arena_allocator, build_zig, "@@ERROR_MESSAGES@@", error_messages);
     const build_zig_2 = try std.mem.replaceOwned(u8, arena_allocator, build_zig_1, "@@RUNNER_NAME@@", package_name);
 
+    // The generated build.zig wires the grammar's error-messages module, so
+    // the referenced file must exist even though plain generation no longer
+    // creates it.
+    const parser_type: generator.ParserType = if (result.generated_ll) .ll else .lr;
+    _ = try createFileIfMissing(io, gpa, language_dir, error_messages, emptyErrorMessagesSource(parser_type));
+
     const src_dir = try std.fs.path.join(gpa, &.{ language_dir, "src" });
     defer gpa.free(src_dir);
     try dir.createDirPath(io, src_dir);
@@ -508,7 +524,7 @@ fn fetchGalleyHash(io: std.Io, gpa: std.mem.Allocator, language_dir: []const u8)
     return gpa.dupe(u8, std.mem.trim(u8, run_result.stdout, " \n\r")) catch unreachable;
 }
 
-fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType, options: generator.Options) !void {
+fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType) !void {
     const grammar_name = switch (parser_type) {
         .ll => "ll.grm",
         .lr => "lr.grm",
@@ -535,7 +551,6 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
             .allocator = init.arena.allocator(),
             .source = source,
             .parser_type = parser_type,
-            .options = options,
         },
         ParserEmission.emit,
     );
@@ -545,42 +560,38 @@ const ParserEmission = struct {
     allocator: std.mem.Allocator,
     source: []const u8,
     parser_type: generator.ParserType,
-    options: generator.Options,
 
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
-        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, self.options);
+        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{});
     }
 };
 
-fn ensureErrorMessages(
-    init: std.process.Init,
+fn fillErrorMessages(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    arena: std.mem.Allocator,
     language_dir: []const u8,
     parser_type: generator.ParserType,
-    options: generator.Options,
-    fill: bool,
 ) !bool {
     const basename = errorMessagesFileName(parser_type);
-    if (!fill) {
-        return try createFileIfMissing(init, language_dir, basename, emptyErrorMessagesSource(parser_type));
-    }
 
     const grammar_name = switch (parser_type) {
         .ll => "ll.grm",
         .lr => "lr.grm",
     };
-    const grammar_path = try std.fs.path.join(init.gpa, &.{ language_dir, grammar_name });
-    defer init.gpa.free(grammar_path);
-    const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_source_size));
-    defer init.gpa.free(source);
+    const grammar_path = try std.fs.path.join(gpa, &.{ language_dir, grammar_name });
+    defer gpa.free(grammar_path);
+    const source = try std.Io.Dir.cwd().readFileAlloc(io, grammar_path, gpa, .limited(max_source_size));
+    defer gpa.free(source);
 
-    const filled_source = try generator.generateErrorMessagesAlloc(init.arena.allocator(), source, parser_type, options);
+    const filled_source = try generator.generateErrorMessagesAlloc(arena, source, parser_type, .{});
 
-    const path = try std.fs.path.join(init.gpa, &.{ language_dir, basename });
-    defer init.gpa.free(path);
+    const path = try std.fs.path.join(gpa, &.{ language_dir, basename });
+    defer gpa.free(path);
 
-    generator.atomic_file.writeAll(init.io, .cwd(), path, .create, filled_source) catch |err| switch (err) {
+    generator.atomic_file.writeAll(io, .cwd(), path, .create, filled_source) catch |err| switch (err) {
         error.PathAlreadyExists => {
-            try appendMissingErrorMessages(init, path, filled_source, parser_type);
+            try appendMissingErrorMessages(io, gpa, arena, path, filled_source, parser_type);
             return false;
         },
         else => |e| return e,
@@ -588,11 +599,11 @@ fn ensureErrorMessages(
     return true;
 }
 
-fn appendMissingErrorMessages(init: std.process.Init, path: []const u8, filled_source: []const u8, parser_type: generator.ParserType) !void {
-    const existing = try std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(max_source_size));
-    defer init.gpa.free(existing);
+fn appendMissingErrorMessages(io: std.Io, gpa: std.mem.Allocator, arena: std.mem.Allocator, path: []const u8, filled_source: []const u8, parser_type: generator.ParserType) !void {
+    const existing = try std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(max_source_size));
+    defer gpa.free(existing);
 
-    const merge = try mergeErrorMessages(init.arena.allocator(), existing, filled_source, parser_type);
+    const merge = try mergeErrorMessages(arena, existing, filled_source, parser_type);
 
     for (merge.obsolete_names) |existing_name| {
         std.debug.print("warning: obsolete public error message hook in {s}: {s}\n", .{ path, existing_name });
@@ -600,7 +611,7 @@ fn appendMissingErrorMessages(init: std.process.Init, path: []const u8, filled_s
 
     if (!merge.appended_any) return;
 
-    try generator.atomic_file.writeAll(init.io, .cwd(), path, .replace, merge.source);
+    try generator.atomic_file.writeAll(io, .cwd(), path, .replace, merge.source);
 }
 
 const ErrorMessageMerge = struct {
@@ -719,27 +730,64 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     }
 }
 
-test "galley.json accepts the error_messages section for language bindings" {
-    var parsed = try parseConfigOverrides(std.testing.allocator,
-        \\{
-        \\  "ast": true,
-        \\  "error_messages": {
-        \\    "syntax_error": "parse failed",
-        \\    "weird } brace { key": "with \"escapes\" and : colons"
-        \\  }
-        \\}
-    );
-    defer parsed.deinit();
-    // Generation ignores the contents entirely; acceptance is the contract
-    // (the Rust and Go bindings read this section host-side).
-    try std.testing.expect(parsed.value.error_messages != null);
-}
+test "plain generation does not materialize error message files; fill does" {
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
 
-test "galley.json still rejects unknown keys" {
-    try std.testing.expectError(
-        error.UnknownField,
-        parseConfigOverrides(std.testing.allocator, "{\"ast_typo\": false}"),
-    );
+    var cwd = std.Io.Dir.cwd();
+    const language_dir = try std.fmt.allocPrint(std.testing.allocator, ".galley-test-err-msg-{d}", .{std.Io.Timestamp.now(std.testing.io, .real).nanoseconds});
+    defer std.testing.allocator.free(language_dir);
+    try cwd.createDirPath(io, language_dir);
+    defer cwd.deleteTree(io, language_dir) catch {};
+
+    const grammar_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/ll.grm", .{language_dir});
+    defer std.testing.allocator.free(grammar_path);
+    try cwd.writeFile(io, .{ .sub_path = grammar_path, .data =
+        \\Document
+        \\| PairList
+        \\|
+        \\
+        \\PairList
+        \\| Pair PairListTail
+        \\|
+        \\
+        \\PairListTail
+        \\|
+        \\
+        \\Pair
+        \\| Key ":" Number
+        \\|
+        \\
+        \\Key
+        \\| letter KeyTail
+        \\
+        \\KeyTail
+        \\| letter KeyTail
+        \\| digit KeyTail
+        \\|
+        \\
+        \\Number
+        \\| digit NumberTail
+        \\
+        \\NumberTail
+        \\| digit NumberTail
+        \\|
+        \\
+    });
+
+    // Plain generation never touches error-message files.
+    try std.testing.expect(!fileExists(io, std.testing.allocator, cwd, language_dir, "ll_error_messages.zig"));
+
+    // --fill-error-messages creates the scaffold.
+    const created = try fillErrorMessages(io, std.testing.allocator, arena, language_dir, .ll);
+    try std.testing.expect(created);
+    try std.testing.expect(fileExists(io, std.testing.allocator, cwd, language_dir, "ll_error_messages.zig"));
+
+    // A second fill over an existing file appends rather than recreates.
+    const recreated = try fillErrorMessages(io, std.testing.allocator, arena, language_dir, .ll);
+    try std.testing.expect(!recreated);
 }
 
 test "failed parser generation preserves the previous output" {
@@ -761,7 +809,6 @@ test "failed parser generation preserves the previous output" {
             .allocator = arena.allocator(),
             .source = "Start\n| \"unterminated\n",
             .parser_type = .ll,
-            .options = .{ .with_procedures = false, .syntax_error_reporter = &ignoreDiagnostic },
         },
         ParserEmission.emit,
     ));
@@ -899,23 +946,34 @@ test "computeFingerprint keeps crc32 of the name in the high bits and formats 16
     try std.testing.expectEqual(expected_high, value & 0xffffffff00000000);
 }
 
-test "galley.json sits between defaults and explicit flags" {
-    var options = CliOptions{ .generator_options = .{} };
+test "config flag edits rewrite constants and preserve surrounding bytes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    // galley.json layer
-    applyOptionOverrides(&options, .{ .ast = false, .error_recovery = true });
-    try std.testing.expect(!options.generator_options.with_ast);
-    try std.testing.expect(options.generator_options.with_error_recovery);
-    // unspecified fields keep their built-in defaults
-    try std.testing.expect(options.generator_options.with_procedures);
+    const existing =
+        \\// user comment
+        \\pub const ast = true;
+        \\pub const error_recovery = true;
+        \\
+    ;
+    const edited = try generator.config_file.editedConstantSource(arena.allocator(), existing, "ast", "false");
+    try std.testing.expectEqualStrings(
+        \\// user comment
+        \\pub const ast = false;
+        \\pub const error_recovery = true;
+        \\
+    , edited);
 
-    // explicit command line wins over galley.json
-    applyOptionOverrides(&options, .{ .ast = true });
-    try std.testing.expect(options.generator_options.with_ast);
-    try std.testing.expect(options.generator_options.with_error_recovery);
+    // Editing a second constant composes on the first edit's output.
+    const edited_twice = try generator.config_file.editedConstantSource(arena.allocator(), edited, "error_recovery", "false");
+    try std.testing.expectEqualStrings(
+        \\// user comment
+        \\pub const ast = false;
+        \\pub const error_recovery = false;
+        \\
+    , edited_twice);
 
-    applyOptionOverrides(&options, .{ .parser_type = .lr });
-    try std.testing.expectEqual(generator.ParserType.lr, options.parser_type.?);
+    try std.testing.expectError(error.MissingConstant, generator.config_file.editedConstantSource(arena.allocator(), existing, "nonexistent", "true"));
 }
 
 test "bootstrapZigProject refuses to overwrite an existing build.zig" {
@@ -936,11 +994,11 @@ test "bootstrapZigProject refuses to overwrite an existing build.zig" {
     );
 }
 
-fn createFileIfMissing(init: std.process.Init, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
-    const path = try std.fs.path.join(init.gpa, &.{ dir_path, basename });
-    defer init.gpa.free(path);
+fn createFileIfMissing(io: std.Io, gpa: std.mem.Allocator, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
+    const path = try std.fs.path.join(gpa, &.{ dir_path, basename });
+    defer gpa.free(path);
 
-    generator.atomic_file.writeAll(init.io, .cwd(), path, .create, contents) catch |err| switch (err) {
+    generator.atomic_file.writeAll(io, .cwd(), path, .create, contents) catch |err| switch (err) {
         error.PathAlreadyExists => return false,
         else => |e| return e,
     };
@@ -992,8 +1050,6 @@ fn printSuccess(init: std.process.Init, language_dir: []const u8, result: Genera
 }
 
 const defaultProceduresSource = @embedFile("templates/procedures.zig");
-
-const defaultConfigSource = @embedFile("templates/config.zig");
 
 const defaultLlErrorMessagesSource = @embedFile("templates/ll_error_messages.zig");
 

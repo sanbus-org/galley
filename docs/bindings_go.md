@@ -47,7 +47,7 @@ generates.
 
 ## Procedures
 
-Set `"procedures": true` in your grammar's galley.json and implement the
+Set `pub const procedures = true;` in your grammar's `config.zig` and implement the
 hooks in Go in a `hooks/procedures.go` file next to your grammar — an
 ordinary Go package compiled into your own binary by your ordinary
 `go build`. No C anywhere on the consumer side:
@@ -75,28 +75,22 @@ general `reduction`); author-defined grammar hooks are declared as
 
 ## Error Messages
 
-Run `galley --fill-error-messages <language-dir>` and edit the generated
-`ll_error_messages.zig` next to your grammar. The gen command detects it
-and compiles it into the shared library;
-`session.Diagnostic().Message` then returns your hooks' text instead of
-the built-in generic renderer.
-
-To replace a site's message with a fixed string — no Zig file at all —
-pass `MessageOverrides` in the session options. Names follow the same
-fallback order the sites use (exact hook name, then variable-level
-family, then the general `syntax_error`), and overrides take priority
-over hooks:
+To replace messages with fixed strings — no Zig file at all — pass
+`MessageOverrides` in the session options. Keys are structured
+identities: the innermost in-progress variable name (for example
+`"Number"`), or `"*"` for every syntax and indentation error. Variable
+keys win over `"*"`, and overrides take priority over hooks.
+Placeholders expand against the failing diagnostic:
 
 ```go
 options.MessageOverrides = map[string]string{
-    "syntax_error_ll_Number__expected_generative_terminal_digit":
-        "expected a number after ':' (digits only)",
+    "Number": "expected a number after ':' (digits only) at line {line}",
 }
 ```
 
-`galley.GalleyJSONMessageOverrides("galley.json")` reads the optional
-`error_messages` object of a galley.json file into that same shape;
-missing or malformed files yield nil.
+Override messages may contain `{line}`, `{column}`, `{unexpected}`,
+`{expected}`, and `{context}` placeholders, expanded against the failing
+diagnostic.
 
 ## Sessions
 
@@ -120,5 +114,5 @@ the same session or `Close`.
 
 - [C and C++](/bindings_c) — the underlying C ABI
 - [Rust](/bindings_rust) — bindings over the same shared library
-- [Configuration](/configuration) — galley.json schema
+- [Configuration](/configuration) — the config.zig contract
 - [Grammar Guidelines](/grammar_guidelines)

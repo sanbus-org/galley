@@ -4,6 +4,8 @@ const ll_generator = @import("ll_generator");
 const lr_generator = @import("lr_generator");
 const common = @import("generator_common");
 
+pub const config_file = @import("generator_config_file");
+
 pub const ParserType = galley_grammar.data_structures.ParserType;
 pub const Grammar = galley_grammar.procedures.Grammar;
 pub const Rule = galley_grammar.procedures.Rule;
@@ -381,8 +383,8 @@ test "generator supports procedures without AST construction" {
         .with_ast = false,
         .with_procedures = true,
     });
-    try std.testing.expect(std.mem.indexOf(u8, output, "pub const is_ast_enabled = false;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "pub const are_procedures_enabled = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "pub const is_ast_enabled = config.ast;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "pub const are_procedures_enabled = config.procedures;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "var node = data_structures.Node") != null);
 }
 
@@ -832,12 +834,15 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
 
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
 
-    const exact = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail\")");
-    const symbol = try expectContainsAfter(output, "@hasDecl(error_messages, \"syntax_error_ll_ItemsTail\")", exact);
-    _ = try expectContainsAfter(output, "return llFailFastDefaultMessage(args);", symbol);
+    // Site renderers delegate to the shared resolver, naming their exact
+    // and symbol-level hooks before the family and global fallbacks.
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
+    const exact = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail\"", site);
+    _ = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail\"", exact);
 
     const fallback = try generatedFunction(output, "fn llFailFastDefaultMessage");
-    const parser_level = try expectContains(fallback, "@hasDecl(error_messages, \"syntax_error_ll\")");
+    const configured = try expectContains(fallback, "resolveMessageOverride(args.diagnostic, root.config.error_messages)");
+    const parser_level = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error_ll\")", configured);
     const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
     _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
 }
@@ -848,11 +853,14 @@ test "generateParserAlloc emits LR syntax error hook fallback chain" {
 
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
 
-    const exact = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_lr_state_");
-    _ = try expectContainsAfter(output, "return lrFailFastDefaultMessage(args);", exact);
+    // Site renderers delegate to the shared resolver with the state hook
+    // first; the file-local default keeps hook + builtin fallbacks.
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
+    _ = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
 
     const fallback = try generatedFunction(output, "fn lrFailFastDefaultMessage");
-    const parser_level = try expectContains(fallback, "@hasDecl(error_messages, \"syntax_error_lr\")");
+    const configured = try expectContains(fallback, "resolveMessageOverride(args.diagnostic, root.config.error_messages)");
+    const parser_level = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error_lr\")", configured);
     const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
     _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
 }
@@ -867,8 +875,8 @@ test "generateParserAlloc emits position-based LL recovery" {
         .with_error_recovery = true,
     });
 
-    _ = try expectContains(output, "pub const is_error_recovery_enabled = true;");
-    _ = try expectContains(output, "pub const error_recovery_mode: ErrorRecoveryMode = .automatic;");
+    _ = try expectContains(output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(output, "fn llRecoveryOffset(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
     _ = try expectContains(output, "try parse_Item(context)");
@@ -892,8 +900,8 @@ test "generateParserAlloc emits position-based LR recovery" {
         .with_error_recovery = true,
     });
 
-    _ = try expectContains(output, "pub const is_error_recovery_enabled = true;");
-    _ = try expectContains(output, "pub const error_recovery_mode: ErrorRecoveryMode = .automatic;");
+    _ = try expectContains(output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(output, "fn lrRecoveryOffset(");
     _ = try expectContains(output, "state_recovery: while (true)");
     _ = try expectContains(output, "if (result.is_recovery) continue :state_recovery;");
@@ -904,7 +912,10 @@ test "generateParserAlloc emits position-based LR recovery" {
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "_ = stack.pop() orelse unreachable;");
     _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
-    _ = try expectContains(output, "@hasDecl(error_messages, \"syntax_error_lr_state_");
+    // Message resolution goes through the shared chain with the state hook
+    // named first.
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
+    _ = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
 }
 
 test "generateParserAlloc defaults to fail-fast syntax errors" {
@@ -912,69 +923,52 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
     defer arena.deinit();
 
     const ll_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
-    _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = false;");
-    _ = try expectContains(ll_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
+    _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(ll_output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(ll_output, "context.recordSyntaxDiagnostic(");
     _ = try expectContains(ll_output, "return root.ParseError.SyntaxError;");
     _ = try expectContains(ll_output, "noinline fn ll_syntax_error_");
     _ = try expectContains(ll_output, "@branchHint(.cold);");
     _ = try expectContains(ll_output, "fn llFailFastSyntaxError(");
     _ = try expectContains(ll_output, "fn llFailFastDefaultMessage(");
-    try expectNotContains(ll_output, "llRecoveryOffset");
-    try expectNotContains(ll_output, "beginSyntaxRecovery");
+    // Recovery machinery is emitted unconditionally and selected at
+    // comptime; absence assertions from the baked era no longer apply.
 
     const lr_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
-    _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = false;");
-    _ = try expectContains(lr_output, "pub const error_recovery_mode: ErrorRecoveryMode = .disabled;");
+    _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(lr_output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(lr_output, "context.recordSyntaxDiagnostic(");
     _ = try expectContains(lr_output, "return root.ParseError.SyntaxError;");
     _ = try expectContains(lr_output, "noinline fn lr_syntax_error_");
     _ = try expectContains(lr_output, "@branchHint(.cold);");
     _ = try expectContains(lr_output, "fn lrFailFastSyntaxError(");
     _ = try expectContains(lr_output, "fn lrFailFastDefaultMessage(");
-    try expectNotContains(lr_output, "lrRecoveryOffset");
-    try expectNotContains(lr_output, "state_recovery:");
-    try expectNotContains(lr_output, ".is_recovery");
+    // See above: recovery support is unconditional; mode selection is
+    // comptime, so dead-shape presence is expected and absence assertions
+    // from the baked era no longer apply.
 }
 
-test "generateParserAlloc configures position tracking" {
+test "generated header derives position tracking from config" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const default_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
-    _ = try expectContains(default_ll, "pub const is_position_tracking_enabled = builtin.mode != .ReleaseFast;");
-
-    const tracked_lr = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{
-        .with_procedures = false,
-        .with_position_tracking = true,
-    });
-    _ = try expectContains(tracked_lr, "pub const is_position_tracking_enabled = true;");
-
-    const untracked_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{
-        .with_procedures = false,
-        .with_position_tracking = false,
-    });
-    _ = try expectContains(untracked_ll, "pub const is_position_tracking_enabled = false;");
+    const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
+    _ = try expectContains(output,
+        \\pub const is_position_tracking_enabled =
+        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .ReleaseFast;
+        \\
+    );
 }
 
-test "generateParserAlloc configures input streaming" {
+test "generated header derives input streaming from config" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const default_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
-    _ = try expectContains(default_ll, "pub const is_input_streaming_enabled = false;");
+    const ll_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
+    _ = try expectContains(ll_output, "pub const is_input_streaming_enabled = config.input_streaming;");
 
-    const streaming_ll = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{
-        .with_procedures = false,
-        .with_input_streaming = true,
-    });
-    _ = try expectContains(streaming_ll, "pub const is_input_streaming_enabled = true;");
-
-    const streaming_lr = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{
-        .with_procedures = false,
-        .with_input_streaming = true,
-    });
-    _ = try expectContains(streaming_lr, "pub const is_input_streaming_enabled = true;");
+    const lr_output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
+    _ = try expectContains(lr_output, "pub const is_input_streaming_enabled = config.input_streaming;");
 }
 
 test "generateParserAlloc configures the syntax error stack" {
@@ -993,15 +987,6 @@ test "generateParserAlloc configures the syntax error stack" {
 }
 
 test "disabled recovery annotations are inert in LL and LR generation" {
-    const plain_source =
-        \\Start
-        \\| Item
-        \\
-        \\Item
-        \\| "x" Item
-        \\|
-        \\
-    ;
     const annotated_source =
         \\Start@!^"synchronization"
         \\|@!";"^ Item@!^","
@@ -1021,9 +1006,13 @@ test "disabled recovery annotations are inert in LL and LR generation" {
     };
 
     inline for ([_]ParserType{ .ll, .lr }) |parser_type| {
-        const plain = try generateParserAlloc(arena.allocator(), plain_source, parser_type, options);
-        const annotated = try generateParserAlloc(arena.allocator(), annotated_source, parser_type, options);
-        try std.testing.expectEqualStrings(plain, annotated);
+        // Behavioral inertness of annotations under disabled recovery is
+        // covered end-to-end by galley-recovery-comparison-automatic (stripped
+        // vs annotated grammar compared behaviorally). Textual output equality
+        // no longer holds in the comptime-gated world: dead branches
+        // legitimately record grammar facts and recovery-style stubs.
+        // Generation itself must stay clean for annotated grammars:
+        _ = try generateParserAlloc(arena.allocator(), annotated_source, parser_type, options);
     }
 }
 
@@ -1073,18 +1062,16 @@ test "generateParserAlloc emits explicit-only recovery when annotations exist" {
         .with_error_recovery = true,
     };
     const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, options);
-    _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = true;");
-    _ = try expectContains(ll_output, "pub const error_recovery_mode: ErrorRecoveryMode = .explicit;");
+    _ = try expectContains(ll_output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(ll_output, "pub const has_recovery_annotations = true;");
     _ = try expectContains(ll_output, "const ExplicitRecoveryScope = struct");
     _ = try expectContains(ll_output, "context.tryExplicitRecovery(scope.id, scope.target, scope.points)");
-    try expectNotContains(ll_output, "llRecoveryOffset");
 
     const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, options);
-    _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = true;");
-    _ = try expectContains(lr_output, "pub const error_recovery_mode: ErrorRecoveryMode = .explicit;");
+    _ = try expectContains(lr_output, "pub const is_error_recovery_enabled = config.error_recovery;");
+    _ = try expectContains(lr_output, "pub const has_recovery_annotations = true;");
     _ = try expectContains(lr_output, "const ExplicitRecoveryScope = struct");
     _ = try expectContains(lr_output, "context.tryExplicitRecovery(scope.id, scope.target, scope.points)");
-    try expectNotContains(lr_output, "lrRecoveryOffset");
 }
 
 test "LL syntax error recovery restores tail calls when the stack is disabled" {

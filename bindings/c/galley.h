@@ -46,7 +46,7 @@ enum {
     galley_error_internal                 = -8,
     galley_error_no_diagnostic            = -9,
     galley_error_invalid_node             = -10,
-    galley_error_io                       = -11
+    galley_error_io                       = -11,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -126,6 +126,7 @@ void galley_session_destroy(GalleySession *session);
 long long galley_session_set_message_override(GalleySession *session,
                                               const char *name, size_t name_len,
                                               const char *message, size_t message_len);
+
 
 /* Parses one NUL-terminated input string. Returns the number of bytes
  * parsed on success, or a negative status code on failure. */

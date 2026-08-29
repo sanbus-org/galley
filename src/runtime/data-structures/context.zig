@@ -26,7 +26,6 @@ fn summarizeNewlines(input: []const u8) NewlineSummary {
 pub const RuntimeContext = struct {
     io: std.Io,
     input_path: ?[]const u8 = null,
-    language_options: root.config.Options = .{},
     arena_allocator: std.mem.Allocator,
     /// Every diagnostic recorded during the current parse, in recording
     /// order. Bounded by the generated parsers' limit checks against
@@ -57,13 +56,119 @@ pub const RuntimeContext = struct {
         if (self.recorded_diagnostics.items.len == 0) return null;
         return self.recorded_diagnostics.items[self.recorded_diagnostics.items.len - 1];
     }
+    /// Resolves a rendered message for `diagnostic` through the template
+    /// tables in chain order: session-owned overrides first, then the
+    /// consumer's comptime `error_messages` table from `config.zig`. Both
+    /// tables share one key walk — the innermost in-progress variable name,
+    /// then the universal `"*"` key — and one placeholder expansion
+    /// (`{line}`, `{column}`, `{unexpected}`, `{expected}`, `{context}`;
+    /// unknown placeholders pass through). Returns null when no table
+    /// applies.
+    pub fn resolveMessageOverride(self: *RuntimeContext, diagnostic: root.ParseDiagnostic, comptime config_messages: anytype) ?[]const u8 {
+        const template = self.sessionTemplate(diagnostic) orelse configTemplate(config_messages, diagnostic) orelse return null;
+        return self.expandPlaceholders(template, diagnostic);
+    }
 
-    /// Returns the override message recorded for `name`, if the session
-    /// registered one. Call sites consult their candidate names in fallback
-    /// order, so a general key applies wherever no more specific entry hit.
-    pub fn messageOverride(self: *const RuntimeContext, name: []const u8) ?[]const u8 {
+    fn sessionTemplate(self: *RuntimeContext, diagnostic: root.ParseDiagnostic) ?[]const u8 {
         const overrides = self.message_overrides orelse return null;
-        return overrides.get(name);
+        if (innermostVariableName(diagnostic)) |name| {
+            if (overrides.get(name)) |template| return template;
+        }
+        return overrides.get("*");
+    }
+
+    /// The innermost in-progress variable name carried by `diagnostic`, if
+    /// its context records one.
+    fn innermostVariableName(diagnostic: root.ParseDiagnostic) ?[]const u8 {
+        if (diagnostic == .syntax) switch (diagnostic.syntax.context) {
+            .while_parsing => |names| {
+                if (names.len > 0) return names[0];
+            },
+            else => {},
+        };
+        return null;
+    }
+
+    /// Looks up `diagnostic`'s key in the consumer's config.zig
+    /// `error_messages` table with the same walk as session overrides.
+    fn configTemplate(comptime config_messages: anytype, diagnostic: root.ParseDiagnostic) ?[]const u8 {
+        _ = &config_messages;
+        if (innermostVariableName(diagnostic)) |name| {
+            if (structFieldValue(@TypeOf(config_messages), config_messages, name)) |template| return template;
+        }
+        return structFieldValue(@TypeOf(config_messages), config_messages, "*");
+    }
+
+    fn structFieldValue(comptime Messages: type, values: Messages, name: []const u8) ?[]const u8 {
+        // Address-take silencer: stays legal whether the unrolled loop
+        // below touches the value or not.
+        _ = &values;
+        inline for (@typeInfo(Messages).@"struct".fields) |field| {
+            // String literals give fields pointer-to-array types, so no
+            // exact-type guard here — implicit coercion to the slice return
+            // type accepts them.
+            if (std.mem.eql(u8, field.name, name)) return @field(values, field.name);
+        }
+        return null;
+    }
+
+    fn appendPlaceholder(output: *std.Io.Writer.Allocating, placeholder: []const u8, diagnostic: root.ParseDiagnostic) void {
+        const writer = &output.writer;
+        if (std.mem.eql(u8, placeholder, "line")) {
+            writer.print("{d}", .{switch (diagnostic) {
+                .syntax => |syntax| syntax.line,
+                .indentation => |indentation| indentation.line,
+            }}) catch {};
+        } else if (std.mem.eql(u8, placeholder, "column")) {
+            writer.print("{d}", .{switch (diagnostic) {
+                .syntax => |syntax| syntax.column,
+                .indentation => |indentation| indentation.column,
+            }}) catch {};
+        } else if (std.mem.eql(u8, placeholder, "unexpected")) {
+            switch (diagnostic) {
+                .syntax => |syntax| writer.writeAll(syntax.unexpected_token) catch {},
+                .indentation => {},
+            }
+        } else if (std.mem.eql(u8, placeholder, "expected")) {
+            switch (diagnostic) {
+                .syntax => |syntax| {
+                    for (syntax.expected_tokens, 0..) |token, index| {
+                        if (index != 0) writer.writeAll(", ") catch {};
+                        writer.print("'{s}'", .{token}) catch {};
+                    }
+                },
+                .indentation => {},
+            }
+        } else if (std.mem.eql(u8, placeholder, "context")) {
+            switch (diagnostic) {
+                .syntax => |syntax| switch (syntax.context) {
+                    .while_parsing => |names| {
+                        for (names, 0..) |name, index| {
+                            if (index != 0) writer.writeAll(" <~ ") catch {};
+                            writer.writeAll(name) catch {};
+                        }
+                    },
+                    else => {},
+                },
+                .indentation => {},
+            }
+        } else {
+            writer.print("{{{s}}}", .{placeholder}) catch {};
+        }
+    }
+
+    fn expandPlaceholders(self: *RuntimeContext, template: []const u8, diagnostic: root.ParseDiagnostic) ?[]const u8 {
+        var output = std.Io.Writer.Allocating.init(self.arena_allocator);
+        const writer = &output.writer;
+        var rest = template;
+        while (std.mem.indexOfScalar(u8, rest, '{')) |opening| {
+            const close = std.mem.indexOfScalarPos(u8, rest, opening, '}') orelse break;
+            writer.writeAll(rest[0..opening]) catch return null;
+            appendPlaceholder(&output, rest[opening + 1 .. close], diagnostic);
+            rest = rest[close + 1 ..];
+        }
+        writer.writeAll(rest) catch return null;
+        return output.written();
     }
 };
 
@@ -1231,6 +1336,22 @@ pub const Context = struct {
             return self.token.firstSourceOffset();
         }
         return self.pos();
+    }
+
+    /// Creates the local node handle a generated rule body assembles for one
+    /// variable. Comptime-specialized: an AST allocation when AST
+    /// construction is enabled, a by-value stack node otherwise. The
+    /// configuration decision happens here, once — generated parsers call
+    /// this unconditionally.
+    pub inline fn createVariableNode(
+        self: *Self,
+        source_offset: usize,
+        variable: u16,
+    ) error{ ASTCapacityExceeded, OutOfMemory }!data_structures.VariableNodeHandle {
+        if (comptime root.parser.is_ast_enabled) {
+            return self.node_allocator.create(source_offset, variable);
+        }
+        return .{ .text_start = source_offset, .variable = variable, .payload = .{} };
     }
 
     /// Reads the raw source bytes of a source-coordinate span. In indentation

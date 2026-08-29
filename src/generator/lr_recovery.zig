@@ -34,7 +34,11 @@ pub fn build(
         grammar.rules.items,
     );
 
-    if (options.with_error_recovery and !grammar.uses_explicit_recovery) {
+    // Grammar-fact gated: automatic candidates exist whenever the grammar
+    // uses automatic (annotation-free) recovery, independent of options.
+    // (`options` still flows into occurrence metadata below until that pass
+    // is fully neutralized.)
+    if (!grammar.uses_explicit_recovery) {
         for (states) |state| {
             var candidates = std.ArrayList([]const u8).empty;
             for (state.actions.items) |action| {

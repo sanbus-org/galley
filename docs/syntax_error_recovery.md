@@ -68,3 +68,12 @@ Unexpected token "?" while parsing Symbol <~ RightHandSide <~ RightHandSideLine 
 
 ANSI rendering colorizes only the variable names; the `while parsing` prefix
 and the ` <~ ` separators stay uncolored.
+
+The full message resolution order at every error site is:
+
+1. a message override — keyed by the innermost in-progress variable, then
+   `"*"` (session `message_overrides` and the language `config.zig`
+   `error_messages` table);
+2. grammar hooks (`--fill-error-messages` / hand-written), exact name,
+   then family, then general;
+3. Galley's built-in renderer.
