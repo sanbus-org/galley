@@ -14,8 +14,9 @@ both are built and executed by CI on every push.
 Grammars can use `@hook_name` annotations on RHS occurrences. When Galley's
 `--emit-metadata` flag is passed during generation, it produces a
 `procedures.zig` alongside the parser with extern declarations for every
-hook. Compile your `procedures.c` into the library by passing
-`-Dprocedures-c-source=procedures.c` to the consumer build file. Reduction
+hook. When `procedures.c` (or `procedures.cpp` for C++) lives next to the
+parser, the consumer build compiles it automatically; otherwise pass its
+location explicitly with `-Dprocedures-c-source=procedures.c`. Reduction
 hooks keep their `reduction_<VariableName>` names (plus the general
 `reduction`); author-defined grammar hooks are declared as `hook_<name>`,
 namespacing them away from unrelated symbols:
@@ -48,11 +49,12 @@ callbacks) cover virtually every need — see the two sections below.
 
 The advanced escape hatch remains a generated Zig hook file: run
 `galley --fill-error-messages examples/c`, edit any hook body (for
-example `syntax_error_ll_Number__expected_generative_terminal_digit`),
-and pass the file to the consumer build:
+example `syntax_error_ll_Number__expected_generative_terminal_digit`);
+when `ll_error_messages.zig` lives next to the parser the consumer build
+picks it up automatically, otherwise pass it explicitly:
 
 ```cmake
-"-Derror-messages-zig-source=${CMAKE_CURRENT_SOURCE_DIR}/ll_error_messages.zig"
+"-Derror-messages-zig-source=/path/to/ll_error_messages.zig"
 ```
 
 `galley_diagnostic_message` then returns the text your hooks render;
@@ -116,6 +118,17 @@ Galley-side build knowledge is required:
 
 Generation-time options come from [`config.zig`](/configuration) in the
 language directory; CLI flags edit its constants in place.
+
+The consumer build infers every language-owned source next to the parser
+when no explicit flag is given — `config.zig`, `procedures.zig`,
+`{ll,lr}_error_messages.zig` (when present, otherwise the built-in
+template), and a `procedures.c` or `procedures.cpp` implementation when
+present. Explicit flags (`-Dconfig-zig-source`, `-Dprocedures-zig-source`,
+`-Dprocedures-c-source` / `-Dprocedures-object`,
+`-Derror-messages-zig-source`) override inference and exist only for
+non-standard layouts where those files live elsewhere. The reference
+`examples/c` and `examples/cpp` builds rely entirely on inference and
+pass only `parser-source` and `parser-type`.
 
 ### What the examples' CMake does
 

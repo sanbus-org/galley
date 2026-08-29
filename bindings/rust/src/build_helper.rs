@@ -205,14 +205,9 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             .current_dir(&galley_source);
         if procedures_zig.exists() {
             println!("cargo:rerun-if-changed={}", procedures_zig.display());
-            c.arg(format!(
-                "-Dprocedures-zig-source={}",
-                procedures_zig
-                    .canonicalize()
-                    .unwrap_or(procedures_zig.clone())
-                    .display()
-            ));
         }
+        // config.zig and {ll,lr}_error_messages.zig next to the parser are
+        // inferred by the consumer build when omitted.
         if procedures_rs.exists() {
             println!("cargo:rerun-if-changed={}", procedures_rs.display());
             let archive = compile_procedures_archive(&procedures_rs, &out_dir);
@@ -220,24 +215,10 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         }
         if error_messages_zig.exists() {
             println!("cargo:rerun-if-changed={}", error_messages_zig.display());
-            c.arg(format!(
-                "-Derror-messages-zig-source={}",
-                error_messages_zig
-                    .canonicalize()
-                    .unwrap_or(error_messages_zig.clone())
-                    .display()
-            ));
         }
         let config_zig = language_dir.join("config.zig");
         if config_zig.exists() {
             println!("cargo:rerun-if-changed={}", config_zig.display());
-            c.arg(format!(
-                "-Dconfig-zig-source={}",
-                config_zig
-                    .canonicalize()
-                    .unwrap_or(config_zig.clone())
-                    .display()
-            ));
         }
         c
     });

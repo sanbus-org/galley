@@ -214,10 +214,7 @@ jobs:
           ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
           zig build --build-file bindings/c/consumer/build.zig \
             "-Dparser-source=$work/_lr-parser.zig" \
-            "-Dconfig-zig-source=$work/config.zig" \
             "-Dparser-type=lr" \
-            "-Dprocedures-zig-source=$work/procedures.zig" \
-            "-Dprocedures-c-source=$work/procedures.c" \
             -Dlib-name=keyvalue-lr -Doptimize=ReleaseFast \
             --prefix "$work/out" install
           cat > "$work/driver.c" <<'EOF'
