@@ -462,3 +462,30 @@ def variable_count() -> int:
 def status_string(status: int) -> str | None:
     """Human-readable string for ``status`` code, or ``None`` when unknown."""
     ...
+
+def install_procedure(name: str | bytes, callable: Any) -> None:
+    """Register a Python procedure hook.
+
+    ``name`` is the hook name (e.g. ``"reduction_Pair"`` or ``"hook_print"``)
+    and ``callable`` is invoked with the opaque ``ProcedureArguments`` pointer
+    as an ``int``. Hooks are no-ops until installed; reinstalling replaces
+    the previous callable. Mirrors Go's ``hooks/procedures.go`` and Rust's
+    ``procedures.rs`` registration.
+    """
+    ...
+
+def install_procedures(source: Any) -> int:
+    """Register all procedure hooks found in a module, dict, or object.
+
+    Hooks are ``reduction``, ``reduction_<Variable>``, and ``hook_<name>``
+    callables. Returns the number of hooks installed.
+    """
+    ...
+
+def clear_procedures() -> None:
+    """Clear all registered Python procedure hooks."""
+    ...
+
+def list_procedures() -> dict[str, Any]:
+    """Return a copy of currently registered Python procedure hooks."""
+    ...

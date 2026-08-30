@@ -1,6 +1,7 @@
 /_ll-parser.zig
 /_lr-parser.zig
 /procedures.zig
+/procedures_python.zig
 
 /compile_commands.json
 /build

@@ -203,7 +203,14 @@ jobs:
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/hooks/procedures.go > /tmp/names-go.txt
-          names examples/python/procedures.c > /tmp/names-python.txt
+          # Python now uses native procedures.py (hooks/procedures.py also accepted); fall back to legacy procedures.c
+          if [ -f examples/python/procedures.py ]; then
+            names examples/python/procedures.py > /tmp/names-python.txt
+          elif [ -f examples/python/hooks/procedures.py ]; then
+            names examples/python/hooks/procedures.py > /tmp/names-python.txt
+          else
+            names examples/python/procedures.c > /tmp/names-python.txt
+          fi
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
