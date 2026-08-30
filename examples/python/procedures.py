@@ -8,8 +8,7 @@ so it can never collide with unrelated symbols.
 These implementations are dispatched through the generated Python shim
 (procedures_python.zig) by the extension module; no C is involved. The
 build command `python3 <galley>/bindings/python/build.py <language-dir>`
-detects this file (or `hooks/procedures.py`) and generates the shim
-automatically, mirroring Go's `hooks/procedures.go` and Rust's
+detects this file and generates the shim automatically, mirroring Rust's
 `procedures.rs`.
 """
 

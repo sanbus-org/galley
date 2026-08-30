@@ -1,0 +1,228 @@
+# TypeScript
+
+Galley-generated parsers can be consumed from TypeScript / Node.js through a
+`koffi`-based FFI layer over the same shared library as the C API
+([`bindings/c/galley.h`](https://github.com/sanbus-org/galley/blob/main/bindings/c/galley.h)).
+The package in
+[`bindings/typescript`](https://github.com/sanbus-org/galley/tree/main/bindings/typescript)
+wraps that API directly — sessions, `Node` objects, structured diagnostics,
+and tree editing — with no subprocess or code-generation at runtime.
+
+A complete, runnable consumer lives in
+[`examples/typescript`](https://github.com/sanbus-org/galley/tree/main/examples/typescript);
+it is built and executed by CI on every push, byte-for-byte identical in
+output to the C, C++, Rust, Go, and Python examples.
+
+## Getting Started
+
+Run Galley's build command against your language directory (a directory
+containing `ll.grm` and `config.zig`):
+
+```sh
+node <galley>/bindings/typescript/build.mjs <language-dir>
+```
+
+The command generates the parser (`--emit-metadata`), builds the shared
+library through Galley's generic consumer build file, and copies
+`libgalley-typescript.{dylib,so}` next to your grammar. Then build the
+bindings and your project:
+
+```sh
+npm install --prefix <galley>/bindings/typescript
+npm run build --prefix <galley>/bindings/typescript
+
+npm install --prefix <language-dir>   # pulls galley-typescript-bindings via file: link
+npm run build --prefix <language-dir>
+node <language-dir>/dist/main.js
+```
+
+`ZIG_EXECUTABLE` selects zig; `CC` is not needed (the shared library is
+built by Zig). The TypeScript package targets Node 18+. One shared library
+embeds one parser — split grammars across language directories exactly like
+the other bindings. Re-generate after changing the grammar.
+
+The example's `package.json` declares the local dependency as:
+
+```json
+{
+  "dependencies": {
+    "galley-typescript-bindings": "file:../../bindings/typescript"
+  }
+}
+```
+
+and `main.ts` imports it:
+
+```ts
+import { Session, version, hasAst } from "galley-typescript-bindings";
+```
+
+`GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-typescript.*`
+when the library lives elsewhere (e.g. in a cache dir).
+
+## Performance Notes
+
+The FFI boundary is the only overhead over the C API:
+
+- Every method is a direct `koffi` call; no JSON or subprocess marshalling.
+- Node handles are `Node` objects that wrap a stable address in the
+  library's non-relocating storage and keep a strong reference to their
+  owning `Session`; plain `bigint` addresses are also accepted wherever a
+  `Node` is expected, and `Number(node)` / `BigInt(node)` recovers the
+  address. Iteration and indexing are zero-copy (`for (const child of node)`, `node.at(0)`, `node.length`).
+- Text accessors (`text`, `symbolNameBytes`, diagnostic tokens) return
+  `Uint8Array` copies with no UTF-8 decoding; decode on demand via
+  `Buffer.from(bytes).toString("utf-8")`.
+- `parse()` copies its input so node text stays valid regardless of the
+  input object's lifetime. `parseSentinel()` avoids the session's input
+  copy for callers that keep the input alive until the next parse.
+- All calls are synchronous and hold no additional threads; sessions are not
+  thread-safe. Use one session per thread or guard externally.
+
+Node text, diagnostics, and expected-token data remain valid only until the
+next parse on the same session; every accessor copies before returning.
+`Node` methods check that their session is still open and throw after
+`session.close()` or exiting a `using` block.
+
+## Procedures
+
+Set `pub const procedures = true;` in your grammar's `config.zig` and
+implement the hooks in TypeScript in a `procedures.ts` file next to your
+grammar — an ordinary TypeScript module imported by your project and
+dispatched through a generated shim at runtime. No C anywhere on the
+consumer side, mirroring Python's `procedures.py`
+and Rust's `procedures.rs`:
+
+```ts
+// procedures.ts
+export function reduction_Pair(args: bigint): void {
+  process.stderr.write("[hook] Pair\n");
+}
+
+export function hook_print(args: bigint): void {
+  process.stderr.write("[hook] print (Key)\n");
+}
+```
+
+They are auto-discovered at first `Session` construction — the runtime tries
+`procedures`/`procedures.js`/`procedures.ts` next to the shared library, in
+`process.cwd()`, and next to the entry script (whichever is found first) and
+registers any `reduction`/`reduction_*`/`hook_*` exports, exactly like
+Python's `import procedures` at extension load. Explicit registration composes
+with auto-discovery and takes precedence:
+
+```ts
+import * as procedures from "./procedures.js";
+import { Session, installProcedures } from "galley-typescript-bindings";
+
+// explicit is optional when procedures.* is auto-discoverable:
+installProcedures(procedures);
+// or for a single hook:
+// installProcedure("hook_print", (args) => process.stderr.write("[hook] print\n"));
+```
+
+The build command `node <galley>/bindings/typescript/build.mjs <language-dir>`
+detects `procedures.ts` / `procedures.js`
+and generates a `procedures_typescript.zig` shim that routes every grammar hook
+through a single JS callback (`galley_install_typescript_dispatch`), exactly like
+Python's `procedures_python.zig` and Go's `procedures_go.zig`. Unregistered hooks
+are silent no-ops. You can also manage hooks at runtime:
+
+```ts
+import { installProcedure, installProcedures, clearProcedures, listProcedures } from "galley-typescript-bindings";
+installProcedure("reduction_Pair", () => process.stderr.write("[hook] Pair\n"));
+listProcedures(); // ["reduction_Pair", ...]
+clearProcedures();
+```
+
+Reduction hooks keep their `reduction_<VariableName>` names (plus the
+general `reduction`); author-defined grammar hooks are declared as
+`hook_<name>`. Legacy `procedures.c` / `procedures.cpp` files are still
+accepted and compiled into the shared library when no TypeScript file is
+present, exactly like the C/C++ consumers. Semantic payloads are unavailable
+through bindings.
+
+## Error Messages
+
+Run `galley --fill-error-messages <language-dir>` and edit the generated
+`ll_error_messages.zig` next to your grammar. The build command detects it
+and compiles it into the shared library;
+`session.diagnostic().message` then returns your hooks' text instead of the
+built-in generic renderer. LR grammars use `lr_error_messages.zig`.
+
+## Sessions
+
+```ts
+import { Session, GalleyError } from "galley-typescript-bindings";
+
+using session = new Session({ maxErrors: 10, recoveryWindow: 500 });
+try {
+  const parsed = session.parse("alpha:12,beta:3");
+} catch (err) {
+  const galleyErr = err as GalleyError;
+  console.error(`${galleyErr.diagnostic?.line}:${galleyErr.diagnostic?.column}: ${galleyErr.diagnostic?.message}`);
+}
+```
+
+Options mirror the runtime defaults: `maxErrors: 10`,
+`recoveryWindow: 500`, `stackOverflowRecovery: false`,
+`syntaxErrorStackDepth: 0`, `verbosity: 0`,
+`astPreallocationRatio: -1.0`, `astPreallocationCap: 0`.
+`messageOverrides` registers per-session overrides:
+
+```ts
+const session = new Session({
+  messageOverrides: { Number: "expected a number after ':' (digits only) at line {line}" },
+});
+// or later:
+session.setMessageOverride("Number", "expected a number at {line}:{column}");
+```
+
+Failures throw `GalleyError`, whose `code` and `diagnostic` carry the raw
+status code and the snapshot for that failure (`error.diagnostic` is `null`
+when no diagnostic, otherwise a `Diagnostic`; `session.diagnostic()` returns
+the last diagnostic).
+
+`Session` implements `Symbol.dispose` so `using`/`await using` closes on
+exit, and `close()` is idempotent. Every session method that takes a node
+also accepts `Node | bigint`; session methods that return nodes return
+`Node`. Nodes are bound to their session:
+`root = session.rootNode()` then `root.text()`, `root.symbolName()`,
+`root.span()`, `root.lineColumn()`, `root.parent()`,
+`root.firstChild()` / `root.lastChild()` / `root.nextSibling()` /
+`root.priorSibling()`, `root.children()` (`Node[]`), `root.length`,
+`root.at(i)`, and `for (const child of root)` all read directly from the
+node. Editing helpers are available both ways:
+`root.cleanChildren()` / `session.cleanChildren(root)` and
+`root.appendChildren(chain)` / `session.appendChildren(root, chain)`
+(where `chain` is a detached head); the remaining tree edits
+(`insertBefore`, `removeSelf`, `removeSiblings`, `insertChildrenAt`,
+`removeChildrenAt`, `promoteChildrenOverWrapper`, `unlinkWrapper`)
+live on `Session` and accept `Node | bigint`. Missing links return `null`.
+`session.diagnostics()` returns every recorded diagnostic. Nodes compare by
+identity (`a.equals(b)` checks same session and address), and support
+`Number(node)` / `BigInt(node)` to recover the raw address.
+
+`session.diagnostic()` returns a frozen snapshot (`Diagnostic`) with `kind`,
+`line`, `column`, `message`, `messageAnsi`,
+`unexpectedToken`, `expectedTokens`, `context`, `syntaxErrorCount`,
+indentation details, and the full structured recovery information — or
+`null` when the last parse succeeded.
+
+## Tests
+
+The bindings ship a behavioral suite that runs against any built module:
+
+```sh
+node bindings/typescript/build.mjs examples/typescript
+npm install --prefix bindings/typescript && npm run build --prefix bindings/typescript
+npm install --prefix examples/typescript && npm run build --prefix examples/typescript
+node bindings/typescript/tests/test_bindings.mjs
+```
+
+## Related Pages
+
+- [C and C++](/bindings_c) — the underlying C ABI
+- [Python](/bindings_python), [Rust](/bindings_rust) and [Go](/bindings_go) — bindings over the same shared library
+- [Configuration](/configuration) — config.zig schema
+- [Grammar Guidelines](/grammar_guidelines)

@@ -41,7 +41,9 @@ export default defineConfig({
         items: [
           { text: 'C and C++', link: '/bindings_c' },
           { text: 'Rust', link: '/bindings_rust' },
-          { text: 'Go', link: '/bindings_go' }
+          { text: 'Go', link: '/bindings_go' },
+          { text: 'Python', link: '/bindings_python' },
+          { text: 'TypeScript', link: '/bindings_typescript' }
         ]
       },
       {
