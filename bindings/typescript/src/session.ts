@@ -3,12 +3,13 @@
  * Mirrors Python/Rust/Go sessions over `bindings/c/galley.h`.
  */
 
+import { Buffer } from "node:buffer";
 import { INVALID_NODE } from "./constants.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { GalleyError } from "./errors.js";
 import { copyBytes, copyStringBytes, loadLibrary, toBigInt, type GalleyFFI } from "./ffi.js";
 import { Node } from "./node.js";
-import { ensureDispatchFor } from "./procedures.js";
+import { ensureDispatchFor, setParsingSession } from "./procedures.js";
 
 export interface SessionOptions {
   maxErrors?: number; // default 10
@@ -173,13 +174,18 @@ export class Session {
 
   parse(input: string | Uint8Array | Buffer): number {
     const handle = this.#requireHandle();
+    const previous = setParsingSession(this);
     let status: bigint | number;
-    if (typeof input === "string") {
-      const buf = Buffer.from(input, "utf-8");
-      status = this.#ffi.galley_parse(handle, buf, buf.length);
-    } else {
-      const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
-      status = this.#ffi.galley_parse(handle, buf, buf.length);
+    try {
+      if (typeof input === "string") {
+        const buf = Buffer.from(input, "utf-8");
+        status = this.#ffi.galley_parse(handle, buf, buf.length);
+      } else {
+        const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
+        status = this.#ffi.galley_parse(handle, buf, buf.length);
+      }
+    } finally {
+      setParsingSession(previous);
     }
     if (typeof status === "bigint" ? status < 0n : (status as number) < 0) {
       throw this.#errorFromStatus(status);
@@ -189,7 +195,13 @@ export class Session {
 
   parseSentinel(input: string): number {
     const handle = this.#requireHandle();
-    const status = this.#ffi.galley_parse_sentinel(handle, input);
+    const previous = setParsingSession(this);
+    let status: bigint | number;
+    try {
+      status = this.#ffi.galley_parse_sentinel(handle, input);
+    } finally {
+      setParsingSession(previous);
+    }
     if (typeof status === "bigint" ? status < 0n : (status as number) < 0) {
       throw this.#errorFromStatus(status);
     }
@@ -198,7 +210,13 @@ export class Session {
 
   parseFile(filePath: string): number {
     const handle = this.#requireHandle();
-    const status = this.#ffi.galley_parse_file(handle, filePath);
+    const previous = setParsingSession(this);
+    let status: bigint | number;
+    try {
+      status = this.#ffi.galley_parse_file(handle, filePath);
+    } finally {
+      setParsingSession(previous);
+    }
     if (typeof status === "bigint" ? status < 0n : (status as number) < 0) {
       throw this.#errorFromStatus(status);
     }

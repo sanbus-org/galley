@@ -17,10 +17,11 @@ import {
   installProcedures,
   clearProcedures,
   listProcedures,
+  ProcedureArguments,
 } from "./procedures.js";
 
 // Re-exports
-export { Session, Node, GalleyError, installProcedure, installProcedures, clearProcedures, listProcedures };
+export { Session, Node, GalleyError, ProcedureArguments, installProcedure, installProcedures, clearProcedures, listProcedures };
 export type { Diagnostic };
 export * from "./constants.js";
 

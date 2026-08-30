@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "galley-python-example"
+version = "0.1.0"
+description = "Galley Python example"
+requires-python = ">=3.8"
+dependencies = [
+    "galley-bindings @ file:../../bindings/python",
+]
+
+[tool.setuptools]
+py-modules = []

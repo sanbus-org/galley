@@ -494,3 +494,67 @@ func (s *Session) ReserveNodes(capacity uint64) error {
 func (s *Session) NodeCapacity() uint64 {
 	return uint64(C.galley_node_capacity(s.ptr))
 }
+
+// ProcedureArgs is the parse-time argument passed to a Go procedure hook.
+// Tree queries use Session methods on the session recovered from Args.
+type ProcedureArgs struct {
+	ptr unsafe.Pointer
+}
+
+// Args wraps the opaque pointer the parser passes to a hook.
+func Args(ptr unsafe.Pointer) ProcedureArgs {
+	return ProcedureArgs{ptr: ptr}
+}
+
+func (a ProcedureArgs) cptr() unsafe.Pointer { return a.ptr }
+
+// Session is the session currently parsing, or nil.
+func (a ProcedureArgs) Session() *Session {
+	ptr := C.galley_procedure_session(a.cptr())
+	if ptr == nil {
+		return nil
+	}
+	return &Session{ptr: ptr}
+}
+
+// CurrentNode is the node being reduced.
+func (a ProcedureArgs) CurrentNode() (Node, bool) {
+	return cToNode(C.galley_procedure_current_node(a.cptr()))
+}
+
+func procedureStatus(status C.longlong) error {
+	if status >= 0 {
+		return nil
+	}
+	return Error(int32(status))
+}
+
+// DropSelf drops the current node from the parse.
+func (a ProcedureArgs) DropSelf() error {
+	return procedureStatus(C.galley_procedure_drop_self(a.cptr()))
+}
+
+// DropChildren drops children of the current node.
+func (a ProcedureArgs) DropChildren() error {
+	return procedureStatus(C.galley_procedure_drop_children(a.cptr()))
+}
+
+// DropIfEmpty drops the current node when it has no children.
+func (a ProcedureArgs) DropIfEmpty() error {
+	return procedureStatus(C.galley_procedure_drop_if_empty(a.cptr()))
+}
+
+// ReplaceWithChildren replaces the current node with its children.
+func (a ProcedureArgs) ReplaceWithChildren() error {
+	return procedureStatus(C.galley_procedure_replace_with_children(a.cptr()))
+}
+
+// Line is the scanner line during this reduction.
+func (a ProcedureArgs) Line() uint32 {
+	return uint32(C.galley_procedure_context_line(a.cptr()))
+}
+
+// Column is the scanner column during this reduction.
+func (a ProcedureArgs) Column() uint32 {
+	return uint32(C.galley_procedure_context_column(a.cptr()))
+}

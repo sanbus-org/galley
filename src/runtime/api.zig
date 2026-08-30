@@ -387,6 +387,11 @@ pub const Session = struct {
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
     session_lock: std.Io.RwLock = .init,
     generation: usize = 0,
+    /// Host-owned pointer copied onto each parse `Context`. The C ABI stores
+    /// the `GalleySession` here so procedure hooks can call `galley_node_*`.
+    user_data: ?*anyopaque = null,
+    /// Live parse context, set only inside `_parseContextUnlocked`.
+    active_context: ?*data_structures.Context = null,
     /// Message overrides owned by the session (copied from `ParseOptions`
     /// at creation, extendable through the C API's override setter).
     /// Allocated from `allocator`, never from the parse arena, so entries
@@ -652,6 +657,7 @@ pub const Session = struct {
             .source = source,
             .node_allocator = if (parser.is_ast_enabled) &self.node_allocator else {},
             .chunk_buffer = self.chunk_buffer,
+            .user_data = self.user_data,
         };
         if (comptime builtin.mode == .Debug) {
             context_value.verbosity = self.verbosity;
@@ -681,6 +687,8 @@ pub const Session = struct {
         self.runtime_context.pending_syntax_error_site = null;
 
         try context_value.reset();
+        self.active_context = context_value;
+        defer self.active_context = null;
         const result = if (self.stack_overflow_recovery)
             stack_overflow_utilities.protectedParse(context_value)
         else

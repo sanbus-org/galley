@@ -3,7 +3,7 @@
  * Builds a Galley parser and its shared library for a TypeScript consumer.
  *
  * Usage:
- *   node <galley>/bindings/typescript/build.mjs <language-dir>
+ *   npx galley-typescript-bindings <language-dir>
  *
  * The language dir must contain ll.grm and may contain config.zig,
  * procedures, ll_error_messages.zig etc, mirroring the other bindings:
@@ -24,8 +24,9 @@
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
  *   GALLEY_CHECKOUT (existing Galley working tree, wins over fetching),
- *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Galley checkout
- *   resolution follows docs/bindings.md.
+ *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Without GALLEY_CHECKOUT
+ *   the script clones GALLEY_REPOSITORY at GALLEY_TAG, matching the Rust,
+ *   Go, and Python consumers.
  */
 
 import { spawnSync } from "node:child_process";
@@ -73,17 +74,16 @@ function cacheDir() {
 }
 
 function resolveGalley(cacheDirPath) {
+  // GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
+  // into <cache>/galley-src. Mirrors bindings/go/cmd/galley,
+  // bindings/rust/src/build_helper.rs, and galley_bindings.build: a nearby
+  // checkout is not used unless GALLEY_CHECKOUT points at it.
   const checkoutEnv = process.env.GALLEY_CHECKOUT;
   if (checkoutEnv) {
     if (!fs.existsSync(path.join(checkoutEnv, "build.zig"))) {
       fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
     }
     return path.resolve(checkoutEnv);
-  }
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidate = path.resolve(here, "../..");
-  if (fs.existsSync(path.join(candidate, "build.zig"))) {
-    return candidate;
   }
   const tag = process.env.GALLEY_TAG ?? DEFAULT_GALLEY_TAG;
   const repository = process.env.GALLEY_REPOSITORY ?? DEFAULT_GALLEY_REPOSITORY;
@@ -193,9 +193,25 @@ function emitTypeScriptProcedureShim(templatePath, outputPath) {
   fs.writeFileSync(outputPath, builder.join("\n"), "utf-8");
 }
 
+function ensureBindingsInstalled() {
+  // `file:` consumers (examples/typescript) symlink this package; npm does
+  // not install our dependencies into this directory. `createRequire(import.meta.url)`
+  // in dist/ffi.js therefore cannot see koffi unless we install ourselves.
+  const bindingsDir = path.dirname(fileURLToPath(import.meta.url));
+  const koffi = path.join(bindingsDir, "node_modules", "koffi");
+  const distIndex = path.join(bindingsDir, "dist", "index.js");
+  if (fs.existsSync(koffi) && fs.existsSync(distIndex)) return;
+  console.error("galley-bindings: installing TypeScript bindings dependencies...");
+  run("npm", ["install"], { cwd: bindingsDir });
+  if (!fs.existsSync(koffi)) fatal("npm install did not produce node_modules/koffi");
+  if (!fs.existsSync(distIndex)) fatal("npm install did not produce dist/index.js");
+}
+
 function main() {
-  if (process.argv.length !== 3) fatal("usage: build.mjs <language-dir>");
+  if (process.argv.length !== 3) fatal("usage: npx galley-typescript-bindings <language-dir>");
   if (os.platform() === "win32") fatal("the typescript bindings target POSIX platforms");
+
+  ensureBindingsInstalled();
 
   const languageDir = path.resolve(process.argv[2]);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);

@@ -11,6 +11,8 @@ package hooks
 import (
 	"os"
 	"unsafe"
+
+	galley "github.com/sanbus-org/galley/examples/go/galley"
 )
 
 /*
@@ -18,50 +20,57 @@ import (
 */
 import "C"
 
+func note(label string, ptr unsafe.Pointer) {
+	args := galley.Args(ptr)
+	if session := args.Session(); session != nil {
+		if node, ok := args.CurrentNode(); ok {
+			_, _ = session.Text(node)
+			_ = session.ChildCount(node)
+		}
+	}
+	os.Stderr.WriteString("[hook] " + label + "\n") //nolint:errcheck
+}
+
 //export reduction
-func reduction(_ unsafe.Pointer) {
-	fmt_hook("reduction")
+func reduction(ptr unsafe.Pointer) {
+	note("reduction", ptr)
 }
 
 //export reduction_Document
-func reduction_Document(_ unsafe.Pointer) {
-	fmt_hook("Document")
+func reduction_Document(ptr unsafe.Pointer) {
+	note("Document", ptr)
 }
 
 //export reduction_PairList
-func reduction_PairList(_ unsafe.Pointer) {
-	fmt_hook("PairList")
+func reduction_PairList(ptr unsafe.Pointer) {
+	note("PairList", ptr)
 }
 
 //export reduction_PairListTail
 func reduction_PairListTail(_ unsafe.Pointer) {}
 
 //export reduction_Pair
-func reduction_Pair(_ unsafe.Pointer) {
-	fmt_hook("Pair")
+func reduction_Pair(ptr unsafe.Pointer) {
+	note("Pair", ptr)
 }
 
 //export reduction_Key
-func reduction_Key(_ unsafe.Pointer) {
-	fmt_hook("Key")
+func reduction_Key(ptr unsafe.Pointer) {
+	note("Key", ptr)
 }
 
 //export hook_print
-func hook_print(_ unsafe.Pointer) {
-	fmt_hook("print (Key)")
+func hook_print(ptr unsafe.Pointer) {
+	note("print (Key)", ptr)
 }
 
 //export reduction_KeyTail
 func reduction_KeyTail(_ unsafe.Pointer) {}
 
 //export reduction_Number
-func reduction_Number(_ unsafe.Pointer) {
-	fmt_hook("Number")
+func reduction_Number(ptr unsafe.Pointer) {
+	note("Number", ptr)
 }
 
 //export reduction_NumberTail
 func reduction_NumberTail(_ unsafe.Pointer) {}
-
-func fmt_hook(name string) {
-	os.Stderr.WriteString("[hook] " + name + "\n") //nolint:errcheck
-}

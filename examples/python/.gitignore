@@ -8,3 +8,5 @@
 /metadata.json
 /galley.*.so
 /galley.pyi
+/*.egg-info/
+/.venv/

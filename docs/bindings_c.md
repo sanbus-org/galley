@@ -23,9 +23,16 @@ namespacing them away from unrelated symbols:
 
 ```c
 /* procedures.c */
+#include <galley.h>
 #include <stdio.h>
 
 void reduction_Pair(void *args) {
+    GalleySession *session = galley_procedure_session(args);
+    GalleyNodeAddress node = galley_procedure_current_node(args);
+    const char *text = NULL;
+    size_t len = 0;
+    if (session != NULL)
+        galley_node_text(session, node, &text, &len);
     fprintf(stderr, "[hook] Pair reduced\n");
 }
 void reduction_Document(void *args) {
@@ -36,8 +43,12 @@ void hook_my_hook(void *args) {
 }
 ```
 
-Each hook receives an opaque pointer to the parse state; use the existing
-`galley_node_*` accessor functions via the session to inspect nodes.
+Each hook receives an opaque `ProcedureArguments` pointer. Recover the
+parsing session with `galley_procedure_session` and inspect nodes with the
+ordinary `galley_node_*` functions. Drop/replace the current node with
+`galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
+talk to the parser through `args.node_address` and are not the same as
+`galley_tree_remove_self`.
 
 Semantic payloads remain unavailable through the C API.
 

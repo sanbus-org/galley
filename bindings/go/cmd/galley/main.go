@@ -387,9 +387,10 @@ func emitHookBinding(outputPath string, userHooks []string) error {
 // emitBridge writes <language-dir>/galley/galley.go: the generated cgo
 // preamble bound to this library plus the wrapper from the embedded
 // template. The package name is fixed so the import path stays stable.
-// When the consumer declares Go procedure hooks, a blank import of the
-// hooks package keeps its //exported symbols in the binary for the
-// generated hooks_binding.go registration to reference.
+// Procedure hooks live in package hooks and import this package, so this
+// file must not blank-import hooks (that would cycle). The consumer's main
+// package must `import _ "module/hooks"` so the //exported hook symbols
+// stay in the binary for hooks_binding.go to register.
 func emitBridge(languageDir, prefix string, hooksPresent bool) {
 	outDir := filepath.Join(languageDir, "galley")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -407,10 +408,8 @@ func emitBridge(languageDir, prefix string, hooksPresent bool) {
 	builder.WriteString(" -l" + libName + " -Wl,-rpath," + libDir)
 	builder.WriteString("\n#include <stdlib.h>\n#include <galley.h>\n*/\nimport \"C\"\n\n")
 	if hooksPresent {
-		if module := modulePath(languageDir); module != "" {
-			fmt.Fprintf(&builder, "import _ %q\n\n", module+"/hooks")
-		} else {
-			fatal("hooks/procedures.go requires a go.mod with a module line so the bridge can import the hooks package")
+		if modulePath(languageDir) == "" {
+			fatal("hooks/procedures.go requires a go.mod with a module line so the application can import the hooks package")
 		}
 	}
 	builder.WriteString(strings.TrimRight(wrapperTemplate, "\n"))

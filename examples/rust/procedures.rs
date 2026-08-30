@@ -2,14 +2,17 @@
 //!
 //! Each function fires after the corresponding variable is reduced. The
 //! build helper compiles this file with rustc into a static archive and
-//! links it into the parser shared library; the hook bodies only write to
-//! stderr, so no Galley API declarations are needed here.
+//! links it into the parser shared library.
 //!
 //! Author-defined grammar hooks arrive namespaced as `hook_<name>` — the
 //! grammar annotates Key with `@print`, and the entry point is
 //! `hook_print`, so it can never collide with unrelated symbols.
 
 use std::io::Write;
+
+#[path = "../../bindings/rust/src/procedure.rs"]
+mod procedure;
+use procedure::ProcedureArguments;
 
 /// Writes one hook note to stderr. Failures are ignored on purpose: a
 /// closed stderr must not abort an otherwise healthy parse.
@@ -18,46 +21,54 @@ fn note(message: &str) {
     let _ = stderr.write_all(message.as_bytes());
 }
 
-#[no_mangle]
-pub extern "C" fn reduction(_args: *mut core::ffi::c_void) {
-    note("[hook] reduction\n");
+fn note_node(label: &str, arguments: &ProcedureArguments) {
+    if let Some(node) = arguments.current_node() {
+        let _ = arguments.text(node);
+        let _ = arguments.child_count(node);
+    }
+    note(label);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Document(_args: *mut core::ffi::c_void) {
-    note("[hook] Document\n");
+pub extern "C" fn reduction(arguments: &mut ProcedureArguments) {
+    note_node("[hook] reduction\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_PairList(_args: *mut core::ffi::c_void) {
-    note("[hook] PairList\n");
+pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
+    note_node("[hook] Document\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_PairListTail(_args: *mut core::ffi::c_void) {}
-
-#[no_mangle]
-pub extern "C" fn reduction_Pair(_args: *mut core::ffi::c_void) {
-    note("[hook] Pair\n");
+pub extern "C" fn reduction_PairList(arguments: &mut ProcedureArguments) {
+    note_node("[hook] PairList\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Key(_args: *mut core::ffi::c_void) {
-    note("[hook] Key\n");
+pub extern "C" fn reduction_PairListTail(_arguments: &mut ProcedureArguments) {}
+
+#[no_mangle]
+pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
+    note_node("[hook] Pair\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn hook_print(_args: *mut core::ffi::c_void) {
-    note("[hook] print (Key)\n");
+pub extern "C" fn reduction_Key(arguments: &mut ProcedureArguments) {
+    note_node("[hook] Key\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_KeyTail(_args: *mut core::ffi::c_void) {}
-
-#[no_mangle]
-pub extern "C" fn reduction_Number(_args: *mut core::ffi::c_void) {
-    note("[hook] Number\n");
+pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
+    note_node("[hook] print (Key)\n", arguments);
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_NumberTail(_args: *mut core::ffi::c_void) {}
+pub extern "C" fn reduction_KeyTail(_arguments: &mut ProcedureArguments) {}
+
+#[no_mangle]
+pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
+    note_node("[hook] Number\n", arguments);
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_NumberTail(_arguments: &mut ProcedureArguments) {}

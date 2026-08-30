@@ -16,11 +16,22 @@ output to the C, C++, Rust, and Go examples.
 
 ## Getting Started
 
-Run Galley's build command against your language directory (a directory
+Add the bindings package to your `pyproject.toml` and point it at a Galley
+checkout:
+
+```toml
+[project]
+dependencies = [
+    "galley-bindings @ file:../../bindings/python",
+]
+```
+
+Then generate the parser for your language directory (a directory
 containing `ll.grm` and `config.zig`):
 
 ```sh
-python3 <galley>/bindings/python/build.py <language-dir>
+pip install -e .
+python -m galley_bindings <language-dir>
 ```
 
 The command generates the parser (`--emit-metadata`), builds the shared
@@ -41,9 +52,12 @@ root = session.root_node()
 `ZIG_EXECUTABLE` selects zig; `CC` overrides the compiler used for the
 extension module (defaults to the one that built your interpreter). The
 module targets the interpreter that ran the build command; rebuild per
-Python version. Regenerate after changing the grammar; commit nothing the
-command generates. One module embeds one parser — split grammars across
-language directories exactly like the other bindings.
+Python version. `GALLEY_CHECKOUT` uses an existing Galley working tree;
+otherwise the script clones `GALLEY_REPOSITORY` at `GALLEY_TAG` (default
+`main`), matching the Rust, Go, and C consumers. Regenerate after changing
+the grammar; commit nothing the command generates. One module embeds one
+parser — split grammars across language directories exactly like the other
+bindings.
 
 ## Performance Notes
 
@@ -94,13 +108,13 @@ def hook_print(args):
 # def reduction_Pair(): ...
 ```
 
-Mechanically, `build.py` reads the grammar's generated hook list and
-produces a Zig shim module containing one dispatch slot; the extension
-registers the Python callables into that slot at import time (it tries
-`import procedures` on `sys.path` — the language dir is typically on
-`PYTHONPATH` — and falls back to explicit registration). The parser calls
-through the slot directly, so hook code executes in the host's Python
-interpreter. Unregistered slots are no-ops.
+Mechanically, `python -m galley_bindings` reads the grammar's generated
+hook list and produces a Zig shim module containing one dispatch slot;
+the extension registers the Python callables into that slot at import
+time (it tries `import procedures` on `sys.path` — the language dir is
+typically on `PYTHONPATH` — and falls back to explicit registration).
+The parser calls through the slot directly, so hook code executes in
+the host's Python interpreter. Unregistered slots are no-ops.
 
 Explicit registration is also available and composes with auto-import:
 
