@@ -17,7 +17,7 @@ output to the C, C++, Rust, and Go examples.
 ## Getting Started
 
 Run Galley's build command against your language directory (a directory
-containing `ll.grm` and `galley.json`):
+containing `ll.grm` and `config.zig`):
 
 ```sh
 python3 <galley>/bindings/python/build.py <language-dir>
@@ -25,8 +25,9 @@ python3 <galley>/bindings/python/build.py <language-dir>
 
 The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook
-files next to your grammar (`procedures.zig`, `procedures.c`,
-`ll_error_messages.zig`), and compiles the extension module to
+files next to your grammar (`procedures.py` or `hooks/procedures.py` for
+native Python hooks, `procedures.c` for legacy C hooks,
+`procedures.zig`, `ll_error_messages.zig`), and compiles the extension module to
 `<language-dir>/galley<ext-suffix>`. Import `galley` from that directory:
 
 ```python
@@ -72,23 +73,67 @@ or exiting a `with` block.
 
 ## Procedures
 
-Set `"procedures": true` in your grammar's galley.json and implement the
-hooks in a `procedures.c` file next to your grammar: the build command
-compiles it into the shared library, mirroring the C, C++, Rust, and Go
-consumers:
+Set `pub const procedures = true;` in your grammar's `config.zig` and
+implement the hooks in Python in a `procedures.py` file next to your
+grammar — an ordinary Python module imported by the extension at load time.
+No C anywhere on the consumer side, mirroring Rust's `procedures.rs` and
+Go's `hooks/procedures.go`:
 
-```c
-/* procedures.c */
-#include <stdio.h>
+```python
+# procedures.py (or hooks/procedures.py, like Go)
+import sys
 
-void reduction_Pair(void *args) {
-    fprintf(stderr, "[hook] Pair\n");
-}
+def reduction_Pair(args):
+    print("[hook] Pair", file=sys.stderr)
+
+def hook_print(args):
+    print("[hook] print (Key)", file=sys.stderr)
+
+# args is the opaque ProcedureArguments pointer as an int (pass to future
+# helpers or ignore). Hooks that take no args are also accepted:
+# def reduction_Pair(): ...
 ```
 
-Reduction hooks keep their `reduction_<VariableName>` names (plus the
-general `reduction`); author-defined grammar hooks are declared as
-`hook_<name>`. Semantic payloads are unavailable through bindings.
+Mechanically, `build.py` reads the grammar's generated hook list and
+produces a Zig shim module containing one dispatch slot; the extension
+registers the Python callables into that slot at import time (it tries
+`import procedures` then `import hooks.procedures` on `sys.path` — the
+language dir is typically on `PYTHONPATH` — and falls back to explicit
+registration). The parser calls through the slot directly, so hook code
+executes in the host's Python interpreter. Unregistered slots are no-ops.
+
+Explicit registration is also available and composes with auto-import:
+
+```python
+import galley, procedures
+
+galley.install_procedure("reduction_Pair", lambda args: print("Pair"))
+galley.install_procedures(procedures)  # all reduction_*/hook_* in module
+galley.list_procedures()   # {name: callable}
+galley.clear_procedures()
+```
+
+For `hooks/procedures.py` (subpackage, like Go), the build still detects it
+automatically:
+
+```sh
+python3 <galley>/bindings/python/build.py <language-dir>
+# detects <language-dir>/procedures.py or <language-dir>/hooks/procedures.py
+```
+
+When neither Python nor C implementations exist, the shim is still generated
+as a no-op fallback so the library links; hooks are simply no-ops until
+registered via `galley.install_procedure` without requiring a rebuild,
+mirroring Go's always-shim model. `galley.has_procedures()` reports whether
+the library was built with procedure hooks compiled in.
+
+Legacy `procedures.c` / `procedures.cpp` hooks continue to work exactly
+like the C/C++ consumers: the build compiles the C file into the shared
+library when no `procedures.py` is present. If both Python and C files
+exist, Python takes precedence and a warning is emitted. Reduction hooks
+keep their `reduction_<VariableName>` names (plus the general `reduction`);
+author-defined grammar hooks are declared as `hook_<name>`. Semantic
+payloads are unavailable through bindings.
 
 ## Error Messages
 

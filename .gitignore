@@ -17,6 +17,7 @@ parse.log
 *-backup
 _*parser.zig
 !languages/galley/_ll-parser.zig
+procedures_python.zig
 /graphs
 .aider*
 /benchmark_results/

@@ -23,19 +23,153 @@
  * the same session; this module copies all of it before returning.
  */
 
+#define _GNU_SOURCE
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
+#include <string.h>
 
 #include <galley.h>
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+#include <dlfcn.h>
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Error type                                                          */
 /* ------------------------------------------------------------------ */
 
 static PyObject *ErrorException = NULL;
+static PyObject *py_procedure_table = NULL;
 
 static PyObject *build_diagnostic(GalleySession *session);
+
+/* Python procedure dispatch: called from the generated Zig shim
+ * (procedures_python.zig) for every reduction. The shim holds a
+ * single global function pointer registered at module init; when the
+ * library was built without Python support the pointer stays NULL and
+ * hooks are no-ops. */
+static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
+    if (py_procedure_table == NULL)
+        return;
+    PyObject *key = PyUnicode_FromStringAndSize(name, (Py_ssize_t)name_len);
+    if (key == NULL) {
+        PyErr_Clear();
+        return;
+    }
+    PyObject *callable = PyDict_GetItemWithError(py_procedure_table, key);
+    Py_DECREF(key);
+    if (callable == NULL) {
+        if (PyErr_Occurred())
+            PyErr_Clear();
+        return;
+    }
+    /* Pass the opaque ProcedureArguments pointer as an integer; hooks
+     * that ignore it remain compatible, and future helpers can decode it. */
+    PyObject *arg = PyLong_FromVoidPtr(args);
+    if (arg == NULL) {
+        PyErr_Clear();
+        return;
+    }
+    PyObject *result = PyObject_CallOneArg(callable, arg);
+    Py_DECREF(arg);
+    if (result == NULL) {
+        if (PyErr_ExceptionMatches(PyExc_TypeError)) {
+            /* Allow def foo(): hooks that take no args. */
+            PyErr_Clear();
+            result = PyObject_CallNoArgs(callable);
+            if (result == NULL)
+                PyErr_Print();
+            else
+                Py_DECREF(result);
+        } else {
+            PyErr_Print();
+        }
+    } else {
+        Py_DECREF(result);
+    }
+}
+
+/* Try to register the dispatch target in the shared library. The library
+ * is already loaded as a DT_NEEDED dependency of this extension, so
+ * RTLD_DEFAULT finds it when it was built with Python support; when it
+ * was built for C procedures the symbol is absent and we remain no-ops. */
+static void try_install_python_dispatch(void) {
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+    typedef void (*install_fn)(void (*)(const char *, size_t, void *));
+    dlerror();
+    install_fn installer = (install_fn)dlsym(RTLD_DEFAULT, "galley_install_python_dispatch");
+    const char *error = dlerror();
+    if (error == NULL && installer != NULL) {
+        installer(py_dispatch_impl);
+    }
+#else
+    /* Fallback weak linkage where dlfcn is unavailable. */
+    extern void galley_install_python_dispatch(void (*)(const char *, size_t, void *));
+    /* If the symbol is missing at load time, this call would have already
+     * trapped on platforms without RTLD_DEFAULT; the dlfcn path above
+     * handles POSIX. */
+    #ifdef __has_attribute
+    #if __has_attribute(weak)
+    if (galley_install_python_dispatch)  /* weak reference */
+        galley_install_python_dispatch(py_dispatch_impl);
+    #endif
+    #endif
+#endif
+}
+
+static int auto_register_python_procedures(void) {
+    /* Attempt to import `procedures` and `hooks.procedures` if they are
+     * on sys.path (the language dir is typically on PYTHONPATH). Hooks
+     * are `reduction_*`, `reduction`, and `hook_*` callables. This is
+     * best-effort: missing modules are ignored. */
+    const char *candidates[] = {"procedures", "hooks.procedures", NULL};
+    for (int i = 0; candidates[i] != NULL; ++i) {
+        PyObject *module = PyImport_ImportModule(candidates[i]);
+        if (module == NULL) {
+            PyErr_Clear();
+            continue;
+        }
+        PyObject *dict = PyModule_GetDict(module);
+        if (dict != NULL) {
+            PyObject *key, *value;
+            Py_ssize_t pos = 0;
+            while (PyDict_Next(dict, &pos, &key, &value)) {
+                if (!PyUnicode_Check(key) || !PyCallable_Check(value))
+                    continue;
+                const char *name = PyUnicode_AsUTF8(key);
+                if (name == NULL) {
+                    PyErr_Clear();
+                    continue;
+                }
+                int is_procedure = 0;
+                if (strcmp(name, "reduction") == 0)
+                    is_procedure = 1;
+                else if (strncmp(name, "reduction_", 10) == 0)
+                    is_procedure = 1;
+                else if (strncmp(name, "hook_", 5) == 0)
+                    is_procedure = 1;
+                if (!is_procedure)
+                    continue;
+                if (py_procedure_table == NULL) {
+                    py_procedure_table = PyDict_New();
+                    if (py_procedure_table == NULL) {
+                        Py_DECREF(module);
+                        return -1;
+                    }
+                }
+                if (PyDict_SetItem(py_procedure_table, key, value) < 0) {
+                    PyErr_Clear();
+                }
+            }
+        }
+        Py_DECREF(module);
+        /* Stop after the first successful import; `procedures` takes
+         * precedence over `hooks.procedures`. */
+        if (py_procedure_table != NULL && PyDict_Size(py_procedure_table) > 0)
+            break;
+    }
+    return 0;
+}
 
 /* Sets ErrorException from a negative galley status code. The instance
  * carries the raw code as its `code` attribute and, when a session is
@@ -2202,6 +2336,143 @@ static PyObject *module_status_string(PyObject *Py_UNUSED(module),
     return PyUnicode_FromString(description);
 }
 
+PyDoc_STRVAR(install_procedure_doc,
+"install_procedure(name, callable)\n"
+"\n"
+"Registers a Python procedure hook. name is the hook name (for example\n"
+"\"reduction_Pair\" or \"hook_print\") and callable is a Python callable\n"
+"that will be invoked with the opaque ProcedureArguments pointer as an\n"
+"int (or None when called with no args for compatibility). Hooks are\n"
+"no-ops until installed; reinstalling replaces the previous callable.\n"
+"Mirrors Go's hooks/procedures.go and Rust's procedures.rs registration.");
+
+static PyObject *module_install_procedure(PyObject *Py_UNUSED(module),
+                                          PyObject *args)
+{
+    const char *name;
+    Py_ssize_t name_len;
+    PyObject *callable;
+
+    if (!PyArg_ParseTuple(args, "s#O:install_procedure", &name, &name_len, &callable))
+        return NULL;
+    if (!PyCallable_Check(callable)) {
+        PyErr_SetString(PyExc_TypeError, "callable must be callable");
+        return NULL;
+    }
+    if (py_procedure_table == NULL) {
+        py_procedure_table = PyDict_New();
+        if (py_procedure_table == NULL)
+            return NULL;
+    }
+    PyObject *key = PyUnicode_FromStringAndSize(name, name_len);
+    if (key == NULL)
+        return NULL;
+    if (PyDict_SetItem(py_procedure_table, key, callable) < 0) {
+        Py_DECREF(key);
+        return NULL;
+    }
+    Py_DECREF(key);
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(install_procedures_doc,
+"install_procedures(module_or_dict)\n"
+"\n"
+"Registers all procedure hooks found in a module, dict, or object exposing\n"
+"a __dict__. Hooks are `reduction`, `reduction_<Variable>`, and\n"
+"`hook_<name>` callables. Returns the number of hooks installed.");
+
+static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
+                                           PyObject *source)
+{
+    PyObject *dict = NULL;
+    int is_dict = PyDict_Check(source);
+    int is_module = PyModule_Check(source);
+
+    if (is_dict) {
+        dict = Py_NewRef(source);
+    } else if (is_module) {
+        dict = PyModule_GetDict(source);
+        if (dict == NULL)
+            return NULL;
+        Py_INCREF(dict);
+    } else {
+        PyObject *d = PyObject_GetAttrString(source, "__dict__");
+        if (d != NULL && PyDict_Check(d)) {
+            dict = d;
+        } else {
+            Py_XDECREF(d);
+            PyErr_SetString(PyExc_TypeError, "install_procedures expects a module, dict, or object with __dict__");
+            return NULL;
+        }
+    }
+
+    if (py_procedure_table == NULL) {
+        py_procedure_table = PyDict_New();
+        if (py_procedure_table == NULL) {
+            Py_DECREF(dict);
+            return NULL;
+        }
+    }
+
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    Py_ssize_t installed = 0;
+    while (PyDict_Next(dict, &pos, &key, &value)) {
+        if (!PyUnicode_Check(key) || !PyCallable_Check(value))
+            continue;
+        const char *name = PyUnicode_AsUTF8(key);
+        if (name == NULL) {
+            PyErr_Clear();
+            continue;
+        }
+        int is_procedure = 0;
+        if (strcmp(name, "reduction") == 0)
+            is_procedure = 1;
+        else if (strncmp(name, "reduction_", 10) == 0)
+            is_procedure = 1;
+        else if (strncmp(name, "hook_", 5) == 0)
+            is_procedure = 1;
+        if (!is_procedure)
+            continue;
+        if (PyDict_SetItem(py_procedure_table, key, value) < 0) {
+            PyErr_Clear();
+            continue;
+        }
+        installed++;
+    }
+    Py_DECREF(dict);
+    return PyLong_FromSsize_t(installed);
+}
+
+PyDoc_STRVAR(clear_procedures_doc,
+"clear_procedures()\n"
+"\n"
+"Clears all registered Python procedure hooks.");
+
+static PyObject *module_clear_procedures(PyObject *Py_UNUSED(module),
+                                         PyObject *Py_UNUSED(ignored))
+{
+    if (py_procedure_table != NULL) {
+        PyDict_Clear(py_procedure_table);
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(list_procedures_doc,
+"list_procedures()\n"
+"\n"
+"Returns a dict of currently registered Python procedure hooks (name ->\n"
+"callable).");
+
+static PyObject *module_list_procedures(PyObject *Py_UNUSED(module),
+                                        PyObject *Py_UNUSED(ignored))
+{
+    if (py_procedure_table == NULL)
+        return PyDict_New();
+    return PyDict_Copy(py_procedure_table);
+}
+
 static PyMethodDef module_methods[] = {
     {"version", module_version, METH_NOARGS, version_doc},
     {"parser_type", module_parser_type, METH_NOARGS,
@@ -2241,6 +2512,10 @@ static PyMethodDef module_methods[] = {
     {"variable_count", module_variable_count, METH_NOARGS,
      "variable_count()\n\nReturns how many variables the grammar declares."},
     {"status_string", module_status_string, METH_O, status_string_doc},
+    {"install_procedure", module_install_procedure, METH_VARARGS, install_procedure_doc},
+    {"install_procedures", module_install_procedures, METH_O, install_procedures_doc},
+    {"clear_procedures", module_clear_procedures, METH_NOARGS, clear_procedures_doc},
+    {"list_procedures", module_list_procedures, METH_NOARGS, list_procedures_doc},
     {NULL, NULL, 0, NULL}
 };
 
@@ -2334,6 +2609,15 @@ PyMODINIT_FUNC PyInit_galley(void)
         PyModule_AddIntConstant(module, "RESUME_AFTER",
                                 galley_resume_after) < 0)
         goto fail;
+
+    /* Python procedure hooks: install the dispatch callback into the
+     * shared library (when built with Python support) and auto-import
+     * any `procedures` module on sys.path. Missing libraries or modules
+     * are silently ignored — hooks are simply no-ops. */
+    try_install_python_dispatch();
+    if (auto_register_python_procedures() < 0) {
+        PyErr_Clear();
+    }
 
     return module;
 
