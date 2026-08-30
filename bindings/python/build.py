@@ -9,13 +9,12 @@ The language dir must contain ll.grm and config.zig (generation options)
 and may contain procedure hook implementations and custom message hooks,
 mirroring the C, C++, Rust, and Go consumers:
 
-* `procedures.py` or `hooks/procedures.py` — Python hooks (``def
+* `procedures.py` — Python hooks (``def
   reduction_<Var>(args)`` / ``def hook_<name>(args)``), dispatched through
-  a generated Python shim like Go's ``hooks/procedures.go``. Python hooks
-  are registered at import time (``procedures`` on ``sys.path`` is tried)
-  and can also be managed explicitly via ``galley.install_procedure``.
-  This is the native-language path mirroring Rust's ``procedures.rs`` and
-  Go's ``hooks/procedures.go``.
+  a generated Python shim. Python hooks are registered at import time
+  (``procedures`` on ``sys.path`` is tried) and can also be managed
+  explicitly via ``galley.install_procedure``. This is the native-language
+  path mirroring Rust's ``procedures.rs``.
 * `procedures.c` / `procedures.cpp` — legacy C/C++ hooks compiled into the
   shared library, exactly like the C/C++ consumers. Python hooks take
   precedence when both exist (a warning is emitted).
@@ -28,7 +27,9 @@ bindings/python/_galley.c against the built library, leaving
 galley<ext-suffix> next to your grammar ready to import.
 
 Environment overrides: ZIG_EXECUTABLE (default zig), CC (default taken
-from the running interpreter's build).
+from the running interpreter's build), GALLEY_CHECKOUT (existing Galley
+working tree, wins over fetching), GALLEY_REPOSITORY, GALLEY_TAG (default
+main). Galley checkout resolution follows docs/bindings.md.
 """
 
 import os
@@ -41,6 +42,8 @@ import tempfile
 from pathlib import Path
 
 LIBRARY_NAME = "galley-python"
+DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git"
+DEFAULT_GALLEY_TAG = "main"
 
 
 def fatal(message):
@@ -110,16 +113,9 @@ def detect_parser(language_dir):
 
 
 def find_python_procedures_file(language_dir):
-    # Mirrors Go's hooks/procedures.go layout while also supporting a plain
-    # procedures.py next to the grammar. Returns the first existing candidate
-    # or None.
-    candidates = [
-        language_dir / "procedures.py",
-        language_dir / "hooks" / "procedures.py",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
+    candidate = language_dir / "procedures.py"
+    if candidate.is_file():
+        return candidate
     return None
 
 
@@ -198,13 +194,63 @@ def emit_python_procedure_shim(template_path, output_path):
     output_path.write_text("\n".join(builder) + "\n", encoding="utf-8")
 
 
-def resolve_galley():
-    # This script lives at <checkout>/bindings/python/build.py, so the
-    # checkout it belongs to is always the right tree to build against.
-    checkout = Path(__file__).resolve().parents[2]
-    if not (checkout / "build.zig").exists():
-        fatal(f"{checkout} is not a Galley repository checkout (no build.zig)")
-    return checkout
+def resolve_galley(cache_dir_path=None):
+    # Resolves the Galley checkout to build against, following docs/bindings.md:
+    # GALLEY_CHECKOUT wins; otherwise if this script lives inside a Galley
+    # checkout (local dev), use that checkout; otherwise fetch
+    # GALLEY_REPOSITORY at GALLEY_TAG into <cache>/galley-src, mirroring
+    # bindings/go/cmd/galley and bindings/rust/src/build_helper.rs.
+    checkout_env = os.environ.get("GALLEY_CHECKOUT")
+    if checkout_env:
+        checkout = Path(checkout_env)
+        if not (checkout / "build.zig").exists():
+            fatal(
+                f"GALLEY_CHECKOUT={checkout} is not a Galley repository checkout (no build.zig)"
+            )
+        return checkout
+    # Local dev: script lives at <galley>/bindings/python/build.py
+    candidate = Path(__file__).resolve().parents[2]
+    if (candidate / "build.zig").exists():
+        return candidate
+    # Fall back to fetching, using the same cache dir as the capi prefix.
+    if cache_dir_path is None:
+        cache_dir_path = cache_dir()
+    else:
+        cache_dir_path = Path(cache_dir_path)
+    tag = os.environ.get("GALLEY_TAG", DEFAULT_GALLEY_TAG)
+    repository = os.environ.get("GALLEY_REPOSITORY", DEFAULT_GALLEY_REPOSITORY)
+    source_dir = cache_dir_path / "galley-src"
+    stamp = cache_dir_path / "galley-tag"
+    try:
+        previous = stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else ""
+    except OSError:
+        previous = ""
+    if source_dir.exists() and previous == tag:
+        return source_dir
+    # Fresh clone
+    import shutil
+
+    if source_dir.exists():
+        shutil.rmtree(source_dir, ignore_errors=True)
+    run(
+        [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "--branch",
+            tag,
+            "--single-branch",
+            "--recurse-submodules=false",
+            repository,
+            str(source_dir),
+        ]
+    )
+    try:
+        stamp.write_text(tag, encoding="utf-8")
+    except OSError as error:
+        fatal(f"failed to write tag stamp: {error}")
+    return source_dir
 
 
 def compile_extension(galley_source, parser_source, parser_type, prefix, output_path):
@@ -250,7 +296,9 @@ def main():
     if not (language_dir / "ll.grm").is_file():
         fatal(f"{language_dir} does not contain ll.grm")
 
-    galley_source = resolve_galley()
+    # Resolve cache dir first so resolve_galley can use it for fetching.
+    cache_for_galley = cache_dir()
+    galley_source = resolve_galley(cache_for_galley)
     cli = galley_source / "zig-out" / "bin" / "galley"
     if not cli.exists():
         run(
@@ -274,11 +322,11 @@ def main():
 
     prefix = cache_dir() / "capi"
     # Python-native procedures take precedence over C procedures: if a
-    # procedures.py (or hooks/procedures.py) exists, generate a Python
-    # dispatch shim and use it instead of the C extern stub. When neither
-    # Python nor C implementations exist, still generate the Python shim as
-    # a no-op fallback so the library links (hooks are simply no-ops until
-    # Python registers them via galley.install_procedure).
+    # procedures.py exists, generate a Python dispatch shim and use it
+    # instead of the C extern stub. When neither Python nor C implementations
+    # exist, still generate the Python shim as a no-op fallback so the library
+    # links (hooks are simply no-ops until Python registers them via
+    # galley.install_procedure).
     python_procedures_file = find_python_procedures_file(language_dir)
     procedures_zig_source = None
     procedures_c_source = None

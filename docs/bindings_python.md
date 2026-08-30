@@ -25,9 +25,9 @@ python3 <galley>/bindings/python/build.py <language-dir>
 
 The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook
-files next to your grammar (`procedures.py` or `hooks/procedures.py` for
-native Python hooks, `procedures.c` for legacy C hooks,
-`procedures.zig`, `ll_error_messages.zig`), and compiles the extension module to
+files next to your grammar (`procedures.py` for native Python hooks,
+`procedures.c` for legacy C hooks, `procedures.zig`,
+`ll_error_messages.zig`), and compiles the extension module to
 `<language-dir>/galley<ext-suffix>`. Import `galley` from that directory:
 
 ```python
@@ -80,7 +80,7 @@ No C anywhere on the consumer side, mirroring Rust's `procedures.rs` and
 Go's `hooks/procedures.go`:
 
 ```python
-# procedures.py (or hooks/procedures.py, like Go)
+# procedures.py
 import sys
 
 def reduction_Pair(args):
@@ -97,10 +97,10 @@ def hook_print(args):
 Mechanically, `build.py` reads the grammar's generated hook list and
 produces a Zig shim module containing one dispatch slot; the extension
 registers the Python callables into that slot at import time (it tries
-`import procedures` then `import hooks.procedures` on `sys.path` — the
-language dir is typically on `PYTHONPATH` — and falls back to explicit
-registration). The parser calls through the slot directly, so hook code
-executes in the host's Python interpreter. Unregistered slots are no-ops.
+`import procedures` on `sys.path` — the language dir is typically on
+`PYTHONPATH` — and falls back to explicit registration). The parser calls
+through the slot directly, so hook code executes in the host's Python
+interpreter. Unregistered slots are no-ops.
 
 Explicit registration is also available and composes with auto-import:
 
@@ -111,14 +111,6 @@ galley.install_procedure("reduction_Pair", lambda args: print("Pair"))
 galley.install_procedures(procedures)  # all reduction_*/hook_* in module
 galley.list_procedures()   # {name: callable}
 galley.clear_procedures()
-```
-
-For `hooks/procedures.py` (subpackage, like Go), the build still detects it
-automatically:
-
-```sh
-python3 <galley>/bindings/python/build.py <language-dir>
-# detects <language-dir>/procedures.py or <language-dir>/hooks/procedures.py
 ```
 
 When neither Python nor C implementations exist, the shim is still generated

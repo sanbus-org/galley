@@ -118,11 +118,10 @@ static void try_install_python_dispatch(void) {
 }
 
 static int auto_register_python_procedures(void) {
-    /* Attempt to import `procedures` and `hooks.procedures` if they are
-     * on sys.path (the language dir is typically on PYTHONPATH). Hooks
-     * are `reduction_*`, `reduction`, and `hook_*` callables. This is
-     * best-effort: missing modules are ignored. */
-    const char *candidates[] = {"procedures", "hooks.procedures", NULL};
+    /* Attempt to import `procedures` if it is on sys.path (the language dir
+     * is typically on PYTHONPATH). Hooks are `reduction_*`, `reduction`, and
+     * `hook_*` callables. This is best-effort: missing modules are ignored. */
+    const char *candidates[] = {"procedures", NULL};
     for (int i = 0; candidates[i] != NULL; ++i) {
         PyObject *module = PyImport_ImportModule(candidates[i]);
         if (module == NULL) {
@@ -163,8 +162,6 @@ static int auto_register_python_procedures(void) {
             }
         }
         Py_DECREF(module);
-        /* Stop after the first successful import; `procedures` takes
-         * precedence over `hooks.procedures`. */
         if (py_procedure_table != NULL && PyDict_Size(py_procedure_table) > 0)
             break;
     }

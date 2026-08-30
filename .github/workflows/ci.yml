@@ -93,6 +93,7 @@ jobs:
           - rust
           - go
           - python
+          - typescript
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -109,6 +110,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: stable
+
+      - name: Install Node
+        if: ${{ matrix.language == 'typescript' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Build and run example (cmake)
         if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
@@ -153,6 +160,17 @@ jobs:
           python3 main.py
           PYTHONPATH="$PWD" python3 ../../bindings/python/tests/test_bindings.py
 
+      - name: Build and run example (typescript)
+        if: ${{ matrix.language == 'typescript' }}
+        run: |
+          node bindings/typescript/build.mjs examples/typescript
+          npm install --prefix bindings/typescript
+          npm run build --prefix bindings/typescript
+          npm install --prefix examples/typescript
+          npm run build --prefix examples/typescript
+          node examples/typescript/dist/main.js
+          node bindings/typescript/tests/test_bindings.mjs
+
   bindings-consistency:
     name: bindings-consistency
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
@@ -172,6 +190,11 @@ jobs:
         with:
           go-version: stable
 
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Grammar, options, and error messages are identical across bindings
         run: |
           for file in ll.grm config.zig ll_error_messages.zig; do
@@ -181,10 +204,31 @@ jobs:
             test "$count" = 1 || { echo "::error::$file differs across examples/c, examples/cpp, examples/rust"; exit 1; }
           done
 
+      - name: Galley checkout resolution is consistent across bindings
+        run: |
+          check() {
+            file="$1"
+            for var in GALLEY_CHECKOUT GALLEY_REPOSITORY GALLEY_TAG ZIG_EXECUTABLE; do
+              if ! grep -q "$var" "$file"; then
+                echo "::error::$file missing $var handling (Galley checkout contract)"
+                exit 1
+              fi
+            done
+            echo "$file: Galley fetch contract present"
+          }
+          check bindings/go/cmd/galley/main.go
+          check bindings/rust/src/build_helper.rs
+          check bindings/python/build.py
+          check bindings/typescript/build.mjs
+          for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
+            check "$f"
+          done
+          echo "Galley checkout contract enforced in all bindings"
+
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust python; do
+          for lang in c cpp rust python typescript; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
           for file in _ll-parser.zig procedures.zig; do
@@ -203,18 +247,25 @@ jobs:
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/hooks/procedures.go > /tmp/names-go.txt
-          # Python now uses native procedures.py (hooks/procedures.py also accepted); fall back to legacy procedures.c
+          # Python now uses native procedures.py; fall back to legacy procedures.c
           if [ -f examples/python/procedures.py ]; then
             names examples/python/procedures.py > /tmp/names-python.txt
-          elif [ -f examples/python/hooks/procedures.py ]; then
-            names examples/python/hooks/procedures.py > /tmp/names-python.txt
           else
             names examples/python/procedures.c > /tmp/names-python.txt
+          fi
+          # TypeScript: native procedures.ts/js takes precedence when present; else legacy procedures.c
+          if [ -f examples/typescript/procedures.ts ]; then
+            names examples/typescript/procedures.ts > /tmp/names-typescript.txt
+          elif [ -f examples/typescript/procedures.js ]; then
+            names examples/typescript/procedures.js > /tmp/names-typescript.txt
+          else
+            names examples/typescript/procedures.c > /tmp/names-typescript.txt
           fi
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-python.txt || { echo "::error::C and Python procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-typescript.txt || { echo "::error::C and TypeScript procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
 
       - name: LR family builds through the c abi
@@ -281,6 +332,14 @@ jobs:
           python3 ../../bindings/python/build.py . >/dev/null
           python3 main.py >/tmp/out-python.txt 2>/tmp/err-python.txt
           cd ../..
+          cd examples/typescript
+          node ../../bindings/typescript/build.mjs . >/dev/null
+          npm install --prefix ../../bindings/typescript >/dev/null 2>&1
+          npm run build --prefix ../../bindings/typescript >/dev/null 2>&1
+          npm install >/dev/null 2>&1
+          npm run build >/dev/null 2>&1
+          node dist/main.js >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
+          cd ../..
 
           /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
@@ -299,10 +358,12 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-rust.txt
           compare /tmp/out-c.txt /tmp/out-go.txt
           compare /tmp/out-c.txt /tmp/out-python.txt
+          compare /tmp/out-c.txt /tmp/out-typescript.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
           compare /tmp/err-c.txt /tmp/err-go.txt
           compare /tmp/err-c.txt /tmp/err-python.txt
+          compare /tmp/err-c.txt /tmp/err-typescript.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   test:
