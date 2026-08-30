@@ -122,6 +122,23 @@ const Embedded = struct {
         if (address >= self.session.node_allocator.counter) return null;
         return self.session.node_allocator.at(@intCast(address));
     }
+
+    fn nodeInput(self: *Embedded) []const u8 {
+        if (self.session.active_context) |ctx| return ctx.diagnosticInput();
+        return self.last_input;
+    }
+
+    fn nodeText(self: *Embedded, node: *const root.data_structures.Node) ?[]const u8 {
+        if (self.session.active_context) |ctx| {
+            const input = ctx.diagnosticInput();
+            if (node.text_start > input.len) return null;
+            if (node.text_length > input.len - node.text_start) return null;
+            return ctx.getTextSlice(node.text_start, node.text_length);
+        }
+        if (node.text_start > self.last_input.len) return null;
+        if (node.text_length > self.last_input.len - node.text_start) return null;
+        return self.last_input[node.text_start .. node.text_start + node.text_length];
+    }
 };
 
 /// Creates a parsing session. Returns null when initialization fails, most
@@ -157,6 +174,7 @@ export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySess
         std.heap.c_allocator.destroy(embedded);
         return null;
     };
+    embedded.session.user_data = embedded;
     return @ptrCast(embedded);
 }
 
@@ -349,9 +367,9 @@ export fn galley_node_text(
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
     const node = embedded.nodeAt(address) orelse return galley_error_invalid_node;
-    if (node.text_start + node.text_length > embedded.last_input.len) return galley_error_internal;
-    out_data.?.* = embedded.last_input.ptr + node.text_start;
-    out_len.?.* = node.text_length;
+    const slice = embedded.nodeText(node) orelse return galley_error_internal;
+    out_data.?.* = slice.ptr;
+    out_len.?.* = slice.len;
     return galley_ok;
 }
 
@@ -702,11 +720,12 @@ export fn galley_node_line_column(
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_line == null or out_column == null) return galley_error_null_argument;
     const node = embedded.nodeAt(address) orelse return galley_error_invalid_node;
-    if (node.text_start > embedded.last_input.len) return galley_error_internal;
+    const input = embedded.nodeInput();
+    if (node.text_start > input.len) return galley_error_internal;
 
     var line: u32 = 1;
     var column: u32 = 1;
-    for (embedded.last_input[0..node.text_start]) |byte| {
+    for (input[0..node.text_start]) |byte| {
         if (byte == '\n') {
             line += 1;
             column = 1;
@@ -1480,4 +1499,147 @@ export fn galley_variable_name(session_ptr: ?*GalleySession, index: u64, out_dat
     out_data.?.* = parser.variables[@intCast(index)].ptr;
     out_len.?.* = parser.variables[@intCast(index)].len;
     return galley_ok;
+}
+
+// ---------------------------------------------------------------------------
+// ProcedureArguments: parse-time hook state. Tree queries and edits use the
+// session returned by `galley_procedure_session` with the existing
+// `galley_node_*` / `galley_tree_*` functions.
+// ---------------------------------------------------------------------------
+
+inline fn allowsNoAstTreeProcedures() bool {
+    return @hasDecl(parser, "allow_no_ast_tree_procedures") and parser.allow_no_ast_tree_procedures;
+}
+
+inline fn procedureArguments(args: ?*anyopaque) ?*root.data_structures.ProcedureArguments {
+    return @ptrCast(@alignCast(args orelse return null));
+}
+
+/// Returns the session that is currently parsing, or null when `args` did
+/// not come from a C-API parse.
+export fn galley_procedure_session(args: ?*anyopaque) ?*GalleySession {
+    const procedure_arguments = procedureArguments(args) orelse return null;
+    const user_data = procedure_arguments.context.user_data orelse return null;
+    return @ptrCast(@alignCast(user_data));
+}
+
+export fn galley_procedure_current_node(args: ?*anyopaque) GalleyNodeAddress {
+    const procedure_arguments = procedureArguments(args) orelse return galley_invalid_node;
+    if (comptime !parser.is_ast_enabled) return galley_invalid_node;
+    const addr = procedure_arguments.node_address orelse return galley_invalid_node;
+    return @intCast(addr);
+}
+
+/// Sets the current node, or clears it when `node` is `GALLEY_INVALID_NODE`.
+/// Does not bounds-check: an out-of-range address is undefined behavior in
+/// subsequent tree helpers, matching Zig `at()`.
+export fn galley_procedure_set_current_node(args: ?*anyopaque, node: GalleyNodeAddress) void {
+    const procedure_arguments = procedureArguments(args) orelse return;
+    if (comptime !parser.is_ast_enabled) return;
+    if (node == galley_invalid_node) {
+        procedure_arguments.node_address = null;
+    } else {
+        procedure_arguments.node_address = @intCast(node);
+    }
+}
+
+export fn galley_procedure_rule_present(args: ?*anyopaque) i32 {
+    const procedure_arguments = procedureArguments(args) orelse return 0;
+    return if (procedure_arguments.rule != null) 1 else 0;
+}
+
+export fn galley_procedure_rule_header(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return -1;
+    const rule = procedure_arguments.rule orelse return -1;
+    return @intCast(rule.header);
+}
+
+export fn galley_procedure_rule_rhs_index(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return -1;
+    const rule = procedure_arguments.rule orelse return -1;
+    return std.fmt.parseInt(i64, rule.right_hand_side_index, 10) catch -1;
+}
+
+export fn galley_procedure_rule_right_hand_side(args: ?*anyopaque, out_data: ?*[*]const u16, out_len: ?*usize) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    const rule = procedure_arguments.rule orelse return -1;
+    out_data.?.* = rule.right_hand_side.ptr;
+    out_len.?.* = rule.right_hand_side.len;
+    return galley_ok;
+}
+
+export fn galley_procedure_rule_rhs_index_slice(args: ?*anyopaque, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    const rule = procedure_arguments.rule orelse return -1;
+    out_data.?.* = rule.right_hand_side_index.ptr;
+    out_len.?.* = rule.right_hand_side_index.len;
+    return galley_ok;
+}
+
+export fn galley_procedure_context_line(args: ?*anyopaque) u32 {
+    const procedure_arguments = procedureArguments(args) orelse return 0;
+    if (comptime !root.position_tracking_enabled) return 0;
+    return procedure_arguments.context.line;
+}
+
+export fn galley_procedure_context_column(args: ?*anyopaque) u32 {
+    const procedure_arguments = procedureArguments(args) orelse return 0;
+    if (comptime !root.position_tracking_enabled) return 0;
+    return procedure_arguments.context.column;
+}
+
+export fn galley_procedure_drop_self(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.dropSelf(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+export fn galley_procedure_drop_children(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.dropChildren(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+export fn galley_procedure_drop_if_empty(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.dropIfEmpty(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+export fn galley_procedure_replace_with_children(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.replaceWithChildren(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+export fn galley_procedure_left_recursive_reduction(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.leftRecursiveReduction(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+export fn galley_procedure_right_recursive_reduction(args: ?*anyopaque) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        root.standard_procedures.rightRecursiveReduction(procedure_arguments) catch |e| return statusForError(e);
+        return galley_ok;
+    }
+    return galley_error_internal;
 }

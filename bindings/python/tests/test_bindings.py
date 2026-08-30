@@ -2,7 +2,7 @@
 """Behavioral tests for the Galley Python bindings.
 
 The suite imports the built extension module as `galley`; point PYTHONPATH
-at a language directory produced by bindings/python/build.py (the example
+at a language directory produced by `python -m galley_bindings` (the example
 works out of the box):
 
     PYTHONPATH=examples/python python3 bindings/python/tests/test_bindings.py
@@ -57,6 +57,25 @@ class SessionTests(unittest.TestCase):
 
     def tearDown(self):
         self.session.close()
+
+    def test_procedure_hook_can_read_node_text(self):
+        seen = []
+
+        def reduction_Pair(args):
+            node = args.current_node()
+            self.assertIsNotNone(node)
+            self.assertIs(args.session, self.session)
+            text = node.text()
+            self.assertIsInstance(text, bytes)
+            self.assertGreater(len(text), 0)
+            seen.append(text)
+
+        galley.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            galley.clear_procedures()
+        self.assertEqual(len(seen), 2)
 
     def test_parse_accepts_str_bytes_and_buffers(self):
         sample = "alpha:12,beta:3"

@@ -55,11 +55,30 @@ ordinary Go package compiled into your own binary by your ordinary
 ```go
 package hooks
 
+import (
+	"os"
+	"unsafe"
+
+	galley "example.com/my-parser-consumer/galley"
+)
+
 //export reduction_Pair
-func reduction_Pair(_ unsafe.Pointer) {
+func reduction_Pair(ptr unsafe.Pointer) {
+	args := galley.Args(ptr)
+	if session := args.Session(); session != nil {
+		if node, ok := args.CurrentNode(); ok {
+			text, _ := session.Text(node)
+			_ = text
+		}
+	}
 	os.Stderr.WriteString("[hook] Pair\n")
 }
 ```
+
+Blank-import the hooks package from `main` so the `//export`ed symbols are
+linked (`import _ "example.com/my-parser-consumer/hooks"`). Do not import
+hooks from the generated `galley` package: hooks already import `galley`,
+and that cycle would not compile.
 
 Mechanically, gen reads the grammar's generated hook list and produces a
 Zig shim module containing one nullable function-pointer slot per hook;
@@ -71,7 +90,9 @@ Go runtime via c-archive segfaults on linux/amd64). Each hook fires after
 the corresponding variable is reduced; unregistered slots are no-ops.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
-`hook_<name>`. Semantic payloads are unavailable through bindings.
+`hook_<name>`. Semantic payloads are unavailable through bindings. Tree
+queries use `galley.Args(ptr).Session()` with the ordinary session node
+APIs; drop/replace use `args.DropSelf()` and friends.
 
 ## Error Messages
 

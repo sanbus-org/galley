@@ -198,7 +198,8 @@ long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress n
 /* Writes the source text matched by a node into *out_data / *out_len. The
  * pointer references the input of the most recent parse: keep that input
  * alive until the next parse (galley_parse_sentinel) or rely on the session,
- * which copies it (galley_parse). */
+ * which copies it (galley_parse). During an in-progress parse (procedure
+ * hooks) the pointer references the live input of that parse. */
 long long galley_node_text(GalleySession *session, GalleyNodeAddress node,
                            const char **out_data, size_t *out_len);
 
@@ -409,6 +410,30 @@ long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned l
                                               const char **out_parent_variable, size_t *out_parent_variable_len,
                                               unsigned int *out_rhs_index, unsigned int *out_symbol_index,
                                               const char **out_variable, size_t *out_variable_len);
+
+/* Procedure hooks receive an opaque ProcedureArguments pointer. Tree queries
+ * and edits use the session from galley_procedure_session with the ordinary
+ * galley_node_* / galley_tree_* functions. The remaining calls below are
+ * parse-time state that does not exist on a finished session: the current
+ * node, the reducing rule, scanner line/column, and the drop/replace channel
+ * (args.node_address). galley_tree_remove_self is not a substitute for
+ * galley_procedure_drop_self. */
+GalleySession *galley_procedure_session(void *args);
+unsigned long long galley_procedure_current_node(void *args);
+void galley_procedure_set_current_node(void *args, unsigned long long node);
+int galley_procedure_rule_present(void *args);
+long long galley_procedure_rule_header(void *args);
+long long galley_procedure_rule_rhs_index(void *args);
+long long galley_procedure_rule_right_hand_side(void *args, const unsigned short **out_data, size_t *out_len);
+long long galley_procedure_rule_rhs_index_slice(void *args, const char **out_data, size_t *out_len);
+unsigned int galley_procedure_context_line(void *args);
+unsigned int galley_procedure_context_column(void *args);
+long long galley_procedure_drop_self(void *args);
+long long galley_procedure_drop_children(void *args);
+long long galley_procedure_drop_if_empty(void *args);
+long long galley_procedure_replace_with_children(void *args);
+long long galley_procedure_left_recursive_reduction(void *args);
+long long galley_procedure_right_recursive_reduction(void *args);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -3,8 +3,9 @@
 Requires `python3`, `zig`, and `git`.
 
 ```sh
-python3 ../../bindings/python/build.py .
-PYTHONPATH=. python3 main.py
+pip install -e .
+python -m galley_bindings .
+python main.py
 ```
 
-`build.py` generates the parser (`--emit-metadata`), builds the shared library, and compiles the `galley` extension module (`galley.*.so`) next to your grammar — no `pip` step needed. `procedures.py` is the native-language hook file, mirroring `Rust`'s `procedures.rs`; legacy `procedures.c` still works. Pass a file as an argument to parse that file instead of running the built-in demo.
+The build fetches Galley on its own; set `GALLEY_CHECKOUT=/path/to/galley` to develop against a local Galley checkout instead. Pass a grammar-source file as an argument to parse that file instead of running the built-in demo.

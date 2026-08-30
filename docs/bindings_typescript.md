@@ -15,33 +15,8 @@ output to the C, C++, Rust, Go, and Python examples.
 
 ## Getting Started
 
-Run Galley's build command against your language directory (a directory
-containing `ll.grm` and `config.zig`):
-
-```sh
-node <galley>/bindings/typescript/build.mjs <language-dir>
-```
-
-The command generates the parser (`--emit-metadata`), builds the shared
-library through Galley's generic consumer build file, and copies
-`libgalley-typescript.{dylib,so}` next to your grammar. Then build the
-bindings and your project:
-
-```sh
-npm install --prefix <galley>/bindings/typescript
-npm run build --prefix <galley>/bindings/typescript
-
-npm install --prefix <language-dir>   # pulls galley-typescript-bindings via file: link
-npm run build --prefix <language-dir>
-node <language-dir>/dist/main.js
-```
-
-`ZIG_EXECUTABLE` selects zig; `CC` is not needed (the shared library is
-built by Zig). The TypeScript package targets Node 18+. One shared library
-embeds one parser — split grammars across language directories exactly like
-the other bindings. Re-generate after changing the grammar.
-
-The example's `package.json` declares the local dependency as:
+Add the bindings package to your `package.json` and point it at a Galley
+checkout:
 
 ```json
 {
@@ -51,11 +26,32 @@ The example's `package.json` declares the local dependency as:
 }
 ```
 
-and `main.ts` imports it:
+Then generate the parser for your language directory (a directory
+containing `ll.grm` and `config.zig`):
+
+```sh
+npm install
+npx galley-typescript-bindings <language-dir>
+```
+
+The command generates the parser (`--emit-metadata`), builds the shared
+library through Galley's generic consumer build file, detects optional hook
+files next to your grammar (`procedures.ts` for native TypeScript hooks,
+`procedures.c` for legacy C hooks, `procedures.zig`,
+`ll_error_messages.zig`), and copies `libgalley-typescript.{dylib,so}` next
+to your grammar. Import the bindings from that directory:
 
 ```ts
 import { Session, version, hasAst } from "galley-typescript-bindings";
 ```
+
+`ZIG_EXECUTABLE` selects zig. The TypeScript package targets Node 18+.
+`GALLEY_CHECKOUT` uses an existing Galley working tree; otherwise the
+command clones `GALLEY_REPOSITORY` at `GALLEY_TAG` (default `main`),
+matching the Rust, Go, and Python consumers. Regenerate after changing the
+grammar; commit nothing the command generates. One shared library embeds one
+parser — split grammars across language directories exactly like the other
+bindings.
 
 `GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-typescript.*`
 when the library lives elsewhere (e.g. in a cache dir).
@@ -121,9 +117,9 @@ installProcedures(procedures);
 // installProcedure("hook_print", (args) => process.stderr.write("[hook] print\n"));
 ```
 
-The build command `node <galley>/bindings/typescript/build.mjs <language-dir>`
-detects `procedures.ts` / `procedures.js`
-and generates a `procedures_typescript.zig` shim that routes every grammar hook
+The build command `npx galley-typescript-bindings <language-dir>` detects
+`procedures.ts` / `procedures.js` and generates a `procedures_typescript.zig`
+shim that routes every grammar hook
 through a single JS callback (`galley_install_typescript_dispatch`), exactly like
 Python's `procedures_python.zig` and Go's `procedures_go.zig`. Unregistered hooks
 are silent no-ops. You can also manage hooks at runtime:
@@ -214,9 +210,8 @@ indentation details, and the full structured recovery information — or
 The bindings ship a behavioral suite that runs against any built module:
 
 ```sh
-node bindings/typescript/build.mjs examples/typescript
-npm install --prefix bindings/typescript && npm run build --prefix bindings/typescript
-npm install --prefix examples/typescript && npm run build --prefix examples/typescript
+npm install --prefix examples/typescript
+npx --prefix examples/typescript galley-typescript-bindings examples/typescript
 node bindings/typescript/tests/test_bindings.mjs
 ```
 

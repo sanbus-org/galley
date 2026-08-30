@@ -3,7 +3,7 @@
 
 Usage:
 
-    python3 <galley>/bindings/python/build.py <language-dir>
+    python -m galley_bindings <language-dir>
 
 The language dir must contain ll.grm and config.zig (generation options)
 and may contain procedure hook implementations and custom message hooks,
@@ -29,7 +29,8 @@ galley<ext-suffix> next to your grammar ready to import.
 Environment overrides: ZIG_EXECUTABLE (default zig), CC (default taken
 from the running interpreter's build), GALLEY_CHECKOUT (existing Galley
 working tree, wins over fetching), GALLEY_REPOSITORY, GALLEY_TAG (default
-main). Galley checkout resolution follows docs/bindings.md.
+main). Without GALLEY_CHECKOUT the script clones GALLEY_REPOSITORY at
+GALLEY_TAG, matching the Rust, Go, and C consumers.
 """
 
 import os
@@ -195,11 +196,10 @@ def emit_python_procedure_shim(template_path, output_path):
 
 
 def resolve_galley(cache_dir_path=None):
-    # Resolves the Galley checkout to build against, following docs/bindings.md:
-    # GALLEY_CHECKOUT wins; otherwise if this script lives inside a Galley
-    # checkout (local dev), use that checkout; otherwise fetch
-    # GALLEY_REPOSITORY at GALLEY_TAG into <cache>/galley-src, mirroring
-    # bindings/go/cmd/galley and bindings/rust/src/build_helper.rs.
+    # GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
+    # into <cache>/galley-src. Mirrors bindings/go/cmd/galley and
+    # bindings/rust/src/build_helper.rs: a nearby checkout is not used
+    # unless GALLEY_CHECKOUT points at it.
     checkout_env = os.environ.get("GALLEY_CHECKOUT")
     if checkout_env:
         checkout = Path(checkout_env)
@@ -208,11 +208,7 @@ def resolve_galley(cache_dir_path=None):
                 f"GALLEY_CHECKOUT={checkout} is not a Galley repository checkout (no build.zig)"
             )
         return checkout
-    # Local dev: script lives at <galley>/bindings/python/build.py
-    candidate = Path(__file__).resolve().parents[2]
-    if (candidate / "build.zig").exists():
-        return candidate
-    # Fall back to fetching, using the same cache dir as the capi prefix.
+    # Fetch into the same cache dir as the capi prefix.
     if cache_dir_path is None:
         cache_dir_path = cache_dir()
     else:
@@ -289,7 +285,7 @@ def compile_extension(galley_source, parser_source, parser_type, prefix, output_
 
 def main():
     if len(sys.argv) != 2:
-        fatal("usage: build.py <language-dir>")
+        fatal("usage: python -m galley_bindings <language-dir>")
     if os.name == "nt":
         fatal("the python bindings target POSIX platforms")
     language_dir = Path(sys.argv[1]).resolve()

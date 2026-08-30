@@ -1,5 +1,5 @@
 {
-  "name": "galley-typescript-bindings",
+  "name": "galley-bindings",
   "version": "0.1.0",
   "description": "TypeScript bindings for Galley-generated parsers (via koffi FFI over bindings/c/galley.h)",
   "type": "module",
@@ -12,8 +12,12 @@
     }
   },
   "files": ["dist", "src", "build.mjs", "README.md"],
+  "bin": {
+    "galley-typescript-bindings": "./build.mjs"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json --noCheck --types \"\"",
     "prepublishOnly": "npm run build",
     "test": "node tests/test_bindings.mjs"
   },
@@ -22,8 +26,8 @@
     "koffi": "^3.1.6"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=18"

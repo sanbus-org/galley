@@ -3,9 +3,9 @@
 Requires `node` ≥ 22.6, `zig`, and `git`.
 
 ```sh
-node ../../bindings/typescript/build.mjs .
 npm install
+npx galley-typescript-bindings .
 npx tsx main.ts
 ```
 
-`build.mjs` generates the parser and builds the shared library. `procedures.ts` is the native-language hook file, mirroring Python's `procedures.py`; legacy `procedures.c` still works. Pass a file as an argument to parse it instead of the demo.
+The build fetches Galley on its own; set `GALLEY_CHECKOUT=/path/to/galley` to develop against a local Galley checkout instead. Pass a grammar-source file as an argument to parse that file instead of running the built-in demo.

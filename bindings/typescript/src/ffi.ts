@@ -7,10 +7,12 @@
  * caller touches koffi directly.
  */
 
+import { Buffer } from "node:buffer";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createRequire } from "node:module";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -287,6 +289,17 @@ export interface GalleyFFI {
   // procedure dispatch (TypeScript shim)
   galley_install_typescript_dispatch: ((target: unknown) => void) | null;
 
+  // procedure-hook state; tree queries use galley_node_* on the session
+  galley_procedure_session: (args: bigint) => bigint;
+  galley_procedure_current_node: (args: bigint) => bigint;
+  galley_procedure_set_current_node: (args: bigint, node: bigint | number) => void;
+  galley_procedure_drop_self: (args: bigint) => bigint | number;
+  galley_procedure_drop_children: (args: bigint) => bigint | number;
+  galley_procedure_drop_if_empty: (args: bigint) => bigint | number;
+  galley_procedure_replace_with_children: (args: bigint) => bigint | number;
+  galley_procedure_context_line: (args: bigint) => number;
+  galley_procedure_context_column: (args: bigint) => number;
+
   // struct for options
   GalleyCOptions: ReturnType<typeof koffi.struct>;
 }
@@ -366,7 +379,7 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
   if (!exists(libPath)) {
     throw new Error(
       `Galley shared library not found at ${libPath}.\n` +
-        `Build it first: node bindings/typescript/build.mjs <language-dir>\n` +
+        `Build it first: npx galley-typescript-bindings <language-dir>\n` +
         `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`,
     );
   }
@@ -568,6 +581,22 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
         return null;
       }
     })(),
+
+    galley_procedure_session: lib.func("void *galley_procedure_session(void *args)"),
+    galley_procedure_current_node: lib.func("uint64_t galley_procedure_current_node(void *args)"),
+    galley_procedure_set_current_node: lib.func(
+      "void galley_procedure_set_current_node(void *args, uint64_t node)",
+    ),
+    galley_procedure_drop_self: lib.func("int64_t galley_procedure_drop_self(void *args)"),
+    galley_procedure_drop_children: lib.func("int64_t galley_procedure_drop_children(void *args)"),
+    galley_procedure_drop_if_empty: lib.func("int64_t galley_procedure_drop_if_empty(void *args)"),
+    galley_procedure_replace_with_children: lib.func(
+      "int64_t galley_procedure_replace_with_children(void *args)",
+    ),
+    galley_procedure_context_line: lib.func("uint32_t galley_procedure_context_line(void *args)"),
+    galley_procedure_context_column: lib.func(
+      "uint32_t galley_procedure_context_column(void *args)",
+    ),
   };
 
   cached = ffi;

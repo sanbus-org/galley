@@ -115,7 +115,13 @@ jobs:
         if: ${{ matrix.language == 'typescript' }}
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 26
+
+      - name: Install Python
+        if: ${{ matrix.language == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       - name: Build and run example (cmake)
         if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
@@ -155,21 +161,24 @@ jobs:
       - name: Build and run example (python)
         if: ${{ matrix.language == 'python' }}
         working-directory: examples/python
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
-          python3 ../../bindings/python/build.py .
-          python3 main.py
-          PYTHONPATH="$PWD" python3 ../../bindings/python/tests/test_bindings.py
+          pip install -e .
+          python -m galley_bindings .
+          python main.py
+          PYTHONPATH="$PWD" python ../../bindings/python/tests/test_bindings.py
 
       - name: Build and run example (typescript)
         if: ${{ matrix.language == 'typescript' }}
+        working-directory: examples/typescript
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
-          node bindings/typescript/build.mjs examples/typescript
-          npm install --prefix bindings/typescript
-          npm run build --prefix bindings/typescript
-          npm install --prefix examples/typescript
-          npm run build --prefix examples/typescript
-          node examples/typescript/dist/main.js
-          node bindings/typescript/tests/test_bindings.mjs
+          npm install
+          npx galley-typescript-bindings .
+          npx tsx main.ts
+          node ../../bindings/typescript/tests/test_bindings.mjs
 
   bindings-consistency:
     name: bindings-consistency
@@ -193,7 +202,12 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 26
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       - name: Grammar, options, and error messages are identical across bindings
         run: |
@@ -218,7 +232,7 @@ jobs:
           }
           check bindings/go/cmd/galley/main.go
           check bindings/rust/src/build_helper.rs
-          check bindings/python/build.py
+          check bindings/python/galley_bindings/build.py
           check bindings/typescript/build.mjs
           for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
             check "$f"
@@ -329,16 +343,14 @@ jobs:
           go build -o /tmp/example-go .
           cd ../..
           cd examples/python
-          python3 ../../bindings/python/build.py . >/dev/null
-          python3 main.py >/tmp/out-python.txt 2>/tmp/err-python.txt
+          pip install -e . >/dev/null
+          GALLEY_CHECKOUT="$PWD/../.." python -m galley_bindings . >/dev/null
+          python main.py >/tmp/out-python.txt 2>/tmp/err-python.txt
           cd ../..
           cd examples/typescript
-          node ../../bindings/typescript/build.mjs . >/dev/null
-          npm install --prefix ../../bindings/typescript >/dev/null 2>&1
-          npm run build --prefix ../../bindings/typescript >/dev/null 2>&1
           npm install >/dev/null 2>&1
-          npm run build >/dev/null 2>&1
-          node dist/main.js >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
+          GALLEY_CHECKOUT="$PWD/../.." npx galley-typescript-bindings . >/dev/null
+          npx tsx main.ts >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
           cd ../..
 
           /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt

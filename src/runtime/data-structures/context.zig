@@ -285,6 +285,9 @@ pub const Context = struct {
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
 
+    /// Host-owned pointer copied from `Session.user_data` for this parse.
+    user_data: ?*anyopaque = null,
+
     // These fields are defined based on build mode and generated-parser options.
     verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
 

@@ -120,6 +120,26 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
     let galley_source = resolve_galley(&out_dir);
+    println!(
+        "cargo:rerun-if-changed={}",
+        galley_source.join("bindings/c/capi.zig").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        galley_source.join("bindings/c/galley.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        galley_source
+            .join("bindings/c/consumer/build.zig")
+            .display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        galley_source
+            .join("bindings/rust/src/procedure.rs")
+            .display()
+    );
 
     let cli = galley_source.join("zig-out/bin/galley");
     if !cli.exists() {

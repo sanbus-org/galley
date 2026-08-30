@@ -1,11 +1,11 @@
 """
 Type stubs for the Galley CPython extension (``galley``).
 
-The extension is compiled per grammar via ``bindings/python/build.py`` and
+The extension is compiled per grammar via ``python -m galley_bindings`` and
 wraps the C ABI in ``bindings/c/galley.h``.  This stub is the single
 source of truth for type checkers (``ty``, ``mypy``, ``pyright``) and
 editor auto-complete.  It is shipped alongside ``galley.*.so`` by
-``build.py`` so ``import galley`` resolves without inline hints.
+the build command so ``import galley`` resolves without inline hints.
 
 Sessions are not thread-safe; every call holds the GIL.  Node handles are
 ``galley.Node`` objects bound to their owning ``Session`` – plain ``int``
@@ -154,6 +154,45 @@ class Node:
 
     def last_child(self) -> Node | None:
         """Last child, or ``None`` when leaf."""
+        ...
+
+class ProcedureArguments:
+    """Parse-time arguments passed to a procedure hook.
+
+    Tree queries use ``current_node()`` and the ordinary ``Node`` methods
+    on the returned handle. Drop/replace talks to the parser through the
+    current-node channel, not ``Session.remove_self``.
+    """
+
+    session: Session | None
+    """The ``Session`` currently parsing, or ``None``."""
+
+    def current_node(self) -> Node | None:
+        """The node being reduced, or ``None``."""
+        ...
+
+    def drop_self(self) -> None:
+        """Drop the current node from the parse."""
+        ...
+
+    def drop_children(self) -> None:
+        """Drop children of the current node."""
+        ...
+
+    def drop_if_empty(self) -> None:
+        """Drop the current node when it has no children."""
+        ...
+
+    def replace_with_children(self) -> None:
+        """Replace the current node with its children."""
+        ...
+
+    def current_line(self) -> int:
+        """Scanner line during this reduction."""
+        ...
+
+    def current_column(self) -> int:
+        """Scanner column during this reduction."""
         ...
 
     def clean_children(self) -> Node | None:

@@ -546,6 +546,27 @@ await test("message override", () => {
   }
 });
 
+await test("procedure hook can read node text", () => {
+  clearProcedures();
+  const seen = [];
+  installProcedure("reduction_Pair", (args) => {
+    const node = args.currentNode();
+    assert.ok(node);
+    const text = node.text();
+    assert.ok(text);
+    assert.ok(text.length > 0);
+    seen.push(text);
+  });
+  const s = newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    assert.equal(seen.length, 2);
+  } finally {
+    s.close();
+    clearProcedures();
+  }
+});
+
 await test("installProcedure dispatches host hooks", () => {
   clearProcedures();
   let called = 0;

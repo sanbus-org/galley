@@ -158,6 +158,7 @@ pub fn build(b: *std.Build) !void {
         .linkage = .dynamic,
         .root_module = capi_mod,
     });
+    capi_lib.root_module.addIncludePath(galley_dep.path("bindings/c"));
 
     if (procedures_c_source) |c_source| {
         capi_lib.root_module.addCSourceFile(.{

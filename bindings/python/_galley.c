@@ -2,7 +2,7 @@
  * CPython extension module exposing generated Galley parsers.
  *
  * The module is compiled per consumer project against the shared library
- * Galley produces for one grammar (see bindings/python/build.py), and wraps
+ * Galley produces for one grammar (see python -m galley_bindings), and wraps
  * its C ABI (bindings/c/galley.h) without an intermediate marshalling layer:
  *
  * - every method is METH_O or METH_FASTCALL, so calls carry no argument
@@ -40,8 +40,38 @@
 
 static PyObject *ErrorException = NULL;
 static PyObject *py_procedure_table = NULL;
+static PyObject *parsing_session = NULL;
+static PyTypeObject ProcedureArgs_Type;
 
 static PyObject *build_diagnostic(GalleySession *session);
+
+typedef struct {
+    PyObject_HEAD
+    void *args;
+    PyObject *session_obj;
+} ProcedureArgsObject;
+
+static PyObject *push_parsing_session(PyObject *self)
+{
+    PyObject *previous = parsing_session;
+    parsing_session = self;
+    return previous;
+}
+
+static void pop_parsing_session(PyObject *previous)
+{
+    parsing_session = previous;
+}
+
+static PyObject *make_procedure_args(void *args)
+{
+    ProcedureArgsObject *object = PyObject_New(ProcedureArgsObject, &ProcedureArgs_Type);
+    if (object == NULL)
+        return NULL;
+    object->args = args;
+    object->session_obj = parsing_session != NULL ? Py_NewRef(parsing_session) : NULL;
+    return (PyObject *)object;
+}
 
 /* Python procedure dispatch: called from the generated Zig shim
  * (procedures_python.zig) for every reduction. The shim holds a
@@ -63,9 +93,9 @@ static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
             PyErr_Clear();
         return;
     }
-    /* Pass the opaque ProcedureArguments pointer as an integer; hooks
-     * that ignore it remain compatible, and future helpers can decode it. */
-    PyObject *arg = PyLong_FromVoidPtr(args);
+    /* Pass a ProcedureArguments object; hooks that ignore it, take an
+     * int, or take no args remain compatible. */
+    PyObject *arg = make_procedure_args(args);
     if (arg == NULL) {
         PyErr_Clear();
         return;
@@ -551,7 +581,9 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
         length = view.len;
     }
     /* A zero-length input must not present a NULL pointer. */
+    PyObject *previous = push_parsing_session(self);
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
+    pop_parsing_session(previous);
     if (have_view)
         PyBuffer_Release(&view);
     return status_to_parsed_with_session(status, session);
@@ -586,8 +618,11 @@ static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
                         "parse_sentinel expects str or bytes");
         return NULL;
     }
-    return status_to_parsed_with_session(
+    PyObject *previous = push_parsing_session(self);
+    PyObject *result = status_to_parsed_with_session(
         galley_parse_sentinel(session, length > 0 ? data : ""), session);
+    pop_parsing_session(previous);
+    return result;
 }
 
 PyDoc_STRVAR(parse_file_doc,
@@ -615,8 +650,11 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
     } else {
         PyErr_SetString(PyExc_TypeError, "path must be str or bytes");
     }
-    if (data != NULL)
+    if (data != NULL) {
+        PyObject *previous = push_parsing_session(self);
         result = status_to_parsed_with_session(galley_parse_file(session, data), session);
+        pop_parsing_session(previous);
+    }
     Py_DECREF(filesystem_path);
     return result;
 }
@@ -2246,6 +2284,123 @@ static PyTypeObject Node_Type = {
 };
 
 /* ------------------------------------------------------------------ */
+/* ProcedureArguments — parse-time hook state                          */
+/* ------------------------------------------------------------------ */
+
+static void ProcedureArgs_dealloc(ProcedureArgsObject *self)
+{
+    Py_XDECREF(self->session_obj);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *ProcedureArgs_make_node(ProcedureArgsObject *self, GalleyNodeAddress address)
+{
+    if (address == GALLEY_INVALID_NODE)
+        Py_RETURN_NONE;
+    if (self->session_obj == NULL)
+        Py_RETURN_NONE;
+    SessionObject *session_obj = (SessionObject *)self->session_obj;
+    if (session_obj->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return NULL;
+    }
+    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
+    if (node_obj == NULL)
+        return NULL;
+    node_obj->session_obj = Py_NewRef(self->session_obj);
+    node_obj->session = session_obj->session;
+    node_obj->address = address;
+    return (PyObject *)node_obj;
+}
+
+static PyObject *ProcedureArgs_current_node(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return ProcedureArgs_make_node(self, galley_procedure_current_node(self->args));
+}
+
+static PyObject *ProcedureArgs_session(ProcedureArgsObject *self, void *Py_UNUSED(closure))
+{
+    if (self->session_obj == NULL)
+        Py_RETURN_NONE;
+    return Py_NewRef(self->session_obj);
+}
+
+static PyObject *ProcedureArgs_drop_self(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (check_status(galley_procedure_drop_self(self->args)) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *ProcedureArgs_drop_children(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (check_status(galley_procedure_drop_children(self->args)) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *ProcedureArgs_drop_if_empty(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (check_status(galley_procedure_drop_if_empty(self->args)) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *ProcedureArgs_replace_with_children(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (check_status(galley_procedure_replace_with_children(self->args)) < 0)
+        return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *ProcedureArgs_current_line(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return PyLong_FromUnsignedLong(galley_procedure_context_line(self->args));
+}
+
+static PyObject *ProcedureArgs_current_column(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return PyLong_FromUnsignedLong(galley_procedure_context_column(self->args));
+}
+
+static PyMethodDef ProcedureArgs_methods[] = {
+    {"current_node", (PyCFunction)ProcedureArgs_current_node, METH_NOARGS,
+     "current_node()\n\nThe node being reduced, or None."},
+    {"drop_self", (PyCFunction)ProcedureArgs_drop_self, METH_NOARGS,
+     "drop_self()\n\nDrop the current node from the parse."},
+    {"drop_children", (PyCFunction)ProcedureArgs_drop_children, METH_NOARGS,
+     "drop_children()\n\nDrop children of the current node."},
+    {"drop_if_empty", (PyCFunction)ProcedureArgs_drop_if_empty, METH_NOARGS,
+     "drop_if_empty()\n\nDrop the current node when it has no children."},
+    {"replace_with_children", (PyCFunction)ProcedureArgs_replace_with_children, METH_NOARGS,
+     "replace_with_children()\n\nReplace the current node with its children."},
+    {"current_line", (PyCFunction)ProcedureArgs_current_line, METH_NOARGS,
+     "current_line()\n\nScanner line during this reduction."},
+    {"current_column", (PyCFunction)ProcedureArgs_current_column, METH_NOARGS,
+     "current_column()\n\nScanner column during this reduction."},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyGetSetDef ProcedureArgs_getset[] = {
+    {"session", (getter)ProcedureArgs_session, NULL,
+     "The Session currently parsing, or None.", NULL},
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
+static PyTypeObject ProcedureArgs_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "galley.ProcedureArguments",
+    .tp_basicsize = sizeof(ProcedureArgsObject),
+    .tp_itemsize = 0,
+    .tp_dealloc = (destructor)ProcedureArgs_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "Parse-time procedure-hook arguments. Tree queries use current_node() "
+              "and the ordinary Node methods.",
+    .tp_methods = ProcedureArgs_methods,
+    .tp_getset = ProcedureArgs_getset,
+};
+
+/* ------------------------------------------------------------------ */
 /* Module-level functions                                              */
 /* ------------------------------------------------------------------ */
 
@@ -2338,8 +2493,8 @@ PyDoc_STRVAR(install_procedure_doc,
 "\n"
 "Registers a Python procedure hook. name is the hook name (for example\n"
 "\"reduction_Pair\" or \"hook_print\") and callable is a Python callable\n"
-"that will be invoked with the opaque ProcedureArguments pointer as an\n"
-"int (or None when called with no args for compatibility). Hooks are\n"
+"that will be invoked with a ProcedureArguments object (or with no args\n"
+"for compatibility). Hooks are\n"
 "no-ops until installed; reinstalling replaces the previous callable.\n"
 "Mirrors Go's hooks/procedures.go and Rust's procedures.rs registration.");
 
@@ -2520,7 +2675,7 @@ PyDoc_STRVAR(module_doc,
 "Bindings over a Galley-generated parser shared library.\n"
 "\n"
 "One module embeds one parser: build it alongside your grammar with\n"
-"Galley's bindings/python/build.py, then import it from that directory.\n"
+"python -m galley_bindings, then import it from that directory.\n"
 "See Session for the parsing surface and the module constants for\n"
 "classification enums.");
 
@@ -2539,6 +2694,8 @@ PyMODINIT_FUNC PyInit_galley(void)
     if (PyType_Ready(&Session_Type) < 0)
         return NULL;
     if (PyType_Ready(&Node_Type) < 0)
+        return NULL;
+    if (PyType_Ready(&ProcedureArgs_Type) < 0)
         return NULL;
     if (PyType_Ready(&Diagnostic_Type) < 0)
         return NULL;
@@ -2574,6 +2731,12 @@ PyMODINIT_FUNC PyInit_galley(void)
     Py_INCREF(&Node_Type);
     if (PyModule_AddObject(module, "Node", (PyObject *)&Node_Type) < 0) {
         Py_DECREF(&Node_Type);
+        goto fail;
+    }
+    Py_INCREF(&ProcedureArgs_Type);
+    if (PyModule_AddObject(module, "ProcedureArguments",
+                           (PyObject *)&ProcedureArgs_Type) < 0) {
+        Py_DECREF(&ProcedureArgs_Type);
         goto fail;
     }
 
