@@ -96,16 +96,27 @@ Go's `hooks/procedures.go`:
 ```python
 # procedures.py
 import sys
+import galley
 
-def reduction_Pair(args):
-    print("[hook] Pair", file=sys.stderr)
+def reduction_Pair(args: galley.ProcedureArguments) -> None:
+    node = args.current_node()
+    if node is None:
+        return
+    line, column = node.line_column() or (0, 0)
+    text = (node.text() or b"").decode()
+    print(f"Pair {text} ({len(node)} children) at {line}:{column}",
+          file=sys.stderr)
 
-def hook_print(args):
-    print("[hook] print (Key)", file=sys.stderr)
+def reduction_KeyTail(args: galley.ProcedureArguments) -> None:
+    args.drop_if_empty()
 
-# args is the opaque ProcedureArguments pointer as an int (pass to future
-# helpers or ignore). Hooks that take no args are also accepted:
-# def reduction_Pair(): ...
+def hook_print(args: galley.ProcedureArguments) -> None:
+    node = args.current_node()
+    if node is None:
+        return
+    line, column = node.line_column() or (0, 0)
+    text = (node.text() or b"").decode()
+    print(f'@print "{text}" at {line}:{column}', file=sys.stderr)
 ```
 
 Mechanically, `python -m galley_bindings` reads the grammar's generated
@@ -113,8 +124,11 @@ hook list and produces a Zig shim module containing one dispatch slot;
 the extension registers the Python callables into that slot at import
 time (it tries `import procedures` on `sys.path` — the language dir is
 typically on `PYTHONPATH` — and falls back to explicit registration).
-The parser calls through the slot directly, so hook code executes in
-the host's Python interpreter. Unregistered slots are no-ops.
+`procedures.py` may `import galley`; the extension publishes itself to
+`sys.modules` before that import so `except galley.Error` is the same
+class the parser raises. The parser calls through the slot directly, so
+hook code executes in the host's Python interpreter. Unregistered slots
+are no-ops.
 
 Explicit registration is also available and composes with auto-import:
 

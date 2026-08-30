@@ -3,6 +3,8 @@
 mirroring examples/c, examples/cpp, examples/rust, and examples/go
 byte-for-byte in output."""
 
+from __future__ import annotations
+
 import sys
 
 import galley
@@ -12,7 +14,7 @@ BROKEN_SAMPLE = "alpha:"
 SAMPLE_PATH = "/tmp/galley-python-example.json"
 
 
-def print_tree(node, depth):
+def print_tree(node: galley.Node, depth: int) -> None:
     """Prints one node and recurses into its children."""
     name = node.symbol_name()
     text = node.text()
@@ -27,7 +29,7 @@ def print_tree(node, depth):
         print_tree(child, depth + 1)
 
 
-def main():
+def main() -> int:
     print(f"galley version: {galley.version()}")
     try:
         # max_errors is explicit; zero would select the same default.

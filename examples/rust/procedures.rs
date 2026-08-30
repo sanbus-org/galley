@@ -1,74 +1,126 @@
 //! Procedure hooks for the keyvalue grammar, written in Rust.
 //!
-//! Each function fires after the corresponding variable is reduced. The
-//! build helper compiles this file with rustc into a static archive and
-//! links it into the parser shared library.
-//!
-//! Author-defined grammar hooks arrive namespaced as `hook_<name>` — the
-//! grammar annotates Key with `@print`, and the entry point is
-//! `hook_print`, so it can never collide with unrelated symbols.
+//! Shows ProcedureArguments in action: the current node, its text, children,
+//! and source position, plus drop_if_empty on empty tails. Author-defined
+//! grammar hooks arrive as `hook_<name>` — Key is annotated `@print`.
 
 use std::io::Write;
 
 #[path = "../../bindings/rust/src/procedure.rs"]
 mod procedure;
-use procedure::ProcedureArguments;
+use procedure::{NodeHandle, ProcedureArguments};
 
-/// Writes one hook note to stderr. Failures are ignored on purpose: a
-/// closed stderr must not abort an otherwise healthy parse.
-fn note(message: &str) {
+fn write_stderr(message: &str) {
     let mut stderr = std::io::stderr().lock();
     let _ = stderr.write_all(message.as_bytes());
 }
 
-fn note_node(label: &str, arguments: &ProcedureArguments) {
-    if let Some(node) = arguments.current_node() {
-        let _ = arguments.text(node);
-        let _ = arguments.child_count(node);
+fn write_bytes(bytes: &[u8]) {
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_all(bytes);
+}
+
+fn pos(arguments: &ProcedureArguments, node: NodeHandle) -> (u32, u32) {
+    arguments.line_column(node).unwrap_or((0, 0))
+}
+
+fn parse_u(bytes: &[u8]) -> u32 {
+    let mut value = 0u32;
+    for &byte in bytes {
+        if byte.is_ascii_digit() {
+            value = value * 10 + u32::from(byte - b'0');
+        }
     }
-    note(label);
+    value
+}
+
+fn count_pairs(arguments: &ProcedureArguments, node: NodeHandle) -> (u32, u32) {
+    if arguments.symbol_name(node) == Some(b"Pair") {
+        let text = arguments.text(node).unwrap_or(b"");
+        let number = text.split(|&byte| byte == b':').nth(1).unwrap_or(b"");
+        return (1, parse_u(number));
+    }
+    let mut count = 0u32;
+    let mut total = 0u32;
+    for child in arguments.children(node) {
+        let (child_count, child_sum) = count_pairs(arguments, child);
+        count += child_count;
+        total += child_sum;
+    }
+    (count, total)
 }
 
 #[no_mangle]
-pub extern "C" fn reduction(arguments: &mut ProcedureArguments) {
-    note_node("[hook] reduction\n", arguments);
+pub extern "C" fn reduction(_arguments: &mut ProcedureArguments) {}
+
+#[no_mangle]
+pub extern "C" fn reduction_Key(_arguments: &mut ProcedureArguments) {}
+
+#[no_mangle]
+pub extern "C" fn reduction_PairList(_arguments: &mut ProcedureArguments) {}
+
+#[no_mangle]
+pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
+    let _ = arguments.drop_if_empty();
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
-    note_node("[hook] Document\n", arguments);
+pub extern "C" fn reduction_NumberTail(arguments: &mut ProcedureArguments) {
+    let _ = arguments.drop_if_empty();
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_PairList(arguments: &mut ProcedureArguments) {
-    note_node("[hook] PairList\n", arguments);
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_PairListTail(_arguments: &mut ProcedureArguments) {}
-
-#[no_mangle]
-pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
-    note_node("[hook] Pair\n", arguments);
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_Key(arguments: &mut ProcedureArguments) {
-    note_node("[hook] Key\n", arguments);
+pub extern "C" fn reduction_PairListTail(arguments: &mut ProcedureArguments) {
+    let _ = arguments.drop_if_empty();
 }
 
 #[no_mangle]
 pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
-    note_node("[hook] print (Key)\n", arguments);
+    let Some(node) = arguments.current_node() else {
+        return;
+    };
+    let (line, column) = pos(arguments, node);
+    write_stderr("@print \"");
+    write_bytes(arguments.text(node).unwrap_or(b""));
+    write_stderr(&format!("\" at {line}:{column}\n"));
 }
-
-#[no_mangle]
-pub extern "C" fn reduction_KeyTail(_arguments: &mut ProcedureArguments) {}
 
 #[no_mangle]
 pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
-    note_node("[hook] Number\n", arguments);
+    let Some(node) = arguments.current_node() else {
+        return;
+    };
+    let (line, column) = pos(arguments, node);
+    write_stderr("Number ");
+    write_bytes(arguments.text(node).unwrap_or(b""));
+    write_stderr(&format!(" at {line}:{column}\n"));
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_NumberTail(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
+    let Some(node) = arguments.current_node() else {
+        return;
+    };
+    let (line, column) = pos(arguments, node);
+    let text = arguments.text(node).unwrap_or(b"");
+    let mut parts = text.splitn(2, |&byte| byte == b':');
+    let key = parts.next().unwrap_or(b"");
+    let number = parts.next().unwrap_or(b"");
+    write_stderr("Pair ");
+    write_bytes(key);
+    write_stderr("=");
+    write_bytes(number);
+    write_stderr(&format!(
+        " ({} children) at {line}:{column}\n",
+        arguments.child_count(node)
+    ));
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
+    let Some(node) = arguments.current_node() else {
+        return;
+    };
+    let (count, total) = count_pairs(arguments, node);
+    write_stderr(&format!("Document {count} pairs, sum={total}\n"));
+}

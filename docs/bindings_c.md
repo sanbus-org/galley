@@ -31,15 +31,26 @@ void reduction_Pair(void *args) {
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
-    if (session != NULL)
-        galley_node_text(session, node, &text, &len);
-    fprintf(stderr, "[hook] Pair reduced\n");
+    unsigned line = 0, column = 0;
+    if (session == NULL) return;
+    galley_node_text(session, node, &text, &len);
+    galley_node_line_column(session, node, &line, &column);
+    fprintf(stderr, "Pair %.*s (%u children) at %u:%u\n",
+            (int)len, text, galley_node_child_count(session, node), line, column);
 }
-void reduction_Document(void *args) {
-    fprintf(stderr, "[hook] Document reduced\n");
+void reduction_KeyTail(void *args) {
+    galley_procedure_drop_if_empty(args);
 }
-void hook_my_hook(void *args) {
-    fprintf(stderr, "[hook] my_hook fired\n");
+void hook_print(void *args) {
+    GalleySession *session = galley_procedure_session(args);
+    GalleyNodeAddress node = galley_procedure_current_node(args);
+    const char *text = NULL;
+    size_t len = 0;
+    unsigned line = 0, column = 0;
+    if (session == NULL) return;
+    galley_node_text(session, node, &text, &len);
+    galley_node_line_column(session, node, &line, &column);
+    fprintf(stderr, "@print \"%.*s\" at %u:%u\n", (int)len, text, line, column);
 }
 ```
 
