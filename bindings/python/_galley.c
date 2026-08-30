@@ -2687,9 +2687,16 @@ static struct PyModuleDef module_definition = {
     .m_methods = module_methods,
 };
 
+static PyObject *galley_module = NULL;
+
 PyMODINIT_FUNC PyInit_galley(void)
 {
     PyObject *module;
+
+    if (galley_module != NULL) {
+        Py_INCREF(galley_module);
+        return galley_module;
+    }
 
     if (PyType_Ready(&Session_Type) < 0)
         return NULL;
@@ -2770,6 +2777,20 @@ PyMODINIT_FUNC PyInit_galley(void)
                                 galley_resume_after) < 0)
         goto fail;
 
+    /* Single-phase init does not put this module in sys.modules until we
+     * return. Auto-importing procedures.py first would re-enter
+     * PyInit_galley on `import galley` and replace ErrorException with a
+     * second class, so `except galley.Error` would miss parse failures.
+     * Publish now so a nested import finds this module. */
+    galley_module = module;
+    {
+        PyObject *modules = PyImport_GetModuleDict();
+        if (modules == NULL)
+            goto fail;
+        if (PyDict_SetItemString(modules, "galley", module) < 0)
+            goto fail;
+    }
+
     /* Python procedure hooks: install the dispatch callback into the
      * shared library (when built with Python support) and auto-import
      * any `procedures` module on sys.path. Missing libraries or modules
@@ -2782,6 +2803,15 @@ PyMODINIT_FUNC PyInit_galley(void)
     return module;
 
 fail:
+    {
+        PyObject *type, *value, *traceback;
+        PyObject *modules = PyImport_GetModuleDict();
+        PyErr_Fetch(&type, &value, &traceback);
+        if (modules != NULL)
+            (void)PyDict_DelItemString(modules, "galley");
+        PyErr_Restore(type, value, traceback);
+    }
+    galley_module = NULL;
     Py_DECREF(module);
     return NULL;
 }

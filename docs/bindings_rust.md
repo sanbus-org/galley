@@ -19,9 +19,33 @@ library. Hooks are ordinary Rust: no C anywhere on the consumer side.
 
 ```rust
 /* procedures.rs */
+#[path = "../../bindings/rust/src/procedure.rs"]
+mod procedure;
+use procedure::ProcedureArguments;
+
 #[no_mangle]
-pub extern "C" fn reduction_Pair(_args: *mut core::ffi::c_void) {
-    eprintln!("[hook] Pair");
+pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
+    let Some(node) = arguments.current_node() else { return };
+    let text = arguments.text(node).unwrap_or(b"");
+    let (line, column) = arguments.line_column(node).unwrap_or((0, 0));
+    eprintln!(
+        "Pair {} ({} children) at {line}:{column}",
+        String::from_utf8_lossy(text),
+        arguments.child_count(node)
+    );
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
+    let _ = arguments.drop_if_empty();
+}
+
+#[no_mangle]
+pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
+    let Some(node) = arguments.current_node() else { return };
+    let text = arguments.text(node).unwrap_or(b"");
+    let (line, column) = arguments.line_column(node).unwrap_or((0, 0));
+    eprintln!("@print \"{}\" at {line}:{column}", String::from_utf8_lossy(text));
 }
 ```
 

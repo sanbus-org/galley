@@ -56,6 +56,7 @@ ordinary Go package compiled into your own binary by your ordinary
 package hooks
 
 import (
+	"fmt"
 	"os"
 	"unsafe"
 
@@ -65,13 +66,33 @@ import (
 //export reduction_Pair
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	if session := args.Session(); session != nil {
-		if node, ok := args.CurrentNode(); ok {
-			text, _ := session.Text(node)
-			_ = text
-		}
+	session := args.Session()
+	node, ok := args.CurrentNode()
+	if session == nil || !ok {
+		return
 	}
-	os.Stderr.WriteString("[hook] Pair\n")
+	text, _ := session.Text(node)
+	line, column, _ := session.LineColumn(node)
+	fmt.Fprintf(os.Stderr, "Pair %s (%d children) at %d:%d\n",
+		text, session.ChildCount(node), line, column)
+}
+
+//export reduction_KeyTail
+func reduction_KeyTail(ptr unsafe.Pointer) {
+	_ = galley.Args(ptr).DropIfEmpty()
+}
+
+//export hook_print
+func hook_print(ptr unsafe.Pointer) {
+	args := galley.Args(ptr)
+	session := args.Session()
+	node, ok := args.CurrentNode()
+	if session == nil || !ok {
+		return
+	}
+	text, _ := session.Text(node)
+	line, column, _ := session.LineColumn(node)
+	fmt.Fprintf(os.Stderr, "@print %q at %d:%d\n", text, line, column)
 }
 ```
 

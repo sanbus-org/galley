@@ -156,6 +156,43 @@ class Node:
         """Last child, or ``None`` when leaf."""
         ...
 
+    def clean_children(self) -> Node | None:
+        """Detach all children and return the detached chain head, or ``None``."""
+        ...
+
+    def append_children(self, chain: Node | int) -> None:
+        """Append a detached ``chain`` as children of this node."""
+        ...
+
+    def __len__(self) -> int:
+        """Number of direct children."""
+        ...
+
+    def __getitem__(self, index: int) -> Node:
+        """Child at ``index`` (negative indices supported)."""
+        ...
+
+    def __iter__(self) -> Iterator[Node]:
+        """Iterate children from first to last."""
+        ...
+
+    def __int__(self) -> int:
+        """Raw address (stable index in the session's node storage)."""
+        ...
+
+    def __index__(self) -> int:
+        """Raw address for ``operator.index`` / slicing."""
+        ...
+
+    def __hash__(self) -> int: ...
+    def __eq__(self, other: object) -> bool:
+        """Equal when same session and same address."""
+        ...
+
+    def __ne__(self, other: object) -> bool: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
 class ProcedureArguments:
     """Parse-time arguments passed to a procedure hook.
 
@@ -202,35 +239,6 @@ class ProcedureArguments:
     def append_children(self, chain: Node | int) -> None:
         """Append a detached ``chain`` as children of this node."""
         ...
-
-    def __len__(self) -> int:
-        """Number of direct children (``child_count``)."""
-        ...
-
-    def __getitem__(self, index: int) -> Node:
-        """Child at ``index`` (negative indices supported)."""
-        ...
-
-    def __iter__(self) -> Iterator[Node]:
-        """Iterate children from first to last (``for child in node:``)."""
-        ...
-
-    def __int__(self) -> int:
-        """Raw address (stable index in the session's node storage)."""
-        ...
-
-    def __index__(self) -> int:
-        """Raw address for ``operator.index`` / slicing."""
-        ...
-
-    def __hash__(self) -> int: ...
-    def __eq__(self, other: object) -> bool:
-        """Equal when same session and same address."""
-        ...
-
-    def __ne__(self, other: object) -> bool: ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
 
 # ---------------------------------------------------------------------------
 # Session — owns arena + nodes, not thread-safe

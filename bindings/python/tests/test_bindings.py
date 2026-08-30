@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Behavioral tests for the Galley Python bindings.
 
 The suite imports the built extension module as `galley`; point PYTHONPATH
@@ -8,7 +7,8 @@ works out of the box):
     PYTHONPATH=examples/python python3 bindings/python/tests/test_bindings.py
 """
 
-import sys
+from __future__ import annotations
+
 import unittest
 
 import galley
@@ -43,6 +43,7 @@ class ModuleSurfaceTests(unittest.TestCase):
     def test_status_string_renders_known_codes(self):
         rendered = galley.status_string(-2)
         self.assertIsInstance(rendered, str)
+        assert rendered is not None
         self.assertIn("syntax", rendered.lower())
         self.assertIsNone(galley.status_string(999999))
 
@@ -50,23 +51,39 @@ class ModuleSurfaceTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             galley.Diagnostic()
 
+    def test_error_class_survives_procedures_importing_galley(self):
+        # procedures.py does `import galley` while the extension auto-loads
+        # it during PyInit_galley. That must be the same module, or
+        # `except galley.Error` misses parse failures.
+        import procedures
+
+        self.assertIs(procedures.galley.Error, galley.Error)
+        with galley.Session() as session:
+            with self.assertRaises(galley.Error) as raised:
+                session.parse("alpha:")
+            self.assertIs(type(raised.exception), galley.Error)
+
 
 class SessionTests(unittest.TestCase):
-    def setUp(self):
+    session: galley.Session
+
+    def setUp(self) -> None:
         self.session = galley.Session(max_errors=10)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.session.close()
 
-    def test_procedure_hook_can_read_node_text(self):
-        seen = []
+    def test_procedure_hook_can_read_node_text(self) -> None:
+        seen: list[bytes] = []
 
-        def reduction_Pair(args):
+        def reduction_Pair(args: galley.ProcedureArguments) -> None:
             node = args.current_node()
             self.assertIsNotNone(node)
+            assert node is not None
             self.assertIs(args.session, self.session)
             text = node.text()
             self.assertIsInstance(text, bytes)
+            assert text is not None
             self.assertGreater(len(text), 0)
             seen.append(text)
 
@@ -96,6 +113,7 @@ class SessionTests(unittest.TestCase):
             self.session.parse_sentinel(bytearray(b"alpha:12"))
 
     def test_syntax_error_raises_error_with_code_and_diagnostic(self):
+        diagnostic: galley.Diagnostic | None = None
         try:
             self.session.parse("alpha:")
         except galley.Error as error:
@@ -106,6 +124,7 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(self.session.has_diagnostic())
         self.assertIsNotNone(self.session.diagnostic())
         self.assertIsNotNone(diagnostic)
+        assert diagnostic is not None
         self.assertEqual(diagnostic.kind, galley.KIND_SYNTAX)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.column, 7)
@@ -136,21 +155,27 @@ class SessionTests(unittest.TestCase):
             handle.write(b"alpha:12,beta:3")
         parsed = self.session.parse_file(path)
         self.assertEqual(parsed, 15)
-        end_line, end_column = self.session.last_position()
+        position = self.session.last_position()
+        self.assertIsNotNone(position)
+        assert position is not None
+        end_line, end_column = position
         self.assertEqual((end_line, end_column), (1, 17))
 
 
 class WalkTests(unittest.TestCase):
-    def setUp(self):
+    session: galley.Session
+
+    def setUp(self) -> None:
         self.session = galley.Session()
         self.session.parse("alpha:12,beta:3")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.session.close()
 
-    def test_root_and_navigation_links(self):
+    def test_root_and_navigation_links(self) -> None:
         root = self.session.root_node()
         self.assertIsNotNone(root)
+        assert root is not None
         self.assertTrue(self.session.node_valid(root))
         self.assertIsNone(self.session.parent(root))
         self.assertFalse(self.session.node_valid(0xFFFFFFFFFFFFFFFF))
@@ -158,31 +183,43 @@ class WalkTests(unittest.TestCase):
         first = self.session.first_child(root)
         last = self.session.last_child(root)
         self.assertIsNotNone(first)
+        self.assertIsNotNone(last)
+        assert first is not None
+        assert last is not None
         self.assertIsNone(self.session.next_sibling(last))
         self.assertIsNone(self.session.prior_sibling(first))
         self.assertEqual(self.session.parent(first), root)
 
-        visited = []
+        visited: list[galley.Node] = []
         child = first
         while child is not None:
             visited.append(child)
             child = self.session.next_sibling(child)
         self.assertEqual(len(visited), self.session.child_count(root))
 
-    def test_symbol_names_text_spans_and_positions(self):
+    def test_symbol_names_text_spans_and_positions(self) -> None:
         root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
         self.assertEqual(self.session.symbol_name(root), b"Document")
         text = self.session.text(root)
         self.assertEqual(text, b"alpha:12,beta:3")
-        start, length = self.session.span(root)
+        assert text is not None
+        span = self.session.span(root)
+        self.assertIsNotNone(span)
+        assert span is not None
+        start, length = span
         self.assertEqual((start, length), (0, len(text)))
-        line, column = self.session.line_column(root)
+        position = self.session.line_column(root)
+        self.assertIsNotNone(position)
+        assert position is not None
+        line, column = position
         self.assertEqual((line, column), (1, 1))
         self.assertIsInstance(self.session.variable_index(root), int)
         self.assertEqual(self.session.node_count() > 0, True)
 
     def test_terminal_only_nodes_have_empty_symbol_names(self):
-        def contains_terminal_only(node):
+        def contains_terminal_only(node: galley.Node) -> galley.Node | None:
             if self.session.symbol_name(node) == b"":
                 return node
             child = self.session.first_child(node)
@@ -194,6 +231,8 @@ class WalkTests(unittest.TestCase):
             return None
 
         root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
         self.assertIsNotNone(contains_terminal_only(root))
 
     def test_invalid_node_accessors_return_none(self):
@@ -207,35 +246,50 @@ class WalkTests(unittest.TestCase):
 
 
 class EditTests(unittest.TestCase):
-    def setUp(self):
+    session: galley.Session
+    root: galley.Node
+
+    def setUp(self) -> None:
         self.session = galley.Session()
         self.session.parse("alpha:12,beta:3")
-        self.root = self.session.root_node()
+        root = self.session.root_node()
+        assert root is not None
+        self.root = root
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.session.close()
 
     def test_clean_and_append_round_trip(self):
         before = self.session.child_count(self.root)
         head = self.session.clean_children(self.root)
         self.assertIsNotNone(head)
+        assert head is not None
         self.assertEqual(self.session.child_count(self.root), 0)
         self.session.append_children(self.root, head)
         self.assertEqual(self.session.child_count(self.root), before)
 
-    def test_insert_before_reorders_siblings(self):
+    def test_insert_before_reorders_siblings(self) -> None:
         wrapper = self.session.first_child(self.root)
+        self.assertIsNotNone(wrapper)
+        assert wrapper is not None
         pair = self.session.first_child(wrapper)
+        self.assertIsNotNone(pair)
+        assert pair is not None
         tail = self.session.next_sibling(pair)
+        self.assertIsNotNone(tail)
+        assert tail is not None
         detached = self.session.remove_siblings(tail, 1)
         self.assertIsNotNone(detached)
+        assert detached is not None
         self.session.insert_before(pair, detached)
         self.assertEqual(self.session.first_child(wrapper), tail)
         self.assertIsNone(self.session.next_sibling(pair))
         self.assertEqual(self.session.next_sibling(tail), pair)
 
-    def test_remove_self_detaches_single_node(self):
+    def test_remove_self_detaches_single_node(self) -> None:
         first = self.session.first_child(self.root)
+        self.assertIsNotNone(first)
+        assert first is not None
         head = self.session.remove_self(first)
         self.assertEqual(head, first)
         self.assertIsNone(self.session.parent(first))
@@ -243,24 +297,31 @@ class EditTests(unittest.TestCase):
     def test_insert_and_remove_children_at(self):
         original = self.session.child_count(self.root)
         head = self.session.clean_children(self.root)
+        self.assertIsNotNone(head)
+        assert head is not None
         self.session.insert_children_at(self.root, 0, head)
         self.assertEqual(self.session.child_count(self.root), original)
         removed = self.session.remove_children_at(self.root, 0, original)
         self.assertIsNotNone(removed)
         self.assertEqual(self.session.child_count(self.root), 0)
 
-    def test_promote_and_unlink_wrapper(self):
+    def test_promote_and_unlink_wrapper(self) -> None:
         # Promote the document's only child over its wrapper: the
         # wrapper's children take its place among the root's children.
         # Note the underlying ABI leaves the promoted-over wrapper with a
         # readable former-parent pointer, so detachment is asserted via
         # active membership rather than parent().
         wrapper = self.session.first_child(self.root)
+        self.assertIsNotNone(wrapper)
+        assert wrapper is not None
         grandchildren_head = self.session.clean_children(wrapper)
+        self.assertIsNotNone(grandchildren_head)
+        assert grandchildren_head is not None
         self.session.append_children(wrapper, grandchildren_head)
         promoted = self.session.promote_children_over_wrapper(wrapper)
         self.assertIsNotNone(promoted)
-        active = []
+        assert promoted is not None
+        active: list[galley.Node] = []
         child = self.session.first_child(self.root)
         while child is not None:
             active.append(child)
@@ -268,10 +329,12 @@ class EditTests(unittest.TestCase):
         self.assertNotIn(wrapper, active)
         self.assertIn(promoted, active)
 
-    def test_unlink_wrapper_detaches_without_touching_children(self):
+    def test_unlink_wrapper_detaches_without_touching_children(self) -> None:
         # The ABI leaves the unlinked wrapper's former-parent pointer
         # readable, so detachment is asserted via active membership.
         wrapper = self.session.first_child(self.root)
+        self.assertIsNotNone(wrapper)
+        assert wrapper is not None
         children_before = self.session.child_count(wrapper)
         self.session.unlink_wrapper(wrapper)
         self.assertEqual(self.session.child_count(wrapper), children_before)
@@ -279,10 +342,12 @@ class EditTests(unittest.TestCase):
 
 
 class SymbolTableTests(unittest.TestCase):
-    def setUp(self):
+    session: galley.Session
+
+    def setUp(self) -> None:
         self.session = galley.Session()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.session.close()
 
     def test_symbol_and_variable_tables(self):

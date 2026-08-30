@@ -91,12 +91,26 @@ and Rust's `procedures.rs`:
 
 ```ts
 // procedures.ts
-export function reduction_Pair(args: bigint): void {
-  process.stderr.write("[hook] Pair\n");
+import type { ProcedureArguments } from "galley-typescript-bindings";
+
+export function reduction_Pair(args: ProcedureArguments): void {
+  const node = args.currentNode();
+  if (node === null) return;
+  const [line, column] = node.lineColumn() ?? [0, 0];
+  const text = Buffer.from(node.text() ?? []).toString("utf-8");
+  process.stderr.write(`Pair ${text} (${node.length} children) at ${line}:${column}\n`);
 }
 
-export function hook_print(args: bigint): void {
-  process.stderr.write("[hook] print (Key)\n");
+export function reduction_KeyTail(args: ProcedureArguments): void {
+  args.dropIfEmpty();
+}
+
+export function hook_print(args: ProcedureArguments): void {
+  const node = args.currentNode();
+  if (node === null) return;
+  const [line, column] = node.lineColumn() ?? [0, 0];
+  const text = Buffer.from(node.text() ?? []).toString("utf-8");
+  process.stderr.write(`@print "${text}" at ${line}:${column}\n`);
 }
 ```
 
@@ -114,7 +128,7 @@ import { Session, installProcedures } from "galley-typescript-bindings";
 // explicit is optional when procedures.* is auto-discoverable:
 installProcedures(procedures);
 // or for a single hook:
-// installProcedure("hook_print", (args) => process.stderr.write("[hook] print\n"));
+// installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
 ```
 
 The build command `npx galley-typescript-bindings <language-dir>` detects
@@ -126,7 +140,7 @@ are silent no-ops. You can also manage hooks at runtime:
 
 ```ts
 import { installProcedure, installProcedures, clearProcedures, listProcedures } from "galley-typescript-bindings";
-installProcedure("reduction_Pair", () => process.stderr.write("[hook] Pair\n"));
+installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
 listProcedures(); // ["reduction_Pair", ...]
 clearProcedures();
 ```
