@@ -129,7 +129,7 @@ jobs:
           cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }} \
             -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
           cmake --build build-${{ matrix.language }}
-          ./build-${{ matrix.language }}/bin/example
+          ./build-${{ matrix.language }}/bin/demo
 
       - name: Build and run example (cargo)
         if: ${{ matrix.language == 'rust' }}
@@ -148,7 +148,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           go generate ./...
-          go build -o galley-go-example .
+          go build -o galley-go-example ./demo
           ./galley-go-example
 
       - name: Test bindings (go)
@@ -166,7 +166,7 @@ jobs:
         run: |
           pip install -e .
           python -m galley_bindings .
-          python main.py
+          python demo.py
           PYTHONPATH="$PWD" python ../../bindings/python/tests/test_bindings.py
 
       - name: Build and run example (typescript)
@@ -177,7 +177,7 @@ jobs:
         run: |
           npm install
           npx galley-typescript-bindings .
-          npx tsx main.ts
+          npx tsx demo.ts
           node ../../bindings/typescript/tests/test_bindings.mjs
 
   bindings-consistency:
@@ -211,12 +211,23 @@ jobs:
 
       - name: Grammar, options, and error messages are identical across bindings
         run: |
-          for file in ll.grm config.zig ll_error_messages.zig; do
-            unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
+          same() {
+            name="$1"
+            shift
+            unique=$(sha256sum "$@" | awk '{print $1}' | sort -u)
             count=$(printf '%s\n' "$unique" | wc -l)
-            echo "$file: $count distinct variants"
-            test "$count" = 1 || { echo "::error::$file differs across examples/c, examples/cpp, examples/rust"; exit 1; }
-          done
+            echo "$name: $count distinct variants"
+            test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
+          }
+          same ll.grm examples/{c,cpp,rust,python,typescript}/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,python,typescript}/config.zig examples/go/demo/config.zig
+          same ll_error_messages.zig examples/*/ll_error_messages.zig
+          same benchmark/ll.grm examples/*/benchmark/ll.grm
+          same benchmark/config.zig examples/*/benchmark/config.zig
+          cmp -s languages/json/ll.grm examples/c/benchmark/ll.grm || {
+            echo "::error::examples/*/benchmark/ll.grm must match languages/json/ll.grm"
+            exit 1
+          }
 
       - name: Galley checkout resolution is consistent across bindings
         run: |
@@ -260,7 +271,7 @@ jobs:
           names examples/c/procedures.c > /tmp/names-c.txt
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
-          names examples/go/hooks/procedures.go > /tmp/names-go.txt
+          names examples/go/demo/procedures.go > /tmp/names-go.txt
           # Python now uses native procedures.py; fall back to legacy procedures.c
           if [ -f examples/python/procedures.py ]; then
             names examples/python/procedures.py > /tmp/names-python.txt
@@ -340,21 +351,21 @@ jobs:
           GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml >/dev/null
           cd examples/go
           GALLEY_CHECKOUT="$PWD/../.." go generate ./...
-          go build -o /tmp/example-go .
+          go build -o /tmp/example-go ./demo
           cd ../..
           cd examples/python
           pip install -e . >/dev/null
           GALLEY_CHECKOUT="$PWD/../.." python -m galley_bindings . >/dev/null
-          python main.py >/tmp/out-python.txt 2>/tmp/err-python.txt
+          python demo.py >/tmp/out-python.txt 2>/tmp/err-python.txt
           cd ../..
           cd examples/typescript
           npm install >/dev/null 2>&1
           GALLEY_CHECKOUT="$PWD/../.." npx galley-typescript-bindings . >/dev/null
-          npx tsx main.ts >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
+          npx tsx demo.ts >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
           cd ../..
 
-          /tmp/build-c/bin/example >/tmp/out-c.txt 2>/tmp/err-c.txt
-          /tmp/build-cpp/bin/example >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
+          /tmp/build-c/bin/demo >/tmp/out-c.txt 2>/tmp/err-c.txt
+          /tmp/build-cpp/bin/demo >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
           examples/rust/target/release/galley-rust-example >/tmp/out-rust.txt 2>/tmp/err-rust.txt
           /tmp/example-go >/tmp/out-go.txt 2>/tmp/err-go.txt
 

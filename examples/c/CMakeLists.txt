@@ -104,8 +104,53 @@ add_custom_target(galley_c_api DEPENDS
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-add_executable(example main.c)
-set_target_properties(example PROPERTIES BUILD_RPATH "${CAPI_PREFIX}/lib")
-target_include_directories(example PRIVATE "${GALLEY_INCLUDE_DIR}")
-target_link_libraries(example PRIVATE "${GALLEY_LIBRARY}")
-add_dependencies(example galley_c_api)
+add_executable(demo demo.c)
+set_target_properties(demo PROPERTIES BUILD_RPATH "${CAPI_PREFIX}/lib")
+target_include_directories(demo PRIVATE "${GALLEY_INCLUDE_DIR}")
+target_link_libraries(demo PRIVATE "${GALLEY_LIBRARY}")
+add_dependencies(demo galley_c_api)
+
+# Throughput benchmark: a second parser (languages/json, all
+# generation-time features off) compiled into a second library.
+set(BENCHMARK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark")
+set(BENCHMARK_PARSER "${BENCHMARK_DIR}/_ll-parser.zig")
+set(BENCHMARK_PREFIX "${CMAKE_BINARY_DIR}/galley-benchmark-capi")
+set(BENCHMARK_SAMPLE "${GALLEY_SOURCE_DIR}/languages/json/samples/code-01.json")
+if(APPLE)
+    set(BENCHMARK_LIBRARY "${BENCHMARK_PREFIX}/lib/libbenchmark-c.dylib")
+else()
+    set(BENCHMARK_LIBRARY "${BENCHMARK_PREFIX}/lib/libbenchmark-c.so")
+endif()
+
+add_custom_command(
+    OUTPUT "${BENCHMARK_PARSER}"
+    COMMAND "${GALLEY_CLI}" --emit-metadata "${BENCHMARK_DIR}"
+    DEPENDS "${GALLEY_CLI}" "${BENCHMARK_DIR}/ll.grm" "${BENCHMARK_DIR}/config.zig"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${BENCHMARK_LIBRARY}" "${BENCHMARK_PREFIX}/include/galley.h"
+    COMMAND "${ZIG_EXECUTABLE}" build
+            --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
+            "-Dparser-source=${BENCHMARK_PARSER}"
+            "-Dparser-type=ll"
+            "-Dlib-name=benchmark-c"
+            "-Doptimize=ReleaseFast"
+            --prefix "${BENCHMARK_PREFIX}"
+            install
+    WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
+    DEPENDS galley_sources "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
+    VERBATIM
+)
+add_custom_target(galley_benchmark_c_api DEPENDS
+    "${BENCHMARK_LIBRARY}"
+    "${BENCHMARK_PREFIX}/include/galley.h"
+)
+
+add_executable(benchmark benchmark.c)
+set_target_properties(benchmark PROPERTIES BUILD_RPATH "${BENCHMARK_PREFIX}/lib")
+target_include_directories(benchmark PRIVATE "${BENCHMARK_PREFIX}/include")
+target_link_libraries(benchmark PRIVATE "${BENCHMARK_LIBRARY}")
+target_compile_definitions(benchmark PRIVATE "GALLEY_JSON_SAMPLE=\"${BENCHMARK_SAMPLE}\"")
+add_dependencies(benchmark galley_benchmark_c_api)

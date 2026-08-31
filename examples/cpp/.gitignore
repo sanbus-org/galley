@@ -1,6 +1,10 @@
 /_ll-parser.zig
 /_lr-parser.zig
 /procedures.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/metadata.json
 
 /compile_commands.json
 /build

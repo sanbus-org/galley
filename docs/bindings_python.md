@@ -91,7 +91,7 @@ Set `pub const procedures = true;` in your grammar's `config.zig` and
 implement the hooks in Python in a `procedures.py` file next to your
 grammar — an ordinary Python module imported by the extension at load time.
 No C anywhere on the consumer side, mirroring Rust's `procedures.rs` and
-Go's `hooks/procedures.go`:
+Go's `procedures.go`:
 
 ```python
 # procedures.py

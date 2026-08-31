@@ -1,16 +1,16 @@
-// Command hooks implements the keyvalue grammar's procedure hooks in Go.
+// Procedure hooks for the keyvalue grammar.
 //
 // Shows ProcedureArguments in action: the current node, its text, children,
 // and source position, plus DropIfEmpty on empty tails. Author-defined
 // grammar hooks arrive as hook_<name> — Key is annotated @print.
-package hooks
+package main
 
 import (
 	"fmt"
 	"os"
 	"unsafe"
 
-	galley "github.com/sanbus-org/galley/examples/go/galley"
+	galley "github.com/sanbus-org/galley/examples/go/demo/galley"
 )
 
 /*

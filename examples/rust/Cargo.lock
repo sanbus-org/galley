@@ -7,6 +7,13 @@ name = "galley-bindings"
 version = "0.1.0"
 
 [[package]]
+name = "galley-rust-benchmark"
+version = "0.1.0"
+dependencies = [
+ "galley-bindings",
+]
+
+[[package]]
 name = "galley-rust-example"
 version = "0.1.0"
 dependencies = [

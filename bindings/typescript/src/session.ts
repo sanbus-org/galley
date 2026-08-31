@@ -193,19 +193,8 @@ export class Session {
     return typeof status === "bigint" ? Number(status) : (status as number);
   }
 
-  parseSentinel(input: string): number {
-    const handle = this.#requireHandle();
-    const previous = setParsingSession(this);
-    let status: bigint | number;
-    try {
-      status = this.#ffi.galley_parse_sentinel(handle, input);
-    } finally {
-      setParsingSession(previous);
-    }
-    if (typeof status === "bigint" ? status < 0n : (status as number) < 0) {
-      throw this.#errorFromStatus(status);
-    }
-    return typeof status === "bigint" ? Number(status) : (status as number);
+  parseSentinel(input: string | Uint8Array | Buffer): number {
+    return this.parse(input);
   }
 
   parseFile(filePath: string): number {

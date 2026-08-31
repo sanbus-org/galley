@@ -2,6 +2,13 @@
 /_lr-parser.zig
 /procedures.zig
 /procedures_python.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/procedures_python.zig
+/benchmark/metadata.json
+/benchmark/galley.*.so
+/benchmark/galley.pyi
 
 /compile_commands.json
 /build

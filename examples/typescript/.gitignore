@@ -2,6 +2,13 @@
 /_lr-parser.zig
 /procedures.zig
 /procedures_typescript.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/procedures_typescript.zig
+/benchmark/metadata.json
+/benchmark/libgalley-typescript.dylib
+/benchmark/libgalley-typescript.so
 /metadata.json
 /libgalley-typescript.dylib
 /libgalley-typescript.so

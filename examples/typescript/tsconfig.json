@@ -12,6 +12,6 @@
     "types": ["node"],
     "lib": ["ES2022"]
   },
-  "include": ["main.ts", "procedures.ts"],
+  "include": ["demo.ts", "benchmark.ts", "procedures.ts"],
   "exclude": ["node_modules", "dist"]
 }

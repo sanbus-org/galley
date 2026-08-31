@@ -1,0 +1,54 @@
+Value
+| "{" OptionalBlank ObjectMembers OptionalBlank
+| "[" OptionalBlank ArrayMembers OptionalBlank
+| IntegerNumber FloatTail OptionalBlank
+| "\u{22}" _StringContent "\u{22}" OptionalBlank
+| "null" OptionalBlank
+| "true" OptionalBlank
+| "false" OptionalBlank
+
+ObjectMembers
+| "\u{22}" _StringContent "\u{22}" OptionalBlank ":" OptionalBlank Value ObjectMembersTail "}"
+| "}"
+
+ObjectMembersTail
+| "," OptionalBlank "\u{22}" _StringContent "\u{22}" OptionalBlank ":" OptionalBlank Value ObjectMembersTail
+|
+
+ArrayMembers
+| Value ArrayMembersTail "]"
+| "]"
+
+ArrayMembersTail
+| "," OptionalBlank Value ArrayMembersTail
+|
+
+OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_OptionalBlank
+| space _OptionalBlank
+| new_line _OptionalBlank
+| block_start _OptionalBlank
+| block_end _OptionalBlank
+|
+
+_StringContent
+| character^"\u{22}" _StringContent
+|
+
+IntegerNumber
+| digit _PositiveIntegerNumberTail
+| "-" digit _PositiveIntegerNumberTail
+
+_PositiveIntegerNumberTail
+| digit _PositiveIntegerNumberTail
+|
+
+FloatTail
+| "." digit _PositiveIntegerNumberTail
+|

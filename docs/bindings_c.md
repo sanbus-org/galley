@@ -157,7 +157,7 @@ pass only `parser-source` and `parser-type`.
 Both examples wire steps 1–2 into CMake so a plain
 `cmake -S examples/c -B build && cmake --build build` fetches Galley, builds
 its CLI, generates the parser from the example's own `ll.grm`, compiles the
-library, builds `build/bin/example`, and runs nothing else. Generation also
+library, builds `build/bin/demo` and `build/bin/benchmark`, and runs nothing else. Generation also
 re-runs automatically whenever `ll.grm` or `config.zig` changes.
 
 Useful variables:
@@ -170,7 +170,7 @@ Useful variables:
 
 Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) live in
 the example directory and are gitignored.
-After a build, `build/bin/` contains just the example executable — the
+After a build, `build/bin/` contains `demo` and `benchmark` — the
 Galley CLI stays inside its own tree.
 
 Both example directories also emit `compile_commands.json` next to their
@@ -181,7 +181,7 @@ Passing a file path as the only argument parses that file and nothing
 else (exit status reports success; failures print a diagnostic):
 
 ```sh
-./build/bin/example path/to/input.file
+./build/bin/demo path/to/input.file
 ```
 
 ## Runtime Concepts
