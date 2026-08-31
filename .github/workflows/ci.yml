@@ -128,7 +128,7 @@ jobs:
         if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
         run: |
           cmake -S examples/${{ matrix.language }} -B build-${{ matrix.language }} \
-            -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
+            -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
           cmake --build build-${{ matrix.language }}
           ./build-${{ matrix.language }}/bin/demo
 
@@ -356,7 +356,7 @@ jobs:
           # language-examples job: cmake drives c and cpp, cargo drives
           # rust, go generate + go build drive go.
           for lang in c cpp; do
-            cmake -S examples/$lang -B /tmp/build-$lang -DGALLEY_CHECKOUT="$PWD" >/dev/null
+            cmake -S examples/$lang -B /tmp/build-$lang -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD" >/dev/null
             cmake --build /tmp/build-$lang >/dev/null
           done
           GALLEY_CHECKOUT="$PWD" cargo build --release --manifest-path examples/rust/Cargo.toml >/dev/null
@@ -406,6 +406,62 @@ jobs:
           compare /tmp/err-c.txt /tmp/err-zig.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
+  example-benchmarks:
+    name: example-benchmarks
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Build example benchmarks
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          cmake -S examples/c -B /tmp/build-c -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"
+          cmake --build /tmp/build-c --target benchmark
+          cmake -S examples/cpp -B /tmp/build-cpp -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"
+          cmake --build /tmp/build-cpp --target benchmark
+          cargo build --release --manifest-path examples/rust/Cargo.toml -p galley-rust-benchmark
+          cd examples/go
+          go generate ./...
+          go build -o /tmp/galley-go-benchmark ./benchmark
+          cd ../python
+          pip install -e .
+          python -m galley_bindings benchmark
+          cd ../typescript
+          npm install
+          npx galley-typescript-bindings benchmark
+          cd ../zig
+          zig build -Doptimize=ReleaseFast
+          cd ../..
+
+      - name: Compare interleaved throughput to examples/zig
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: python3 scripts/compare_example_benchmarks.py
+
   test:
     name: test
     if: ${{ always() }}
@@ -414,6 +470,7 @@ jobs:
       - matrix
       - language-examples
       - bindings-consistency
+      - example-benchmarks
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
@@ -422,12 +479,15 @@ jobs:
           MATRIX_RESULT: ${{ needs.matrix.result }}
           LANGUAGE_EXAMPLES_RESULT: ${{ needs.language-examples.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
+          EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "matrix: $MATRIX_RESULT"
           echo "language-examples: $LANGUAGE_EXAMPLES_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
+          echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
           test "$CORE_RESULT" = success
           test "$MATRIX_RESULT" = success
           test "$LANGUAGE_EXAMPLES_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
+          test "$EXAMPLE_BENCHMARKS_RESULT" = success
