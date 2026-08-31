@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    long long parsed = galley_parse_sentinel(session, input);
+    long long parsed = galley_parse(session, input, length);
     if (parsed < 0 || (size_t)parsed != length) {
         fprintf(stderr, "warmup parse failed: %s (%lld)\n",
                 galley_status_string(parsed), parsed);
@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
 
     unsigned long long start = now_ns();
     for (int i = 0; i < iterations; ++i) {
-        parsed = galley_parse_sentinel(session, input);
+        parsed = galley_parse(session, input, length);
         if (parsed < 0 || (size_t)parsed != length) {
             fprintf(stderr, "parse failed at iteration %d: %s (%lld)\n",
                     i, galley_status_string(parsed), parsed);

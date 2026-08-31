@@ -297,11 +297,12 @@ class Session:
         """
         ...
 
-    def parse_sentinel(self, data: str | bytes | bytearray | memoryview) -> int:
-        """Parse ``data`` without copying input (zero-copy for ``str``).
+    def parse_sentinel(self, data: str | bytes) -> int:
+        """Parse ``data`` and return bytes parsed.
 
-        The input object must stay alive until the next parse on this
-        session. Raises ``Error`` on failure.
+        Passes pointer+length into the C ABI with no extra binding copy.
+        Interior NUL bytes are data, matching ``parse``. Raises ``Error``
+        on failure.
         """
         ...
 

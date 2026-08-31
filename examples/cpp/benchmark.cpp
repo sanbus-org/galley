@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    long long parsed = galley_parse_sentinel(session, input);
+    long long parsed = galley_parse(session, input, length);
     if (parsed < 0 || static_cast<std::size_t>(parsed) != length) {
         std::fprintf(stderr, "warmup parse failed: %s (%lld)\n",
                      galley_status_string(parsed), parsed);
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     const auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < iterations; ++i) {
-        parsed = galley_parse_sentinel(session, input);
+        parsed = galley_parse(session, input, length);
         if (parsed < 0 || static_cast<std::size_t>(parsed) != length) {
             std::fprintf(stderr, "parse failed at iteration %d: %s (%lld)\n",
                          i, galley_status_string(parsed), parsed);

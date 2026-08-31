@@ -155,7 +155,7 @@ pass only `parser-source` and `parser-type`.
 ### What the examples' CMake does
 
 Both examples wire steps 1–2 into CMake so a plain
-`cmake -S examples/c -B build && cmake --build build` fetches Galley, builds
+`cmake -S examples/c -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build` fetches Galley, builds
 its CLI, generates the parser from the example's own `ll.grm`, compiles the
 library, builds `build/bin/demo` and `build/bin/benchmark`, and runs nothing else. Generation also
 re-runs automatically whenever `ll.grm` or `config.zig` changes.

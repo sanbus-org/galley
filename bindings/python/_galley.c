@@ -13,9 +13,8 @@
  *   expected for backward compatibility, and Node supports int() and
  *   operator.index() to retrieve its address;
  * - text accessors copy straight into `bytes` with no UTF-8 decoding;
- * - parse() reads str inputs zero-copy through the interpreter's cached
- *   UTF-8 buffer, and parse_sentinel() additionally avoids the session's
- *   input copy for callers that keep the input alive until the next parse.
+ * - parse() and parse_sentinel() pass pointer+length into galley_parse;
+ *   str inputs use the interpreter's cached UTF-8 buffer.
  *
  * Sessions are not thread-safe and every call holds the GIL: use one
  * session per thread or guard it externally. Node text, diagnostic
@@ -592,11 +591,10 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
 PyDoc_STRVAR(parse_sentinel_doc,
 "parse_sentinel(input)\n"
 "\n"
-"Parses a NUL-free str or bytes input and returns the number of bytes\n"
-"parsed. Unlike parse(), the session may reference the input's buffer\n"
-"without copying it: keep the object alive until the next parse on this\n"
-"session. A NUL byte inside the input ends parsing early, exactly like\n"
-"the underlying C entry point.");
+"Parses a str or bytes input and returns the number of bytes parsed.\n"
+"The caller's bytes are passed by pointer and length; this does not\n"
+"allocate or copy in the binding. Interior NUL bytes are valid and are\n"
+"parsed as data, matching parse().");
 
 static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
 {
@@ -620,7 +618,7 @@ static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
     }
     PyObject *previous = push_parsing_session(self);
     PyObject *result = status_to_parsed_with_session(
-        galley_parse_sentinel(session, length > 0 ? data : ""), session);
+        galley_parse(session, length > 0 ? data : "", (size_t)length), session);
     pop_parsing_session(previous);
     return result;
 }

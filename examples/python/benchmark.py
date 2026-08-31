@@ -59,7 +59,7 @@ def main() -> int:
 
     with session:
         try:
-            parsed = session.parse_sentinel(data)
+            parsed = session.parse(data)
         except galley.Error as error:
             print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
@@ -70,7 +70,7 @@ def main() -> int:
         start = time.perf_counter_ns()
         for index in range(iterations):
             try:
-                parsed = session.parse_sentinel(data)
+                parsed = session.parse(data)
             except galley.Error as error:
                 print(
                     f"parse failed at iteration {index}: {error} ({error.code})",
