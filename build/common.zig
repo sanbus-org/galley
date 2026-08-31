@@ -58,16 +58,141 @@ pub fn addGeneratedParserModule(
             .{ .name = "runtime_options", .module = runtime_options_mod },
         },
     });
-    runtime_mod.addImport("galley", runtime_mod);
-    procedures_mod.addImport("galley", runtime_mod);
-    config_mod.addImport("galley", runtime_mod);
-    error_messages_mod.addImport("galley", runtime_mod);
-    parser_mod.addImport("galley", runtime_mod);
+    connectParserModules(runtime_mod, procedures_mod, config_mod, error_messages_mod, parser_mod);
 
     return .{
         .runtime_mod = runtime_mod,
         .parser_mod = parser_mod,
     };
+}
+
+/// Lets generated source and customization modules refer to the assembled
+/// runtime as `@import("galley")`.
+pub fn connectParserModules(
+    runtime_mod: *std.Build.Module,
+    procedures_mod: *std.Build.Module,
+    config_mod: *std.Build.Module,
+    error_messages_mod: *std.Build.Module,
+    parser_mod: *std.Build.Module,
+) void {
+    runtime_mod.addImport("galley", runtime_mod);
+    procedures_mod.addImport("galley", runtime_mod);
+    config_mod.addImport("galley", runtime_mod);
+    error_messages_mod.addImport("galley", runtime_mod);
+    parser_mod.addImport("galley", runtime_mod);
+}
+
+pub const ParserType = enum { ll, lr };
+
+/// Options for `addParserModule`, the public consumer entry point for
+/// assembling a generated parser with Galley's runtime.
+pub const AddParserModuleOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    /// Directory containing `_ll-parser.zig` / `_lr-parser.zig`, `config.zig`,
+    /// and `procedures.zig`.
+    language_dir: std.Build.LazyPath,
+    parser_type: ParserType = .ll,
+    parser_source: ?std.Build.LazyPath = null,
+    procedures: ?std.Build.LazyPath = null,
+    config: ?std.Build.LazyPath = null,
+    error_messages: ?std.Build.LazyPath = null,
+    runtime_options: ?*std.Build.Module = null,
+    /// Extra imports for `procedures.zig` (Galley's own grammar needs
+    /// `generator_common`).
+    procedures_imports: []const std.Build.Module.Import = &.{},
+};
+
+/// Assembles a generated parser, `config.zig`, `procedures.zig`, and
+/// Galley's runtime into one module. Import it from application code as
+/// `@import("parser")` (or any name chosen in the consumer `build.zig`).
+///
+/// When `{ll,lr}_error_messages.zig` is absent, the empty CLI template is
+/// used. Override any inferred path with the matching optional field.
+pub fn addParserModule(
+    b: *std.Build,
+    galley: *std.Build.Dependency,
+    options: AddParserModuleOptions,
+) *std.Build.Module {
+    const type_name = @tagName(options.parser_type);
+    const parser_file = options.parser_source orelse
+        options.language_dir.path(b, b.fmt("_{s}-parser.zig", .{type_name}));
+    const procedures_file = options.procedures orelse
+        options.language_dir.path(b, "procedures.zig");
+    const config_file = options.config orelse
+        options.language_dir.path(b, "config.zig");
+    const error_file = options.error_messages orelse blk: {
+        const name = b.fmt("{s}_error_messages.zig", .{type_name});
+        if (lazyPathChildExists(b, options.language_dir, name)) {
+            break :blk options.language_dir.path(b, name);
+        }
+        break :blk galley.path(b.fmt("src/cli/templates/{s}_error_messages.zig", .{type_name}));
+    };
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = procedures_file,
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = options.procedures_imports,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = config_file,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = error_file,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const parser_mod = b.createModule(.{
+        .root_source_file = parser_file,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const runtime_options_mod = options.runtime_options orelse b.createModule(.{
+        .root_source_file = galley.path("src/runtime/default_runtime_options.zig"),
+    });
+    const runtime_mod = b.createModule(.{
+        .root_source_file = galley.path("src/runtime/api.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .link_libc = runtimeLinkLibC(options.target),
+        .imports = &.{
+            .{ .name = "procedures", .module = procedures_mod },
+            .{ .name = "config", .module = config_mod },
+            .{ .name = "error_messages", .module = error_messages_mod },
+            .{ .name = "parser", .module = parser_mod },
+            .{ .name = "runtime_options", .module = runtime_options_mod },
+        },
+    });
+    connectParserModules(runtime_mod, procedures_mod, config_mod, error_messages_mod, parser_mod);
+    return runtime_mod;
+}
+
+fn lazyPathChildExists(b: *std.Build, dir: std.Build.LazyPath, name: []const u8) bool {
+    switch (dir) {
+        .src_path => |src| {
+            const joined = b.pathJoin(&.{ src.sub_path, name });
+            src.owner.build_root.handle.access(b.graph.io, joined, .{}) catch return false;
+            return true;
+        },
+        .cwd_relative => |rel| {
+            const joined = b.pathJoin(&.{ rel, name });
+            if (std.fs.path.isAbsolute(joined)) {
+                std.Io.Dir.accessAbsolute(b.graph.io, joined, .{}) catch return false;
+            } else {
+                std.Io.Dir.cwd().access(b.graph.io, joined, .{}) catch return false;
+            }
+            return true;
+        },
+        .dependency => |dep| {
+            const joined = b.pathJoin(&.{ dep.sub_path, name });
+            dep.dependency.builder.build_root.handle.access(b.graph.io, joined, .{}) catch return false;
+            return true;
+        },
+        .generated => return false,
+    }
 }
 
 pub fn addGalleyGrammarProceduresModule(

@@ -1,0 +1,8 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/metadata.json
+/metadata.json
+/zig-out
+/.zig-cache

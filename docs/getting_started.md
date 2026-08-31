@@ -51,7 +51,12 @@ To turn a directory that only contains a grammar into a runnable Zig project, pa
 ./zig-out/bin/galley --bootstrap-zig-project my-language
 ```
 
-Bootstrapping is off by default; pass `--bootstrap-zig-project` to create the minimal project.
+Bootstrapping is off by default; pass `--bootstrap-zig-project` to create the
+minimal project. That scaffold is a stub runner for *your* grammar, using the
+same `addParserModule` helper as the rest of the Zig API. The native runtime
+showcase (the same demo as the language bindings) is
+[`examples/zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig);
+the API manual is [Using Galley from Another Zig Project](using-galley.md).
 
 ### Try the LR parser too
 
@@ -69,8 +74,10 @@ zig build -Doptimize=ReleaseFast run-lr-json -- \
 
 ## Next Steps
 
-Now that you have verified the bundled JSON parsers work, you can learn how to
-[use Galley from another Zig project](using-galley.md), explore the other
-[included languages](languages.md), review the
+Now that you have verified the bundled JSON parsers work, you can run the
+native runtime showcase in
+[`examples/zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig),
+learn how to [use Galley from another Zig project](using-galley.md), explore
+the other [included languages](languages.md), review the
 [generator and runtime options](configuration.md), or start
 [writing your own custom language](writing_a_language.md).

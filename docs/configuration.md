@@ -80,7 +80,7 @@ parser files; consumers pick up new configuration when they next compile.
 | `--allow-no-ast-tree-procedures` | Flag | Writes `allow_no_ast_tree_procedures = true`. |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |
 | `--emit-metadata` | Flag | Write metadata.json and procedures.zig next to the generated parser(s); the bindings workflow consumes both. |
-| `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) that parses files with the generated parser. Refuses to overwrite existing files. |
+| `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) that parses files with the generated parser via `addParserModule`. Refuses to overwrite existing files. Not a second API: see `examples/zig` for the native runtime showcase. |
 | `--watch` | Flag | Keeps running and regenerates the parser whenever the grammar file changes. If regeneration fails (for example mid-edit), the previous parser output is kept. |
 
 `ast = false` with `procedures = true` enables semantic procedures without

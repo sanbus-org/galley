@@ -24,7 +24,7 @@ features:
     details: Parse directly from character streams to ASTs without a separate tokenization phase. Merges lexical and syntactic analysis.
   - icon: 🛠️
     title: Native Zig Code
-    details: Emits clean Zig parser source that integrates with Galley's runtime through standard build.zig modules.
+    details: Emits clean Zig parser source. Consume it with addParserModule in the application's build.zig.
 ---
 
 <style>

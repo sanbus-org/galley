@@ -7,8 +7,14 @@ Galley can be used from another project in two related ways:
 
 These are separate stages. The generator API emits parser source only. The
 `galley` CLI also creates missing customization files when generating into a
-language directory. In either case, the consuming project's `build.zig`
-assembles the generated source and customization modules with Galley's runtime.
+language directory. The consuming project's `build.zig` then calls
+`addParserModule` to assemble the generated source with Galley's runtime.
+
+There is one Zig API (`src/runtime/api.zig`). [`examples/zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig)
+is the in-repository consumer of it — the same key/value demo and JSON
+throughput program as the language bindings, on the native runtime.
+`--bootstrap-zig-project` writes a stub runner for a *new* grammar; it is not
+a second API. The language bindings wrap the C ABI of this runtime.
 
 ## Add Galley as a Dependency
 
@@ -177,10 +183,12 @@ binding docs).
 
 To consume the generated parser from another language instead of Zig, see
 the language bindings: [C and C++](/bindings_c),
-[Rust](/bindings_rust), and [Go](/bindings_go) — the same
-language-directory flow applies, and Galley ships a generic consumer build
-file that compiles the generated parser into a shared library with a C
-header.
+[Rust](/bindings_rust), [Go](/bindings_go),
+[Python](/bindings_python), and [TypeScript](/bindings_typescript).
+The same language-directory flow applies; Galley ships a generic consumer
+build file that compiles the generated parser into a shared library with a C
+header. Those consumers live under `examples/` except `examples/zig`, which
+is the native runtime of the same demo.
 
 LL hook names are semantic instead of numbered. A specific hook is named from the parser symbol and what that branch expected, for example `syntax_error_ll_Value__expected_String_or_Number`. If the specific LL hook is not present, the generated parser checks broader hooks at comptime in this order: `syntax_error_ll_Value`, `syntax_error_ll`, `syntax_error`, then Galley's default renderer.
 
@@ -196,17 +204,14 @@ pub fn syntax_error_ll_Value__expected_String_or_Number(args: root.SyntaxErrorMe
 }
 ```
 
-Your `build.zig` must assemble the generated source and customization files
-around Galley's runtime API. Importing `_ll-parser.zig` directly is not enough:
-that file contains the generated parsing implementation, while public entry
-points such as `parseBytes`, `parseFile`, and `Session` are provided by
-`src/runtime/api.zig`.
-
-For a language stored in `language/`, this complete LL example exposes the
-assembled API to the application as `parser`:
+Importing `_ll-parser.zig` directly is not enough: that file is the generated
+parsing implementation. Public entry points such as `parseBytes`, `parseFile`,
+and `Session` come from `src/runtime/api.zig`. Call `addParserModule` from
+Galley's `build.zig` to assemble them:
 
 ```zig
 const std = @import("std");
+const galley_pkg = @import("galley");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -216,59 +221,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-
-    // Galley's runtime resolves every option through @hasDecl, so an empty
-    // default module yields the built-in defaults. Override an option by
-    // wiring your own b.addOptions() module instead.
-    const runtime_options = b.createModule(.{
-        .root_source_file = galley.path("src/runtime/default_runtime_options.zig"),
-    });
-
-    const procedures = b.createModule(.{
-        .root_source_file = b.path("language/procedures.zig"),
+    const parser = galley_pkg.addParserModule(b, galley, .{
         .target = target,
         .optimize = optimize,
+        .language_dir = b.path("language"),
+        .parser_type = .ll,
     });
-    const config = b.createModule(.{
-        .root_source_file = b.path("language/config.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const error_messages = b.createModule(.{
-        .root_source_file = b.path("language/ll_error_messages.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const generated_parser = b.createModule(.{
-        .root_source_file = b.path("language/_ll-parser.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const parser = b.createModule(.{
-        .root_source_file = galley.path("src/runtime/api.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = switch (target.result.os.tag) {
-            .linux, .macos => true,
-            else => null,
-        },
-        .imports = &.{
-            .{ .name = "procedures", .module = procedures },
-            .{ .name = "config", .module = config },
-            .{ .name = "error_messages", .module = error_messages },
-            .{ .name = "parser", .module = generated_parser },
-            .{ .name = "runtime_options", .module = runtime_options },
-        },
-    });
-
-    // These imports let generated and customization code refer to the
-    // assembled runtime as @import("galley").
-    parser.addImport("galley", parser);
-    procedures.addImport("galley", parser);
-    config.addImport("galley", parser);
-    error_messages.addImport("galley", parser);
-    generated_parser.addImport("galley", parser);
 
     const exe = b.addExecutable(.{
         .name = "my-app",
@@ -285,6 +243,13 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
+`addParserModule` infers `_ll-parser.zig`, `config.zig`, and `procedures.zig`
+next to `language_dir`. When `{ll,lr}_error_messages.zig` is missing, it uses
+the empty CLI template. Pass `.parser_type = .lr` for an LR parser, or override
+any inferred path with `.parser_source`, `.procedures`, `.config`, or
+`.error_messages`. Galley's runtime resolves options through `@hasDecl`; the
+helper wires the built-in defaults. Override them with `.runtime_options`.
+
 The corresponding `build.zig.zon` must declare the Galley package under the
 same `galley` dependency name. For a local checkout:
 
@@ -296,10 +261,15 @@ same `galley` dependency name. For a local checkout:
 },
 ```
 
-For LR, replace `_ll-parser.zig` and `ll_error_messages.zig` with
-`_lr-parser.zig` and `lr_error_messages.zig`. The repository's
+The same helper is what [`examples/zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig),
+`--bootstrap-zig-project`, and
 [`tests/package-consumer/build.zig`](https://github.com/sanbus-org/galley/blob/main/tests/package-consumer/build.zig)
-continuously validates the same assembly pattern.
+call. Do not copy the module graph by hand.
+
+`examples/zig/demo.zig` pins `syntax_error_stack_depth` to 1 and a no-op
+`syntax_error_reporter` so its stdout/stderr match the C-ABI examples (those
+libraries are built ReleaseFast and do not print diagnostics during parse).
+Those are identity knobs, not required native usage.
 
 The generated parser type is selected by this build wiring, so parsing does not
 take a `.ll` or `.lr` argument:
@@ -424,10 +394,12 @@ if (session.parseBytes(input, "input")) |_| {
 ```
 
 Fail-fast parsers populate `SessionReadGuard.lastDiagnostic()` and report a
-syntax-error count of one. A recovery-enabled parse that encounters errors
-still returns `ParseError.SyntaxError`; acquire `session.readLatest()` before
-allowing another reuse, then use `syntaxErrorCount()` and `lastDiagnostic()` on
-that guard.
+syntax-error count of one. `lastRenderedMessage()` is the already-rendered text
+of that diagnostic (what the C ABI returns). A recovery-enabled parse that
+encounters errors still returns `ParseError.SyntaxError`; acquire
+`session.readLatest()` before allowing another reuse, then use
+`syntaxErrorCount()`, `lastDiagnostic()`, and `recordedDiagnostics()` on that
+guard.
 
 `SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
 
@@ -449,9 +421,8 @@ session read guard exposes the AST allocator through `astAllocator()`.
 generated parser is not just the emitted Zig file: it is a configured module
 assembled from generated source, runtime code, configuration, procedures,
 error-message hooks, and build-created runtime options. That is why application
-code should import the assembled parser module rather than the generated source
-or files under Galley's `src/runtime` directory directly.
+code should import the module returned by `addParserModule` rather than the
+generated source or files under Galley's `src/runtime` directory directly.
 
-Use the generator API or `galley` CLI to produce parser source. Applications
-assemble that source with their customization modules and consume only the
-generated parser API.
+Use the generator API or `galley` CLI to produce parser source, then
+`addParserModule` to consume it.

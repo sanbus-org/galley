@@ -94,6 +94,7 @@ jobs:
           - go
           - python
           - typescript
+          - zig
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -180,6 +181,11 @@ jobs:
           npx tsx demo.ts
           node ../../bindings/typescript/tests/test_bindings.mjs
 
+      - name: Build and run example (zig)
+        if: ${{ matrix.language == 'zig' }}
+        working-directory: examples/zig
+        run: zig build run
+
   bindings-consistency:
     name: bindings-consistency
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
@@ -219,8 +225,8 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,python,typescript}/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,python,typescript}/config.zig examples/go/demo/config.zig
+          same ll.grm examples/{c,cpp,rust,python,typescript,zig}/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,python,typescript,zig}/config.zig examples/go/demo/config.zig
           same ll_error_messages.zig examples/*/ll_error_messages.zig
           same benchmark/ll.grm examples/*/benchmark/ll.grm
           same benchmark/config.zig examples/*/benchmark/config.zig
@@ -256,12 +262,15 @@ jobs:
           for lang in c cpp rust python typescript; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
-          for file in _ll-parser.zig procedures.zig; do
-            unique=$(sha256sum examples/*/"$file" | awk '{print $1}' | sort -u)
-            count=$(printf '%s\n' "$unique" | wc -l)
-            echo "$file: $count distinct variants"
-            test "$count" = 1 || { echo "::error::generated $file differs across bindings despite identical grammar and options"; exit 1; }
-          done
+          ./zig-out/bin/galley "examples/zig" >/dev/null
+          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,zig}/_ll-parser.zig | awk '{print $1}' | sort -u)
+          count=$(printf '%s\n' "$unique" | wc -l)
+          echo "_ll-parser.zig: $count distinct variants"
+          test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
+          unique=$(sha256sum examples/{c,cpp,rust,python,typescript}/procedures.zig | awk '{print $1}' | sort -u)
+          count=$(printf '%s\n' "$unique" | wc -l)
+          echo "procedures.zig: $count distinct variants"
+          test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
 
       - name: Procedure entry points are identical across bindings
         run: |
@@ -291,6 +300,8 @@ jobs:
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-python.txt || { echo "::error::C and Python procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-typescript.txt || { echo "::error::C and TypeScript procedure entry points differ"; exit 1; }
+          names examples/zig/procedures.zig > /tmp/names-zig.txt
+          diff /tmp/names-c.txt /tmp/names-zig.txt || { echo "::error::C and Zig procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
 
       - name: LR family builds through the c abi
@@ -363,6 +374,10 @@ jobs:
           GALLEY_CHECKOUT="$PWD/../.." npx galley-typescript-bindings . >/dev/null
           npx tsx demo.ts >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
           cd ../..
+          cd examples/zig
+          zig build
+          zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
+          cd ../..
 
           /tmp/build-c/bin/demo >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/demo >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
@@ -382,11 +397,13 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-go.txt
           compare /tmp/out-c.txt /tmp/out-python.txt
           compare /tmp/out-c.txt /tmp/out-typescript.txt
+          compare /tmp/out-c.txt /tmp/out-zig.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
           compare /tmp/err-c.txt /tmp/err-go.txt
           compare /tmp/err-c.txt /tmp/err-python.txt
           compare /tmp/err-c.txt /tmp/err-typescript.txt
+          compare /tmp/err-c.txt /tmp/err-zig.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   test:

@@ -207,6 +207,14 @@ pub const SessionReadGuard = struct {
         return self.session.runtime_context.lastDiagnostic();
     }
 
+    pub fn lastRenderedMessage(self: *const SessionReadGuard) ?[]const u8 {
+        return self.session.runtime_context.last_rendered_message;
+    }
+
+    pub fn recordedDiagnostics(self: *const SessionReadGuard) []const ParseDiagnostic {
+        return self.session.runtime_context.recorded_diagnostics.items;
+    }
+
     pub fn syntaxErrorCount(self: *const SessionReadGuard) usize {
         return self.session.runtime_context.syntax_error_count;
     }
