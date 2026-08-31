@@ -25,7 +25,9 @@ Reduction procedures in Galley are user-defined semantic hooks written in Zig
 (`procedures.zig`). They execute during parsing when the parser matches and
 reduces grammar rules. Hooks can inspect spans and children, propagate typed
 payloads, perform validation, and—with AST construction enabled—manipulate the
-persistent syntax tree.
+persistent syntax tree. The native example is
+[`examples/zig/procedures.zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig/procedures.zig);
+the other `examples/` directories implement the same hooks through the C ABI.
 
 ---
 

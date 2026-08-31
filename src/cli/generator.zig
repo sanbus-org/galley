@@ -227,8 +227,9 @@ fn printUsage(init: std.process.Init) !void {
         \\      --bootstrap-zig-project
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
-        \\                             files with the generated parser. Off by
-        \\                             default.
+        \\                             files via addParserModule. Stub for a new
+        \\                             grammar, not a second API; see
+        \\                             examples/zig. Off by default.
         \\      --watch                Regenerate the parser whenever the grammar
         \\                             file changes. Keep the previous parser
         \\                             output if regeneration fails.
@@ -434,20 +435,9 @@ fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.
 
     const fingerprint = try computeFingerprint(io, arena_allocator, package_name);
 
-    const parser_source: []const u8, const error_messages: []const u8 = if (result.generated_ll) .{
-        "_ll-parser.zig",
-        "ll_error_messages.zig",
-    } else .{ "_lr-parser.zig", "lr_error_messages.zig" };
-
-    const build_zig = try std.mem.replaceOwned(u8, arena_allocator, defaultBuildZigSource, "@@PARSER_SOURCE@@", parser_source);
-    const build_zig_1 = try std.mem.replaceOwned(u8, arena_allocator, build_zig, "@@ERROR_MESSAGES@@", error_messages);
-    const build_zig_2 = try std.mem.replaceOwned(u8, arena_allocator, build_zig_1, "@@RUNNER_NAME@@", package_name);
-
-    // The generated build.zig wires the grammar's error-messages module, so
-    // the referenced file must exist even though plain generation no longer
-    // creates it.
-    const parser_type: generator.ParserType = if (result.generated_ll) .ll else .lr;
-    _ = try createFileIfMissing(io, gpa, language_dir, error_messages, emptyErrorMessagesSource(parser_type));
+    const parser_type_name: []const u8 = if (result.generated_ll) "ll" else "lr";
+    const build_zig = try std.mem.replaceOwned(u8, arena_allocator, defaultBuildZigSource, "@@PARSER_TYPE@@", parser_type_name);
+    const build_zig_2 = try std.mem.replaceOwned(u8, arena_allocator, build_zig, "@@RUNNER_NAME@@", package_name);
 
     const src_dir = try std.fs.path.join(gpa, &.{ language_dir, "src" });
     defer gpa.free(src_dir);
@@ -1065,13 +1055,6 @@ fn errorMessagesFileName(parser_type: generator.ParserType) []const u8 {
     return switch (parser_type) {
         .ll => "ll_error_messages.zig",
         .lr => "lr_error_messages.zig",
-    };
-}
-
-fn emptyErrorMessagesSource(parser_type: generator.ParserType) []const u8 {
-    return switch (parser_type) {
-        .ll => defaultLlErrorMessagesSource,
-        .lr => defaultLrErrorMessagesSource,
     };
 }
 

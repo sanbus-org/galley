@@ -1,6 +1,10 @@
 const std = @import("std");
 const common = @import("build/common.zig");
 
+pub const ParserType = common.ParserType;
+pub const AddParserModuleOptions = common.AddParserModuleOptions;
+pub const addParserModule = common.addParserModule;
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});

@@ -10,6 +10,7 @@
   - [Common Hook Conventions](#common-hook-conventions)
   - [Writing Custom Hooks](#writing-custom-hooks)
 - [Generate and Integrate](#generate-and-integrate)
+- [Generate from Zig Code](#generate-from-zig-code)
 - [Parsing Verbose Output](#parsing-verbose-output)
 - [Conventions and Tips](#conventions-and-tips)
 
@@ -25,8 +26,8 @@ language.
 Inside the Galley repository, each bundled language lives under
 `languages/<name>/`, where the repository build discovers generated
 `_ll-parser.zig` and `_lr-parser.zig` files. External consumers may place the
-same grammar and customization files anywhere and wire them explicitly in
-their own `build.zig`.
+same grammar and customization files anywhere and pass that directory to
+`addParserModule` in their own `build.zig`.
 
 ```
 languages/
@@ -184,87 +185,19 @@ zig build
 ```
 
 Generation creates `_ll-parser.zig` or `_lr-parser.zig` and any missing
-customization files. It does not create an application. Assemble the generated
-source, `config.zig`, `procedures.zig`, and the matching error-message module
-with Galley's runtime in your own `build.zig`. See
-[Using Galley from Another Zig Project](using-galley.md) for the complete
-module wiring.
+customization files. It does not create an application. Call `addParserModule`
+from Galley's `build.zig` to assemble the generated source with the runtime —
+see [Using Galley from Another Zig Project](using-galley.md). The runnable
+native consumer of that API is [`examples/zig`](https://github.com/sanbus-org/galley/tree/main/examples/zig).
+`--bootstrap-zig-project` writes a stub runner for a new grammar.
 
 ---
 
 ## Generate from Zig Code
 
-Projects that depend on Galley can call the generator directly:
-
-```zig
-const generator = @import("galley_generator");
-
-try generator.emitParserFromSource(
-    allocator,
-    grammar_source,
-    writer,
-    .ll,
-    .{},
-);
-```
-
-Use `.lr` for LR generation. The options struct matches the CLI flags.
-
----
-
-## Use a Generated Parser from Zig Code
-
-Generated parsers are consumed as assembled Zig modules. The import name is
-chosen by the consumer's `build.zig`.
-
-For one-shot parsing, call `parseBytes`:
-
-```zig
-const json_parser = @import("json_parser");
-
-var parsed = try json_parser.parseBytes(io, allocator, "{\"ok\": true}", .{});
-defer parsed.deinit();
-
-std.debug.assert(parsed.result.parsed_bytes == 12);
-var reader = try parsed.session.read(parsed.result);
-defer reader.deinit();
-```
-
-`ParsedInput` owns the parser session, buffers, arena, and AST memory. Keep it alive while inspecting AST data, and call `deinit` when finished.
-
-For repeated parses, reuse a `Session`:
-
-```zig
-const json_parser = @import("json_parser");
-
-var session = try json_parser.Session.init(io, allocator, .{});
-defer session.deinit();
-
-const result = try session.parseBytes("{}", null);
-{
-    var reader = try session.read(result);
-    defer reader.deinit();
-    // Inspect result.ast_root through reader.astAllocator().
-}
-_ = try session.parseBytes("[]", null);
-```
-
-Parsing rejects concurrent reuse with `error.SessionInUse`. Session-owned AST
-and diagnostic data is available only through shared read guards; all guards
-must be released before the next parse. A guard also rejects an older result
-with `error.StaleParseResult` if the session has already been reused.
-
-Use `session.parseFile(file, input_path)` when parsing from a `std.Io.File`.
-The caller retains ownership of the file and must close it.
-
-For callers that already own sentinel-terminated input, use `parseSentinelBytes` or `session.parseSentinelBytes`:
-
-```zig
-const input: [:0]const u8 = "{\"ok\": true}";
-const result = try session.parseSentinelBytes(input, "inline-json");
-```
-
-The sentinel byte must remain valid for the duration of the parse. This path avoids the defensive copy that `parseBytes` performs to add Galley's required trailing zero byte.
+Projects that depend on Galley can call the generator directly. The full
+`galley_generator` API, including `emitParserFromSource` and `parseGrammar`,
+is documented in [Using Galley from Another Zig Project](using-galley.md).
 
 ---
 
