@@ -30,6 +30,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -233,7 +234,11 @@ function main() {
 
   const [parserSource, parserType] = detectParser(languageDir);
 
-  const prefix = path.join(cacheDir(), "capi");
+  const prefix = path.join(
+    cacheDir(),
+    "capi",
+    crypto.createHash("sha256").update(languageDir).digest("hex").slice(0, 16),
+  );
   // TypeScript-native procedures take precedence over C procedures: if a
   // procedures.ts/js exists, generate a TypeScript dispatch shim and use it
   // instead of the C extern stub. When neither TypeScript nor C implementations

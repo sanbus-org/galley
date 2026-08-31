@@ -7,10 +7,10 @@
 //	go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen <language-dir>
 //
 // The language dir must contain ll.grm (generation options live in config.zig)
-// and may contain hooks/procedures.go (procedure hook implementations in
-// Go, called through generated registration slots) and
-// ll_error_messages.zig (custom syntax-error message hooks), mirroring the
-// C, C++, Rust, and Python consumers.
+// and may contain procedures.go (procedure hook implementations in Go,
+// called through generated registration slots) and ll_error_messages.zig
+// (custom syntax-error message hooks), mirroring the C, C++, Rust, Python,
+// and TypeScript consumers.
 //
 // Environment overrides: GALLEY_CHECKOUT (existing Galley working tree,
 // wins over fetching), GALLEY_REPOSITORY, GALLEY_TAG (default main),
@@ -18,6 +18,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/format"
 	"os"
@@ -180,22 +182,23 @@ func main() {
 		fatal("%v", err)
 	}
 
-	// Procedure hooks are written in Go: hooks/procedures.go declares the
-	// exported entry points compiled into the consumer binary itself. This
-	// tool never ships Go code inside the shared library — embedding a Go
-	// runtime there crashes any Go program that loads it. Instead the
-	// library receives a generated Zig shim module (one nullable slot per
-	// grammar hook plus an installer), and the bridge package registers
-	// the host's exported hook addresses into those slots at package init;
-	// the parser then calls through the slots with no runtime crossing
-	// beyond the unavoidable C-to-Go transition inside each exported
-	// function.
-	prefix := filepath.Join(cacheDir, "capi")
+	// Procedure hooks are written in Go: procedures.go next to the grammar
+	// declares the exported entry points compiled into the consumer binary
+	// itself. This tool never ships Go code inside the shared library —
+	// embedding a Go runtime there crashes any Go program that loads it.
+	// Instead the library receives a generated Zig shim module (one
+	// nullable slot per grammar hook plus an installer), and the bridge
+	// package registers the host's exported hook addresses into those
+	// slots at package init; the parser then calls through the slots with
+	// no runtime crossing beyond the unavoidable C-to-Go transition
+	// inside each exported function.
 	languageAbsolute, err := filepath.Abs(languageDir)
 	if err != nil {
 		languageAbsolute = languageDir
 	}
-	proceduresGo := filepath.Join(languageDir, "hooks", "procedures.go")
+	sum := sha256.Sum256([]byte(languageAbsolute))
+	prefix := filepath.Join(cacheDir, "capi", hex.EncodeToString(sum[:8]))
+	proceduresGo := filepath.Join(languageDir, "procedures.go")
 
 	var userHooks []string
 	shimPath := filepath.Join(languageDir, "procedures_go.zig")
@@ -213,7 +216,6 @@ func main() {
 		fatal("%v", err)
 	}
 	procedureZigSource := mustAbsolute(shimPath)
-	hooksPresent := userHooks != nil
 
 	consumerBuild := exec.Command(zigExecutable(), "build",
 		"--build-file", filepath.Join(galleySource, "bindings", "c", "consumer", "build.zig"),
@@ -233,28 +235,12 @@ func main() {
 	// are needed for standard layouts.
 	run(consumerBuild)
 
-	emitBridge(languageAbsolute, prefix, hooksPresent)
+	emitBridge(languageAbsolute, prefix)
 	fmt.Println("galley-bindings: generated galley package; import it and build as usual")
 }
 
-// modulePath reads the `module` line from the consumer's go.mod, which the
-// bridge needs to blank-import the hooks package so its //exported symbols
-// are linked into the binary.
-func modulePath(languageDir string) string {
-	source, err := os.ReadFile(filepath.Join(languageDir, "go.mod"))
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(source), "\n") {
-		if fields := strings.Fields(line); len(fields) == 2 && fields[0] == "module" {
-			return fields[1]
-		}
-	}
-	return ""
-}
-
 // parseExportedFunctions returns the //exported Go function names declared
-// in the consumer's hooks/procedures.go, in declaration order.
+// in the consumer's procedures.go, in declaration order.
 func parseExportedFunctions(path string) ([]string, error) {
 	source, err := os.ReadFile(path)
 	if err != nil {
@@ -346,15 +332,21 @@ func emitProcedureShim(templatePath, outputPath string) error {
 }
 
 // emitHookBinding writes <language-dir>/galley/hooks_binding.go: package-init
-// code that hands each //exported hook address from hooks/procedures.go to
+// code that hands each //exported hook address from procedures.go to
 // the shared library's installer.
 func emitHookBinding(outputPath string, userHooks []string) error {
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return err
 	}
+	if len(userHooks) == 0 {
+		// No host hooks to register. Keep the file so package galley is
+		// complete, but do not cgo-link galley_install_procedure_target:
+		// a procedures=false library does not export that symbol.
+		return os.WriteFile(outputPath, []byte("// Code generated by galley-bindings gen; DO NOT EDIT.\npackage galley\n"), 0o644)
+	}
 	var builder strings.Builder
 	builder.WriteString("// Code generated by galley-bindings gen; DO NOT EDIT.\n")
-	builder.WriteString("// Registers the exported hook addresses from hooks/procedures.go into\n")
+	builder.WriteString("// Registers the exported hook addresses from procedures.go into\n")
 	builder.WriteString("// the parser library's procedure slots at package init.\n")
 	builder.WriteString("package galley\n\n/*\n#include <stdlib.h>\n")
 	for _, name := range userHooks {
@@ -387,11 +379,12 @@ func emitHookBinding(outputPath string, userHooks []string) error {
 // emitBridge writes <language-dir>/galley/galley.go: the generated cgo
 // preamble bound to this library plus the wrapper from the embedded
 // template. The package name is fixed so the import path stays stable.
-// Procedure hooks live in package hooks and import this package, so this
-// file must not blank-import hooks (that would cycle). The consumer's main
-// package must `import _ "module/hooks"` so the //exported hook symbols
-// stay in the binary for hooks_binding.go to register.
-func emitBridge(languageDir, prefix string, hooksPresent bool) {
+// Procedure hooks live in the consumer's procedures.go and import this
+// package, so this file must not import them (that would cycle). When
+// procedures.go is in the same package as main, its //exported symbols
+// are linked automatically; a separate package must be imported from
+// main so hooks_binding.go can register the addresses.
+func emitBridge(languageDir, prefix string) {
 	outDir := filepath.Join(languageDir, "galley")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fatal("failed to create %s: %v", outDir, err)
@@ -407,11 +400,6 @@ func emitBridge(languageDir, prefix string, hooksPresent bool) {
 	builder.WriteString(libDir)
 	builder.WriteString(" -l" + libName + " -Wl,-rpath," + libDir)
 	builder.WriteString("\n#include <stdlib.h>\n#include <galley.h>\n*/\nimport \"C\"\n\n")
-	if hooksPresent {
-		if modulePath(languageDir) == "" {
-			fatal("hooks/procedures.go requires a go.mod with a module line so the application can import the hooks package")
-		}
-	}
 	builder.WriteString(strings.TrimRight(wrapperTemplate, "\n"))
 	builder.WriteString("\n")
 

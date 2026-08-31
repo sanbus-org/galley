@@ -173,12 +173,16 @@ func (s *Session) Parse(input []byte) (int, error) {
 	return s.status(C.galley_parse(s.ptr, data, C.size_t(len(input))))
 }
 
-// ParseSentinel parses one NUL-free string and returns the number of bytes
-// parsed.
+// ParseSentinel parses a string and returns the number of bytes parsed.
+// The caller's bytes are passed by pointer and length; this does not
+// allocate or copy in the binding. Interior NUL bytes are valid and are
+// parsed as data, matching Parse.
 func (s *Session) ParseSentinel(input string) (int, error) {
-	cInput := C.CString(input)
-	defer C.free(unsafe.Pointer(cInput))
-	return s.status(C.galley_parse_sentinel(s.ptr, cInput))
+	var data *C.char
+	if len(input) > 0 {
+		data = (*C.char)(unsafe.Pointer(unsafe.StringData(input)))
+	}
+	return s.status(C.galley_parse(s.ptr, data, C.size_t(len(input))))
 }
 
 // ParseFile parses the file at path and returns the number of bytes parsed.

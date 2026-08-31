@@ -40,7 +40,7 @@ $ ./my-parser-consumer
 `GALLEY_CHECKOUT` (existing working tree) wins over `GALLEY_REPOSITORY` +
 `GALLEY_TAG` (default `main`); `ZIG_EXECUTABLE` selects zig. It generates
 the parser, builds the shared library, detects optional hook files next to
-your grammar (`hooks/procedures.go`, `ll_error_messages.zig`), and emits
+your grammar (`procedures.go`, `ll_error_messages.zig`), and emits
 `<language-dir>/galley/galley.go` — a generated cgo bridge bound
 to this library. Regenerate after changing the grammar; commit nothing it
 generates.
@@ -48,12 +48,13 @@ generates.
 ## Procedures
 
 Set `pub const procedures = true;` in your grammar's `config.zig` and implement the
-hooks in Go in a `hooks/procedures.go` file next to your grammar — an
-ordinary Go package compiled into your own binary by your ordinary
-`go build`. No C anywhere on the consumer side:
+hooks in Go in a `procedures.go` file next to your grammar — ordinary Go
+compiled into your own binary by your ordinary `go build`. No C anywhere
+on the consumer side. Put it in the same package as `main` so the
+`//export`ed symbols are linked without a blank import:
 
 ```go
-package hooks
+package main
 
 import (
 	"fmt"
@@ -96,10 +97,10 @@ func hook_print(ptr unsafe.Pointer) {
 }
 ```
 
-Blank-import the hooks package from `main` so the `//export`ed symbols are
-linked (`import _ "example.com/my-parser-consumer/hooks"`). Do not import
-hooks from the generated `galley` package: hooks already import `galley`,
-and that cycle would not compile.
+Do not import `procedures.go` from the generated `galley` package:
+procedures already import `galley`, and that cycle would not compile. A
+separate hooks package still works if `main` imports it so the
+`//export`ed symbols stay in the binary.
 
 Mechanically, gen reads the grammar's generated hook list and produces a
 Zig shim module containing one nullable function-pointer slot per hook;

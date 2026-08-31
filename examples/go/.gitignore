@@ -1,8 +1,15 @@
-/_ll-parser.zig
-/_lr-parser.zig
-/procedures.zig
-/procedures_go.zig
+/demo/_ll-parser.zig
+/demo/_lr-parser.zig
+/demo/procedures.zig
+/demo/procedures_go.zig
+/demo/metadata.json
+/demo/galley/
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/procedures_go.zig
+/benchmark/metadata.json
+/benchmark/galley/
 
-/metadata.json
-/galley/
 /galley-go-example
+/galley-go-benchmark

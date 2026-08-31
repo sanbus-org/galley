@@ -1,7 +1,15 @@
+[workspace]
+members = [".", "benchmark"]
+resolver = "2"
+
 [package]
 name = "galley-rust-example"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "galley-rust-example"
+path = "src/demo.rs"
 
 [dependencies]
 galley-bindings = { path = "../../bindings/rust" }

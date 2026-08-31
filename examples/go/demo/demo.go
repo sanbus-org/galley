@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	galley "github.com/sanbus-org/galley/examples/go/galley"
-	_ "github.com/sanbus-org/galley/examples/go/hooks"
+	galley "github.com/sanbus-org/galley/examples/go/demo/galley"
 )
 
 const (

@@ -34,6 +34,7 @@ GALLEY_TAG, matching the Rust, Go, and C consumers.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shlex
@@ -324,7 +325,11 @@ def main() -> None:
 
     parser_source, parser_type = detect_parser(language_dir)
 
-    prefix = cache_dir() / "capi"
+    prefix = (
+        cache_dir()
+        / "capi"
+        / hashlib.sha256(os.fsencode(str(language_dir))).hexdigest()[:16]
+    )
     # Python-native procedures take precedence over C procedures: if a
     # procedures.py exists, generate a Python dispatch shim and use it
     # instead of the C extern stub. When neither Python nor C implementations

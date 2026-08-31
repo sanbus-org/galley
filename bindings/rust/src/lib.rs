@@ -396,10 +396,11 @@ impl Session {
         })
     }
 
-    /// Parses a NUL-terminated string.
+    /// Parses a string. The caller's bytes are passed by pointer and length;
+    /// this does not allocate or copy in the binding. Interior NUL bytes are
+    /// valid and are parsed as data, matching [`parse`].
     pub fn parse_sentinel(&mut self, input: &str) -> Result<usize, Error> {
-        let c_input = std::ffi::CString::new(input).map_err(|_| Error::NullArgument)?;
-        self.status_to_result(unsafe { galley_parse_sentinel(self.inner, c_input.as_ptr()) })
+        self.parse(input.as_bytes())
     }
 
     /// Parses the file at `path`.

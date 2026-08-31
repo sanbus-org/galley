@@ -69,9 +69,10 @@ The FFI boundary is the only overhead over the C API:
 - Text accessors (`text`, `symbolNameBytes`, diagnostic tokens) return
   `Uint8Array` copies with no UTF-8 decoding; decode on demand via
   `Buffer.from(bytes).toString("utf-8")`.
-- `parse()` copies its input so node text stays valid regardless of the
-  input object's lifetime. `parseSentinel()` avoids the session's input
-  copy for callers that keep the input alive until the next parse.
+- `parse()` and `parseSentinel()` accept `string`, `Buffer`, or `Uint8Array`.
+  Bytes are passed by pointer and length with no UTF-16 transcode; a
+  `string` is encoded to UTF-8 once per call. The session still copies
+  into its own storage so node text stays valid after return.
 - All calls are synchronous and hold no additional threads; sessions are not
   thread-safe. Use one session per thread or guard externally.
 
