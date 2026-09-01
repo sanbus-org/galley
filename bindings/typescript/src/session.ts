@@ -174,23 +174,24 @@ export class Session {
 
   parse(input: string | Uint8Array | Buffer): number {
     const handle = this.#requireHandle();
+    const buf =
+      typeof input === "string"
+        ? Buffer.from(input, "utf-8")
+        : Buffer.isBuffer(input)
+          ? input
+          : Buffer.from(input);
     const previous = setParsingSession(this);
     let status: bigint | number;
     try {
-      if (typeof input === "string") {
-        const buf = Buffer.from(input, "utf-8");
-        status = this.#ffi.galley_parse(handle, buf, buf.length);
-      } else {
-        const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
-        status = this.#ffi.galley_parse(handle, buf, buf.length);
-      }
+      status = this.#ffi.galley_parse(handle, buf, buf.length);
     } finally {
       setParsingSession(previous);
     }
-    if (typeof status === "bigint" ? status < 0n : (status as number) < 0) {
+    const parsed = Number(status);
+    if (parsed < 0) {
       throw this.#errorFromStatus(status);
     }
-    return typeof status === "bigint" ? Number(status) : (status as number);
+    return parsed;
   }
 
   parseSentinel(input: string | Uint8Array | Buffer): number {
