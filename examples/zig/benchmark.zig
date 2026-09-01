@@ -1,12 +1,11 @@
 //! JSON throughput through Galley's native Zig runtime: no AST, no procedures,
-//! no error recovery. Parses languages/json/samples/code-01.json 50,000 times
-//! on one session and reports bytes/s.
+//! no error recovery. Reports bytes/s.
 
 const std = @import("std");
 const parser = @import("parser");
 
-const logical_input = "languages/json/samples/code-01.json";
-const default_iterations: usize = 50_000;
+const logical_input = "languages/json/samples/code-02.json";
+const default_iterations: usize = 10;
 
 fn resolveInput(
     io: std.Io,

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * JSON throughput through the Galley TypeScript bindings: no AST, no
- * procedures, no error recovery. Parses languages/json/samples/code-01.json
- * 50,000 times on one session and reports bytes/s.
+ * procedures, no error recovery. Parses languages/json/samples/code-02.json
+ * 10 times on one session and reports bytes/s.
  */
 
 import * as fs from "node:fs";
@@ -11,8 +11,8 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Session } from "galley-typescript-bindings";
 
-const LOGICAL_INPUT = "languages/json/samples/code-01.json";
-const DEFAULT_ITERATIONS = 50_000;
+const LOGICAL_INPUT = "languages/json/samples/code-02.json";
+const DEFAULT_ITERATIONS = 10;
 
 function resolveInput(explicit: string | undefined): string {
   if (explicit) return explicit;

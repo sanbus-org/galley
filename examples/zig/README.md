@@ -19,6 +19,6 @@ zig build -Doptimize=ReleaseFast run-benchmark
 ```
 
 Pass a grammar-source file as an argument to parse that file instead of running
-the built-in demo. `run-benchmark` parses `languages/json/samples/code-01.json`
-50,000 times through a no-AST, no-procedures, no-error-recovery JSON parser and
-prints bytes/s.
+the built-in demo. `run-benchmark` prints JSON parse throughput (no AST, no
+procedures, no error recovery). Optional arguments are `[path] [iterations]`.
+Fetch large samples first: `bash scripts/fetch-large-samples.sh json`.

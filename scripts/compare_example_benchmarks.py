@@ -20,7 +20,7 @@ from pathlib import Path
 BPS_RE = re.compile(r"^bytes_per_second:\s*([0-9,]+)\s*$")
 DEFAULT_ROUNDS = 3
 DEFAULT_WARMUP = 1
-DEFAULT_ITERATIONS = 10_000
+DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = ("zig", "c", "cpp", "rust", "go", "python", "typescript")
@@ -252,9 +252,10 @@ def main() -> int:
         return 1
 
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
-    sample = (args.sample or root / "languages" / "json" / "samples" / "code-01.json").resolve()
+    sample = (args.sample or root / "languages" / "json" / "samples" / "code-02.json").resolve()
     if not sample.is_file():
         print(f"missing sample {sample}", file=sys.stderr)
+        print("fetch it with: bash scripts/fetch-large-samples.sh json", file=sys.stderr)
         return 1
 
     runners = {runner.name: runner for runner in default_runners(root)}

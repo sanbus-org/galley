@@ -1,13 +1,13 @@
 //! JSON throughput through the Galley Rust bindings: no AST, no procedures,
-//! no error recovery. Parses languages/json/samples/code-01.json 50,000 times
+//! no error recovery. Parses languages/json/samples/code-02.json 10 times
 //! on one session and reports bytes/s.
 
 use galley_bindings::Session;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-const LOGICAL_INPUT: &str = "languages/json/samples/code-01.json";
-const DEFAULT_ITERATIONS: usize = 50_000;
+const LOGICAL_INPUT: &str = "languages/json/samples/code-02.json";
+const DEFAULT_ITERATIONS: usize = 10;
 
 fn resolve_input(explicit: Option<&str>) -> PathBuf {
     if let Some(path) = explicit {

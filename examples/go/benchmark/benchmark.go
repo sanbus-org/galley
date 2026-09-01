@@ -1,6 +1,6 @@
 // Command benchmark reports JSON throughput through the Galley Go bindings:
 // no AST, no procedures, no error recovery. Parses
-// languages/json/samples/code-01.json 50,000 times on one session and reports
+// languages/json/samples/code-02.json 10 times on one session and reports
 // bytes/s.
 package main
 
@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	logicalInput      = "languages/json/samples/code-01.json"
-	defaultIterations = 50000
+	logicalInput      = "languages/json/samples/code-02.json"
+	defaultIterations = 10
 )
 
 //go:generate go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen .

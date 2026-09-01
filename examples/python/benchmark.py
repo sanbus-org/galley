@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """JSON throughput through the Galley Python bindings: no AST, no procedures,
-no error recovery. Parses languages/json/samples/code-01.json 50,000 times
+no error recovery. Parses languages/json/samples/code-02.json 10 times
 on one session and reports bytes/s."""
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ import sys
 import time
 from pathlib import Path
 
-LOGICAL_INPUT = "languages/json/samples/code-01.json"
-DEFAULT_ITERATIONS = 50_000
+LOGICAL_INPUT = "languages/json/samples/code-02.json"
+DEFAULT_ITERATIONS = 10
 
 
 def resolve_input(explicit: str | None) -> Path:
