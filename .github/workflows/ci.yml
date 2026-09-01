@@ -108,19 +108,20 @@ jobs:
 
       - name: Install Go
         if: ${{ matrix.language == 'go' }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: false
 
       - name: Install Node
         if: ${{ matrix.language == 'typescript' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 26
 
       - name: Install Python
         if: ${{ matrix.language == 'python' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -201,17 +202,18 @@ jobs:
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: false
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 26
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -245,7 +247,7 @@ jobs:
                 exit 1
               fi
             done
-            echo "$file: Galley fetch contract present"
+            echo "Galley fetch contract present in $file"
           }
           check bindings/go/cmd/galley/main.go
           check bindings/rust/src/build_helper.rs
@@ -401,17 +403,18 @@ jobs:
           echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
 
       - name: Install Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: stable
+          cache: false
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 26
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
