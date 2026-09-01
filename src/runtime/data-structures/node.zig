@@ -25,26 +25,12 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
     return struct {
         const NodeType = NodeWithPointer(PayloadType, PointerType, true);
         pub const max_node_capacity: usize = std.math.maxInt(NodeType.Pointer) - 1;
-        /// On platforms with lazy-commit anonymous mappings, the allocator
-        /// reserves one contiguous address-space region up front and never
-        /// relocates it: `at` compiles to base-plus-index addressing and node
-        /// addresses stay valid for the allocator's lifetime. The reservation
-        /// is virtual only; physical pages materialize on first touch.
         const supports_reserved_arena = switch (builtin.os.tag) {
             .linux, .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .openbsd, .netbsd, .dragonfly, .illumos => true,
             else => false,
         };
-        /// Nodes addressable by the reserved arena. 2^28 nodes of 64 bytes
-        /// reserve 17 GB of virtual address space, which lazy backing makes
-        /// free until used.
         const arena_max_nodes: usize = 1 << 28;
-        /// Effective capacity ceiling for this instantiation: the arena cap,
-        /// or the pointer width's limit when that is smaller (test variants).
         pub const capacity_limit: usize = @min(max_node_capacity, if (supports_reserved_arena) arena_max_nodes else max_node_capacity);
-        /// Nodes per growth segment in the non-arena fallback. Segments are
-        /// allocated once and never reallocated or relocated, so pointers
-        /// resolved through `at` or `atConst` survive `create` growth there
-        /// as well.
         const segment_size: usize = 1024;
         const segment_shift: std.math.Log2Int(usize) = @intCast(std.math.log2(segment_size));
         const segment_mask: usize = segment_size - 1;
@@ -77,9 +63,6 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             return flags;
         }
 
-        /// Reserves the whole arena address range once. Length is rounded up
-        /// to the system page size so narrow-pointer test variants reserve
-        /// only a page or two.
         fn reserveArena(self: *Self) !void {
             const bytes = std.mem.alignForward(
                 usize,
@@ -128,10 +111,6 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             }
         }
 
-        /// Appends whole segments until `count` segments exist. Existing
-        /// segments keep their addresses; only the segment-pointer array is
-        /// reallocated. Fallback storage for platforms without lazy-commit
-        /// anonymous mappings.
         fn resizeSegments(self: *Self, count: usize) !void {
             if (comptime supports_reserved_arena) unreachable;
             const old_count = self.segments.len;
@@ -1219,7 +1198,6 @@ const TestFixture = struct {
             .payload = .{},
         };
 
-        // Append root's children (1..4)
         for (1..5) |index| {
             const child_addr: TestNode.Pointer = @intCast(index);
             nodes[child_addr] = .{
@@ -1230,7 +1208,6 @@ const TestFixture = struct {
             try TestNode.appendChildren(root_node, &node_allocator, child_addr);
         }
 
-        // For each of root's children, append 3 children
         var counter: TestNode.Pointer = 5;
         for (1..5) |parent_index| {
             const parent_addr: TestNode.Pointer = @intCast(parent_index);
@@ -1246,7 +1223,6 @@ const TestFixture = struct {
             }
         }
 
-        // Remaining nodes are free nodes (17..29)
         const free_nodes = try alloc.alloc(TestNode.Pointer, 30 - counter);
         for (free_nodes, 0..) |*fn_addr, idx| {
             fn_addr.* = counter + @as(TestNode.Pointer, @intCast(idx));
@@ -1287,7 +1263,6 @@ fn testRemove(fixture: *TestFixture) !void {
     const node_allocator = &fixture.node_allocator;
     const root_node = fixture.root;
 
-    // Root initially has 4 children (1, 2, 3, 4)
     var count: usize = 0;
     var curr = fixture.nodes[root_node].first_child;
     while (curr != TestNode.invalid_pointer) {
@@ -1296,7 +1271,6 @@ fn testRemove(fixture: *TestFixture) !void {
     }
     try std.testing.expectEqual(@as(usize, 4), count);
 
-    // Remove 2 children starting at index 1 (child2 = 2, child3 = 3)
     const removed_head = try TestNode.remove(2, node_allocator, 2);
 
     // Parent (root) now has 2 children: 1, 4
@@ -1343,7 +1317,6 @@ fn testInsertBefore(fixture: *TestFixture) !void {
     fixture.nodes[new_a].next = new_b;
     fixture.nodes[new_b].prior = new_a;
 
-    // Insert the chain before root's children[2] (child3 = 3)
     try TestNode.insertBefore(3, node_allocator, new_a);
 
     // Root should now have 6 children: 1, 2, new_a, new_b, 3, 4
@@ -1529,8 +1502,6 @@ fn testAugmentedText(fixture: *TestFixture) !void {
     const leaf_text = try TestNode.augmentedText(5, ctx);
     try std.testing.expectEqualStrings("A", leaf_text);
 
-    // Build a mixed-depth subtree under child 1. Child 1 has siblings, so this also proves
-    // traversal stops at the requested subtree rather than following its next sibling.
     fixture.nodes[5].text_start = 0;
     fixture.nodes[5].text_length = 1; // "A"
     fixture.nodes[7].text_start = 3;
@@ -1556,7 +1527,6 @@ fn testAugmentedText(fixture: *TestFixture) !void {
     const combined = try TestNode.augmentedText(1, ctx);
     try std.testing.expectEqualStrings("ABCD", combined);
 
-    // This used to fail because every non-leaf allocated 64 KiB before recursion.
     var output_storage: [1024]u8 = undefined;
     var output_allocator = std.heap.FixedBufferAllocator.init(&output_storage);
     const original_allocator = fixture.runtime_context.arena_allocator;

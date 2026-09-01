@@ -281,20 +281,8 @@ jobs:
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/demo/procedures.go > /tmp/names-go.txt
-          # Python now uses native procedures.py; fall back to legacy procedures.c
-          if [ -f examples/python/procedures.py ]; then
-            names examples/python/procedures.py > /tmp/names-python.txt
-          else
-            names examples/python/procedures.c > /tmp/names-python.txt
-          fi
-          # TypeScript: native procedures.ts/js takes precedence when present; else legacy procedures.c
-          if [ -f examples/typescript/procedures.ts ]; then
-            names examples/typescript/procedures.ts > /tmp/names-typescript.txt
-          elif [ -f examples/typescript/procedures.js ]; then
-            names examples/typescript/procedures.js > /tmp/names-typescript.txt
-          else
-            names examples/typescript/procedures.c > /tmp/names-typescript.txt
-          fi
+          names examples/python/procedures.py > /tmp/names-python.txt
+          names examples/typescript/procedures.ts > /tmp/names-typescript.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
@@ -306,11 +294,6 @@ jobs:
 
       - name: LR family builds through the c abi
         run: |
-          # The examples pin the ll family; this smoke exercises the lr half
-          # of the same contract with the same grammar: generation, consumer
-          # build with -Dparser-type=lr, capi behavior, hooks, and
-          # diagnostics. No separate lr fixture exists — the canonical
-          # binding grammar is the examples' pinned one.
           work=/tmp/galley-lr-smoke
           rm -rf "$work" && mkdir -p "$work"
           cp examples/c/ll.grm "$work/lr.grm"
@@ -352,9 +335,6 @@ jobs:
 
       - name: Example output is identical across bindings
         run: |
-          # Each binding builds through its native flow, mirroring the
-          # language-examples job: cmake drives c and cpp, cargo drives
-          # rust, go generate + go build drive go.
           for lang in c cpp; do
             cmake -S examples/$lang -B /tmp/build-$lang -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD" >/dev/null
             cmake --build /tmp/build-$lang >/dev/null

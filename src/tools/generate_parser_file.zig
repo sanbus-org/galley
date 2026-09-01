@@ -13,8 +13,6 @@ const CliOptions = struct {
     strip_recovery_annotations: bool = false,
     indentation_syntax: bool = false,
     generator_options: generator.Options = .{},
-    // Which option flags were present: absent flags leave the base
-    // config's constant untouched (same contract as the CLI).
     ast_edited: bool = false,
     procedures_edited: bool = false,
     error_recovery_edited: bool = false,
@@ -36,13 +34,6 @@ pub fn main(init: std.process.Init) !void {
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_source_size));
     defer init.gpa.free(source);
 
-    // Option flags materialize as constants in the variant's config.zig:
-    // the generated parser reads its configuration from that file at
-    // comptime, never from generator-side overrides. When a base config is
-    // supplied (the language's own config.zig), flags EDIT it in place —
-    // preserving language truths (indentation syntax, message templates)
-    // that variant flags do not express — otherwise the documented default
-    // template is written.
     if (options.config_output_path) |config_output_path| {
         var config_data: []const u8 = undefined;
         if (options.config_base_path) |base_path| {
@@ -81,8 +72,6 @@ pub fn main(init: std.process.Init) !void {
     };
 }
 
-/// Applies every option flag present in `options` as an in-place constant
-/// edit on `base`, using the shared single editing primitive.
 fn editedConfigFromFlags(gpa: std.mem.Allocator, base: []const u8, options: CliOptions) ![]const u8 {
     var updated: ?[]const u8 = null;
     errdefer if (updated) |buffer| gpa.free(buffer);
