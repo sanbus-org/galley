@@ -143,7 +143,14 @@ def format_int(value: int | float) -> str:
     return f"{int(round(value)):,}"
 
 
-def print_report(report: Report, *, min_ratio: float, info_ratio: float) -> None:
+def print_report(
+    report: Report,
+    *,
+    min_ratio: float,
+    info_ratio: float,
+    rounds: int,
+    warmup: int,
+) -> None:
     names = [name for name in LANGUAGE_ORDER if name in report.rounds]
     print("round  language       bytes_per_second")
     for index in range(len(next(iter(report.rounds.values())))):
@@ -180,8 +187,17 @@ def print_report(report: Report, *, min_ratio: float, info_ratio: float) -> None
                     handle.write(
                         f"| {name} | {format_int(score)} | {score / report.zig_median:.1%} |\n"
                     )
+            if warmup == 0:
+                warmup_text = "no warmup"
+            elif warmup == 1:
+                warmup_text = "round 1 is warmup"
+            else:
+                warmup_text = f"first {warmup} rounds are warmup"
             handle.write(
-                f"\nFail below {min_ratio:.0%} of zig median. "
+                f"\n{rounds} interleaved rounds including zig; {warmup_text}; "
+                f"score is best of the remaining rounds; "
+                f"reference is zig median of those rounds. "
+                f"Fail below {min_ratio:.0%} of that median. "
                 f"{info_ratio:.0%} band is informational.\n"
             )
 
@@ -280,7 +296,13 @@ def main() -> int:
         info_ratio=INFO_RATIO,
     )
     print()
-    print_report(report, min_ratio=args.min_ratio, info_ratio=INFO_RATIO)
+    print_report(
+        report,
+        min_ratio=args.min_ratio,
+        info_ratio=INFO_RATIO,
+        rounds=args.rounds,
+        warmup=args.warmup,
+    )
     if report.info_band_misses:
         print(
             f"info: outside {1 - INFO_RATIO:.0%} of zig median: "
