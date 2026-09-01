@@ -64,7 +64,10 @@ def main() -> int:
             print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
         if parsed != len(data):
-            print(f"warmup parse failed: parsed {parsed} of {len(data)} bytes", file=sys.stderr)
+            print(
+                f"warmup parse failed: parsed {parsed} of {len(data)} bytes",
+                file=sys.stderr,
+            )
             return 1
 
         start = time.perf_counter_ns()

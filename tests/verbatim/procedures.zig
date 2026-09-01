@@ -6,9 +6,6 @@ pub const Payload = struct {
     value: usize = 0,
 };
 
-/// Source span resolved for a reduced rule node, so the test can assert that
-/// `@>>` (or a literal `@>"..."^`) capture consumes the raw body as part of the
-/// matched span.
 pub const Capture = struct {
     name: [32]u8 = undefined,
     name_len: usize = 0,

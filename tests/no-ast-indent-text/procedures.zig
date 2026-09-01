@@ -6,8 +6,6 @@ pub const Payload = struct {
     value: usize = 0,
 };
 
-/// Source span and resolved text captured for a reduced rule node, so the test
-/// can assert that no-AST indentation node text uses exact source coordinates.
 pub const Capture = struct {
     name: [32]u8 = undefined,
     name_len: usize = 0,

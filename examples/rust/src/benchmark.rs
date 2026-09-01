@@ -64,7 +64,10 @@ fn main() {
     match session.parse_sentinel(&data) {
         Ok(parsed) if parsed == data.len() => {}
         Ok(parsed) => {
-            eprintln!("warmup parse failed: parsed {parsed} of {} bytes", data.len());
+            eprintln!(
+                "warmup parse failed: parsed {parsed} of {} bytes",
+                data.len()
+            );
             std::process::exit(1);
         }
         Err(error) => {
@@ -92,7 +95,11 @@ fn main() {
     }
     let elapsed = start.elapsed().as_nanos();
     let total = data.len() as u128 * iterations as u128;
-    let bps = if elapsed == 0 { 0 } else { total * 1_000_000_000 / elapsed };
+    let bps = if elapsed == 0 {
+        0
+    } else {
+        total * 1_000_000_000 / elapsed
+    };
 
     println!("input: {LOGICAL_INPUT}");
     println!("bytes: {}", with_thousands(data.len() as u128));
