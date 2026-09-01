@@ -395,6 +395,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Fetch large JSON sample
+        run: bash scripts/fetch-large-samples.sh json
+
       - name: Install Zig
         run: |
           URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')

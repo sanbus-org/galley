@@ -1,5 +1,5 @@
 /* JSON throughput through the Galley C API: no AST, no procedures, no
- * error recovery. Parses languages/json/samples/code-01.json 50,000 times
+ * error recovery. Parses languages/json/samples/code-02.json 10 times
  * on one session and reports bytes/s. */
 #define _POSIX_C_SOURCE 200809L
 
@@ -13,8 +13,8 @@
 #define GALLEY_SOURCE_DIR "../.."
 #endif
 
-static const char kInput[] = "languages/json/samples/code-01.json";
-static const int kDefaultIterations = 50000;
+static const char kInput[] = "languages/json/samples/code-02.json";
+static const int kDefaultIterations = 10;
 
 static char *read_file(const char *path, size_t *out_len) {
     FILE *file = fopen(path, "rb");

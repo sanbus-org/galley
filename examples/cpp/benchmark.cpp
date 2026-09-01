@@ -1,5 +1,5 @@
 // JSON throughput through the Galley C API: no AST, no procedures, no
-// error recovery. Parses languages/json/samples/code-01.json 50,000 times
+// error recovery. Parses languages/json/samples/code-02.json 10 times
 // on one session and reports bytes/s.
 #include <galley.h>
 
@@ -14,8 +14,8 @@
 
 namespace {
 
-constexpr const char kInput[] = "languages/json/samples/code-01.json";
-constexpr int kDefaultIterations = 50000;
+constexpr const char kInput[] = "languages/json/samples/code-02.json";
+constexpr int kDefaultIterations = 10;
 
 char *readFile(const char *path, std::size_t *out_len) {
     FILE *file = std::fopen(path, "rb");

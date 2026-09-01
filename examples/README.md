@@ -12,5 +12,5 @@ benchmark.
 Zig is not a binding. The other examples are.
 
 CI (`example-benchmarks`) builds every example's JSON throughput binary
-ReleaseFast, runs three interleaved rounds on one machine, and fails if a
-C-ABI example's best scored round is below 94% of Zig's median.
+ReleaseFast, runs interleaved rounds on one machine, and fails if a C-ABI
+example lags native Zig by a wide margin.
