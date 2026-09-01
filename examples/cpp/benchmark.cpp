@@ -8,9 +8,13 @@
 #include <cstdio>
 #include <cstdlib>
 
+#ifndef GALLEY_SOURCE_DIR
+#define GALLEY_SOURCE_DIR "../.."
+#endif
+
 namespace {
 
-constexpr const char *kLogicalInput = "languages/json/samples/code-01.json";
+constexpr const char kInput[] = "languages/json/samples/code-01.json";
 constexpr int kDefaultIterations = 50000;
 
 char *readFile(const char *path, std::size_t *out_len) {
@@ -45,10 +49,6 @@ char *readFile(const char *path, std::size_t *out_len) {
     return buffer;
 }
 
-#ifndef GALLEY_JSON_SAMPLE
-#define GALLEY_JSON_SAMPLE "../../languages/json/samples/code-01.json"
-#endif
-
 void printU64(const char *label, unsigned long long n) {
     char digits[32];
     const int len = std::snprintf(digits, sizeof digits, "%llu", n);
@@ -61,12 +61,35 @@ void printU64(const char *label, unsigned long long n) {
     std::putchar('\n');
 }
 
+bool joinUnder(char *buffer, std::size_t size, const char *root, const char *relative) {
+    const int n = std::snprintf(buffer, size, "%s/%s", root, relative);
+    return n > 0 && static_cast<std::size_t>(n) < size;
+}
+
+bool fileExists(const char *path) {
+    FILE *file = std::fopen(path, "rb");
+    if (file == nullptr) return false;
+    std::fclose(file);
+    return true;
+}
+
+const char *resolveInput(const char *requested, char *buffer, std::size_t size) {
+    if (requested != nullptr) return requested;
+
+    const char *checkout = std::getenv("GALLEY_CHECKOUT");
+    if (checkout != nullptr && checkout[0] != '\0') {
+        if (joinUnder(buffer, size, checkout, kInput) && fileExists(buffer)) return buffer;
+    }
+    if (!joinUnder(buffer, size, GALLEY_SOURCE_DIR, kInput)) return nullptr;
+    return buffer;
+}
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
-    const char *path = GALLEY_JSON_SAMPLE;
+    char default_path[4096];
+    const char *path = resolveInput(argc > 1 ? argv[1] : nullptr, default_path, sizeof default_path);
     int iterations = kDefaultIterations;
-    if (argc > 1) path = argv[1];
     if (argc > 2) {
         iterations = std::atoi(argv[2]);
         if (iterations < 1) {
@@ -76,9 +99,9 @@ int main(int argc, char *argv[]) {
     }
 
     std::size_t length = 0;
-    char *input = readFile(path, &length);
+    char *input = path == nullptr ? nullptr : readFile(path, &length);
     if (input == nullptr) {
-        std::fprintf(stderr, "failed to read %s\n", kLogicalInput);
+        std::fprintf(stderr, "failed to read %s\n", kInput);
         return 1;
     }
 
@@ -117,7 +140,7 @@ int main(int argc, char *argv[]) {
     const unsigned long long ns = elapsed < 0 ? 0 : static_cast<unsigned long long>(elapsed);
     const unsigned long long bps = ns == 0 ? 0 : total * 1000000000ULL / ns;
 
-    std::printf("input: %s\n", kLogicalInput);
+    std::printf("input: %s\n", kInput);
     printU64("bytes", length);
     printU64("iterations", static_cast<unsigned long long>(iterations));
     printU64("parsed_bytes", total);

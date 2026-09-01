@@ -9,7 +9,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-static const char *kLogicalInput = "languages/json/samples/code-01.json";
+#ifndef GALLEY_SOURCE_DIR
+#define GALLEY_SOURCE_DIR "../.."
+#endif
+
+static const char kInput[] = "languages/json/samples/code-01.json";
 static const int kDefaultIterations = 50000;
 
 static char *read_file(const char *path, size_t *out_len) {
@@ -63,14 +67,33 @@ static unsigned long long now_ns(void) {
            (unsigned long long)ts.tv_nsec;
 }
 
-#ifndef GALLEY_JSON_SAMPLE
-#define GALLEY_JSON_SAMPLE "../../languages/json/samples/code-01.json"
-#endif
+static int join_under(char *buffer, size_t size, const char *root, const char *relative) {
+    const int n = snprintf(buffer, size, "%s/%s", root, relative);
+    return n > 0 && (size_t)n < size;
+}
+
+static int file_exists(const char *path) {
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) return 0;
+    fclose(file);
+    return 1;
+}
+
+static const char *resolve_input(const char *requested, char *buffer, size_t size) {
+    if (requested != NULL) return requested;
+
+    const char *checkout = getenv("GALLEY_CHECKOUT");
+    if (checkout != NULL && checkout[0] != '\0') {
+        if (join_under(buffer, size, checkout, kInput) && file_exists(buffer)) return buffer;
+    }
+    if (!join_under(buffer, size, GALLEY_SOURCE_DIR, kInput)) return NULL;
+    return buffer;
+}
 
 int main(int argc, char **argv) {
-    const char *path = GALLEY_JSON_SAMPLE;
+    char default_path[4096];
+    const char *path = resolve_input(argc > 1 ? argv[1] : NULL, default_path, sizeof default_path);
     int iterations = kDefaultIterations;
-    if (argc > 1) path = argv[1];
     if (argc > 2) {
         iterations = atoi(argv[2]);
         if (iterations < 1) {
@@ -80,9 +103,9 @@ int main(int argc, char **argv) {
     }
 
     size_t length = 0;
-    char *input = read_file(path, &length);
+    char *input = path == NULL ? NULL : read_file(path, &length);
     if (input == NULL) {
-        fprintf(stderr, "failed to read %s\n", kLogicalInput);
+        fprintf(stderr, "failed to read %s\n", kInput);
         return 1;
     }
 
@@ -117,7 +140,7 @@ int main(int argc, char **argv) {
     unsigned long long total = (unsigned long long)length * (unsigned long long)iterations;
     unsigned long long bps = elapsed == 0 ? 0 : total * 1000000000ULL / elapsed;
 
-    printf("input: %s\n", kLogicalInput);
+    printf("input: %s\n", kInput);
     print_u64("bytes", length);
     print_u64("iterations", (unsigned long long)iterations);
     print_u64("parsed_bytes", total);
