@@ -63,7 +63,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to read %s\n", logicalInput)
 		os.Exit(1)
 	}
-	text := string(data)
+	expected := len(data)
 
 	session, err := galley.New()
 	if err != nil {
@@ -72,37 +72,41 @@ func main() {
 	}
 	defer session.Close()
 
-	parsed, err := session.ParseSentinel(text)
-	if err != nil || parsed != len(data) {
+	parsed, err := session.Parse(data)
+	if err != nil || parsed != expected {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warmup parse failed: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "warmup parse failed: parsed %d of %d bytes\n", parsed, len(data))
+			fmt.Fprintf(os.Stderr, "warmup parse failed: parsed %d of %d bytes\n", parsed, expected)
 		}
 		os.Exit(1)
 	}
 
 	start := time.Now()
-	for index := 0; index < iterations; index++ {
-		parsed, err = session.ParseSentinel(text)
-		if err != nil || parsed != len(data) {
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "parse failed at iteration %d: %v\n", index, err)
-			} else {
-				fmt.Fprintf(os.Stderr, "parse failed at iteration %d: parsed %d of %d bytes\n", index, parsed, len(data))
-			}
-			os.Exit(1)
+	index := 0
+	for ; index < iterations; index++ {
+		parsed, err = session.Parse(data)
+		if err != nil || parsed != expected {
+			break
 		}
 	}
 	elapsed := time.Since(start).Nanoseconds()
-	total := uint64(len(data)) * uint64(iterations)
+	if err != nil || parsed != expected {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "parse failed at iteration %d: %v\n", index, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "parse failed at iteration %d: parsed %d of %d bytes\n", index, parsed, expected)
+		}
+		os.Exit(1)
+	}
+	total := uint64(expected) * uint64(iterations)
 	var bps uint64
 	if elapsed > 0 {
 		bps = total * 1000000000 / uint64(elapsed)
 	}
 
 	fmt.Printf("input: %s\n", logicalInput)
-	fmt.Printf("bytes: %s\n", withThousands(uint64(len(data))))
+	fmt.Printf("bytes: %s\n", withThousands(uint64(expected)))
 	fmt.Printf("iterations: %s\n", withThousands(uint64(iterations)))
 	fmt.Printf("parsed_bytes: %s\n", withThousands(total))
 	fmt.Printf("duration_ns: %s\n", withThousands(uint64(elapsed)))

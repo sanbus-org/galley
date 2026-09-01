@@ -82,19 +82,21 @@ function main(): number {
     }
 
     const start = process.hrtime.bigint();
-    for (let index = 0; index < iterations; index++) {
-      try {
+    let index = 0;
+    try {
+      for (; index < iterations; index++) {
         parsed = session.parseSentinel(data);
-      } catch (err: unknown) {
-        console.error(`parse failed at iteration ${index}: ${err}`);
-        return 1;
+        if (parsed !== length) break;
       }
-      if (parsed !== length) {
-        console.error(`parse failed at iteration ${index}: parsed ${parsed} of ${length} bytes`);
-        return 1;
-      }
+    } catch (err: unknown) {
+      console.error(`parse failed at iteration ${index}: ${err}`);
+      return 1;
     }
     const elapsed = process.hrtime.bigint() - start;
+    if (parsed !== length) {
+      console.error(`parse failed at iteration ${index}: parsed ${parsed} of ${length} bytes`);
+      return 1;
+    }
     const total = BigInt(length) * BigInt(iterations);
     const bps = elapsed === 0n ? 0n : (total * 1_000_000_000n) / elapsed;
 
