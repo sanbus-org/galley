@@ -1000,6 +1000,69 @@ test "config flag edits rewrite constants and preserve surrounding bytes" {
     , edited_twice);
 
     try std.testing.expectError(error.MissingConstant, generator.config_file.editedConstantSource(arena.allocator(), existing, "nonexistent", "true"));
+
+    // Annotated constants keep their type: `write()` emits
+    // `pub const position_tracking: ?bool = ...`, and every checked-in
+    // language config shares that shape, so the editor must match it.
+    // Regression test for `galley languages/json --with-position-tracking`
+    // failing with MissingConstant.
+    const annotated =
+        \\pub const ast = true;
+        \\pub const position_tracking: ?bool = null;
+        \\
+    ;
+    const edited_annotated = try generator.config_file.editedConstantSource(arena.allocator(), annotated, "position_tracking", "true");
+    try std.testing.expectEqualStrings(
+        \\pub const ast = true;
+        \\pub const position_tracking: ?bool = true;
+        \\
+    , edited_annotated);
+
+    // A name that prefixes another constant must not match it.
+    const prefixed =
+        \\pub const ast = true;
+        \\pub const ast_for_terminals = false;
+        \\
+    ;
+    const edited_prefix = try generator.config_file.editedConstantSource(arena.allocator(), prefixed, "ast", "false");
+    try std.testing.expectEqualStrings(
+        \\pub const ast = false;
+        \\pub const ast_for_terminals = false;
+        \\
+    , edited_prefix);
+}
+
+test "every constant written by config_file.write stays editable" {
+    // Writer/editor drift guard: `write()` is the single source of truth for
+    // the config shape, and both CLIs apply flags through
+    // `editedConstantSource`. If either side changes the line layout, this
+    // fails instead of a real `galley languages/<lang> --flag` invocation.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var config_buffer = std.Io.Writer.Allocating.init(arena.allocator());
+    try generator.config_file.write(&config_buffer.writer, .{}, false);
+    const fresh = config_buffer.written();
+
+    inline for (.{
+        "ast",
+        "procedures",
+        "allow_no_ast_tree_procedures",
+        "error_recovery",
+        "ast_for_terminals",
+        "position_tracking",
+        "input_streaming",
+        "indentation_syntax",
+    }) |name| {
+        const edited_true = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "true");
+        const edited_false = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "false");
+        _ = edited_true;
+        _ = edited_false;
+    }
+
+    // The annotated constant keeps its type through the edit.
+    const edited_position = try generator.config_file.editedConstantSource(arena.allocator(), fresh, "position_tracking", "true");
+    try std.testing.expect(std.mem.indexOf(u8, edited_position, "pub const position_tracking: ?bool = true;") != null);
 }
 
 test "bootstrapZigProject refuses to overwrite an existing build.zig" {

@@ -1,6 +1,7 @@
 const std = @import("std");
 const common = @import("build/common.zig");
 const generated_parser_matrix = @import("build/generated_parser_matrix.zig");
+const option_matrix = @import("build/option_matrix.zig");
 const test_selection = @import("build/test_selection.zig");
 
 pub fn build(b: *std.Build) !void {
@@ -80,6 +81,19 @@ pub fn add(b: *std.Build, options: Options) !void {
         const run_build_tests = b.addRunArtifact(build_tests);
         test_step.dependOn(&run_build_tests.step);
         trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_build_tests.step);
+        const option_matrix_test_mod = b.createModule(.{
+            .root_source_file = b.path("build/option_matrix.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const option_matrix_tests = b.addTest(.{
+            .name = "option-matrix-tests",
+            .root_module = option_matrix_test_mod,
+            .filters = selection.names,
+        });
+        const run_option_matrix_tests = b.addRunArtifact(option_matrix_tests);
+        test_step.dependOn(&run_option_matrix_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_option_matrix_tests.step);
         if (selection.names.len == 0) {
             test_step.dependOn(&run_benchmark_progress_tests.step);
         }
@@ -168,6 +182,18 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_self_repeating_tests = try addSelfRepeatingTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_self_repeating_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_self_repeating_tests.step);
+
+            try option_matrix.addOptionMatrix(
+                b,
+                test_step,
+                target,
+                optimize,
+                generator,
+                generate_parser_file_exe,
+                parser_type,
+                selection.names,
+                &filtered_test_run_steps,
+            );
 
             const run_procedure_hook_tests = try addProcedureHookTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_procedure_hook_tests.step);
