@@ -1,0 +1,20 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/procedures.zig
+/procedures_java.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/procedures_java.zig
+/benchmark/metadata.json
+/benchmark/libgalley-java.*
+
+target/
+out/
+libgalley-java.*
+*.class
+/metadata.json
+
+# Generated parser artifacts are commit-ignored; the library is built via
+# the java bindings tool (java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>).
+
