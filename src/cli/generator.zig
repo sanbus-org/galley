@@ -532,6 +532,14 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, init.gpa, .limited(max_source_size));
     defer init.gpa.free(source);
 
+    // Emit the correct warning: recovery annotations are inert when `config.error_recovery` is
+    // disabled, regardless of generator Options. The CLI is the only place that knows both the
+    // grammar fact and the effective config after `--with-` / `--no-` edits, so the check lives
+    // here rather than in the generator (which is now config-independent).
+    if (sourceHasRecoveryAnnotations(init.arena.allocator(), source) and !isErrorRecoveryEnabled(init, language_dir)) {
+        std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
+    }
+
     try generator.atomic_file.write(
         init.io,
         .cwd(),
@@ -544,6 +552,34 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
         },
         ParserEmission.emit,
     );
+}
+
+fn isErrorRecoveryEnabled(init: std.process.Init, language_dir: []const u8) bool {
+    var arena = std.heap.ArenaAllocator.init(init.gpa);
+    defer arena.deinit();
+    const path = std.fs.path.join(arena.allocator(), &.{ language_dir, "config.zig" }) catch return false;
+    const content = std.Io.Dir.cwd().readFileAlloc(init.io, path, arena.allocator(), .limited(max_source_size)) catch return false;
+    const prefix = "pub const error_recovery = ";
+    const idx = std.mem.indexOf(u8, content, prefix) orelse return false;
+    const rest = content[idx + prefix.len ..];
+    if (std.mem.startsWith(u8, rest, "true")) return true;
+    if (std.mem.startsWith(u8, rest, "false")) return false;
+    return false;
+}
+
+fn sourceHasRecoveryAnnotations(allocator: std.mem.Allocator, source: []const u8) bool {
+    // Use the real grammar parser so the check is not a fragile substring search.
+    const grammar = generator.parseGrammar(allocator, source) catch return false;
+    for (grammar.rules) |rule| {
+        if (rule.annotations.recovery_points.len != 0) return true;
+        for (rule.right_hand_sides) |rhs| {
+            if (rhs.annotations.recovery_points.len != 0) return true;
+            for (rhs.symbols) |sym| {
+                if (sym.annotations.recovery_points.len != 0) return true;
+            }
+        }
+    }
+    return false;
 }
 
 const ParserEmission = struct {
@@ -982,6 +1018,62 @@ test "bootstrapZigProject refuses to overwrite an existing build.zig" {
         error.BootstrapFileExists,
         bootstrapZigProject(std.testing.io, std.testing.allocator, arena.allocator(), tmp.dir, ".", .{}),
     );
+}
+
+test "CLI error_recovery flag does not affect recovery annotation detection (regression for inverted warning)" {
+    // Reproduces `galley languages/galley --with-error-recovery` spuriously warning
+    // that annotations were ignored. Generation is now config-independent: has_recovery_annotations
+    // is a pure grammar fact, and error_recovery is a comptime config gate. This test ensures
+    // the flag never influences the grammar fact and that config edits are orthogonal.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const annotated =
+        \\Start@!^"sync"
+        \\| "a"
+        \\
+    ;
+    for ([_]bool{ true, false }) |flag| {
+        const ll = try generator.generateParserAlloc(arena.allocator(), annotated, .ll, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, ll, "pub const has_recovery_annotations = true;") != null);
+        try std.testing.expect(std.mem.indexOf(u8, ll, "pub const is_error_recovery_enabled = config.error_recovery;") != null);
+        const lr = try generator.generateParserAlloc(arena.allocator(), annotated, .lr, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, lr, "pub const has_recovery_annotations = true;") != null);
+        try std.testing.expect(std.mem.indexOf(u8, lr, "pub const is_error_recovery_enabled = config.error_recovery;") != null);
+    }
+
+    const plain =
+        \\Start
+        \\| "a"
+        \\
+    ;
+    for ([_]bool{ true, false }) |flag| {
+        const ll = try generator.generateParserAlloc(arena.allocator(), plain, .ll, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, ll, "pub const has_recovery_annotations = false;") != null);
+        const lr = try generator.generateParserAlloc(arena.allocator(), plain, .lr, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, lr, "pub const has_recovery_annotations = false;") != null);
+    }
+
+    // Config edits must toggle the file without needing regeneration.
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    {
+        var buf = std.Io.Writer.Allocating.init(arena.allocator());
+        defer buf.deinit();
+        try generator.config_file.write(&buf.writer, .{ .with_error_recovery = false }, false);
+        try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.zig", .data = buf.written() });
+    }
+    {
+        const content = try tmp.dir.readFileAlloc(std.testing.io, "config.zig", arena.allocator(), .limited(8192));
+        const edited = try generator.config_file.editedConstantSource(arena.allocator(), content, "error_recovery", "true");
+        try std.testing.expect(std.mem.indexOf(u8, edited, "pub const error_recovery = true;") != null);
+        try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.zig", .data = edited });
+    }
+    {
+        const content = try tmp.dir.readFileAlloc(std.testing.io, "config.zig", arena.allocator(), .limited(8192));
+        const edited = try generator.config_file.editedConstantSource(arena.allocator(), content, "error_recovery", "false");
+        try std.testing.expect(std.mem.indexOf(u8, edited, "pub const error_recovery = false;") != null);
+    }
 }
 
 fn createFileIfMissing(io: std.Io, gpa: std.mem.Allocator, dir_path: []const u8, basename: []const u8, contents: []const u8) !bool {
