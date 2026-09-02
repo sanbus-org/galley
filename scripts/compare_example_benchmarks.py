@@ -23,7 +23,7 @@ DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 INFO_RATIO = 0.97
-LANGUAGE_ORDER = ("zig", "c", "cpp", "rust", "go", "python", "typescript")
+LANGUAGE_ORDER = ("zig", "c", "cpp", "rust", "go", "python", "typescript", "java")
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,9 @@ def evaluate(
 def default_runners(root: Path) -> list[Runner]:
     rust_bench = root / "examples" / "rust" / "target" / "release" / "benchmark"
     return [
-        Runner("zig", [str(root / "examples" / "zig" / "zig-out" / "bin" / "benchmark")]),
+        Runner(
+            "zig", [str(root / "examples" / "zig" / "zig-out" / "bin" / "benchmark")]
+        ),
         Runner("c", [os.environ.get("BENCH_C", "/tmp/build-c/bin/benchmark")]),
         Runner("cpp", [os.environ.get("BENCH_CPP", "/tmp/build-cpp/bin/benchmark")]),
         Runner("rust", [os.environ.get("BENCH_RUST", str(rust_bench))]),
@@ -112,6 +114,11 @@ def default_runners(root: Path) -> list[Runner]:
             "typescript",
             ["npx", "tsx", "benchmark.ts"],
             cwd=root / "examples" / "typescript",
+        ),
+        Runner(
+            "java",
+            ["java", "--enable-native-access=ALL-UNNAMED", "-cp", "bindings/java/out:examples/java/out", "com.example.Benchmark"],
+            cwd=root,
         ),
     ]
 
@@ -155,10 +162,14 @@ def print_report(
     print("round  language       bytes_per_second")
     for index in range(len(next(iter(report.rounds.values())))):
         for name in names:
-            print(f"{index + 1:>5}  {name:<13} {format_int(report.rounds[name][index])}")
+            print(
+                f"{index + 1:>5}  {name:<13} {format_int(report.rounds[name][index])}"
+            )
     print()
     print(f"zig median (scored rounds): {format_int(report.zig_median)}")
-    print(f"fail below {min_ratio:.0%} of zig median; {info_ratio:.0%} band is informational")
+    print(
+        f"fail below {min_ratio:.0%} of zig median; {info_ratio:.0%} band is informational"
+    )
     print("language       best        vs zig")
     for name in names:
         score = report.scores[name]
@@ -252,10 +263,14 @@ def main() -> int:
         return 1
 
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
-    sample = (args.sample or root / "languages" / "json" / "samples" / "code-02.json").resolve()
+    sample = (
+        args.sample or root / "languages" / "json" / "samples" / "code-02.json"
+    ).resolve()
     if not sample.is_file():
         print(f"missing sample {sample}", file=sys.stderr)
-        print("fetch it with: bash scripts/fetch-large-samples.sh json", file=sys.stderr)
+        print(
+            "fetch it with: bash scripts/fetch-large-samples.sh json", file=sys.stderr
+        )
         return 1
 
     runners = {runner.name: runner for runner in default_runners(root)}
@@ -271,6 +286,14 @@ def main() -> int:
             script = (runner.cwd or root) / "benchmark.ts"
             if not script.is_file():
                 missing.append(f"{name}: {script}")
+            continue
+        if name == "java":
+            if not (root / "bindings" / "java" / "out" / "org" / "sanbus" / "galley" / "build" / "GalleyBuild.class").is_file():
+                missing.append(f"{name}: bindings/java/out")
+            elif not (root / "examples" / "java" / "out" / "com" / "example" / "Benchmark.class").is_file():
+                missing.append(f"{name}: examples/java/out")
+            elif not (root / "examples" / "java" / "benchmark" / "libgalley-java.so").is_file() and not (root / "examples" / "java" / "benchmark" / "libgalley-java.dylib").is_file():
+                missing.append(f"{name}: examples/java/benchmark/libgalley-java.*")
             continue
         program = Path(runner.argv[0])
         if not program.is_file():
@@ -288,7 +311,9 @@ def main() -> int:
         for name in LANGUAGE_ORDER:
             bps = run_one(runners[name], sample, args.iterations)
             rounds[name].append(bps)
-            print(f"round {round_index + 1} {name}: {format_int(bps)} bytes/s", flush=True)
+            print(
+                f"round {round_index + 1} {name}: {format_int(bps)} bytes/s", flush=True
+            )
 
     report = evaluate(
         rounds,

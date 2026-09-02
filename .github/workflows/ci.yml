@@ -95,6 +95,7 @@ jobs:
           - python
           - typescript
           - zig
+          - java
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -124,6 +125,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+
+      - name: Install Java
+        if: ${{ matrix.language == 'java' }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 22
 
       - name: Build and run example (cmake)
         if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
@@ -187,6 +195,16 @@ jobs:
         working-directory: examples/zig
         run: zig build run
 
+      - name: Build and run example (java)
+        if: ${{ matrix.language == 'java' }}
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+          javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
+
   bindings-consistency:
     name: bindings-consistency
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
@@ -217,6 +235,12 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 22
+
       - name: Grammar, options, and error messages are identical across bindings
         run: |
           same() {
@@ -227,8 +251,8 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,python,typescript,zig}/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,python,typescript,zig}/config.zig examples/go/demo/config.zig
+          same ll.grm examples/{c,cpp,rust,python,typescript,zig,java}/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,python,typescript,zig,java}/config.zig examples/go/demo/config.zig
           same ll_error_messages.zig examples/*/ll_error_messages.zig
           same benchmark/ll.grm examples/*/benchmark/ll.grm
           same benchmark/config.zig examples/*/benchmark/config.zig
@@ -253,6 +277,7 @@ jobs:
           check bindings/rust/src/build_helper.rs
           check bindings/python/galley_bindings/build.py
           check bindings/typescript/build.mjs
+          check bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
           for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
             check "$f"
           done
@@ -261,15 +286,15 @@ jobs:
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust python typescript; do
+          for lang in c cpp rust python typescript java; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,zig}/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,zig,java}/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,python,typescript}/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,java}/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -285,11 +310,13 @@ jobs:
           names examples/go/demo/procedures.go > /tmp/names-go.txt
           names examples/python/procedures.py > /tmp/names-python.txt
           names examples/typescript/procedures.ts > /tmp/names-typescript.txt
+          names examples/java/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-python.txt || { echo "::error::C and Python procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-typescript.txt || { echo "::error::C and TypeScript procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-java.txt || { echo "::error::C and Java procedure entry points differ"; exit 1; }
           names examples/zig/procedures.zig > /tmp/names-zig.txt
           diff /tmp/names-c.txt /tmp/names-zig.txt || { echo "::error::C and Zig procedure entry points differ"; exit 1; }
           echo "procedure entry points ($(wc -l < /tmp/names-c.txt)) are identical across all bindings"
@@ -360,6 +387,10 @@ jobs:
           zig build
           zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
           cd ../..
+          javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+          javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo >/tmp/out-java.txt 2>/tmp/err-java.txt
 
           /tmp/build-c/bin/demo >/tmp/out-c.txt 2>/tmp/err-c.txt
           /tmp/build-cpp/bin/demo >/tmp/out-cpp.txt 2>/tmp/err-cpp.txt
@@ -380,12 +411,14 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-python.txt
           compare /tmp/out-c.txt /tmp/out-typescript.txt
           compare /tmp/out-c.txt /tmp/out-zig.txt
+          compare /tmp/out-c.txt /tmp/out-java.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
           compare /tmp/err-c.txt /tmp/err-go.txt
           compare /tmp/err-c.txt /tmp/err-python.txt
           compare /tmp/err-c.txt /tmp/err-typescript.txt
           compare /tmp/err-c.txt /tmp/err-zig.txt
+          compare /tmp/err-c.txt /tmp/err-java.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
   example-benchmarks:
@@ -421,10 +454,19 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 22
+
       - name: Build example benchmarks
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
+          javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/benchmark
+          javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           cmake -S examples/c -B /tmp/build-c -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"
           cmake --build /tmp/build-c --target benchmark
           cmake -S examples/cpp -B /tmp/build-cpp -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"

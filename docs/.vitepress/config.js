@@ -43,7 +43,8 @@ export default defineConfig({
           { text: 'Rust', link: '/bindings_rust' },
           { text: 'Go', link: '/bindings_go' },
           { text: 'Python', link: '/bindings_python' },
-          { text: 'TypeScript', link: '/bindings_typescript' }
+          { text: 'TypeScript', link: '/bindings_typescript' },
+          { text: 'Java', link: '/bindings_java' }
         ]
       },
       {
