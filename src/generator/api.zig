@@ -1120,3 +1120,37 @@ test "no-ast no-procedures LL parser does not emit invalid tail call to noinline
     const terminal = try generatedFunction(output, "inline fn parse_terminal_a(");
     _ = try expectContains(terminal, "return ll_syntax_error_");
 }
+
+test "recovery annotation detection is independent of with_error_recovery (regression for inverted CLI warning)" {
+    const annotated_source =
+        \\Start@!^"sync"
+        \\| "a" Child@!";"^
+        \\
+        \\Child
+        \\| "x"
+        \\
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for ([_]bool{ true, false }) |flag| {
+        const ll_output = try generateParserAlloc(arena.allocator(), annotated_source, .ll, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, ll_output, "pub const has_recovery_annotations = true;") != null);
+        try std.testing.expect(std.mem.indexOf(u8, ll_output, "pub const is_error_recovery_enabled = config.error_recovery;") != null);
+        const lr_output = try generateParserAlloc(arena.allocator(), annotated_source, .lr, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, lr_output, "pub const has_recovery_annotations = true;") != null);
+        try std.testing.expect(std.mem.indexOf(u8, lr_output, "pub const is_error_recovery_enabled = config.error_recovery;") != null);
+    }
+
+    const plain_source =
+        \\Start
+        \\| "a"
+        \\
+    ;
+    for ([_]bool{ true, false }) |flag| {
+        const ll_output = try generateParserAlloc(arena.allocator(), plain_source, .ll, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, ll_output, "pub const has_recovery_annotations = false;") != null);
+        const lr_output = try generateParserAlloc(arena.allocator(), plain_source, .lr, .{ .with_error_recovery = flag });
+        try std.testing.expect(std.mem.indexOf(u8, lr_output, "pub const has_recovery_annotations = false;") != null);
+    }
+}

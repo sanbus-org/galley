@@ -24,9 +24,6 @@ pub fn emitParserWithOptions(
 ) !void {
     const prepared = try common.prepareGrammar(allocator, grammar, options, false);
     const plan = try planning.LRPlan.build(allocator, &prepared, options);
-    if (prepared.has_recovery_annotations and !options.with_error_recovery) {
-        std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
-    }
     return emitter.emit(allocator, &prepared, &plan, writer, options);
 }
 
