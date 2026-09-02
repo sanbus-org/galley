@@ -167,6 +167,277 @@ pub fn emitErrorMessageFile(
 /// by the LL and LR emitters' mode-gated body driver.
 pub const BodyRecoveryMode = enum { disabled, automatic, explicit };
 
+// Boolean minimization for the 4-variable selector used by `emitModeGatedBody`.
+// Variables (bit positions): 0 = is_ast_enabled, 1 = are_procedures_enabled,
+// 2 = ast_for_terminals, 3 = error_recovery_mode == .disabled (vs active).
+// The active recovery label is `.explicit` when the grammar uses explicit
+// recovery otherwise `.automatic`. Universe is 16 minterms.
+const MintermMask = u16;
+const Cube = struct { dontCare: u4, value: u4 };
+
+fn cubeCovers(cube: Cube, minterm: u4) bool {
+    const care: u4 = ~cube.dontCare;
+    return (minterm & care) == (cube.value & care);
+}
+
+fn cubeCoverMask(cube: Cube) MintermMask {
+    var mask: MintermMask = 0;
+    for (0..16) |m| {
+        if (cubeCovers(cube, @as(u4, @intCast(m)))) mask |= @as(MintermMask, 1) << @intCast(m);
+    }
+    return mask;
+}
+
+fn cubeLiteralCount(cube: Cube) usize {
+    return 4 - @popCount(cube.dontCare);
+}
+
+fn cubeSubsumes(small: Cube, big: Cube) bool {
+    if (small.dontCare == big.dontCare and small.value == big.value) return false;
+    if ((small.dontCare | big.dontCare) != big.dontCare) return false;
+    const careBig: u4 = ~big.dontCare;
+    if ((small.value & careBig) != (big.value & careBig)) return false;
+    return true;
+}
+
+fn emitCubeLiterals(writer: *std.Io.Writer, cube: Cube, uses_explicit: bool) !void {
+    // Fixed order: mode, ast, procedures, ast_for_terminals — matches the
+    // original gate order so diffs stay readable.
+    var first = true;
+    const active_label: []const u8 = if (uses_explicit) "explicit" else "automatic";
+    if ((cube.dontCare >> 3) & 1 == 0) {
+        const is_disabled = (cube.value >> 3) & 1 == 1;
+        if (!first) try writer.writeAll(" and ");
+        if (is_disabled) try writer.writeAll("error_recovery_mode == .disabled") else try writer.print("error_recovery_mode == .{s}", .{active_label});
+        first = false;
+    }
+    if ((cube.dontCare >> 0) & 1 == 0) {
+        const v = (cube.value >> 0) & 1 == 1;
+        if (!first) try writer.writeAll(" and ");
+        try writer.writeAll(if (v) "is_ast_enabled" else "!is_ast_enabled");
+        first = false;
+    }
+    if ((cube.dontCare >> 1) & 1 == 0) {
+        const v = (cube.value >> 1) & 1 == 1;
+        if (!first) try writer.writeAll(" and ");
+        try writer.writeAll(if (v) "are_procedures_enabled" else "!are_procedures_enabled");
+        first = false;
+    }
+    if ((cube.dontCare >> 2) & 1 == 0) {
+        const v = (cube.value >> 2) & 1 == 1;
+        if (!first) try writer.writeAll(" and ");
+        try writer.writeAll(if (v) "ast_for_terminals" else "!ast_for_terminals");
+        first = false;
+    }
+    if (first) try writer.writeAll("true");
+}
+
+fn emitMinimizedCondition(writer: *std.Io.Writer, onSetMask: MintermMask, uses_explicit: bool) !void {
+    const allMask: MintermMask = 0xFFFF;
+    if (onSetMask == 0) {
+        try writer.writeAll("false");
+        return;
+    }
+    if (onSetMask == allMask) {
+        try writer.writeAll("true");
+        return;
+    }
+    const offSetMask: MintermMask = (~onSetMask) & allMask;
+
+    // Enumerate all 3^4 = 81 cubes and keep those that are implicants of onSet.
+    var implicants: [81]Cube = undefined;
+    var implicantMasks: [81]MintermMask = undefined;
+    var implicantCount: usize = 0;
+    for (0..16) |dc| {
+        const dontCare: u4 = @intCast(dc);
+        for (0..16) |v| {
+            const value: u4 = @intCast(v);
+            if ((value & dontCare) != 0) continue;
+            const cube: Cube = .{ .dontCare = dontCare, .value = value };
+            const cover = cubeCoverMask(cube);
+            if (cover == 0) continue;
+            if ((cover & onSetMask) == 0) continue;
+            if ((cover & offSetMask) != 0) continue;
+            implicants[implicantCount] = cube;
+            implicantMasks[implicantCount] = cover;
+            implicantCount += 1;
+        }
+    }
+
+    // Keep only prime implicants (not strictly subsumed by another implicant).
+    var primes: [81]Cube = undefined;
+    var primeMasks: [81]MintermMask = undefined;
+    var primeCount: usize = 0;
+    for (0..implicantCount) |i| {
+        var subsumed = false;
+        for (0..implicantCount) |j| {
+            if (i == j) continue;
+            if (cubeSubsumes(implicants[i], implicants[j])) {
+                subsumed = true;
+                break;
+            }
+        }
+        if (!subsumed) {
+            primes[primeCount] = implicants[i];
+            primeMasks[primeCount] = implicantMasks[i];
+            primeCount += 1;
+        }
+    }
+
+    // Find minimal cover: fewest cubes, then fewest literals.
+    // Universe is tiny — brute force over subsets when primeCount <= 22
+    // (2^22 ~ 4M iterations), otherwise fall back to branch-and-bound.
+    var bestSubset: u32 = 0;
+    var bestCount: usize = primeCount + 1;
+    var bestLits: usize = 1_000_000;
+    var found = false;
+
+    if (primeCount <= 22) {
+        const total: usize = @as(usize, 1) << @intCast(primeCount);
+        for (1..total) |subset| {
+            const cnt = @popCount(subset);
+            if (cnt > bestCount) continue;
+            var unionMask: MintermMask = 0;
+            var lits: usize = 0;
+            for (0..primeCount) |pi| {
+                if ((subset >> @intCast(pi)) & 1 == 1) {
+                    unionMask |= primeMasks[pi];
+                    lits += cubeLiteralCount(primes[pi]);
+                }
+            }
+            if (unionMask != onSetMask) continue;
+            if (!found or cnt < bestCount or (cnt == bestCount and lits < bestLits)) {
+                bestCount = cnt;
+                bestLits = lits;
+                bestSubset = @intCast(subset);
+                found = true;
+            }
+        }
+    }
+    if (!found) {
+        // Branch-and-bound fallback for larger prime sets (should be rare for 4 vars).
+        var currentCover: [81]Cube = undefined;
+        var currentMasks: [81]MintermMask = undefined;
+        var bestCover: [81]Cube = undefined;
+        var bestCoverLen: usize = primeCount + 1;
+        var bestCoverLits: usize = 1_000_000;
+        // Simple DFS using explicit stack / recursion via function.
+        // Implemented as recursive closure through a helper.
+        const Search = struct {
+            fn dfs(
+                onSet: MintermMask,
+                primesInner: []const Cube,
+                primeMasksInner: []const MintermMask,
+                uncovered: MintermMask,
+                start: usize,
+                currentLen: usize,
+                currentLits: usize,
+                currentCoverInner: []Cube,
+                currentMasksInner: []MintermMask,
+                bestCoverInner: []Cube,
+                bestLen: *usize,
+                bestLitsInner: *usize,
+                bestSubsetInner: *u32,
+            ) void {
+                if (uncovered == 0) {
+                    if (currentLen < bestLen.* or (currentLen == bestLen.* and currentLits < bestLitsInner.*)) {
+                        bestLen.* = currentLen;
+                        bestLitsInner.* = currentLits;
+                        @memcpy(bestCoverInner[0..currentLen], currentCoverInner[0..currentLen]);
+                        // Encode as bitmask for later emission (only valid when primeCount <=32)
+                        var mask: u32 = 0;
+                        for (0..currentLen) |k| {
+                            for (primesInner, 0..) |p, idx| {
+                                if (p.dontCare == currentCoverInner[k].dontCare and p.value == currentCoverInner[k].value) {
+                                    mask |= @as(u32, 1) << @intCast(idx);
+                                    break;
+                                }
+                            }
+                        }
+                        bestSubsetInner.* = mask;
+                    }
+                    return;
+                }
+                if (currentLen >= bestLen.*) return;
+                // Pick first uncovered minterm to branch on.
+                const bit: u4 = @intCast(@ctz(uncovered));
+                for (start..primesInner.len) |pi| {
+                    if ((primeMasksInner[pi] >> bit) & 1 == 0) continue;
+                    currentCoverInner[currentLen] = primesInner[pi];
+                    currentMasksInner[currentLen] = primeMasksInner[pi];
+                    dfs(
+                        onSet,
+                        primesInner,
+                        primeMasksInner,
+                        uncovered & ~primeMasksInner[pi],
+                        pi + 1,
+                        currentLen + 1,
+                        currentLits + cubeLiteralCount(primesInner[pi]),
+                        currentCoverInner,
+                        currentMasksInner,
+                        bestCoverInner,
+                        bestLen,
+                        bestLitsInner,
+                        bestSubsetInner,
+                    );
+                }
+            }
+        };
+        Search.dfs(onSetMask, primes[0..primeCount], primeMasks[0..primeCount], onSetMask, 0, 0, 0, &currentCover, &currentMasks, &bestCover, &bestCoverLen, &bestCoverLits, &bestSubset);
+        bestCount = bestCoverLen;
+        bestLits = bestCoverLits;
+        found = bestCount <= primeCount;
+    }
+
+    if (!found) {
+        // Fallback: emit naive disjunction (should never happen).
+        var first = true;
+        for (0..16) |m| {
+            if ((onSetMask >> @intCast(m)) & 1 == 0) continue;
+            if (!first) try writer.writeAll(" or ");
+            const cube: Cube = .{ .dontCare = 0, .value = @intCast(m) };
+            try emitCubeLiterals(writer, cube, uses_explicit);
+            first = false;
+        }
+        return;
+    }
+
+    // Collect selected cubes.
+    var cover: [81]Cube = undefined;
+    var coverCount: usize = 0;
+    for (0..primeCount) |pi| {
+        if ((bestSubset >> @intCast(pi)) & 1 == 1) {
+            cover[coverCount] = primes[pi];
+            coverCount += 1;
+        }
+    }
+    // Deterministic order: fewer literals first, then dontCare/value for stability.
+    for (0..coverCount) |i| {
+        for (i + 1..coverCount) |j| {
+            const li = cubeLiteralCount(cover[i]);
+            const lj = cubeLiteralCount(cover[j]);
+            const shouldSwap = lj < li or (lj == li and (cover[j].dontCare < cover[i].dontCare or (cover[j].dontCare == cover[i].dontCare and cover[j].value < cover[i].value)));
+            if (shouldSwap) {
+                const tmp = cover[i];
+                cover[i] = cover[j];
+                cover[j] = tmp;
+            }
+        }
+    }
+
+    if (coverCount == 1) {
+        try emitCubeLiterals(writer, cover[0], uses_explicit);
+        return;
+    }
+    for (cover[0..coverCount], 0..) |cube, idx| {
+        if (idx != 0) try writer.writeAll(" or ");
+        const lits = cubeLiteralCount(cube);
+        if (lits > 1) try writer.writeAll("(");
+        try emitCubeLiterals(writer, cube, uses_explicit);
+        if (lits > 1) try writer.writeAll(")");
+    }
+}
+
 /// Renders one generated function body under every configuration that
 /// `config.zig` can select, deduplicates identical texts, and emits them
 /// chained behind `comptime` gates on the generated constants. Exactly
@@ -220,25 +491,17 @@ pub fn emitModeGatedBody(
     defer generator.options = saved_options;
 
     var texts: [all_combos.len][]const u8 = undefined;
-    var group_members: [all_combos.len][]Combo = undefined;
-    var group_counts: [all_combos.len]usize = undefined;
+    var groupMasks: [all_combos.len]MintermMask = undefined;
     var kept_count: usize = 0;
     for (all_combos[0..combo_count]) |combo| {
         generator.options.with_ast = combo.ast;
         generator.options.with_procedures = combo.procedures;
         generator.options.ast_for_terminals = combo.terminals;
         generator.options.with_error_recovery = combo.mode != .disabled;
-        // Gate clauses derive each combo's effective recovery style from
-        // the combo itself (annotation-free grammars render automatic
-        // bodies under recovery-on combos). This keeps labels aligned
-        // with what runtime `error_recovery_mode` can resolve to.
         var buffer = std.Io.Writer.Allocating.init(generator.allocator);
         defer buffer.deinit();
         try render_fn(generator, &buffer.writer, params);
         const rendered = buffer.written();
-        // When a variant never touches an optional parameter, take its
-        // address to silence unused-parameter errors: unlike a discard,
-        // this stays legal in variants that do use the parameter.
         const text = if (has_occurrence_procedures_parameter and
             std.mem.indexOf(u8, rendered, "occurrence_procedures") == null)
             try std.fmt.allocPrint(
@@ -255,45 +518,34 @@ pub fn emitModeGatedBody(
                 break;
             }
         }
+        // Map to 4-bit minterm: bit0 ast, bit1 procedures, bit2 terminals,
+        // bit3 is_disabled (explicit/automatic collapse to 0).
+        const minterm: u4 = @as(u4, if (combo.ast) 1 else 0) |
+            (@as(u4, if (combo.procedures) 1 else 0) << 1) |
+            (@as(u4, if (combo.terminals) 1 else 0) << 2) |
+            (@as(u4, if (combo.mode == .disabled) 1 else 0) << 3);
+        const bit: MintermMask = @as(MintermMask, 1) << minterm;
         if (duplicate_index) |gi| {
             generator.allocator.free(text);
-            // Record membership so this exact configuration is covered by
-            // the group's gate disjunction.
-            group_members[gi][group_counts[gi]] = combo;
-            group_counts[gi] += 1;
+            groupMasks[gi] |= bit;
         } else {
             texts[kept_count] = text;
-            group_members[kept_count] = try generator.allocator.alloc(Combo, all_combos.len);
-            group_members[kept_count][0] = combo;
-            group_counts[kept_count] = 1;
+            groupMasks[kept_count] = bit;
             kept_count += 1;
         }
     }
 
-    // One gated branch per distinct body; each gate is a disjunction over
-    // every configuration that produced this body, so the chain covers
-    // the full configuration space exhaustively — no fall-through, no
-    // mismatched pairing.
-    for (texts[0..kept_count], group_members[0..kept_count], 0..) |text, members, index| {
+    const allMask: MintermMask = 0xFFFF;
+    // Single distinct body that covers the whole universe needs no gate.
+    if (kept_count == 1 and groupMasks[0] == allMask) {
+        try writer.writeAll(texts[0]);
+        return;
+    }
+
+    for (texts[0..kept_count], groupMasks[0..kept_count], 0..) |text, mask, index| {
         if (index != 0) try writer.writeAll("} else ");
         try writer.writeAll("if (comptime ");
-        for (members[0..group_counts[index]], 0..) |combo, mi| {
-            if (mi != 0) try writer.writeAll(" or ");
-            try writer.print(
-                "(error_recovery_mode == .{s} and is_ast_enabled == {s} and are_procedures_enabled == {s} and ast_for_terminals == {s})",
-                .{
-                    if (combo.mode == .disabled)
-                        "disabled"
-                    else if (generator.uses_explicit_recovery)
-                        "explicit"
-                    else
-                        "automatic",
-                    if (combo.ast) "true" else "false",
-                    if (combo.procedures) "true" else "false",
-                    if (combo.terminals) "true" else "false",
-                },
-            );
-        }
+        try emitMinimizedCondition(writer, mask, generator.uses_explicit_recovery);
         try writer.writeAll(") {\n");
         try writer.writeAll(text);
     }
