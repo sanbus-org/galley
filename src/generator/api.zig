@@ -199,6 +199,27 @@ pub fn generateParserAlloc(
     return output.toOwnedSlice();
 }
 
+pub const RequiredReductionProcedure = common.RequiredReductionProcedure;
+
+/// Lists every visible production's `reduction_<Var>_<N>` obligation for
+/// `source`, in rule-table order with variable, index, and shape. Shared
+/// by the CLI's generation-time warning; the emitter's comptime check
+/// delegates to the same `common` collector so the two can never diverge.
+pub fn requiredReductionProceduresFromSource(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+) ![]RequiredReductionProcedure {
+    const parsed_grammar = try parseGrammar(allocator, source);
+    const prepared = try common.prepareGrammar(allocator, parsed_grammar, .{}, true);
+    return common.collectRequiredReductionProcedures(
+        allocator,
+        prepared.symbols.items,
+        prepared.rules.items,
+        prepared.augmented_start,
+        prepared.generative_terminal,
+    );
+}
+
 pub fn generateErrorMessagesAlloc(
     allocator: std.mem.Allocator,
     source: []const u8,
@@ -386,6 +407,41 @@ test "generator supports procedures without AST construction" {
     try std.testing.expect(std.mem.indexOf(u8, output, "pub const is_ast_enabled = config.ast;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "pub const are_procedures_enabled = config.procedures;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "var node = data_structures.Node") != null);
+}
+
+test "generated parser gates missing reduction hooks behind strict config" {
+    const source =
+        \\Start
+        \\| Item "end"
+        \\
+        \\Item
+        \\| "a" "x"
+        \\| "b" "y"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
+        try std.testing.expect(std.mem.indexOf(u8, output, "pub const require_reduction_procedures = ") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "if (require_reduction_procedures) {") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_1") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Start_0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "Item ->") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "rhs_index 0") != null);
+        // Synthetic headers never require hooks.
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction__AugmentedStart_0") == null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_GenerativeTerminal_0") == null);
+    }
+
+    const required = try requiredReductionProceduresFromSource(arena.allocator(), source);
+    try std.testing.expectEqual(@as(usize, 3), required.len);
+    try std.testing.expectEqualStrings("reduction_Item_0", required[0].procedure_name);
+    try std.testing.expectEqualStrings("reduction_Item_1", required[1].procedure_name);
+    try std.testing.expectEqualStrings("reduction_Start_0", required[2].procedure_name);
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {

@@ -34,6 +34,8 @@ const Generator = struct {
     has_recovery_annotations: bool,
     uses_verbatim: bool,
     end_symbol: usize,
+    augmented_start: usize,
+    generative_terminal: ?usize,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
 
@@ -50,6 +52,8 @@ const Generator = struct {
             .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
             .end_symbol = grammar.eof,
+            .augmented_start = grammar.augmented_start,
+            .generative_terminal = grammar.generative_terminal,
         };
     }
 
@@ -105,7 +109,7 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try self.emitExplicitRecoverySupport(writer);
         }
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items, self.augmented_start, self.generative_terminal);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);

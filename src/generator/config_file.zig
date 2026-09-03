@@ -127,6 +127,15 @@ pub fn write(
         \\/// Only meaningful when ast = false.
         \\
     , options.allow_no_ast_tree_procedures);
+    try writeBool(writer, "require_reduction_procedures",
+        \\/// Require every visible variable production to declare its automatic
+        \\/// per-production hook.
+        \\///
+        \\/// true  - a missing `reduction_<Var>_<N>` is a generation-time warning
+        \\///         and a compile-time error naming variable, index, and shape.
+        \\/// false - missing hooks stay silent nulls (the default).
+        \\
+    , options.require_reduction_procedures);
     try writeBool(writer, "error_recovery",
         \\/// Enable syntax-error recovery.
         \\///

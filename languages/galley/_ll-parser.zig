@@ -12,6 +12,7 @@ pub const ErrorRecoveryMode = enum { disabled, automatic, explicit };
 pub const is_ast_enabled = config.ast;
 pub const are_procedures_enabled = config.procedures;
 pub const allow_no_ast_tree_procedures = config.allow_no_ast_tree_procedures;
+pub const require_reduction_procedures = if (@hasDecl(config, "require_reduction_procedures")) config.require_reduction_procedures else false;
 pub const is_error_recovery_enabled = config.error_recovery;
 pub const ast_for_terminals = config.ast_for_terminals;
 pub const has_recovery_annotations = true;
@@ -1286,6 +1287,194 @@ pub const variable_procedures = variable_procedures: {
 
 pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
 
+
+comptime {
+    if (require_reduction_procedures) {
+        if (!@hasDecl(procedures, "reduction_Annotation_0")) {
+            @compileError("missing reduction procedure 'reduction_Annotation_0' for production Annotation -> Procedure (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_Annotation_1")) {
+            @compileError("missing reduction procedure 'reduction_Annotation_1' for production Annotation -> \"!\" RecoveryPoint (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_Annotation_2")) {
+            @compileError("missing reduction procedure 'reduction_Annotation_2' for production Annotation -> \">\" VerbatimMarker (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnnotationTail_1")) {
+            @compileError("missing reduction procedure 'reduction_AnnotationTail_1' for production AnnotationTail -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnnotationTail_0")) {
+            @compileError("missing reduction procedure 'reduction_AnnotationTail_0' for production AnnotationTail -> \"@\" Annotation AnnotationTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnyContent_1")) {
+            @compileError("missing reduction procedure 'reduction_AnyContent_1' for production AnyContent -> ControlCharacter AnyContentTail (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnyContent_0")) {
+            @compileError("missing reduction procedure 'reduction_AnyContent_0' for production AnyContent -> \"character^\"\\\\n\"\" AnyContentTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnyContentTail_2")) {
+            @compileError("missing reduction procedure 'reduction_AnyContentTail_2' for production AnyContentTail -> (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnyContentTail_1")) {
+            @compileError("missing reduction procedure 'reduction_AnyContentTail_1' for production AnyContentTail -> ControlCharacter AnyContentTail (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_AnyContentTail_0")) {
+            @compileError("missing reduction procedure 'reduction_AnyContentTail_0' for production AnyContentTail -> \"character^\"\\\\n\"\" AnyContentTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_CamelCaseId_0")) {
+            @compileError("missing reduction procedure 'reduction_CamelCaseId_0' for production CamelCaseId -> \"lowercase_letter\" CamelCaseIdTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_CamelCaseIdTail_2")) {
+            @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_2' for production CamelCaseIdTail -> (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_CamelCaseIdTail_0")) {
+            @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_0' for production CamelCaseIdTail -> \"letter\" CamelCaseIdTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_CamelCaseIdTail_1")) {
+            @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_1' for production CamelCaseIdTail -> \"digit\" CamelCaseIdTail (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_ControlCharacter_0")) {
+            @compileError("missing reduction procedure 'reduction_ControlCharacter_0' for production ControlCharacter -> \"\\x01\" (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_ControlCharacter_1")) {
+            @compileError("missing reduction procedure 'reduction_ControlCharacter_1' for production ControlCharacter -> \"\\x02\" (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_GenerativeTerminalExceptions_1")) {
+            @compileError("missing reduction procedure 'reduction_GenerativeTerminalExceptions_1' for production GenerativeTerminalExceptions -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_GenerativeTerminalExceptions_0")) {
+            @compileError("missing reduction procedure 'reduction_GenerativeTerminalExceptions_0' for production GenerativeTerminalExceptions -> \"^\" TerminalSymbol GenerativeTerminalExceptions (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_GenerativeTerminalSymbol_0")) {
+            @compileError("missing reduction procedure 'reduction_GenerativeTerminalSymbol_0' for production GenerativeTerminalSymbol -> LowercaseId GenerativeTerminalExceptions (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_IdTail_3")) {
+            @compileError("missing reduction procedure 'reduction_IdTail_3' for production IdTail -> (rhs_index 3)");
+        }
+        if (!@hasDecl(procedures, "reduction_IdTail_2")) {
+            @compileError("missing reduction procedure 'reduction_IdTail_2' for production IdTail -> \"_\" IdTail (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_IdTail_0")) {
+            @compileError("missing reduction procedure 'reduction_IdTail_0' for production IdTail -> \"letter\" IdTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_IdTail_1")) {
+            @compileError("missing reduction procedure 'reduction_IdTail_1' for production IdTail -> \"digit\" IdTail (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_LowercaseId_0")) {
+            @compileError("missing reduction procedure 'reduction_LowercaseId_0' for production LowercaseId -> \"lowercase_letter\" IdTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_NewLines_0")) {
+            @compileError("missing reduction procedure 'reduction_NewLines_0' for production NewLines -> \"new_line\" NewLinesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_NewLinesTail_2")) {
+            @compileError("missing reduction procedure 'reduction_NewLinesTail_2' for production NewLinesTail -> (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_NewLinesTail_0")) {
+            @compileError("missing reduction procedure 'reduction_NewLinesTail_0' for production NewLinesTail -> \"new_line\" NewLinesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_NewLinesTail_1")) {
+            @compileError("missing reduction procedure 'reduction_NewLinesTail_1' for production NewLinesTail -> \"#\" AnyContent \"new_line\" NewLinesTail (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_Procedure_0")) {
+            @compileError("missing reduction procedure 'reduction_Procedure_0' for production Procedure -> CamelCaseId (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RawIndicator_0")) {
+            @compileError("missing reduction procedure 'reduction_RawIndicator_0' for production RawIndicator -> \"character^\"\\\\u{22}\"^\"\\\\n\"^\"\\\\u{5c}\"\" (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RawString_0")) {
+            @compileError("missing reduction procedure 'reduction_RawString_0' for production RawString -> \"\\\\\"\" RawIndicator \"\"\" (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RecoveryPoint_0")) {
+            @compileError("missing reduction procedure 'reduction_RecoveryPoint_0' for production RecoveryPoint -> TerminalAndCursor (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSide_1")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSide_1' for production RightHandSide -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSide_0")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSide_0' for production RightHandSide -> \"space\" Symbol AnnotationTail RightHandSideTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSideLine_1")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSideLine_1' for production RightHandSideLine -> \"#\" AnyContent \"new_line\" (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSideLine_0")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSideLine_0' for production RightHandSideLine -> \"|\" AnnotationTail RightHandSide \"new_line\" (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSideTail_1")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSideTail_1' for production RightHandSideTail -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSideTail_0")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSideTail_0' for production RightHandSideTail -> \"space\" Symbol AnnotationTail RightHandSideTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSides_0")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSides_0' for production RightHandSides -> RightHandSideLine RightHandSidesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSidesTail_1")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSidesTail_1' for production RightHandSidesTail -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_RightHandSidesTail_0")) {
+            @compileError("missing reduction procedure 'reduction_RightHandSidesTail_0' for production RightHandSidesTail -> RightHandSideLine RightHandSidesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_Rule_0")) {
+            @compileError("missing reduction procedure 'reduction_Rule_0' for production Rule -> VariableSymbol AnnotationTail \"new_line\" RightHandSides (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_Rules_0")) {
+            @compileError("missing reduction procedure 'reduction_Rules_0' for production Rules -> Rule RulesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_RulesTail_1")) {
+            @compileError("missing reduction procedure 'reduction_RulesTail_1' for production RulesTail -> (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_RulesTail_0")) {
+            @compileError("missing reduction procedure 'reduction_RulesTail_0' for production RulesTail -> NewLines Rule RulesTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_SimpleStringContent_2")) {
+            @compileError("missing reduction procedure 'reduction_SimpleStringContent_2' for production SimpleStringContent -> (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_SimpleStringContent_0")) {
+            @compileError("missing reduction procedure 'reduction_SimpleStringContent_0' for production SimpleStringContent -> \"character^\"\\\\u{22}\"\" SimpleStringContent (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_SimpleStringContent_1")) {
+            @compileError("missing reduction procedure 'reduction_SimpleStringContent_1' for production SimpleStringContent -> _Utf8Scalar SimpleStringContent (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_Start_0")) {
+            @compileError("missing reduction procedure 'reduction_Start_0' for production Start -> Rules (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_Symbol_0")) {
+            @compileError("missing reduction procedure 'reduction_Symbol_0' for production Symbol -> VariableSymbol (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_Symbol_1")) {
+            @compileError("missing reduction procedure 'reduction_Symbol_1' for production Symbol -> TerminalSymbol (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_Symbol_2")) {
+            @compileError("missing reduction procedure 'reduction_Symbol_2' for production Symbol -> GenerativeTerminalSymbol (rhs_index 2)");
+        }
+        if (!@hasDecl(procedures, "reduction_TerminalAndCursor_1")) {
+            @compileError("missing reduction procedure 'reduction_TerminalAndCursor_1' for production TerminalAndCursor -> TerminalSymbol \"^\" (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_TerminalAndCursor_0")) {
+            @compileError("missing reduction procedure 'reduction_TerminalAndCursor_0' for production TerminalAndCursor -> \"^\" TerminalSymbol (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_TerminalSymbol_0")) {
+            @compileError("missing reduction procedure 'reduction_TerminalSymbol_0' for production TerminalSymbol -> RawString (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_TerminalSymbol_1")) {
+            @compileError("missing reduction procedure 'reduction_TerminalSymbol_1' for production TerminalSymbol -> \"\"\" SimpleStringContent \"\"\" (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_UppercaseId_0")) {
+            @compileError("missing reduction procedure 'reduction_UppercaseId_0' for production UppercaseId -> \"uppercase_letter\" IdTail (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_VariableSymbol_0")) {
+            @compileError("missing reduction procedure 'reduction_VariableSymbol_0' for production VariableSymbol -> UppercaseId (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_VariableSymbol_1")) {
+            @compileError("missing reduction procedure 'reduction_VariableSymbol_1' for production VariableSymbol -> \"_\" UppercaseId (rhs_index 1)");
+        }
+        if (!@hasDecl(procedures, "reduction_VerbatimMarker_0")) {
+            @compileError("missing reduction procedure 'reduction_VerbatimMarker_0' for production VerbatimMarker -> \">\" (rhs_index 0)");
+        }
+        if (!@hasDecl(procedures, "reduction_VerbatimMarker_1")) {
+            @compileError("missing reduction procedure 'reduction_VerbatimMarker_1' for production VerbatimMarker -> TerminalAndCursor (rhs_index 1)");
+        }
+    }
+}
 // Parser for Symbol "Start" with index 0
 fn parse_Start(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(0, false) {
 if (comptime is_ast_enabled and are_procedures_enabled) {

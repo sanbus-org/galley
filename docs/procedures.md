@@ -160,6 +160,8 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 | `reduction_<SymbolName>` | Executes whenever `<SymbolName>` produces a visible node, either by reducing a variable or matching an enabled terminal. |
 | `reduction` | Executes as the general hook for every eligible variable reduction and visible terminal match. |
 
+Missing automatic hooks are silent nulls by default. Set `require_reduction_procedures = true` in `config.zig` (or pass `--require-reduction-procedures`) to warn at generation and fail compilation for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape.
+
 ---
 
 ## Hook Execution Order
