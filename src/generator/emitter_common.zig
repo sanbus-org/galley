@@ -575,6 +575,7 @@ pub fn emitParserMetadata(
         \\pub const is_ast_enabled = config.ast;
         \\pub const are_procedures_enabled = config.procedures;
         \\pub const allow_no_ast_tree_procedures = config.allow_no_ast_tree_procedures;
+        \\pub const require_reduction_procedures = if (@hasDecl(config, "require_reduction_procedures")) config.require_reduction_procedures else false;
         \\pub const is_error_recovery_enabled = config.error_recovery;
         \\pub const ast_for_terminals = config.ast_for_terminals;
         \\pub const has_recovery_annotations = {};
@@ -670,6 +671,8 @@ pub fn emitProcedureSupport(
     rules: []const common.Rule,
     symbols: []const common.Symbol,
     variables: []const usize,
+    augmented_start: usize,
+    generative_terminal: ?usize,
 ) !void {
     try writer.print(
         \\const ProcedureSequenceNode = struct {{
@@ -773,6 +776,39 @@ pub fn emitProcedureSupport(
         \\
         \\
     , .{ variables.len, variables.len });
+    try emitStrictReductionCheck(allocator, writer, rules, symbols, augmented_start, generative_terminal);
+}
+
+/// Emits the opt-in strict per-production hook check shared verbatim by the
+/// LL and LR backends. When the consumer sets
+/// `require_reduction_procedures = true` in `config.zig`, any visible
+/// production without `reduction_<Var>_<N>` fails compilation with its
+/// variable, index, and shape. Otherwise the block folds away and missing
+/// hooks stay silent nulls.
+fn emitStrictReductionCheck(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    rules: []const common.Rule,
+    symbols: []const common.Symbol,
+    augmented_start: usize,
+    generative_terminal: ?usize,
+) !void {
+    const required = try common.collectRequiredReductionProcedures(allocator, symbols, rules, augmented_start, generative_terminal);
+    try writer.writeAll("\ncomptime {\n    if (require_reduction_procedures) {\n");
+    for (required) |item| {
+        const message = try std.fmt.allocPrint(
+            allocator,
+            "missing reduction procedure '{s}' for production {s} (rhs_index {s})",
+            .{ item.procedure_name, item.shape, item.rhs_index },
+        );
+        defer allocator.free(message);
+        try writer.writeAll("        if (!@hasDecl(procedures, \"");
+        try writer.writeAll(item.procedure_name);
+        try writer.writeAll("\")) {\n            @compileError(");
+        try common.emitStringLiteral(writer, message);
+        try writer.writeAll(");\n        }\n");
+    }
+    try writer.writeAll("    }\n}\n");
 }
 
 /// Appends `hook_`-prefixed hook names to `user_hooks`, skipping names

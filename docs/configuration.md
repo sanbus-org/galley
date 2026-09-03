@@ -38,6 +38,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `ast` | `bool` | Construct an abstract syntax tree and expose tree APIs. `false` skips AST construction entirely for maximum throughput; procedure hooks still run. |
 | `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@procedures(...)`). |
 | `allow_no_ast_tree_procedures` | `bool` | In no-AST mode, treat standard tree-manipulation procedures as no-ops instead of failing to compile. |
+| `require_reduction_procedures` | `bool` | Require every visible production to declare `reduction_<Var>_<N>`. Missing hooks warn at generation and fail compilation with variable, index, and shape. |
 | `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
 | `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. |
 | `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
@@ -78,6 +79,7 @@ parser files; consumers pick up new configuration when they next compile.
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Writes `ast_for_terminals = true` / `false`. |
 | `--indentation-syntax` / `--no-indentation-syntax` | Flag | Writes `indentation_syntax = true` / `false`. |
 | `--allow-no-ast-tree-procedures` | Flag | Writes `allow_no_ast_tree_procedures = true`. |
+| `--require-reduction-procedures` / `--no-require-reduction-procedures` | Flag | Writes `require_reduction_procedures = true` / `false`. |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |
 | `--emit-metadata` | Flag | Write metadata.json and procedures.zig next to the generated parser(s); the bindings workflow consumes both. |
 | `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) that parses files with the generated parser via `addParserModule`. Refuses to overwrite existing files. Not a second API: see `examples/zig` for the native runtime showcase. |

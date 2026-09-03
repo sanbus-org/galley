@@ -20,6 +20,7 @@ pub const Options = struct {
     with_position_tracking: ?bool = null,
     with_input_streaming: bool = false,
     allow_no_ast_tree_procedures: bool = false,
+    require_reduction_procedures: bool = false,
     syntax_error_reporter: ?*const fn (message: []const u8) void = null,
 
     pub fn validate(self: Options) !void {
@@ -665,6 +666,71 @@ pub fn ruleLessThan(symbols: []const Symbol, lhs: Rule, rhs: Rule) bool {
     return lhs.rhs.items.len < rhs.rhs.items.len;
 }
 
+/// Single source of truth for strict reduction-procedure coverage: whether
+/// the production at `rule_index` must declare `reduction_<Var>_<N>` when
+/// `require_reduction_procedures` is enabled. Only visible variables count:
+/// synthetic augmented/generative headers and AST-suppressed helpers
+/// (`ast_enabled == false`) produce no hook and are excluded. Both the
+/// generated parser's comptime check and the CLI's generation-time warning
+/// delegate here so they can never diverge.
+pub fn requiresReductionProcedure(
+    symbols: []const Symbol,
+    rules: []const Rule,
+    augmented_start: usize,
+    generative_terminal: ?usize,
+    rule_index: usize,
+) bool {
+    const rule = rules[rule_index];
+    if (rule.header == augmented_start) return false;
+    if (generative_terminal) |generative| if (rule.header == generative) return false;
+    const header = symbols[rule.header];
+    if (header.kind != .variable) return false;
+    if (!header.ast_enabled) return false;
+    return true;
+}
+
+/// Renders the automatic per-production hook name for `rule` as
+/// `reduction_<Var>_<N>`.
+pub fn reductionProcedureName(allocator: std.mem.Allocator, symbols: []const Symbol, rule: Rule) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "reduction_{s}_{s}", .{ symbols[rule.header].id, rule.rhs_index });
+}
+
+/// One strict-coverage obligation: the procedure name, its variable and
+/// index, and the production shape for diagnostics.
+pub const RequiredReductionProcedure = struct {
+    variable: []const u8,
+    rhs_index: []const u8,
+    procedure_name: []const u8,
+    shape: []const u8,
+};
+
+/// Collects every production that `requiresReductionProcedure` selects,
+/// in rule-table order. Shared by the emitter's comptime check and the
+/// CLI's generation-time warning so the two can never diverge.
+pub fn collectRequiredReductionProcedures(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    rules: []const Rule,
+    augmented_start: usize,
+    generative_terminal: ?usize,
+) ![]RequiredReductionProcedure {
+    var out = std.ArrayList(RequiredReductionProcedure).empty;
+    for (rules, 0..) |rule, rule_index| {
+        if (!requiresReductionProcedure(symbols, rules, augmented_start, generative_terminal, rule_index)) continue;
+        const shape = try ruleText(allocator, symbols, rule);
+        errdefer allocator.free(shape);
+        const procedure_name = try reductionProcedureName(allocator, symbols, rule);
+        errdefer allocator.free(procedure_name);
+        try out.append(allocator, .{
+            .variable = symbols[rule.header].id,
+            .rhs_index = rule.rhs_index,
+            .procedure_name = procedure_name,
+            .shape = shape,
+        });
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn longestTerminalLength(symbols: []const Symbol) usize {
     var longest: usize = 0;
     for (symbols) |symbol| {
@@ -1047,4 +1113,39 @@ test "diagnostic symbol and rule text renders productions" {
     const rule_text = try ruleText(allocator, symbols.items, rule);
     defer allocator.free(rule_text);
     try std.testing.expectEqualStrings("Expression -> Term \"+\" Term", rule_text);
+}
+
+test "strict reduction coverage selects visible productions only" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+    const visible = try addSymbol(allocator, &symbols, &variables, "Visible", .variable);
+    const helper = try addSymbol(allocator, &symbols, &variables, "_Helper", .variable);
+    const terminal = try addSymbol(allocator, &symbols, &variables, "a", .terminal);
+    const augmented = try addSymbol(allocator, &symbols, &variables, "_AugmentedStart", .variable);
+    const generative = try addSymbol(allocator, &symbols, &variables, "GenerativeTerminal", .variable);
+
+    var rules = std.ArrayList(Rule).empty;
+    try rules.append(allocator, .{ .header = visible, .rhs_index = "0" });
+    try rules.append(allocator, .{ .header = visible, .rhs_index = "1" });
+    try rules.append(allocator, .{ .header = helper, .rhs_index = "0" });
+    try rules.append(allocator, .{ .header = augmented, .rhs_index = "0" });
+    try rules.append(allocator, .{ .header = generative, .rhs_index = "0" });
+
+    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 0));
+    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 1));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 2));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 3));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 4));
+
+    const collected = try collectRequiredReductionProcedures(allocator, symbols.items, rules.items, augmented, generative);
+    try std.testing.expectEqual(@as(usize, 2), collected.len);
+    try std.testing.expectEqualStrings("reduction_Visible_0", collected[0].procedure_name);
+    try std.testing.expectEqualStrings("Visible", collected[0].variable);
+    try std.testing.expectEqualStrings("0", collected[0].rhs_index);
+    try std.testing.expectEqualStrings("reduction_Visible_1", collected[1].procedure_name);
+    _ = terminal;
 }

@@ -31,6 +31,14 @@ pub const procedures = true;
 /// Only meaningful when ast = false.
 pub const allow_no_ast_tree_procedures = false;
 
+/// Require every visible variable production to declare its automatic
+/// per-production hook.
+///
+/// true  - a missing `reduction_<Var>_<N>` is a generation-time warning
+///         and a compile-time error naming variable, index, and shape.
+/// false - missing hooks stay silent nulls (the default).
+pub const require_reduction_procedures = false;
+
 /// Enable syntax-error recovery.
 ///
 /// true  - recovery runs automatically, or through the grammar's

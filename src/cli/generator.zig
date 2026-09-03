@@ -24,6 +24,7 @@ const ConfigEdits = struct {
     position_tracking: ?bool = null,
     input_streaming: ?bool = null,
     allow_no_ast_tree_procedures: ?bool = null,
+    require_reduction_procedures: ?bool = null,
     indentation_syntax: ?bool = null,
 
     fn apply(self: ConfigEdits, init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !void {
@@ -48,6 +49,7 @@ const ConfigEdits = struct {
             .{ "position_tracking", self.position_tracking },
             .{ "input_streaming", self.input_streaming },
             .{ "allow_no_ast_tree_procedures", self.allow_no_ast_tree_procedures },
+            .{ "require_reduction_procedures", self.require_reduction_procedures },
             .{ "indentation_syntax", self.indentation_syntax },
         }) |edit| {
             if (edit[1]) |value| {
@@ -143,6 +145,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.edits.procedures = false;
         } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
             result.edits.allow_no_ast_tree_procedures = true;
+        } else if (std.mem.eql(u8, arg, "--require-reduction-procedures")) {
+            result.edits.require_reduction_procedures = true;
+        } else if (std.mem.eql(u8, arg, "--no-require-reduction-procedures")) {
+            result.edits.require_reduction_procedures = false;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.edits.error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
@@ -208,6 +214,14 @@ fn printUsage(init: std.process.Init) !void {
         \\                             Writes `allow_no_ast_tree_procedures =
         \\                             true` (standard tree-manipulation
         \\                             helpers become no-ops in no-AST mode).
+        \\      --require-reduction-procedures
+        \\                             Writes `require_reduction_procedures =
+        \\                             true` (missing `reduction_<Var>_<N>`
+        \\                             hooks warn at generation and fail
+        \\                             compilation).
+        \\      --no-require-reduction-procedures
+        \\                             Writes `require_reduction_procedures =
+        \\                             false` (missing hooks stay silent).
         \\      --with-error-recovery  Writes `error_recovery = true`.
         \\      --no-error-recovery    Writes `error_recovery = false`.
         \\      --with-position-tracking
@@ -540,6 +554,10 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
         std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
     }
 
+    if (isRequireReductionProceduresEnabled(init, language_dir)) {
+        warnMissingReductionProcedures(init, language_dir, source);
+    }
+
     try generator.atomic_file.write(
         init.io,
         .cwd(),
@@ -565,6 +583,53 @@ fn isErrorRecoveryEnabled(init: std.process.Init, language_dir: []const u8) bool
     if (std.mem.startsWith(u8, rest, "true")) return true;
     if (std.mem.startsWith(u8, rest, "false")) return false;
     return false;
+}
+
+fn isRequireReductionProceduresEnabled(init: std.process.Init, language_dir: []const u8) bool {
+    var arena = std.heap.ArenaAllocator.init(init.gpa);
+    defer arena.deinit();
+    const path = std.fs.path.join(arena.allocator(), &.{ language_dir, "config.zig" }) catch return false;
+    const content = std.Io.Dir.cwd().readFileAlloc(init.io, path, arena.allocator(), .limited(max_source_size)) catch return false;
+    const prefix = "pub const require_reduction_procedures = ";
+    const idx = std.mem.indexOf(u8, content, prefix) orelse return false;
+    const rest = content[idx + prefix.len ..];
+    if (std.mem.startsWith(u8, rest, "true")) return true;
+    if (std.mem.startsWith(u8, rest, "false")) return false;
+    return false;
+}
+
+/// Best-effort text scan for a `reduction_<Var>_<N>` declaration in
+/// `procedures.zig`. Generation-time warnings use this; the generated
+/// parser's `@hasDecl` check remains authoritative at compile time.
+fn hasProcedureDeclaration(source: []const u8, name: []const u8) bool {
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, source, offset, name)) |index| {
+        const before_ok = index == 0 or !isIdentifierByte(source[index - 1]);
+        const after = index + name.len;
+        const after_ok = after >= source.len or !isIdentifierByte(source[after]);
+        if (before_ok and after_ok) return true;
+        offset = index + 1;
+    }
+    return false;
+}
+
+fn warnMissingReductionProcedures(init: std.process.Init, language_dir: []const u8, grammar_source: []const u8) void {
+    const required = generator.requiredReductionProceduresFromSource(init.arena.allocator(), grammar_source) catch return;
+    const procedures_path = std.fs.path.join(init.gpa, &.{ language_dir, "procedures.zig" }) catch return;
+    defer init.gpa.free(procedures_path);
+    const procedures_source = std.Io.Dir.cwd().readFileAlloc(init.io, procedures_path, init.gpa, .limited(max_source_size)) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.log.warn("require_reduction_procedures is enabled but procedures.zig was not found", .{});
+            return;
+        },
+        else => return,
+    };
+    defer init.gpa.free(procedures_source);
+    for (required) |item| {
+        if (!hasProcedureDeclaration(procedures_source, item.procedure_name)) {
+            std.log.warn("missing reduction procedure '{s}' for production {s} (rhs_index {s})", .{ item.procedure_name, item.shape, item.rhs_index });
+        }
+    }
 }
 
 fn sourceHasRecoveryAnnotations(allocator: std.mem.Allocator, source: []const u8) bool {
@@ -1048,6 +1113,7 @@ test "every constant written by config_file.write stays editable" {
         "ast",
         "procedures",
         "allow_no_ast_tree_procedures",
+        "require_reduction_procedures",
         "error_recovery",
         "ast_for_terminals",
         "position_tracking",
@@ -1063,6 +1129,14 @@ test "every constant written by config_file.write stays editable" {
     // The annotated constant keeps its type through the edit.
     const edited_position = try generator.config_file.editedConstantSource(arena.allocator(), fresh, "position_tracking", "true");
     try std.testing.expect(std.mem.indexOf(u8, edited_position, "pub const position_tracking: ?bool = true;") != null);
+}
+
+test "hasProcedureDeclaration matches whole hook names only" {
+    try std.testing.expect(hasProcedureDeclaration("pub fn reduction_Foo_0(", "reduction_Foo_0"));
+    try std.testing.expect(hasProcedureDeclaration("pub const reduction_Foo_0 = helper;", "reduction_Foo_0"));
+    try std.testing.expect(!hasProcedureDeclaration("pub fn reduction_Foo_01(", "reduction_Foo_0"));
+    try std.testing.expect(!hasProcedureDeclaration("pub fn reduction_Foo_0x(", "reduction_Foo_0"));
+    try std.testing.expect(!hasProcedureDeclaration("pub fn other(", "reduction_Foo_0"));
 }
 
 test "bootstrapZigProject refuses to overwrite an existing build.zig" {

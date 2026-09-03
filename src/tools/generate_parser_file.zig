@@ -20,6 +20,7 @@ const CliOptions = struct {
     position_tracking_edited: bool = false,
     input_streaming_edited: bool = false,
     allow_no_ast_tree_procedures_edited: bool = false,
+    require_reduction_procedures_edited: bool = false,
     indentation_syntax_edited: bool = false,
 };
 
@@ -84,6 +85,7 @@ fn editedConfigFromFlags(gpa: std.mem.Allocator, base: []const u8, options: CliO
         .{ "position_tracking", if (options.position_tracking_edited) (if (o.with_position_tracking orelse false) "true" else "false") else null },
         .{ "input_streaming", if (options.input_streaming_edited) (if (o.with_input_streaming) "true" else "false") else null },
         .{ "allow_no_ast_tree_procedures", if (options.allow_no_ast_tree_procedures_edited) (if (o.allow_no_ast_tree_procedures) "true" else "false") else null },
+        .{ "require_reduction_procedures", if (options.require_reduction_procedures_edited) (if (o.require_reduction_procedures) "true" else "false") else null },
         .{ "indentation_syntax", if (options.indentation_syntax_edited) (if (options.indentation_syntax) "true" else "false") else null },
     }) |edit| {
         if (edit[1]) |value| {
@@ -170,6 +172,12 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
             result.generator_options.allow_no_ast_tree_procedures = true;
             result.allow_no_ast_tree_procedures_edited = true;
+        } else if (std.mem.eql(u8, arg, "--require-reduction-procedures")) {
+            result.generator_options.require_reduction_procedures = true;
+            result.require_reduction_procedures_edited = true;
+        } else if (std.mem.eql(u8, arg, "--no-require-reduction-procedures")) {
+            result.generator_options.require_reduction_procedures = false;
+            result.require_reduction_procedures_edited = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.generator_options.with_error_recovery = true;
             result.error_recovery_edited = true;
@@ -230,6 +238,11 @@ fn printUsage(init: std.process.Init) !void {
         \\      --allow-no-ast-tree-procedures
         \\                             Treats standard tree-manipulation helpers as
         \\                             no-ops in no-AST mode instead of a compile error.
+        \\      --require-reduction-procedures
+        \\                             Requires every visible production to declare
+        \\                             its `reduction_<Var>_<N>` hook.
+        \\      --no-require-reduction-procedures
+        \\                             Leaves missing hooks as silent nulls.
         \\      --with-error-recovery  Enables syntax-error recovery.
         \\      --no-error-recovery    Disables syntax-error recovery.
         \\      --with-position-tracking
