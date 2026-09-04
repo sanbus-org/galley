@@ -139,17 +139,8 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         }
 
         pub fn reset(self: *Self) void {
-            var remaining: usize = self.counter;
-            if (comptime supports_reserved_arena) {
-                @memset(self.memory[0..remaining], default);
-            } else {
-                for (self.segments) |segment| {
-                    if (remaining == 0) break;
-                    const used = @min(remaining, segment.len);
-                    @memset(segment[0..used], default);
-                    remaining -= used;
-                }
-            }
+            // Nodes are fully initialized by `create`, so no memory needs
+            // clearing here; dropping the counter logically frees them all.
             self.counter = 0;
             if (comptime root.ast_memory_benchmark_enabled) {
                 self.memory_benchmark = .{};
@@ -218,6 +209,8 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             node.prior = invalid_pointer;
             node.next = invalid_pointer;
             node.text_start = start;
+            node.text_length = 0;
+            node.children_count = 0;
             node.variable = variable;
             node.payload = .{};
 
