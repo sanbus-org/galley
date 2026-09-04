@@ -199,6 +199,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             test_step.dependOn(&run_procedure_hook_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_procedure_hook_tests.step);
 
+            const run_left_factoring_tests = try addLeftFactoringTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_left_factoring_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_left_factoring_tests.step);
+
             inline for ([_]bool{ true, false }) |with_ast| {
                 const run_no_ast_procedure_tests = try addNoAstProcedureTests(b, options, parser_type, with_ast, selection.names);
                 test_step.dependOn(&run_no_ast_procedure_tests.step);
@@ -671,6 +675,75 @@ fn addProcedureHookTests(
     });
     const tests = b.addTest(.{
         .name = try std.fmt.allocPrint(b.allocator, "procedure-hooks-{s}-tests", .{parser_type}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addLeftFactoringTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const generated_name = try std.fmt.allocPrint(b.allocator, "left-factoring-{s}-parser.zig", .{parser_type});
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/left-factoring/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(try std.fmt.allocPrint(b.allocator, "{s}/left-factoring/tests", .{parser_type}));
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(generated_name);
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(try std.fmt.allocPrint(b.allocator, "left-factoring-{s}-config.zig", .{parser_type}));
+    generate_parser.addArgs(&.{
+        "--with-ast",
+        "--with-procedures",
+        // Terminals stay in the tree so the shape tests can count
+        // spliced suffix children positionally.
+        "--ast-for-terminals",
+    });
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/left-factoring/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/left-factoring/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const parser_name = try std.fmt.allocPrint(b.allocator, "left-factoring-{s}", .{parser_type});
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        try std.fmt.allocPrint(b.allocator, "{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/left_factoring_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = try std.fmt.allocPrint(b.allocator, "left-factoring-{s}-tests", .{parser_type}),
         .root_module = test_mod,
         .filters = filters,
     });

@@ -220,6 +220,27 @@ pub fn requiredReductionProceduresFromSource(
     );
 }
 
+/// LL variant of `requiredReductionProceduresFromSource`: applies the same
+/// automatic left-factoring the LL emitter plans from, so generation-time
+/// warnings name the productions the generated parser's comptime check
+/// enforces. LR grammars are unaffected by factoring and use the plain
+/// collector.
+pub fn requiredLLReductionProceduresFromSource(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+) ![]RequiredReductionProcedure {
+    const parsed_grammar = try parseGrammar(allocator, source);
+    var prepared = try common.prepareGrammar(allocator, parsed_grammar, .{}, true);
+    try ll_generator.factorSharedPrefixes(allocator, &prepared);
+    return common.collectRequiredReductionProcedures(
+        allocator,
+        prepared.symbols.items,
+        prepared.rules.items,
+        prepared.augmented_start,
+        prepared.generative_terminal,
+    );
+}
+
 pub fn generateErrorMessagesAlloc(
     allocator: std.mem.Allocator,
     source: []const u8,
@@ -442,6 +463,76 @@ test "generated parser gates missing reduction hooks behind strict config" {
     try std.testing.expectEqualStrings("reduction_Item_0", required[0].procedure_name);
     try std.testing.expectEqualStrings("reduction_Item_1", required[1].procedure_name);
     try std.testing.expectEqualStrings("reduction_Start_0", required[2].procedure_name);
+}
+
+test "LL generation factors shared prefixes while LR plans them as written" {
+    const source =
+        \\Start
+        \\| Item "end"
+        \\
+        \\Item
+        \\| "a" "x"
+        \\| "a" "y"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, .{});
+    // The helper survives in grammar tables but emits no parser and no
+    // hooks: its alternatives expand inline into the parent.
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "Item_Tail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "reduction_Item_Tail_0") == null);
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "reduction_Item_Tail_1") == null);
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "parse_Item_Tail") == null);
+
+    const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, .{});
+    try std.testing.expect(std.mem.indexOf(u8, lr_output, "Item_Tail") == null);
+
+    const ll_required = try requiredLLReductionProceduresFromSource(arena.allocator(), source);
+    try std.testing.expectEqual(@as(usize, 2), ll_required.len);
+    try std.testing.expectEqualStrings("reduction_Item_0", ll_required[0].procedure_name);
+    try std.testing.expectEqualStrings("reduction_Start_0", ll_required[1].procedure_name);
+
+    const lr_required = try requiredReductionProceduresFromSource(arena.allocator(), source);
+    try std.testing.expectEqual(@as(usize, 3), lr_required.len);
+    try std.testing.expectEqualStrings("reduction_Item_0", lr_required[0].procedure_name);
+    try std.testing.expectEqualStrings("reduction_Item_1", lr_required[1].procedure_name);
+}
+
+test "LL generation still rejects indirect first-set overlap" {
+    const source =
+        \\Start
+        \\| Expression "end"
+        \\
+        \\Expression
+        \\| ArithmeticExpression
+        \\| ConditionalExpression
+        \\
+        \\ArithmeticExpression
+        \\| Operand
+        \\
+        \\Operand
+        \\| MapExpression
+        \\
+        \\MapExpression
+        \\| BlockStart "m"
+        \\
+        \\ConditionalExpression
+        \\| WrappedExpression
+        \\
+        \\WrappedExpression
+        \\| BlockStart "w"
+        \\
+        \\BlockStart
+        \\| block_start
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.AmbiguousGrammar, generateParserAlloc(arena.allocator(), source, .ll, .{}));
 }
 
 test "grammar model preserves unified recovery and procedure annotations" {

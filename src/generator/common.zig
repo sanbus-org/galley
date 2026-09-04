@@ -53,6 +53,14 @@ pub const Symbol = struct {
     id: []const u8,
     kind: SymbolKind,
     ast_enabled: bool = true,
+    /// Internal-only: set solely by the LL planner's automatic left-factoring.
+    /// Never parsed from grammar source and never user-addressable. A
+    /// transparent helper builds no node of its own and needs no hooks;
+    /// the emitter expands its alternatives inline at the single parent
+    /// call site so suffix children splice directly into the parent.
+    /// Deliberately distinct from `ast_enabled == false` (the user-facing
+    /// `_` contract), which drops the entire subtree.
+    synthetic_transparent: bool = false,
     terminals: std.ArrayList([]const u8) = .empty,
     annotations: Annotations = .{},
 };
@@ -669,10 +677,11 @@ pub fn ruleLessThan(symbols: []const Symbol, lhs: Rule, rhs: Rule) bool {
 /// Single source of truth for strict reduction-procedure coverage: whether
 /// the production at `rule_index` must declare `reduction_<Var>_<N>` when
 /// `require_reduction_procedures` is enabled. Only visible variables count:
-/// synthetic augmented/generative headers and AST-suppressed helpers
-/// (`ast_enabled == false`) produce no hook and are excluded. Both the
-/// generated parser's comptime check and the CLI's generation-time warning
-/// delegate here so they can never diverge.
+/// synthetic augmented/generative headers, AST-suppressed helpers
+/// (`ast_enabled == false`), and transparent factoring helpers (which build
+/// no node and splice into their parent) produce no hook and are excluded.
+/// Both the generated parser's comptime check and the CLI's generation-time
+/// warning delegate here so they can never diverge.
 pub fn requiresReductionProcedure(
     symbols: []const Symbol,
     rules: []const Rule,
@@ -686,6 +695,7 @@ pub fn requiresReductionProcedure(
     const header = symbols[rule.header];
     if (header.kind != .variable) return false;
     if (!header.ast_enabled) return false;
+    if (header.synthetic_transparent) return false;
     return true;
 }
 

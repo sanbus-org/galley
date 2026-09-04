@@ -56,34 +56,45 @@ pub const LLPlan = struct {
         };
     }
 
-    pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, options: common.Options) !LLPlan {
-        var builder = Builder{
-            .allocator = allocator,
-            .grammar = grammar,
-            .options = options,
-            .plan = LLPlan.init(allocator),
-        };
-        builder.plan.augmented_start = grammar.augmented_start;
-        try builder.analyzeGrammar();
-        try builder.buildParseTable();
-        if (builder.pending_ambiguity) |ambiguity| {
-            try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
-            return error.AmbiguousGrammar;
+    pub fn build(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar, options: common.Options) !LLPlan {
+        var factoring_steps: usize = 0;
+        while (true) {
+            var builder = Builder{
+                .allocator = allocator,
+                .grammar = grammar,
+                .options = options,
+                .plan = LLPlan.init(allocator),
+            };
+            builder.plan.augmented_start = grammar.augmented_start;
+            try builder.analyzeGrammar();
+            try builder.buildParseTable();
+            if (builder.pending_ambiguity) |ambiguity| {
+                if (try factorSharedPrefixStep(allocator, grammar, options, ambiguity)) {
+                    factoring_steps += 1;
+                    if (factoring_steps > max_automatic_factoring_steps) {
+                        try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+                        return error.AmbiguousGrammar;
+                    }
+                    continue;
+                }
+                try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+                return error.AmbiguousGrammar;
+            }
+            try builder.planAstSuppressedParsers();
+            try builder.finishAstSuppressedOrder();
+            builder.plan.recovery = try recovery_planning.build(
+                allocator,
+                grammar,
+                options,
+                builder.plan.nullable_rules,
+                builder.plan.first_sets,
+                builder.plan.follow_sets,
+            );
+            try builder.planNames();
+            try builder.planEmissionMetadata();
+            try builder.planParsersAndDiagnostics();
+            return builder.plan;
         }
-        try builder.planAstSuppressedParsers();
-        try builder.finishAstSuppressedOrder();
-        builder.plan.recovery = try recovery_planning.build(
-            allocator,
-            grammar,
-            options,
-            builder.plan.nullable_rules,
-            builder.plan.first_sets,
-            builder.plan.follow_sets,
-        );
-        try builder.planNames();
-        try builder.planEmissionMetadata();
-        try builder.planParsersAndDiagnostics();
-        return builder.plan;
     }
 
     pub fn parserDecision(self: *const LLPlan, symbol_index: usize, skip_ast_construction: bool) *const ParserDecision {
@@ -103,9 +114,206 @@ pub const LLPlan = struct {
 
 const Ambiguity = struct { variable: usize, terminal: usize, rule_a: usize, rule_b: usize };
 
+/// Bounds automatic left-factoring rewrites per grammar so a pathological
+/// conflict cycle fails with `AmbiguousGrammar` instead of looping.
+const max_automatic_factoring_steps: usize = 64;
+
+/// Applies one automatic left-factoring rewrite for `ambiguity` when the two
+/// conflicting productions share a nonempty RHS prefix whose occurrence
+/// annotations agree in every sharing rule. The shared prefix is hoisted
+/// into a fresh synthetic-transparent `<Variable>_Tail` variable — the same
+/// shape the diagnostic suggests, minus the node: the emitter expands the
+/// tail's alternatives inline at the single parent call site, so suffix
+/// children splice directly into the parent with identical trees and no new
+/// hooks. Returns false when the conflict has no hoistable prefix (indirect
+/// FIRST overlap, FIRST/FOLLOW clash, diverging prefix annotations, or
+/// production-level annotations on a sharing rule, which would lose their
+/// reduction site), in which case the caller still reports
+/// `AmbiguousGrammar`.
+fn factorSharedPrefixStep(
+    allocator: std.mem.Allocator,
+    grammar: *common.PreparedGrammar,
+    options: common.Options,
+    ambiguity: Ambiguity,
+) !bool {
+    _ = options;
+    const variable = ambiguity.variable;
+    const rhs_a = grammar.rules.items[ambiguity.rule_a].rhs.items;
+    const rhs_b = grammar.rules.items[ambiguity.rule_b].rhs.items;
+    var prefix_len: usize = 0;
+    while (prefix_len < rhs_a.len and prefix_len < rhs_b.len and rhs_a[prefix_len] == rhs_b[prefix_len]) : (prefix_len += 1) {}
+    if (prefix_len == 0) return false;
+
+    var sharing = std.ArrayList(usize).empty;
+    for (grammar.rules.items, 0..) |rule, rule_index| {
+        if (rule.header != variable) continue;
+        if (rule.rhs.items.len < prefix_len) continue;
+        var matches = true;
+        for (rhs_a[0..prefix_len], 0..) |symbol_index, position| {
+            if (rule.rhs.items[position] != symbol_index) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) try sharing.append(allocator, rule_index);
+    }
+    if (sharing.items.len < 2) return false;
+
+    const first_rule = grammar.rules.items[sharing.items[0]];
+    for (sharing.items[1..]) |rule_index| {
+        const rule = grammar.rules.items[rule_index];
+        for (0..prefix_len) |position| {
+            if (!annotationsEqual(first_rule.rhs_annotations.items[position], rule.rhs_annotations.items[position])) return false;
+        }
+    }
+
+    // Transparent splice has no reduction site for production-level
+    // annotations: each sharing rule's own procedures, recovery scope, and
+    // verbatim markers would have nowhere to fire once the alternatives
+    // merge into one parent production.
+    for (sharing.items) |rule_index| {
+        if (!ruleAnnotationsEmpty(grammar.rules.items[rule_index].annotations)) return false;
+    }
+
+    const variable_name = try common.symbolText(allocator, grammar.symbols.items, variable);
+    defer allocator.free(variable_name);
+    const tail_name = try allocateTailName(allocator, grammar, variable_name);
+    defer allocator.free(tail_name);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, tail_name, .variable);
+    // Not `_`-prefixed on purpose: `_` drops the subtree, while the tail's
+    // suffix children must survive spliced into the parent. The dedicated
+    // internal flag keeps `ast_enabled` true so planning treats the tail
+    // normally; only emission and hook coverage know it is transparent.
+    grammar.symbols.items[tail].synthetic_transparent = true;
+
+    var factored_rule = common.Rule{ .header = variable, .rhs_index = "" };
+    for (rhs_a[0..prefix_len], 0..) |symbol_index, position| {
+        try factored_rule.rhs.append(allocator, symbol_index);
+        try factored_rule.rhs_annotations.append(allocator, try cloneAnnotations(allocator, first_rule.rhs_annotations.items[position]));
+    }
+    try factored_rule.rhs.append(allocator, tail);
+    try factored_rule.rhs_annotations.append(allocator, .{});
+
+    var tail_rules = std.ArrayList(common.Rule).empty;
+    for (sharing.items) |rule_index| {
+        const rule = grammar.rules.items[rule_index];
+        var tail_rule = common.Rule{ .header = tail, .rhs_index = "" };
+        tail_rule.annotations = try cloneAnnotations(allocator, rule.annotations);
+        for (rule.rhs.items[prefix_len..], prefix_len..) |symbol_index, position| {
+            try tail_rule.rhs.append(allocator, symbol_index);
+            try tail_rule.rhs_annotations.append(allocator, try cloneAnnotations(allocator, rule.rhs_annotations.items[position]));
+        }
+        try tail_rules.append(allocator, tail_rule);
+    }
+
+    var removal = sharing.items.len;
+    while (removal > 0) {
+        removal -= 1;
+        _ = grammar.rules.orderedRemove(sharing.items[removal]);
+    }
+    try grammar.rules.append(allocator, factored_rule);
+    for (tail_rules.items) |tail_rule| try grammar.rules.append(allocator, tail_rule);
+
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+    try renumberRhsIndices(allocator, grammar, variable);
+    try renumberRhsIndices(allocator, grammar, tail);
+    return true;
+}
+
+/// Rewrites a prepared grammar's shared prefixes to fixpoint without
+/// planning anything else, so strict hook collection for LL sees the same
+/// productions the LL emitter's comptime check sees. Grammars with no
+/// factorable conflict are returned untouched.
+pub fn factorSharedPrefixes(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar) !void {
+    var steps: usize = 0;
+    while (try factorOneConflict(allocator, grammar)) {
+        steps += 1;
+        if (steps > max_automatic_factoring_steps) return;
+    }
+}
+
+fn factorOneConflict(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar) !bool {
+    var probe = Builder{
+        .allocator = allocator,
+        .grammar = grammar,
+        .options = .{},
+        .plan = LLPlan.init(allocator),
+    };
+    try probe.analyzeGrammar();
+    try probe.buildParseTable();
+    const ambiguity = probe.pending_ambiguity orelse return false;
+    return factorSharedPrefixStep(allocator, grammar, .{}, ambiguity);
+}
+
+fn cloneAnnotations(allocator: std.mem.Allocator, source: common.Annotations) !common.Annotations {
+    var result = common.Annotations{
+        .verbatim = source.verbatim,
+        .verbatim_consume = source.verbatim_consume,
+    };
+    if (source.verbatim_literal) |literal| result.verbatim_literal = try allocator.dupe(u8, literal);
+    for (source.procedures.items) |name| try result.procedures.append(allocator, try allocator.dupe(u8, name));
+    for (source.recovery_points.items) |point| {
+        try result.recovery_points.append(allocator, .{
+            .terminal = try allocator.dupe(u8, point.terminal),
+            .@"resume" = point.@"resume",
+        });
+    }
+    return result;
+}
+
+fn renumberRhsIndices(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar, header: usize) !void {
+    var next: usize = 0;
+    for (grammar.rules.items) |*rule| {
+        if (rule.header != header) continue;
+        rule.rhs_index = try std.fmt.allocPrint(allocator, "{d}", .{next});
+        next += 1;
+    }
+}
+
+fn annotationsEqual(a: common.Annotations, b: common.Annotations) bool {
+    if (a.procedures.items.len != b.procedures.items.len) return false;
+    for (a.procedures.items, b.procedures.items) |a_name, b_name| {
+        if (!std.mem.eql(u8, a_name, b_name)) return false;
+    }
+    if (a.recovery_points.items.len != b.recovery_points.items.len) return false;
+    for (a.recovery_points.items, b.recovery_points.items) |a_point, b_point| {
+        if (!std.mem.eql(u8, a_point.terminal, b_point.terminal)) return false;
+        if (a_point.@"resume" != b_point.@"resume") return false;
+    }
+    if (a.verbatim != b.verbatim) return false;
+    if (a.verbatim_consume != b.verbatim_consume) return false;
+    if (a.verbatim_literal == null and b.verbatim_literal == null) return true;
+    if (a.verbatim_literal == null or b.verbatim_literal == null) return false;
+    return std.mem.eql(u8, a.verbatim_literal.?, b.verbatim_literal.?);
+}
+
+fn ruleAnnotationsEmpty(annotations: common.Annotations) bool {
+    return annotations.procedures.items.len == 0 and
+        annotations.recovery_points.items.len == 0 and
+        !annotations.verbatim and
+        annotations.verbatim_literal == null;
+}
+
+fn allocateTailName(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, variable_name: []const u8) ![]const u8 {
+    var candidate = try std.fmt.allocPrint(allocator, "{s}_Tail", .{variable_name});
+    var suffix: usize = 0;
+    while (hasSymbolId(grammar, candidate)) : (suffix += 1) {
+        allocator.free(candidate);
+        candidate = try std.fmt.allocPrint(allocator, "{s}_Tail{d}", .{ variable_name, suffix });
+    }
+    return candidate;
+}
+
+fn hasSymbolId(grammar: *const common.PreparedGrammar, id: []const u8) bool {
+    for (grammar.symbols.items) |symbol| {
+        if (std.mem.eql(u8, symbol.id, id)) return true;
+    }
+    return false;
+}
+
 const Builder = struct {
     allocator: std.mem.Allocator,
-    grammar: *const common.PreparedGrammar,
+    grammar: *common.PreparedGrammar,
     options: common.Options,
     plan: LLPlan,
     pending_ambiguity: ?Ambiguity = null,
@@ -483,20 +691,11 @@ const Builder = struct {
     }
 
     fn freshTailName(self: *Builder, variable_name: []const u8) ![]const u8 {
-        var candidate = try std.fmt.allocPrint(self.allocator, "{s}_Tail", .{variable_name});
-        var suffix: usize = 0;
-        while (self.grammar.symbols.items.len != 0 and self.symbolIdTaken(candidate)) : (suffix += 1) {
-            self.allocator.free(candidate);
-            candidate = try std.fmt.allocPrint(self.allocator, "{s}_Tail{d}", .{ variable_name, suffix });
-        }
-        return candidate;
+        return allocateTailName(self.allocator, self.grammar, variable_name);
     }
 
     fn symbolIdTaken(self: *Builder, id: []const u8) bool {
-        for (self.grammar.symbols.items) |symbol| {
-            if (std.mem.eql(u8, symbol.id, id)) return true;
-        }
-        return false;
+        return hasSymbolId(self.grammar, id);
     }
 
     fn hasParseEntries(self: *Builder, variable: usize) bool {
@@ -516,6 +715,14 @@ const Builder = struct {
         // its suppressed parsers present.
         for (self.grammar.variables.items) |variable| {
             if (self.hasParseEntries(variable)) try self.planAstSuppressedChildren(variable, false);
+        }
+        // Synthetic transparent tails never emit parsers, but both decision
+        // variants must still be planned: inline expansion sites inside
+        // suppressed bodies read the skip variant's tree.
+        for (self.grammar.variables.items) |variable| {
+            if (!self.grammar.symbols.items[variable].synthetic_transparent) continue;
+            if (!self.hasParseEntries(variable)) continue;
+            try self.plan.needs_ast_suppressed_parser.put(variable, {});
         }
         var generated = std.AutoHashMap(usize, void).init(self.allocator);
         while (generated.count() < self.plan.needs_ast_suppressed_parser.count()) {
@@ -788,11 +995,106 @@ fn testAmbiguousGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {
     return grammar;
 }
 
-test "LL planning reports ambiguous first sets" {
+test "LL planning still rejects indirect first-set conflicts" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // No shared RHS prefix: Root -> Via and Root -> "a" overlap only through
+    // Via -> "a", so there is nothing to hoist and planning must fail.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const via = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Via", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{via});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
+    try appendTestRule(allocator, &grammar.rules, via, "0", &.{a});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "LL planning automatically factors directly shared prefixes" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
     var grammar = try testAmbiguousGrammar(allocator);
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    const plan = try LLPlan.build(allocator, &grammar, options);
+
+    var root: usize = undefined;
+    var tail: usize = undefined;
+    var tail_found = false;
+    for (grammar.symbols.items, 0..) |symbol, index| {
+        if (std.mem.eql(u8, symbol.id, "Root")) root = index;
+        if (std.mem.eql(u8, symbol.id, "Root_Tail")) {
+            tail = index;
+            tail_found = true;
+        }
+    }
+    try std.testing.expect(tail_found);
+    // Transparent tail: no node and no hooks of its own — suffix children
+    // splice into the parent — but planning still treats it normally, so
+    // `ast_enabled` stays true and suppressed machinery is untouched.
+    try std.testing.expect(grammar.symbols.items[tail].synthetic_transparent);
+    try std.testing.expect(grammar.symbols.items[tail].ast_enabled);
+
+    var root_rule_count: usize = 0;
+    var tail_rule_count: usize = 0;
+    for (grammar.rules.items) |rule| {
+        if (rule.header == root) {
+            root_rule_count += 1;
+            try std.testing.expectEqual(@as(usize, 2), rule.rhs.items.len);
+            try std.testing.expectEqual(tail, rule.rhs.items[1]);
+        }
+        if (rule.header == tail) tail_rule_count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), root_rule_count);
+    try std.testing.expectEqual(@as(usize, 2), tail_rule_count);
+
+    // One parse entry per side: Root decides on the shared terminal, the
+    // tail decides on the distinguishing continuation.
+    var root_entries: usize = 0;
+    for (plan.parse_table.items) |entry| if (entry.variable == root) {
+        root_entries += 1;
+    };
+    try std.testing.expectEqual(@as(usize, 1), root_entries);
+}
+
+test "LL planning keeps conflicts whose prefix annotations diverge" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = try testAmbiguousGrammar(allocator);
+    for (grammar.rules.items) |*rule| {
+        if (!std.mem.eql(u8, grammar.symbols.items[rule.header].id, "Root")) continue;
+        if (rule.rhs.items.len != 2) continue;
+        try rule.rhs_annotations.items[0].procedures.append(allocator, try allocator.dupe(u8, "prefixHook"));
+        break;
+    }
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "LL planning keeps conflicts whose productions carry procedures" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = try testAmbiguousGrammar(allocator);
+    // Production-level procedures would lose their reduction site once the
+    // alternatives merge into one transparent parent production.
+    for (grammar.rules.items) |*rule| {
+        if (!std.mem.eql(u8, grammar.symbols.items[rule.header].id, "Root")) continue;
+        if (rule.rhs.items.len != 2) continue;
+        try rule.annotations.procedures.append(allocator, try allocator.dupe(u8, "productionHook"));
+        break;
+    }
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
 }

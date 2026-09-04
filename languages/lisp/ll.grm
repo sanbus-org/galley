@@ -27,11 +27,8 @@ Form
 Abbreviation
 | "'" OptionalBlank Form
 | "`" OptionalBlank Form
-| "," UnquoteSuffix OptionalBlank Form
-
-UnquoteSuffix
-| "@"
-|
+| "," "@" OptionalBlank Form
+| "," OptionalBlank Form
 
 # -- Lists: proper and dotted pairs ------------------------
 
@@ -276,18 +273,15 @@ _EscapedSymbolContent
 # Radix numbers (#b #o #x) are in HashForm. + and - are symbols.
 
 DecimalNumber
-| digit _DigitTail DecimalSuffix
+| digit _DigitTail "/" digit _DigitTail
+| digit _DigitTail "." digit _DigitTail ExponentTail
+| digit _DigitTail ExponentTail
+| digit _DigitTail "+" _SymbolTail
+| digit _DigitTail "-" _SymbolTail
 
 _DigitTail
 | digit _DigitTail
 |
-
-DecimalSuffix
-| "/" digit _DigitTail
-| "." digit _DigitTail ExponentTail
-| ExponentTail
-| "+" _SymbolTail
-| "-" _SymbolTail
 
 ExponentTail
 | ExpMarker ExpSign digit _DigitTail

@@ -555,7 +555,7 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
     }
 
     if (isRequireReductionProceduresEnabled(init, language_dir)) {
-        warnMissingReductionProcedures(init, language_dir, source);
+        warnMissingReductionProcedures(init, language_dir, source, parser_type);
     }
 
     try generator.atomic_file.write(
@@ -613,8 +613,14 @@ fn hasProcedureDeclaration(source: []const u8, name: []const u8) bool {
     return false;
 }
 
-fn warnMissingReductionProcedures(init: std.process.Init, language_dir: []const u8, grammar_source: []const u8) void {
-    const required = generator.requiredReductionProceduresFromSource(init.arena.allocator(), grammar_source) catch return;
+fn warnMissingReductionProcedures(init: std.process.Init, language_dir: []const u8, grammar_source: []const u8, parser_type: generator.ParserType) void {
+    const required = switch (parser_type) {
+        // The LL emitter plans from auto-factored productions, so warnings
+        // must collect from the same factored shapes the generated
+        // comptime check enforces; LR plans the grammar as written.
+        .ll => generator.requiredLLReductionProceduresFromSource(init.arena.allocator(), grammar_source) catch return,
+        .lr => generator.requiredReductionProceduresFromSource(init.arena.allocator(), grammar_source) catch return,
+    };
     const procedures_path = std.fs.path.join(init.gpa, &.{ language_dir, "procedures.zig" }) catch return;
     defer init.gpa.free(procedures_path);
     const procedures_source = std.Io.Dir.cwd().readFileAlloc(init.io, procedures_path, init.gpa, .limited(max_source_size)) catch |err| switch (err) {
