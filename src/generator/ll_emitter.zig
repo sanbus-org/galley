@@ -16,6 +16,12 @@ const indented = common.indented;
 const SyntaxErrorHandlerSpec = planning.SyntaxErrorHandler;
 const LLPlan = planning.LLPlan;
 
+/// Explicit error set for the transparent-tail expansion cycle
+/// (emitChildParseLine → emitTransparentTailInline → Switch → Leaf → back).
+/// Covers writer failures and allocation; naming it breaks the inference
+/// loop Zig reports for mutually recursive emitters.
+const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
+
 /// The LL backend tracks the in-progress variable stack whenever the generated
 /// parser is compiled with the stack enabled (`syntax_error_stack_depth > 1`).
 /// The generated source gates the push/pop instrumentation on the comptime
@@ -247,6 +253,10 @@ const Generator = struct {
     fn emitParserFunctions(self: *Generator, writer: *std.Io.Writer) !void {
         for (self.plan.emitted_symbols) |symbol_index| {
             const symbol = self.symbols.items[symbol_index];
+            // Transparent factoring helpers never emit parsers: their
+            // alternatives expand inline at the single parent call site
+            // (see emitChildParseLine), so there is no callee to generate.
+            if (symbol.synthetic_transparent) continue;
             if (symbol.kind == .variable) {
                 try self.emitVariableParser(writer, symbol_index, false);
             } else {
@@ -260,6 +270,9 @@ const Generator = struct {
         for (self.plan.ast_suppressed_order) |symbol_index| {
             try writer.writeByte('\n');
             const symbol = self.symbols.items[symbol_index];
+            // Same as above: transparent helpers expand inline in both
+            // variants, so neither variant emits a function.
+            if (symbol.synthetic_transparent) continue;
             if (symbol.kind == .variable) {
                 if (!self.hasParseEntries(symbol_index)) continue;
                 try self.emitVariableParser(writer, symbol_index, true);
@@ -365,12 +378,60 @@ const Generator = struct {
 
     fn ruleHasNodeChildren(self: *Generator, rule: Rule, skip_ast_construction: bool) bool {
         for (rule.rhs.items) |symbol_index| {
+            const child = self.symbols.items[symbol_index];
+            // Transparent helpers contribute no node of their own; only
+            // their spliced suffix children count.
+            if (child.kind == .variable and child.synthetic_transparent) {
+                if (self.transparentHasNodeChildren(symbol_index, skip_ast_construction)) return true;
+                continue;
+            }
             const child_skips_ast_construction = (self.options.with_ast or self.options.with_procedures) and
                 (skip_ast_construction or
                     (self.symbols.items[symbol_index].kind == .variable and !self.symbols.items[symbol_index].ast_enabled));
             if (self.symbolReturnsNode(symbol_index, child_skips_ast_construction)) return true;
         }
         return false;
+    }
+
+    fn transparentHasNodeChildren(self: *Generator, tail: usize, skip_ast_construction: bool) bool {
+        // Terminates: factored suffixes predate their tail, so no tail rule
+        // RHS can reference a transparent symbol.
+        for (self.rules.items) |rule| {
+            if (rule.header != tail) continue;
+            if (self.ruleHasNodeChildren(rule, skip_ast_construction)) return true;
+        }
+        return false;
+    }
+
+    /// Number of child slots `rule` occupies in a caller's fixed array once
+    /// transparent helpers expand inline. Plain symbols occupy one slot; a
+    /// transparent helper occupies its widest alternative (each prong fills
+    /// a static prefix of those slots, so siblings after it start past the
+    /// maximum). Only matters without AST construction, where children live
+    /// in caller-owned stack arrays.
+    fn expandedSlotCount(self: *Generator, rule: Rule) usize {
+        var total: usize = 0;
+        for (rule.rhs.items) |symbol_index| total += self.expandedSymbolSlots(symbol_index);
+        return total;
+    }
+
+    fn expandedSymbolSlots(self: *Generator, symbol_index: usize) usize {
+        const symbol = self.symbols.items[symbol_index];
+        if (symbol.kind == .variable and symbol.synthetic_transparent) {
+            var widest: usize = 0;
+            for (self.rules.items) |rule| {
+                if (rule.header != symbol_index) continue;
+                widest = @max(widest, self.expandedSlotCount(rule));
+            }
+            return widest;
+        }
+        return 1;
+    }
+
+    fn expandedChildSlot(self: *Generator, rule: Rule, position: usize) usize {
+        var offset: usize = 0;
+        for (rule.rhs.items[0..position]) |symbol_index| offset += self.expandedSymbolSlots(symbol_index);
+        return offset;
     }
 
     /// Emits the neutral node result for the CURRENT configuration: typed by
@@ -480,7 +541,7 @@ const Generator = struct {
             // (combo-driven node building is decided inside each child line).
             const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children, child_index);
             }
             try writer.writeAll("        frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;\n");
             try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, "        ");
@@ -555,7 +616,7 @@ const Generator = struct {
             try writer.writeByte('\n');
             const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children, child_index);
             }
             try writer.writeByte('\n');
             try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, "        ");
@@ -614,7 +675,7 @@ const Generator = struct {
                 try writer.writeAll("    for (0..counter) |_| {\n");
                 const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children);
+                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children, child_index);
                 }
                 try writer.writeAll("    }\n");
             }
@@ -687,10 +748,10 @@ const Generator = struct {
                 \\{s}}};
                 \\{s}try frames.append(semantic_allocator, frame);
                 \\
-            , .{ indent, indent, indent, self.variableIndex(params.variable), indent, params.rule.rhs.items.len, indent, indent });
+            , .{ indent, indent, indent, self.variableIndex(params.variable), indent, self.expandedSlotCount(params.rule), indent, indent });
             const skip_ast_for_children = params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled;
             for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children);
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children, child_index);
             }
         } else {
             if (params.returns_node) {
@@ -707,7 +768,7 @@ const Generator = struct {
             }
             const skip_ast_for_children = params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled;
             for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, if (params.returns_node) "node" else null, if (params.returns_node) "repeating_node_address" else null, indent, skip_ast_for_children);
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, if (params.returns_node) "node" else null, if (params.returns_node) "repeating_node_address" else null, indent, skip_ast_for_children, child_index);
             }
             if (!params.returns_node and params.rule.rhs.items.len > params.self_index + 1) {
                 try writer.print("{s}counter += 1;\n", .{indent});
@@ -1017,7 +1078,7 @@ const Generator = struct {
 
         if (rule.rhs.items.len != 0) {
             if (!self.options.with_ast and parent_returns_node and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
-                try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = .{{null}} ** {d};\n", .{ indent, rule.rhs.items.len, rule.rhs.items.len });
+                try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = .{{null}} ** {d};\n", .{ indent, self.expandedSlotCount(rule), self.expandedSlotCount(rule) });
             }
             if (captures_root) {
                 try writer.print("{s}var root_node: root.data_structures.VariableResult = {s};\n", .{ indent, self.missingNode() });
@@ -1038,6 +1099,7 @@ const Generator = struct {
                         null,
                     indent,
                     skip_ast_construction,
+                    child_index,
                 );
             }
         }
@@ -1090,7 +1152,7 @@ const Generator = struct {
         }
     }
 
-    fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool) !void {
+    fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool, slot_index: usize) !void {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
@@ -1102,6 +1164,17 @@ const Generator = struct {
         // grammar/callgraph fact — never a property of the combo rendered.
         const child_skips_ast_construction = skip_ast_construction or (child.kind == .variable and !child.ast_enabled);
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
+        // The single transparency gate: synthetic factoring helpers never
+        // emit a call. Their alternatives expand inline here so suffix
+        // children parse exactly as direct children of the caller — same
+        // parsers, same occurrence/recovery attribution, same slots — with
+        // no node and no hooks of their own. Every body (normal,
+        // self-repeating, suppressed) flows through this function, so
+        // every combo splices identically.
+        if (child.kind == .variable and child.synthetic_transparent) {
+            try self.emitTransparentTailInline(writer, symbol_index, rule, child_index, parent, parent_address, indent, skip_ast_construction);
+            return;
+        }
         const call_name = if (symbol_index == parent_variable)
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
@@ -1129,7 +1202,7 @@ const Generator = struct {
                         \\{s}    }}
                         \\{s}}}
                         \\
-                    , .{ indent, indent, parent_address.?, child_index, indent, parent.?, parent_address.?, child_index, indent, indent });
+                    , .{ indent, indent, parent_address.?, slot_index, indent, parent.?, parent_address.?, slot_index, indent, indent });
                     return;
                 }
                 try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
@@ -1194,6 +1267,135 @@ const Generator = struct {
             }
             try writer.print("; // child {d}\n", .{child_index});
             if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
+        }
+    }
+
+    /// Carries the grandparent call-site targets through a transparent tail
+    /// expansion so suffix children attach exactly where a direct child
+    /// would. The tail's own occurrence carries no annotations by
+    /// construction (see factorSharedPrefixStep), so nothing is dropped by
+    /// not emitting a call for it.
+    const TransparentInlineContext = struct {
+        parent_rule: Rule,
+        tail_position: usize,
+        parent: ?[]const u8,
+        parent_address: ?[]const u8,
+        skip_ast_construction: bool,
+    };
+
+    fn emitTransparentTailInline(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        tail: usize,
+        parent_rule: Rule,
+        tail_position: usize,
+        parent: ?[]const u8,
+        parent_address: ?[]const u8,
+        indent: []const u8,
+        skip_ast_construction: bool,
+    ) EmitError!void {
+        // The planned decision already starts at offset zero, which matches
+        // the inline point: the shared prefix was consumed by the normal
+        // child lines above, so lookahead begins fresh here.
+        const decision = self.plan.parserDecision(tail, skip_ast_construction);
+        try self.emitTransparentTailSwitch(writer, tail, decision.tree, 0, indent, .{
+            .parent_rule = parent_rule,
+            .tail_position = tail_position,
+            .parent = parent,
+            .parent_address = parent_address,
+            .skip_ast_construction = skip_ast_construction,
+        });
+    }
+
+    fn emitTransparentTailSwitch(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        tail: usize,
+        node: *const switch_planning.Node,
+        prefix_length: usize,
+        indent: []const u8,
+        context: TransparentInlineContext,
+    ) EmitError!void {
+        if (node.groups.items.len == 0) {
+            if (node.fallback) |rule_index| {
+                try self.emitTransparentTailLeaf(writer, tail, rule_index, indent, context);
+                return;
+            }
+        }
+
+        const step_length = node.step_length;
+        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+        for (node.groups.items) |group| {
+            try writer.print("{s}    ", .{indent});
+            for (group.heads.items, 0..) |head, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.print("{d}", .{bytesToInt(head)});
+            }
+            try writer.writeAll(" => { // ");
+            for (group.heads.items, 0..) |head, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try writer.writeByte('\'');
+                try emitEscapedForComment(writer, head);
+                try writer.writeByte('\'');
+            }
+            try writer.writeByte('\n');
+
+            if (group.child.isLeaf()) {
+                try self.emitTransparentTailLeaf(writer, tail, group.child.fallback.?, indent, context);
+            } else {
+                var child_indent = std.ArrayList(u8).empty;
+                try child_indent.appendSlice(self.allocator, indent);
+                try child_indent.appendSlice(self.allocator, "        ");
+                try self.emitTransparentTailSwitch(writer, tail, group.child, prefix_length + step_length, child_indent.items, context);
+                try writer.writeByte('\n');
+            }
+            try writer.print("{s}    }},\n", .{indent});
+        }
+        // Transparent helpers head no self-repeating loop by construction
+        // (factored suffixes predate their tail), so the error branch always
+        // reports rather than breaking a repetition.
+        //
+        // A fallback rule must splice through emitTransparentTailLeaf like
+        // every other tail leaf: the generic else would emit a full rule
+        // body for the synthetic tail, redeclaring child_nodes inside the
+        // parent's body scope (and finalizing a node the tail must never
+        // own). Only a missing fallback delegates for the error branch,
+        // which emits no rule body.
+        if (node.fallback) |rule_index| {
+            try writer.print("{s}    else => {{ // ''\n", .{indent});
+            try self.emitTransparentTailLeaf(writer, tail, rule_index, indent, context);
+            try writer.print("{s}    }},\n", .{indent});
+        } else {
+            try self.emitSwitchElse(writer, tail, node, prefix_length, indent, context.skip_ast_construction, false);
+        }
+        try writer.print("{s}}}", .{indent});
+    }
+
+    fn emitTransparentTailLeaf(
+        self: *Generator,
+        writer: *std.Io.Writer,
+        tail: usize,
+        tail_rule_index: usize,
+        indent: []const u8,
+        context: TransparentInlineContext,
+    ) EmitError!void {
+        const tail_rule = self.rules.items[tail_rule_index];
+        const leaf_indent = try indented(self.allocator, indent, 8);
+        try self.emitDebugRuleExpansion(writer, tail_rule, tail, leaf_indent);
+        const base_slot = self.expandedChildSlot(context.parent_rule, context.tail_position);
+        for (tail_rule.rhs.items, 0..) |symbol_index, suffix_index| {
+            try self.emitChildParseLine(
+                writer,
+                symbol_index,
+                tail,
+                tail_rule,
+                suffix_index,
+                context.parent,
+                context.parent_address,
+                leaf_indent,
+                context.skip_ast_construction,
+                base_slot + self.expandedChildSlot(tail_rule, suffix_index),
+            );
         }
     }
 

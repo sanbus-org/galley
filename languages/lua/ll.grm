@@ -15,12 +15,9 @@ Item
 | character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 DashItem
-| "-" DashAfter
-
-DashAfter
-| "-[[" _LongStringContent
-| "-" _LineCommentTail
-| character^"-"
+| "-" "-[[" _LongStringContent
+| "-" "-" _LineCommentTail
+| "-" character^"-"
 
 BraceItems
 | BraceItem BraceItems

@@ -88,35 +88,23 @@ ExpressionTail
 OperandAndNumber
 | WrappedLogicBody
 | Number
-| Operand OperandTail
+| Operand "[" Expression "]"
+| Operand "[" Expression "?"
+| Operand "[" Expression "^" Expression "]"
+| Operand "[" "]"
+| Operand "[" ":" Expression "]"
+| Operand
 
 Operand
-| LowercaseId OperandLowercaseIdTail
+| LowercaseId "." Id
+| LowercaseId "(" Parameters ")"
+| LowercaseId "%"
+| LowercaseId ":" UppercaseId CompoundIdTail
+| LowercaseId
 | UppercaseId OperandUppercaseIdTail
 | UnderscoreId
 | String
 | List
-
-OperandTail
-| "[" ListGetTail
-|
-
-ListGetTail
-| Expression ListGetExpressionTail
-| "]"
-| ":" Expression "]"
-
-ListGetExpressionTail
-| "]"
-| "?"
-| "^" Expression "]"
-
-OperandLowercaseIdTail
-| "." Id
-| "(" Parameters ")"
-| "%"
-| ":" UppercaseId CompoundIdTail
-|
 
 CompoundIdTail
 | "." Id

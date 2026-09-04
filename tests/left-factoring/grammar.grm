@@ -1,0 +1,11 @@
+Start
+| Item "end"
+| Pair "end"
+
+Item
+| "a" "x"
+| "a" "y"
+
+Pair
+| "p" "a" "x"
+| "p" "a"

@@ -276,8 +276,19 @@ Factor
 | Number
 ```
 
-When two productions of a variable do share a nonempty prefix, generation warns
-with a suggested left-factored rewrite (a fresh `<Variable>_Tail` production),
+When two productions of a variable do share a nonempty prefix, the LL
+generator applies that rewrite automatically: it hoists the shared prefix
+and plans from the factored grammar, expanding the `<Variable>_Tail`
+alternatives inline at the single parent call site. The helper builds no
+node and needs no hooks — suffix children splice directly into the parent,
+so the tree and the surviving `reduction_<Var>_<N>` hook are identical to
+the unfactored shape. The merged hook can no longer tell which alternative
+matched except through its children, exactly as with a hand-factored
+grammar minus the tail hooks. Generation still warns with the suggested
+rewrite only when automatic factoring cannot preserve behavior: the prefix
+occurrences carry different annotations, a production carries its own
+annotations, or the overlap is indirect (terminals shared through
+different derivation chains rather than a common RHS prefix).
 as in:
 
 ```
