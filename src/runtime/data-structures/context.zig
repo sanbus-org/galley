@@ -547,11 +547,9 @@ pub const Context = struct {
                 advanceVerbatimPositions(&self.line, &self.column, self.chunk_buffer[body_start..body_end]);
             }
         } else {
-            const discard = self.token.len;
             self.token.head = body_end;
             self.token.len = 0;
             if (comptime root.position_tracking_enabled) {
-                if (discard != 0) self.column_offsets.pop(discard);
                 advanceVerbatimPositions(&self.line, &self.column, self.token.buffer[body_start..body_end]);
             }
         }
@@ -679,11 +677,9 @@ pub const Context = struct {
             return;
         }
 
-        const discard = self.token.len;
         self.token.head = body_end;
         self.token.len = 0;
         if (comptime root.position_tracking_enabled) {
-            if (discard != 0) self.column_offsets.pop(discard);
             advanceVerbatimPositionsFromScan(&self.line, &self.column, body_end - body_start, capture);
         }
     }
@@ -951,20 +947,25 @@ pub const Context = struct {
         if (comptime root.position_tracking_enabled) {
             if (comptime root.config.indentation_syntax) {
                 self.line += self.line_offsets.sum(0, length);
-            }
-            self.column += self.column_offsets.sum(0, length);
-            const newlines = summarizeNewlines(self.token.items()[0..length]);
-            if (newlines.last) |last_newline| {
-                self.column = self.column_offsets.sum(@intCast(last_newline), length);
-            }
-            if (comptime !root.config.indentation_syntax) {
-                self.line += newlines.count;
-            }
-
-            if (comptime root.config.indentation_syntax) {
+                self.column += self.column_offsets.sum(0, length);
+                const newlines = summarizeNewlines(self.token.items()[0..length]);
+                if (newlines.last) |last_newline| {
+                    self.column = self.column_offsets.sum(@intCast(last_newline), length);
+                }
                 self.line_offsets.pop(length);
+                self.column_offsets.pop(length);
+            } else {
+                // Non-indentation grammars append a constant 1 per lexed byte,
+                // so the offset sums equal plain lengths and the per-byte array
+                // buys nothing. Keep the newline scan, drop the array passes.
+                const newlines = summarizeNewlines(self.token.items()[0..length]);
+                self.line += newlines.count;
+                if (newlines.last) |last_newline| {
+                    self.column = @intCast(@as(usize, length) - last_newline);
+                } else {
+                    self.column += length;
+                }
             }
-            self.column_offsets.pop(length);
         }
         self.token.pop(length);
         if (comptime builtin.mode == .Debug) {
@@ -1154,10 +1155,8 @@ pub const Context = struct {
             }
         }
 
-        if (comptime root.position_tracking_enabled) {
-            if (comptime root.config.indentation_syntax) {
-                self.line_offsets.append(0);
-            }
+        if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
+            self.line_offsets.append(0);
             self.column_offsets.append(1);
         }
         if (comptime root.config.indentation_syntax) {
