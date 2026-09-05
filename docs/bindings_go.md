@@ -135,6 +135,23 @@ Override messages may contain `{line}`, `{column}`, `{unexpected}`,
 `{expected}`, and `{context}` placeholders, expanded against the failing
 diagnostic.
 
+## Semantic Errors
+
+A hook reports a semantic error when the input parses but its meaning is
+invalid. `ReportSemanticError` records the diagnostic, marks the node, and
+returns the running total so hooks can limit themselves. Parsing continues;
+a syntax-clean parse with any semantic error fails with `ErrSemantic`:
+
+```go
+if value > 999 {
+    _, _ = args.ReportSemanticError("value out of range")
+}
+```
+
+Read them through `Session.Diagnostic` / `Session.Diagnostics`; the
+snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
+`{Variable, Message}` pair.
+
 ## Sessions
 
 ```go
