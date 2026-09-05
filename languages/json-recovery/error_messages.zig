@@ -14,7 +14,7 @@ const Guidance = enum {
 fn syntax(args: root.SyntaxErrorMessageArgs) root.SyntaxDiagnostic {
     return switch (args.diagnostic) {
         .syntax => |diagnostic| diagnostic,
-        .indentation => unreachable,
+        .semantic, .indentation => unreachable,
     };
 }
 

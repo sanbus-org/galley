@@ -103,6 +103,7 @@ pub fn main(init: std.process.Init) !void {
                 defer if (owned) init.gpa.free(message);
                 const line, const column = switch (diagnostic) {
                     .syntax => |syntax| .{ syntax.line, syntax.column },
+                    .semantic => |semantic| .{ semantic.line, semantic.column },
                     .indentation => |indentation| .{ indentation.line, indentation.column },
                 };
                 std.debug.print("{s}:{d}:{d}: {s}\n", .{ input_path, line, column, message });
@@ -164,6 +165,9 @@ pub fn main(init: std.process.Init) !void {
             .indentation => |indentation| {
                 try stdout.print("diagnostic at {d}:{d}: {s}\n", .{ indentation.line, indentation.column, message });
             },
+            .semantic => |semantic| {
+                try stdout.print("diagnostic at {d}:{d}: {s}\n", .{ semantic.line, semantic.column, message });
+            },
         }
     }
 
@@ -190,6 +194,14 @@ pub fn main(init: std.process.Init) !void {
                         index,
                         indentation.line,
                         indentation.column,
+                    });
+                },
+                .semantic => |semantic| {
+                    try stdout.print("  [{d}] semantic at {d}:{d} in {s}\n", .{
+                        index,
+                        semantic.line,
+                        semantic.column,
+                        semantic.variable,
                     });
                 },
             }

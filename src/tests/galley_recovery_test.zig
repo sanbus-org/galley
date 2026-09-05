@@ -23,7 +23,7 @@ fn parseError(input: [:0]const u8) !ParsedError {
 fn syntaxDiagnostic(read_guard: *const parser.SessionReadGuard) parser.SyntaxDiagnostic {
     return switch (read_guard.lastDiagnostic().?) {
         .syntax => |syntax| syntax,
-        .indentation => unreachable,
+        .semantic, .indentation => unreachable,
     };
 }
 

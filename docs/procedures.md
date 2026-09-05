@@ -12,6 +12,7 @@
   - [Chaining Multiple Hooks](#chaining-multiple-hooks)
 - [Implicit / Automatic Hooks](#implicit--automatic-hooks)
 - [Hook Execution Order](#hook-execution-order)
+- [Semantic Errors](#semantic-errors)
 - [Writing Hook Functions in Zig](#writing-hook-functions-in-zig)
   - [Function Signature](#function-signature)
   - [Standard Helper Procedures](#standard-helper-procedures)
@@ -194,6 +195,27 @@ that address, so it reflects any drop or replacement performed by an earlier
 hook phase.
 
 An LR parser must know the parent occurrence when a variable reduces or terminal matches. If the active LR state and lookahead correspond to multiple occurrences with different hook chains, generation fails with `error.AmbiguousProcedureHooks` rather than running a hook for the wrong position. Identical chains may share the action.
+
+---
+
+## Semantic Errors
+
+A hook reports a semantic error when the input parses but its meaning is invalid (undeclared variable, duplicate key, out-of-range value). Call the single gate:
+
+```zig
+pub fn reduction_Item_1(args: *ProcedureArguments) !void {
+    _ = try args.reportSemanticError("unexpected item");
+}
+```
+
+The gate records an arena-backed diagnostic, marks the current node (`is_semantic_error = true`), and returns the total count so hooks can limit themselves:
+
+```zig
+const count = try args.reportSemanticError("duplicate key");
+if (count > 200) return;
+```
+
+Parsing continues after each report, so one parse aggregates many errors. A syntax-clean parse with any semantic error returns `ParseError.SemanticError`; syntax errors keep precedence. Read diagnostics through `recordedDiagnostics()` / `lastDiagnostic()` and counts through `semanticErrorCount()`. In AST mode, parents stay unmarked — call `Node.hasSemanticErrorSubtree(address, allocator)` to check a subtree before emitting follow-on diagnostics. In no-AST mode, check child `is_semantic_error` flags directly during the hook call. A diagnostic survives even when a later hook phase drops its node. Template overrides in `config.zig` and per-session `message_overrides` apply to syntax errors only.
 
 ---
 

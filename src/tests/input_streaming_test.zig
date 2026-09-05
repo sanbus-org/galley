@@ -212,7 +212,7 @@ test "input streaming invalid indentation returns a structured diagnostic" {
         const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
         const indentation = switch (diagnostic) {
             .indentation => |indentation| indentation,
-            .syntax => return error.ExpectedIndentationDiagnostic,
+            .syntax, .semantic => return error.ExpectedIndentationDiagnostic,
         };
         try std.testing.expectEqual(@as(u32, 3), indentation.line);
         try std.testing.expectEqual(@as(u32, 1), indentation.column);
@@ -258,7 +258,7 @@ test "input streaming recovery handles EOF without reading beyond the window" {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
-        .indentation => return error.ExpectedSyntaxDiagnostic,
+        .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
     };
     try std.testing.expect(syntax.line >= 1);
     try std.testing.expect(syntax.column >= 1);

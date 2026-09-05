@@ -15,7 +15,7 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.free(source);
 
     var parsed = galley.parseBytes(init.io, init.gpa, source, .{ .input_path = input_path }) catch |err| switch (err) {
-        error.SyntaxError => std.process.exit(1),
+        error.SyntaxError, error.SemanticError => std.process.exit(1),
         else => return err,
     };
     defer parsed.deinit();
