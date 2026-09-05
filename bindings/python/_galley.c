@@ -44,6 +44,10 @@ static PyTypeObject ProcedureArgs_Type;
 
 static PyObject *build_diagnostic(GalleySession *session);
 
+/* Defined after Diagnostic_Type; new reference to the snapshot's rendered
+ * message, or NULL when it is not a unicode string. */
+static PyObject *diagnostic_rendered_message(PyObject *diagnostic);
+
 typedef struct {
     PyObject_HEAD
     void *args;
@@ -199,7 +203,9 @@ static int auto_register_python_procedures(void) {
 
 /* Sets ErrorException from a negative galley status code. The instance
  * carries the raw code as its `code` attribute and, when a session is
- * supplied, a snapshot of its current diagnostic as `diagnostic`. */
+ * supplied, a snapshot of its current diagnostic as `diagnostic`. The
+ * exception text is the rendered diagnostic message when there is one,
+ * falling back to the status string. */
 static void set_error_from_status_with_session(long long status, GalleySession *session)
 {
     const char *description = galley_status_string(status);
@@ -208,31 +214,37 @@ static void set_error_from_status_with_session(long long status, GalleySession *
     PyObject *code = NULL;
     PyObject *diagnostic = NULL;
 
-    if (description == NULL)
-        description = "unknown galley error";
-    message = PyUnicode_FromString(description);
-    if (message == NULL)
-        return;
+    if (session != NULL && galley_has_diagnostic(session)) {
+        diagnostic = build_diagnostic(session);
+        if (diagnostic == NULL)
+            return;
+        message = diagnostic_rendered_message(diagnostic);
+    }
+    if (message == NULL) {
+        if (description == NULL)
+            description = "unknown galley error";
+        message = PyUnicode_FromString(description);
+        if (message == NULL) {
+            Py_XDECREF(diagnostic);
+            return;
+        }
+    }
     instance = PyObject_CallOneArg(ErrorException, message);
     Py_DECREF(message);
-    if (instance == NULL)
+    if (instance == NULL) {
+        Py_XDECREF(diagnostic);
         return;
+    }
     code = PyLong_FromLongLong(status);
     if (code == NULL || PyObject_SetAttrString(instance, "code", code) < 0) {
         Py_DECREF(instance);
         Py_XDECREF(code);
+        Py_XDECREF(diagnostic);
         return;
     }
     Py_DECREF(code);
-    if (session != NULL && galley_has_diagnostic(session)) {
-        diagnostic = build_diagnostic(session);
-        if (diagnostic == NULL) {
-            Py_DECREF(instance);
-            return;
-        }
-    } else {
+    if (diagnostic == NULL)
         diagnostic = Py_NewRef(Py_None);
-    }
     if (PyObject_SetAttrString(instance, "diagnostic", diagnostic) < 0) {
         Py_DECREF(instance);
         Py_DECREF(diagnostic);
@@ -1018,6 +1030,8 @@ typedef struct {
     PyObject *expected_tokens;       /* tuple[bytes, ...] */
     PyObject *context;               /* tuple[str, ...] */
     long syntax_error_count;
+    long semantic_error_count;
+    PyObject *semantic;              /* (variable str, message str) | None */
     PyObject *indentation;           /* (spaces, width) | None */
     PyObject *recovery_kind;         /* int | None */
     PyObject *recovery_terminal;     /* bytes | None */
@@ -1035,6 +1049,7 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
     Py_XDECREF(self->expected_tokens);
     Py_XDECREF(self->context);
     Py_XDECREF(self->indentation);
+    Py_XDECREF(self->semantic);
     Py_XDECREF(self->recovery_kind);
     Py_XDECREF(self->recovery_terminal);
     Py_XDECREF(self->recovery_resume);
@@ -1046,7 +1061,7 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
 
 static PyMemberDef Diagnostic_members[] = {
     {"kind", T_LONG, offsetof(DiagnosticObject, kind), READONLY,
-     "diagnostic classification: KIND_NONE, KIND_SYNTAX, KIND_INDENTATION"},
+     "diagnostic classification: KIND_NONE, KIND_SYNTAX, KIND_SEMANTIC, KIND_INDENTATION"},
     {"line", T_LONG, offsetof(DiagnosticObject, line), READONLY,
      "1-based line of the failure"},
     {"column", T_LONG, offsetof(DiagnosticObject, column), READONLY,
@@ -1066,6 +1081,12 @@ static PyMemberDef Diagnostic_members[] = {
     {"syntax_error_count", T_LONG,
      offsetof(DiagnosticObject, syntax_error_count), READONLY,
      "how many syntax errors the recovery-enabled parse recorded"},
+    {"semantic_error_count", T_LONG,
+     offsetof(DiagnosticObject, semantic_error_count), READONLY,
+     "how many semantic errors the parse recorded"},
+    {"semantic", T_OBJECT,
+     offsetof(DiagnosticObject, semantic), READONLY,
+     "(variable, message) for semantic errors, else None"},
     {"indentation", T_OBJECT, offsetof(DiagnosticObject, indentation),
      READONLY,
      "(emitted spaces, indentation width) for indentation errors"},
@@ -1099,6 +1120,14 @@ static PyTypeObject Diagnostic_Type = {
     .tp_dealloc = (destructor)Diagnostic_dealloc,
 };
 
+static PyObject *diagnostic_rendered_message(PyObject *diagnostic)
+{
+    PyObject *rendered = ((DiagnosticObject *)diagnostic)->message;
+    if (rendered != NULL && PyUnicode_Check(rendered))
+        return Py_NewRef(rendered);
+    return NULL;
+}
+
 /* Builds the read-only Diagnostic snapshot of the current diagnostic, or
  * returns a new reference to None when there is none. Every C accessor is
  * guarded: fields that do not apply stay None (empty tuples for the list
@@ -1126,6 +1155,8 @@ static PyObject *build_diagnostic(GalleySession *session)
     diagnostic->line = 0;
     diagnostic->column = 0;
     diagnostic->syntax_error_count = 0;
+    diagnostic->semantic_error_count = 0;
+    diagnostic->semantic = Py_NewRef(Py_None);
     diagnostic->message = Py_NewRef(Py_None);
     diagnostic->message_ansi = Py_NewRef(Py_None);
     diagnostic->unexpected_token = Py_NewRef(Py_None);
@@ -1204,6 +1235,33 @@ static PyObject *build_diagnostic(GalleySession *session)
     count = galley_syntax_error_count(session);
     if (count >= 0)
         diagnostic->syntax_error_count = (long)count;
+    count = galley_semantic_error_count(session);
+    if (count >= 0)
+        diagnostic->semantic_error_count = (long)count;
+    {
+        const char *variable = NULL;
+        size_t variable_len = 0;
+        const char *message = NULL;
+        size_t message_len = 0;
+        if (galley_diagnostic_semantic(session, &variable, &variable_len, &message, &message_len) == galley_ok) {
+            PyObject *pair = PyTuple_New(2);
+            PyObject *variable_obj;
+            PyObject *message_obj;
+            if (pair == NULL)
+                goto fail;
+            variable_obj = PyUnicode_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
+            message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
+            if (variable_obj == NULL || message_obj == NULL) {
+                Py_XDECREF(variable_obj);
+                Py_XDECREF(message_obj);
+                Py_DECREF(pair);
+                goto fail;
+            }
+            PyTuple_SET_ITEM(pair, 0, variable_obj);
+            PyTuple_SET_ITEM(pair, 1, message_obj);
+            Py_SETREF(diagnostic->semantic, pair);
+        }
+    }
     if (galley_diagnostic_indentation(session, &first, &second) ==
         galley_ok) {
         PyObject *pair = Py_BuildValue("II", first, second);
@@ -1320,6 +1378,8 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
     diagnostic->line = 0;
     diagnostic->column = 0;
     diagnostic->syntax_error_count = 0;
+    diagnostic->semantic_error_count = 0;
+    diagnostic->semantic = Py_NewRef(Py_None);
     diagnostic->message = Py_NewRef(Py_None);
     diagnostic->message_ansi = Py_NewRef(Py_None);
     diagnostic->unexpected_token = Py_NewRef(Py_None);
@@ -1384,6 +1444,30 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
             if (item == NULL)
                 goto fail;
             PyTuple_SET_ITEM(context, (Py_ssize_t)i, item);
+        }
+    }
+    {
+        const char *variable = NULL;
+        size_t variable_len = 0;
+        const char *message = NULL;
+        size_t message_len = 0;
+        if (galley_recorded_semantic(session, index, &variable, &variable_len, &message, &message_len) == galley_ok) {
+            PyObject *pair = PyTuple_New(2);
+            PyObject *variable_obj;
+            PyObject *message_obj;
+            if (pair == NULL)
+                goto fail;
+            variable_obj = PyUnicode_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
+            message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
+            if (variable_obj == NULL || message_obj == NULL) {
+                Py_XDECREF(variable_obj);
+                Py_XDECREF(message_obj);
+                Py_DECREF(pair);
+                goto fail;
+            }
+            PyTuple_SET_ITEM(pair, 0, variable_obj);
+            PyTuple_SET_ITEM(pair, 1, message_obj);
+            Py_SETREF(diagnostic->semantic, pair);
         }
     }
     return (PyObject *)diagnostic;
@@ -2361,6 +2445,30 @@ static PyObject *ProcedureArgs_current_column(ProcedureArgsObject *self, PyObjec
     return PyLong_FromUnsignedLong(galley_procedure_context_column(self->args));
 }
 
+static PyObject *ProcedureArgs_report_semantic_error(ProcedureArgsObject *self, PyObject *message_obj)
+{
+    const char *message_data;
+    Py_ssize_t message_len;
+
+    if (PyUnicode_Check(message_obj)) {
+        message_data = PyUnicode_AsUTF8AndSize(message_obj, &message_len);
+        if (message_data == NULL)
+            return NULL;
+    } else if (PyBytes_Check(message_obj)) {
+        message_data = PyBytes_AS_STRING(message_obj);
+        message_len = PyBytes_GET_SIZE(message_obj);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "message must be str or bytes");
+        return NULL;
+    }
+    long long count = galley_procedure_report_semantic_error(self->args, message_data, (size_t)message_len);
+    if (count < 0) {
+        check_status(count);
+        return NULL;
+    }
+    return PyLong_FromLongLong(count);
+}
+
 static PyMethodDef ProcedureArgs_methods[] = {
     {"current_node", (PyCFunction)ProcedureArgs_current_node, METH_NOARGS,
      "current_node()\n\nThe node being reduced, or None."},
@@ -2376,6 +2484,8 @@ static PyMethodDef ProcedureArgs_methods[] = {
      "current_line()\n\nScanner line during this reduction."},
     {"current_column", (PyCFunction)ProcedureArgs_current_column, METH_NOARGS,
      "current_column()\n\nScanner column during this reduction."},
+    {"report_semantic_error", (PyCFunction)ProcedureArgs_report_semantic_error, METH_O,
+     "report_semantic_error(message)\n\nRecord a semantic error on the current node and return the total count. Parsing continues."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -2761,6 +2871,10 @@ PyMODINIT_FUNC PyInit_galley(void)
                                 galley_diagnostic_kind_syntax) < 0 ||
         PyModule_AddIntConstant(module, "KIND_INDENTATION",
                                 galley_diagnostic_kind_indentation) < 0 ||
+        PyModule_AddIntConstant(module, "KIND_SEMANTIC",
+                                galley_diagnostic_kind_semantic) < 0 ||
+        PyModule_AddIntConstant(module, "KIND_SEMANTIC",
+                                galley_diagnostic_kind_semantic) < 0 ||
         PyModule_AddIntConstant(module, "RECOVERY_TARGET_NONE",
                                 galley_recovery_target_none) < 0 ||
         PyModule_AddIntConstant(module, "RECOVERY_TARGET_LHS_VARIABLE",

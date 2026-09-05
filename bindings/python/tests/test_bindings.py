@@ -162,6 +162,71 @@ class SessionTests(unittest.TestCase):
         self.assertEqual((end_line, end_column), (1, 17))
 
 
+class SemanticErrorTests(unittest.TestCase):
+    session: galley.Session
+
+    def setUp(self) -> None:
+        self.session = galley.Session(max_errors=10)
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def test_hook_reported_semantic_errors_aggregate_and_fail(self) -> None:
+        seen_counts: list[int] = []
+
+        def reduction_Number(args: galley.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            if int(text) > 99:
+                seen_counts.append(args.report_semantic_error("value out of range"))
+
+        galley.install_procedure("reduction_Number", reduction_Number)
+        try:
+            with self.assertRaises(galley.Error) as raised:
+                self.session.parse("alpha:12,beta:300,gamma:400")
+        finally:
+            galley.clear_procedures()
+        self.assertEqual(raised.exception.code, -12)  # galley_error_semantic
+        self.assertIn("value out of range", str(raised.exception))
+        self.assertEqual(seen_counts, [1, 2])
+        diagnostic = self.session.diagnostic()
+        self.assertIsNotNone(diagnostic)
+        assert diagnostic is not None
+        self.assertEqual(diagnostic.kind, galley.KIND_SEMANTIC)
+        self.assertEqual(diagnostic.line, 1)
+        self.assertEqual(diagnostic.semantic_error_count, 2)
+        self.assertEqual(diagnostic.semantic, ("Number", "value out of range"))
+        self.assertIn("SemanticError", diagnostic.message)
+        recorded = self.session.diagnostics()
+        self.assertEqual(len(recorded), 2)
+        self.assertTrue(all(item.kind == galley.KIND_SEMANTIC for item in recorded))
+        self.assertTrue(
+            all(item.semantic == ("Number", "value out of range") for item in recorded)
+        )
+
+    def test_counts_reset_after_successful_parse(self) -> None:
+        def reduction_Number(args: galley.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            if int(text) > 99:
+                args.report_semantic_error("value out of range")
+
+        galley.install_procedure("reduction_Number", reduction_Number)
+        try:
+            with self.assertRaises(galley.Error):
+                self.session.parse("alpha:300")
+            self.session.parse("alpha:12")
+            self.assertFalse(self.session.has_diagnostic())
+            self.assertIsNone(self.session.diagnostic())
+            self.assertEqual(len(self.session.diagnostics()), 0)
+        finally:
+            galley.clear_procedures()
+
+
 class WalkTests(unittest.TestCase):
     session: galley.Session
 
