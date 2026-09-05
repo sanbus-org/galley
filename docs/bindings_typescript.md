@@ -153,6 +153,24 @@ accepted and compiled into the shared library when no TypeScript file is
 present, exactly like the C/C++ consumers. Semantic payloads are unavailable
 through bindings.
 
+## Semantic Errors
+
+A hook reports a semantic error when the input parses but its meaning is
+invalid. `reportSemanticError` records the diagnostic, marks the node, and
+returns the running total so hooks can limit themselves. Parsing continues;
+a syntax-clean parse with any semantic error throws with code
+`STATUS_ERROR_SEMANTIC` (-12):
+
+```ts
+if (value > 999) {
+  args.reportSemanticError("value out of range");
+}
+```
+
+Read them through `session.diagnostic()` / `session.diagnostics()`; the
+snapshot carries `kind === KIND_SEMANTIC` and a `semantic` pair of
+`[variable, message]`.
+
 ## Error Messages
 
 Run `galley --fill-error-messages <language-dir>` and edit the generated

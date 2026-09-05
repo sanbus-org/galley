@@ -13,6 +13,8 @@ export interface Diagnostic {
   expectedTokens: Uint8Array[]; // syntax only
   context: string[]; // innermost-first variable names, syntax only
   syntaxErrorCount: number;
+  semanticErrorCount: number;
+  semantic: [string, string] | null; // (variable, message) for semantic errors
   indentation: [number, number] | null; // (spaces, width) for indentation errors
   recoveryKind: number | null; // RECOVERY_TARGET_*
   recoveryTerminal: Uint8Array | null;

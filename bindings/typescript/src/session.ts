@@ -138,7 +138,6 @@ export class Session {
 
   #errorFromStatus(status: bigint | number, fallback?: string): GalleyError {
     const code = typeof status === "bigint" ? Number(status) : (status as number);
-    const message = fallback ?? this.#statusMessage(status);
     let diag: Diagnostic | null = null;
     try {
       if (this.#handle !== null && this.#ffi.galley_has_diagnostic(this.#handle)) {
@@ -147,6 +146,7 @@ export class Session {
     } catch {
       // ignore
     }
+    const message = fallback ?? diag?.message ?? this.#statusMessage(status);
     return new GalleyError(message, code, diag);
   }
 
@@ -395,6 +395,26 @@ export class Session {
     return Buffer.from(bytes).toString("utf-8");
   }
 
+  #readSemanticPair(
+    fn: (
+      outVariable: unknown[],
+      outVariableLen: unknown[],
+      outMessage: unknown[],
+      outMessageLen: unknown[],
+    ) => bigint | number,
+  ): [string, string] | null {
+    const outVariable: unknown[] = [null];
+    const outVariableLen: unknown[] = [0];
+    const outMessage: unknown[] = [null];
+    const outMessageLen: unknown[] = [0];
+    const st = fn(outVariable, outVariableLen, outMessage, outMessageLen);
+    if (typeof st === "bigint" ? st < 0n : (st as number) < 0) return null;
+    if (outVariable[0] === null || outMessage[0] === null) return null;
+    const variable = copyStringBytes(outVariable[0] as bigint, outVariableLen[0] as bigint);
+    const message = copyStringBytes(outMessage[0] as bigint, outMessageLen[0] as bigint);
+    return [variable, message];
+  }
+
   // -- diagnostics -----------------------------------------------------
 
   #buildDiagnosticSingular(): Diagnostic {
@@ -437,6 +457,11 @@ export class Session {
     }
 
     const syntaxErrorCount = Number(toBigInt(this.#ffi.galley_syntax_error_count(h) as bigint));
+    const semanticErrorCount = Number(toBigInt(this.#ffi.galley_semantic_error_count(h) as bigint));
+    const semantic =
+      this.#readSemanticPair((ov, ovl, om, oml) =>
+        this.#ffi.galley_diagnostic_semantic(h, ov, ovl, om, oml),
+      ) ?? null;
 
     let indentation: [number, number] | null = null;
     {
@@ -459,6 +484,8 @@ export class Session {
       expectedTokens,
       context,
       syntaxErrorCount: syntaxErrorCount < 0 ? 0 : syntaxErrorCount,
+      semanticErrorCount: semanticErrorCount < 0 ? 0 : semanticErrorCount,
+      semantic,
       indentation,
       ...recovery,
     };
@@ -542,6 +569,11 @@ export class Session {
       }
     }
 
+    const semantic =
+      this.#readSemanticPair((ov, ovl, om, oml) =>
+        this.#ffi.galley_recorded_semantic(h, index, ov, ovl, om, oml),
+      ) ?? null;
+
     const recovery = this.#readRecoveryRecorded(h, index);
 
     return {
@@ -554,6 +586,8 @@ export class Session {
       expectedTokens,
       context,
       syntaxErrorCount: 0,
+      semanticErrorCount: 0,
+      semantic,
       indentation,
       ...recovery,
     };
@@ -572,6 +606,8 @@ export class Session {
     | "expectedTokens"
     | "context"
     | "syntaxErrorCount"
+    | "semanticErrorCount"
+    | "semantic"
     | "indentation"
   > {
     const h = handle;
@@ -658,6 +694,8 @@ export class Session {
     | "expectedTokens"
     | "context"
     | "syntaxErrorCount"
+    | "semanticErrorCount"
+    | "semantic"
     | "indentation"
   > {
     const h = handle;

@@ -50,6 +50,8 @@ const {
   RECOVERY_MODE_EXPLICIT,
   KIND_SYNTAX,
   KIND_NONE,
+  KIND_SEMANTIC,
+  STATUS_ERROR_SEMANTIC,
   INVALID_NODE,
   installProcedure,
   installProcedures,
@@ -561,6 +563,40 @@ await test("procedure hook can read node text", () => {
   try {
     s.parse("alpha:12,beta:3");
     assert.equal(seen.length, 2);
+  } finally {
+    s.close();
+    clearProcedures();
+  }
+});
+
+await test("hook-reported semantic errors aggregate and fail", () => {
+  clearProcedures();
+  const counts = [];
+  installProcedure("reduction_Number", (args) => {
+    const node = args.currentNode();
+    assert.ok(node);
+    const value = Number.parseInt(Buffer.from(node.text()).toString("utf-8"), 10);
+    if (value > 99) counts.push(args.reportSemanticError("value out of range"));
+  });
+  const s = newSession();
+  try {
+    assert.throws(() => s.parse("alpha:12,beta:300,gamma:400"), (err) => {
+      assert.equal(err.code, STATUS_ERROR_SEMANTIC);
+      assert.ok(String(err.message).includes("value out of range"));
+      return true;
+    });
+    assert.deepEqual(counts, [1, 2]);
+    const d = s.diagnostic();
+    assert.ok(d);
+    assert.equal(d.kind, KIND_SEMANTIC);
+    assert.equal(d.semanticErrorCount, 2);
+    assert.deepEqual(d.semantic, ["Number", "value out of range"]);
+    assert.ok(d.message.includes("SemanticError"));
+    const recorded = s.diagnostics();
+    assert.equal(recorded.length, 2);
+    assert.ok(recorded.every((item) => item.kind === KIND_SEMANTIC));
+    s.parse("alpha:12");
+    assert.equal(s.diagnostic(), null);
   } finally {
     s.close();
     clearProcedures();
