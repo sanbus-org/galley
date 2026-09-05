@@ -261,7 +261,7 @@ parse:
 
 ```c
 if (galley_has_diagnostic(session)) {
-    long long kind = galley_diagnostic_kind(session); /* none/syntax/indentation */
+    long long kind = galley_diagnostic_kind(session); /* none/syntax/indentation/semantic */
     unsigned int line, column;
     galley_diagnostic_position(session, &line, &column);
 
