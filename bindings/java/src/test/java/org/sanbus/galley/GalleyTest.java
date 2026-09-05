@@ -162,6 +162,53 @@ public class GalleyTest {
             assertNotNull(pos);
             assertArrayEquals(new int[]{1, 17}, pos);
         }
+
+        @Test
+        void hookReportedSemanticErrorsAggregateAndFail() {
+            List<Integer> counts = new ArrayList<>();
+            Procedures.installProcedure("reduction_Number", args -> {
+                Node node = args.currentNode();
+                assertNotNull(node);
+                int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
+                if (value > 99) counts.add(args.reportSemanticError("value out of range"));
+            });
+            try {
+                GalleyException ex = assertThrows(GalleyException.class,
+                        () -> session.parse("alpha:12,beta:300,gamma:400"));
+                assertEquals(-12, ex.getCode());
+                assertTrue(ex.getMessage().contains("value out of range"));
+                assertEquals(List.of(1, 2), counts);
+                Diagnostic d = session.diagnostic();
+                assertNotNull(d);
+                assertEquals(Diagnostic.KIND_SEMANTIC, d.getKind());
+                assertEquals(1, d.getLine());
+                assertEquals(2, d.getSemanticErrorCount());
+                assertArrayEquals(new String[]{"Number", "value out of range"}, d.getSemantic());
+                assertTrue(d.getMessage().contains("SemanticError"));
+                assertEquals(2, session.diagnostics().size());
+            } finally {
+                Procedures.clearProcedures();
+            }
+        }
+
+        @Test
+        void semanticCountsResetAfterSuccessfulParse() {
+            Procedures.installProcedure("reduction_Number", args -> {
+                Node node = args.currentNode();
+                assertNotNull(node);
+                int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
+                if (value > 99) args.reportSemanticError("value out of range");
+            });
+            try {
+                assertThrows(GalleyException.class, () -> session.parse("alpha:300"));
+                session.parse("alpha:12");
+                assertFalse(session.hasDiagnostic());
+                assertNull(session.diagnostic());
+                assertTrue(session.diagnostics().isEmpty());
+            } finally {
+                Procedures.clearProcedures();
+            }
+        }
     }
 
     @Nested

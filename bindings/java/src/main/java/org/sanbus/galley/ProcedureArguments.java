@@ -1,6 +1,9 @@
 package org.sanbus.galley;
 
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
 import org.sanbus.galley.internal.GalleyLibrary;
 
 /**
@@ -73,6 +76,21 @@ public final class ProcedureArguments {
 
     public int currentLine() { return lib.galley_procedure_context_line(argsSegment); }
     public int currentColumn() { return lib.galley_procedure_context_column(argsSegment); }
+
+    /**
+     * Records a semantic error on the current node and returns the running
+     * total. Parsing continues; a syntax-clean parse with any semantic
+     * error fails with status -12.
+     */
+    public int reportSemanticError(String message) {
+        byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = bytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
+            long st = lib.galley_procedure_report_semantic_error(argsSegment, seg, bytes.length);
+            if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
+            return (int) st;
+        }
+    }
 
     // Convenience delegations for tree editing via session
     public Node cleanChildren() {

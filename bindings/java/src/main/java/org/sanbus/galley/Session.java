@@ -114,6 +114,7 @@ public final class Session implements AutoCloseable {
         try {
             if (handle != null && !handle.equals(MemorySegment.NULL) && lib.galley_has_diagnostic(handle) != 0) {
                 diag = buildDiagnosticSingular();
+                if (diag.getMessage() != null && !diag.getMessage().isEmpty()) msg = diag.getMessage();
             }
         } catch (Exception ignored) {}
         return new GalleyException(msg, (int) status, diag);
@@ -623,6 +624,11 @@ public final class Session implements AutoCloseable {
         long sec = lib.galley_syntax_error_count(handle);
         int syntaxErrorCount = sec < 0 ? 0 : (int) sec;
 
+        long semc = lib.galley_semantic_error_count(handle);
+        int semanticErrorCount = semc < 0 ? 0 : (int) semc;
+
+        String[] semantic = readSemantic(-1, false);
+
         int[] indentation = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSpaces = arena.allocate(ValueLayout.JAVA_INT);
@@ -708,7 +714,7 @@ public final class Session implements AutoCloseable {
         }
 
         return new Diagnostic((int) kind, line, col, message, messageAnsi, unexpected, expected, context,
-                syntaxErrorCount, indentation, recoveryKind, recoveryTerminal, recoveryResume,
+                syntaxErrorCount, semanticErrorCount, semantic, indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
     }
 
@@ -868,8 +874,29 @@ public final class Session implements AutoCloseable {
         }
 
         return new Diagnostic((int) kind, line, col, message, messageAnsi, unexpected, expected, context,
-                0, indentation, recoveryKind, recoveryTerminal, recoveryResume,
+                0, 0, readSemantic(diagIndex, true), indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
+    }
+
+    private String[] readSemantic(long diagIndex, boolean recorded) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment outMsgLen = arena.allocate(ValueLayout.JAVA_LONG);
+            long st = recorded
+                    ? lib.galley_recorded_semantic(handle, diagIndex, outVar, outVarLen, outMsg, outMsgLen)
+                    : lib.galley_diagnostic_semantic(handle, outVar, outVarLen, outMsg, outMsgLen);
+            if (st != 0) return null;
+            MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
+            long vl = outVarLen.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment mb = outMsg.get(ValueLayout.ADDRESS, 0);
+            long ml = outMsgLen.get(ValueLayout.JAVA_LONG, 0);
+            if (vb.equals(MemorySegment.NULL) || mb.equals(MemorySegment.NULL)) return null;
+            return new String[]{
+                    new String(vb.reinterpret(vl).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8),
+                    new String(mb.reinterpret(ml).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8)};
+        }
     }
 
     public Diagnostic diagnostic() {
