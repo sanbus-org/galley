@@ -144,6 +144,7 @@ int main(int argc, char **argv) {
         long long kind = galley_recorded_diagnostic_kind(session, (unsigned long long)i);
         const char *kind_name = kind == galley_diagnostic_kind_syntax     ? "syntax"
                                 : kind == galley_diagnostic_kind_indentation ? "indentation"
+                                : kind == galley_diagnostic_kind_semantic    ? "semantic"
                                                                              : "none";
         const char *unexpected_data = NULL;
         size_t unexpected_len = 0;

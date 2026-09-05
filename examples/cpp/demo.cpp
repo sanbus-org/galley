@@ -152,6 +152,7 @@ int main(int argc, char *argv[]) {
         const long long kind = galley_recorded_diagnostic_kind(&session, static_cast<unsigned long long>(i));
         const char *kind_name = kind == galley_diagnostic_kind_syntax     ? "syntax"
                                 : kind == galley_diagnostic_kind_indentation ? "indentation"
+                                : kind == galley_diagnostic_kind_semantic    ? "semantic"
                                                                              : "none";
         const char *unexpected_data = nullptr;
         std::size_t unexpected_len = 0;
