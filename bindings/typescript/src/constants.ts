@@ -19,6 +19,7 @@ export const STATUS_ERROR_INTERNAL = -8;
 export const STATUS_ERROR_NO_DIAGNOSTIC = -9;
 export const STATUS_ERROR_INVALID_NODE = -10;
 export const STATUS_ERROR_IO = -11;
+export const STATUS_ERROR_SEMANTIC = -12;
 
 // Parser families
 export const PARSER_TYPE_LL = 0;
@@ -33,6 +34,7 @@ export const RECOVERY_MODE_EXPLICIT = 2;
 export const KIND_NONE = 0;
 export const KIND_SYNTAX = 1;
 export const KIND_INDENTATION = 2;
+export const KIND_SEMANTIC = 3;
 
 // Recovery targets
 export const RECOVERY_TARGET_NONE = 0;

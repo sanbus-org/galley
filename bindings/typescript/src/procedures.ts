@@ -83,6 +83,22 @@ export class ProcedureArguments {
   currentColumn(): number {
     return this.#ffi.galley_procedure_context_column(this.#args);
   }
+
+  /**
+   * Record a semantic error on the current node and return the running
+   * total. Parsing continues; a syntax-clean parse with any semantic
+   * error fails with status -12.
+   */
+  reportSemanticError(message: string): number {
+    const status = this.#ffi.galley_procedure_report_semantic_error(
+      this.#args,
+      message,
+      Buffer.byteLength(message, "utf-8"),
+    );
+    const n = typeof status === "bigint" ? status : BigInt(status);
+    if (n < 0n) throw new Error("galley_procedure_report_semantic_error failed");
+    return Number(n);
+  }
 }
 
 type HookFn = (args: ProcedureArguments) => void;

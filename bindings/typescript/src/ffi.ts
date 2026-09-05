@@ -158,6 +158,22 @@ export interface GalleyFFI {
     outWidth: unknown[],
   ) => bigint | number;
   galley_syntax_error_count: (session: bigint) => bigint | number;
+  galley_semantic_error_count: (session: bigint) => bigint | number;
+  galley_diagnostic_semantic: (
+    session: bigint,
+    outVariable: unknown[],
+    outVariableLen: unknown[],
+    outMessage: unknown[],
+    outMessageLen: unknown[],
+  ) => bigint | number;
+  galley_recorded_semantic: (
+    session: bigint,
+    diagIndex: bigint | number,
+    outVariable: unknown[],
+    outVariableLen: unknown[],
+    outMessage: unknown[],
+    outMessageLen: unknown[],
+  ) => bigint | number;
 
   // recovery (singular)
   galley_diagnostic_recovery_kind: (session: bigint) => bigint | number;
@@ -299,6 +315,11 @@ export interface GalleyFFI {
   galley_procedure_replace_with_children: (args: bigint) => bigint | number;
   galley_procedure_context_line: (args: bigint) => number;
   galley_procedure_context_column: (args: bigint) => number;
+  galley_procedure_report_semantic_error: (
+    args: bigint,
+    message: string,
+    messageLen: number | bigint,
+  ) => bigint | number;
 
   // struct for options
   GalleyCOptions: ReturnType<typeof koffi.struct>;
@@ -597,6 +618,16 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
     galley_procedure_context_column: lib.func(
       "uint32_t galley_procedure_context_column(void *args)",
     ),
+    galley_procedure_report_semantic_error: lib.func(
+      "int64_t galley_procedure_report_semantic_error(void *args, str message, size_t message_len)",
+    ),
+    galley_diagnostic_semantic: lib.func(
+      "int64_t galley_diagnostic_semantic(void *session, _Out_ void **out_variable, _Out_ size_t *out_variable_len, _Out_ void **out_message, _Out_ size_t *out_message_len)",
+    ),
+    galley_recorded_semantic: lib.func(
+      "int64_t galley_recorded_semantic(void *session, uint64_t diag_index, _Out_ void **out_variable, _Out_ size_t *out_variable_len, _Out_ void **out_message, _Out_ size_t *out_message_len)",
+    ),
+    galley_semantic_error_count: lib.func("int64_t galley_semantic_error_count(void *session)"),
   };
 
   cached = ffi;
