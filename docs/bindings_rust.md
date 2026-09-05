@@ -56,6 +56,24 @@ The helper compiles `procedures.rs` with `panic=abort`, so a panic inside a
 hook aborts rather than unwinding through generated parser code. Semantic
 payloads are unavailable through bindings.
 
+## Semantic Errors
+
+A hook reports a semantic error when the input parses but its meaning is
+invalid. `report_semantic_error` records the diagnostic, marks the node,
+and returns the running total so hooks can limit themselves. Parsing
+continues; a syntax-clean parse with any semantic error fails with
+`Error::Semantic`:
+
+```rust
+if value > 999 {
+    let _ = arguments.report_semantic_error("value out of range");
+}
+```
+
+Read them through `Session::diagnostic` / `Session::diagnostics`; the
+snapshot carries `kind == DiagnosticKind::Semantic` and
+`semantic == Some((variable, message))`.
+
 Because the helper drives rustc directly, editors would see
 `procedures.rs` as outside any module tree. The example's Cargo.toml
 therefore declares it as a staticlib example target — mirroring exactly

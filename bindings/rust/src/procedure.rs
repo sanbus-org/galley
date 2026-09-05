@@ -21,6 +21,7 @@ impl NodeHandle {
 pub enum Error {
     NullArgument,
     Syntax,
+    Semantic,
     Indentation,
     StackOverflow,
     AstCapacityExceeded,
@@ -37,6 +38,7 @@ impl Error {
         match status {
             -1 => Error::NullArgument,
             -2 => Error::Syntax,
+            -12 => Error::Semantic,
             -3 => Error::Indentation,
             -4 => Error::StackOverflow,
             -5 => Error::AstCapacityExceeded,
@@ -97,6 +99,11 @@ extern "C" {
         arguments: *mut c_void,
         out_data: *mut *const u8,
         out_length: *mut usize,
+    ) -> i64;
+    fn galley_procedure_report_semantic_error(
+        arguments: *mut c_void,
+        message: *const c_char,
+        message_len: usize,
     ) -> i64;
     fn galley_node_text(
         session: *mut GalleySessionRaw,
@@ -197,6 +204,24 @@ impl ProcedureArguments {
 
     pub fn right_recursive_reduction(&mut self) -> Result<(), Error> {
         map_status(unsafe { galley_procedure_right_recursive_reduction(self.as_ptr()) })
+    }
+
+    /// Records a semantic error on the current node and returns the running
+    /// total. Parsing continues; a syntax-clean parse with any semantic
+    /// error fails the parse with `Error::Semantic`.
+    pub fn report_semantic_error(&mut self, message: &str) -> Result<usize, Error> {
+        let status = unsafe {
+            galley_procedure_report_semantic_error(
+                self.as_ptr(),
+                message.as_ptr().cast(),
+                message.len(),
+            )
+        };
+        if status < 0 {
+            Err(Error::from_status(status))
+        } else {
+            Ok(status as usize)
+        }
     }
 
     pub fn rule(&self) -> Option<Rule> {

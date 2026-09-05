@@ -144,6 +144,22 @@ extern "C" {
         out_spaces: *mut u32,
         out_width: *mut u32,
     ) -> i64;
+    fn galley_diagnostic_semantic(
+        session: *mut GalleySessionRaw,
+        out_variable: *mut *const c_char,
+        out_variable_len: *mut usize,
+        out_message: *mut *const c_char,
+        out_message_len: *mut usize,
+    ) -> i64;
+    fn galley_recorded_semantic(
+        session: *mut GalleySessionRaw,
+        diag_index: u64,
+        out_variable: *mut *const c_char,
+        out_variable_len: *mut usize,
+        out_message: *mut *const c_char,
+        out_message_len: *mut usize,
+    ) -> i64;
+    fn galley_semantic_error_count(session: *mut GalleySessionRaw) -> i64;
     fn galley_session_set_message_override(
         session: *mut GalleySessionRaw,
         name: *const c_char,
@@ -197,6 +213,7 @@ impl Default for SessionOptions {
 pub enum Error {
     NullArgument,
     Syntax,
+    Semantic,
     Indentation,
     StackOverflow,
     AstCapacityExceeded,
@@ -213,6 +230,7 @@ impl Error {
         match status {
             -1 => Error::NullArgument,
             -2 => Error::Syntax,
+            -12 => Error::Semantic,
             -3 => Error::Indentation,
             -4 => Error::StackOverflow,
             -5 => Error::AstCapacityExceeded,
@@ -230,6 +248,7 @@ impl Error {
         match self {
             Error::NullArgument => -1,
             Error::Syntax => -2,
+            Error::Semantic => -12,
             Error::Indentation => -3,
             Error::StackOverflow => -4,
             Error::AstCapacityExceeded => -5,
@@ -330,6 +349,8 @@ pub struct Diagnostic {
     pub context: Vec<String>,
     /// Indentation diagnostics only.
     pub indentation: Option<IndentationInfo>,
+    /// (variable, message) for semantic diagnostics only.
+    pub semantic: Option<(String, String)>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -337,6 +358,7 @@ pub enum DiagnosticKind {
     #[default]
     None,
     Syntax,
+    Semantic,
     Indentation,
 }
 
@@ -546,6 +568,7 @@ impl Session {
             d.kind = match galley_recorded_diagnostic_kind(self.inner, diag_index) {
                 1 => DiagnosticKind::Syntax,
                 2 => DiagnosticKind::Indentation,
+                3 => DiagnosticKind::Semantic,
                 _ => DiagnosticKind::None,
             };
 
@@ -584,6 +607,25 @@ impl Session {
                     spaces: sp,
                     indentation_width: iw,
                 });
+            }
+
+            let mut variable: *const c_char = std::ptr::null();
+            let mut variable_len = 0usize;
+            let mut message: *const c_char = std::ptr::null();
+            let mut message_len = 0usize;
+            if galley_recorded_semantic(
+                self.inner,
+                diag_index,
+                &mut variable,
+                &mut variable_len,
+                &mut message,
+                &mut message_len,
+            ) == 0
+            {
+                d.semantic = Some((
+                    String::from_utf8_lossy(bytes(variable, variable_len)).into_owned(),
+                    String::from_utf8_lossy(bytes(message, message_len)).into_owned(),
+                ));
             }
         }
         Some(d)
@@ -769,5 +811,4 @@ fn map_status(status: i64) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 }
