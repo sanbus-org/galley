@@ -47,6 +47,7 @@ const (
 	ErrNoDiagnostic         Error = -9
 	ErrInvalidNode          Error = -10
 	ErrIO                   Error = -11
+	ErrSemantic             Error = -12
 )
 
 var errorDescriptions = map[Error]string{
@@ -61,6 +62,7 @@ var errorDescriptions = map[Error]string{
 	ErrNoDiagnostic:         "no diagnostic available",
 	ErrInvalidNode:          "invalid node address",
 	ErrIO:                   "I/O error",
+	ErrSemantic:             "semantic error",
 }
 
 func (e Error) Error() string {
@@ -317,7 +319,13 @@ const (
 	DiagnosticKindNone        DiagnosticKind = 0
 	DiagnosticKindSyntax      DiagnosticKind = 1
 	DiagnosticKindIndentation DiagnosticKind = 2
+	DiagnosticKindSemantic    DiagnosticKind = 3
 )
+
+// SemanticInfo carries the variable and message of a semantic diagnostic.
+type SemanticInfo struct {
+	Variable, Message string
+}
 
 // Diagnostic describes the failure of the most recent parse, mirroring the
 // structured diagnostic of the C API.
@@ -330,6 +338,8 @@ type Diagnostic struct {
 	// Context lists the innermost-first "while parsing" variable chain
 	// (syntax diagnostics only).
 	Context []string
+	// Semantic is set for semantic diagnostics only.
+	Semantic *SemanticInfo
 }
 
 // diagnosticAt snapshots the diagnostic recorded at diagIndex (0-based, in
@@ -367,6 +377,14 @@ func (s *Session) diagnosticAt(diagIndex C.ulonglong) (Diagnostic, bool) {
 			if C.galley_recorded_context_name(s.ptr, diagIndex, i, &nameData, &nameLength) == 0 {
 				diagnostic.Context = append(diagnostic.Context, C.GoStringN(nameData, C.int(nameLength)))
 			}
+		}
+	}
+	var variableData, messageData *C.char
+	var variableLength, messageLength C.size_t
+	if C.galley_recorded_semantic(s.ptr, diagIndex, &variableData, &variableLength, &messageData, &messageLength) == 0 {
+		diagnostic.Semantic = &SemanticInfo{
+			Variable: C.GoStringN(variableData, C.int(variableLength)),
+			Message:  C.GoStringN(messageData, C.int(messageLength)),
 		}
 	}
 	return diagnostic, true
@@ -551,6 +569,19 @@ func (a ProcedureArgs) DropIfEmpty() error {
 // ReplaceWithChildren replaces the current node with its children.
 func (a ProcedureArgs) ReplaceWithChildren() error {
 	return procedureStatus(C.galley_procedure_replace_with_children(a.cptr()))
+}
+
+// ReportSemanticError records a semantic error on the current node and
+// returns the running total. Parsing continues; a syntax-clean parse with
+// any semantic error fails with ErrSemantic.
+func (a ProcedureArgs) ReportSemanticError(message string) (uint64, error) {
+	cMessage := C.CString(message)
+	defer C.free(unsafe.Pointer(cMessage))
+	status := C.galley_procedure_report_semantic_error(a.cptr(), cMessage, C.size_t(len(message)))
+	if status < 0 {
+		return 0, Error(int32(status))
+	}
+	return uint64(status), nil
 }
 
 // Line is the scanner line during this reduction.
