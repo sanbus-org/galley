@@ -86,6 +86,9 @@ def reduction_Number(args: galley.ProcedureArguments) -> None:
         return
     line, column = _pos(node)
     _emit(f"Number {_text(node)} at {line}:{column}")
+    digits = "".join(ch for ch in _text(node) if ch.isdigit())
+    if digits and int(digits) > 999:
+        args.report_semantic_error("value out of range")
 
 
 def reduction_Pair(args: galley.ProcedureArguments) -> None:

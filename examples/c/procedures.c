@@ -102,6 +102,10 @@ void reduction_Number(void *args) {
         fwrite(text, 1, len, stderr);
     fprintf(stderr, " at %u:%u\n", line, column);
     fflush(stderr);
+    if (text != NULL && parse_u(text, len) > 999) {
+        static const char message[] = "value out of range";
+        galley_procedure_report_semantic_error(args, message, sizeof(message) - 1);
+    }
 }
 
 void reduction_Pair(void *args) {

@@ -76,6 +76,10 @@ export function reduction_Number(args: ProcedureArguments): void {
   if (node === null) return;
   const [line, column] = posOf(node);
   emit(`Number ${textOf(node)} at ${line}:${column}`);
+  const value = Number.parseInt(textOf(node), 10);
+  if (Number.isInteger(value) && value > 999) {
+    args.reportSemanticError("value out of range");
+  }
 }
 
 export function reduction_Pair(args: ProcedureArguments): void {

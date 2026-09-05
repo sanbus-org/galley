@@ -204,8 +204,25 @@ hash by address, and support `int(node)` to recover the raw address.
 `session.diagnostic()` returns a frozen snapshot (`galley.Diagnostic`)
 with `kind`, `line`, `column`, `message`, `message_ansi`,
 `unexpected_token`, `expected_tokens`, `context`, `syntax_error_count`,
+`semantic_error_count`, `semantic` (a `(variable, message)` pair for
+semantic errors, else `None`),
 indentation details, and the full structured recovery information — or
 `None` when the last parse succeeded.
+
+A hook reports a semantic error through `args.report_semantic_error(message)`,
+which returns the running total so hooks can limit themselves. Parsing
+continues and a syntax-clean parse with any semantic error raises
+`galley.Error` with code `-12` (`KIND_SEMANTIC` diagnostics):
+
+```python
+def reduction_Number(args: galley.ProcedureArguments) -> None:
+    node = args.current_node()
+    assert node is not None
+    text = node.text()
+    assert text is not None
+    if int(text) > 99:
+        args.report_semantic_error("value out of range")
+```
 
 ## Tests
 

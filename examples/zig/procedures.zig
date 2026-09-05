@@ -90,6 +90,10 @@ pub fn reduction_Number(args: *ProcedureArguments) void {
     const node = args.currentNode() orelse return;
     const line, const column = nodeLineColumn(args.context, node);
     std.debug.print("Number {s} at {d}:{d}\n", .{ nodeText(args.context, node), line, column });
+    const value = std.fmt.parseInt(u64, nodeText(args.context, node), 10) catch return;
+    if (value > 999) {
+        _ = args.reportSemanticError("value out of range") catch return;
+    }
 }
 
 pub fn reduction_Pair(args: *ProcedureArguments) void {

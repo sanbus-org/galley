@@ -120,6 +120,16 @@ func reduction_Number(ptr unsafe.Pointer) {
 	}
 	line, column := posOf(session, node)
 	emit(fmt.Sprintf("Number %s at %d:%d\n", string(textOf(session, node)), line, column))
+	var value uint64
+	for _, digit := range textOf(session, node) {
+		if digit < '0' || digit > '9' {
+			return
+		}
+		value = value*10 + uint64(digit-'0')
+	}
+	if value > 999 {
+		_, _ = args.ReportSemanticError("value out of range")
+	}
 }
 
 //export reduction_Pair

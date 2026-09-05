@@ -95,6 +95,11 @@ public final class procedures {
         if (node == null) return;
         int[] pos = posOf(node);
         emit("Number " + textOf(node) + " at " + pos[0] + ":" + pos[1]);
+        try {
+            if (Long.parseLong(textOf(node)) > 999) {
+                args.reportSemanticError("value out of range");
+            }
+        } catch (NumberFormatException ignored) {}
     }
 
     public static void reduction_Pair(ProcedureArguments args) {
