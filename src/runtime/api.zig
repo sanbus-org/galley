@@ -942,6 +942,39 @@ test "message templates resolve session overrides then config entries" {
     try std.testing.expectEqualStrings("config-star", runtime_plain.resolveMessageOverride(other, config_tables).?);
 }
 
+test "duplicate rule headers record a semantic diagnostic" {
+    if (builtin.mode != .Debug) return error.SkipZigTest;
+
+    const duplicated =
+        \\A
+        \\| "x"
+        \\
+        \\A
+        \\| "y"
+        \\
+    ;
+
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{
+        .syntax_error_reporter = &struct {
+            fn ignore(_: []const u8) void {}
+        }.ignore,
+    });
+    defer session.deinit();
+    try std.testing.expectError(error.DuplicateRuleHeader, session.parseBytes(duplicated, null));
+
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.semanticErrorCount());
+    try std.testing.expectEqual(@as(usize, 0), read_guard.syntaxErrorCount());
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    const semantic = switch (diagnostic) {
+        .semantic => |value| value,
+        else => return error.ExpectedSemanticDiagnostic,
+    };
+    try std.testing.expectEqualStrings("Start", semantic.variable);
+    try std.testing.expect(std.mem.indexOf(u8, semantic.message, "DuplicateRuleHeader") != null);
+}
+
 test "message override placeholders expand against the diagnostic" {
     if (builtin.mode != .Debug) return error.SkipZigTest;
 

@@ -77,7 +77,7 @@ pub fn reduction(args: *ProcedureArguments) void {
 pub fn reduction_Start(args: *ProcedureArguments) !void {
     if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
-        const grammar = try grammarFromAst(args.context, node_address);
+        const grammar = try grammarFromAst(args, node_address);
         const node = args.context.node_allocator.at(node_address);
         if (comptime root.parser.are_procedures_enabled)
             node.payload.grammar = grammar;
@@ -162,7 +162,8 @@ pub const reduction_RecoveryPoint_0 = absorbLastChildNamed("TerminalAndCursor").
 pub const reduction_VerbatimMarker_0 = absorbLastChildNamed("TerminalAndCursor").function;
 pub const reduction_VerbatimMarker_1 = absorbLastChildNamed("TerminalAndCursor").function;
 
-fn grammarFromAst(context: *data_structures.Context, start_address: Node.Pointer) !*Grammar {
+fn grammarFromAst(args: *ProcedureArguments, start_address: Node.Pointer) !*Grammar {
+    const context = args.context;
     const allocator = context.runtime().arena_allocator;
     const rules_address = firstChildNamed(context, start_address, "Rules") orelse return error.MissingRules;
 
@@ -181,11 +182,12 @@ fn grammarFromAst(context: *data_structures.Context, start_address: Node.Pointer
 
     if (mutable_rules.items.len == 0) {
         reporterAt(context, start_address).report("EmptyGrammar: grammar contains no rules", .{});
+        _ = try args.reportSemanticError("EmptyGrammar: grammar contains no rules");
         return error.EmptyGrammar;
     }
     if (generator_common.findDuplicateRuleHeader(mutable_rules.items)) |duplicate| {
-        reportDuplicateRuleHeader(
-            context,
+        try reportDuplicateRuleHeader(
+            args,
             rule_addresses.items[duplicate.first],
             rule_addresses.items[duplicate.second],
             mutable_rules.items[duplicate.second].header,
@@ -244,11 +246,12 @@ fn reporterAt(context: *data_structures.Context, node_address: Node.Pointer) Gra
 }
 
 fn reportDuplicateRuleHeader(
-    context: *data_structures.Context,
+    args: *ProcedureArguments,
     first_address: Node.Pointer,
     second_address: Node.Pointer,
     header: []const u8,
-) void {
+) !void {
+    const context = args.context;
     const allocator = context.runtime().arena_allocator;
     const input = context.diagnosticInput();
     const first_position = sourcePositionOf(input, context.node_allocator.at(first_address).text_start);
@@ -263,8 +266,12 @@ fn reportDuplicateRuleHeader(
             second_position.line,
             second_position.column,
         },
-    ) catch return;
+    ) catch return error.OutOfMemory;
     emitGrammarMessage(context, message);
+    // The parse still fails with error.DuplicateRuleHeader below (the
+    // generator needs a valid model to proceed), but the structured
+    // diagnostic stays readable through the session.
+    _ = try args.reportSemanticError(message);
 }
 
 fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules: []MutableRule) !*Grammar {
