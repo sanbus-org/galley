@@ -717,8 +717,11 @@ def section_methodology_third_party() -> str:
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
   demand, checksum-verified, ignored external assets.
 - No benchmark input is stored in either repository.
-- The Flex lexer validates UTF-8 and string escapes with the same strictness as
-  Galley's unicode grammar, so Bison/Flex is compared on equal terms.
+- Every parser except Tree-sitter validates string escapes and UTF-8 with the
+  same strictness as Galley's unicode grammar: the Flex lexer, both LALRPOP
+  grammars, and Nom were tightened to match, and RapidJSON runs with encoding
+  validation enabled. Tree-sitter runs upstream as-is, with laxer string
+  rules.
 - Parsers included: Tree-sitter (C, CST), Bison/Flex (C, multiple AST modes),
   LALRPOP (Rust, Non-AST & AST), simdjson (C++, Validate & DOM), Nom (Rust, AST),
   RapidJSON (C++, DOM & SAX), yyjson (C, DOM AST).

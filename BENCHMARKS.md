@@ -26,13 +26,13 @@ arbitrary grammars. They are reference points showing what a single-purpose nati
 implementation can achieve, not direct competitors to a parser generator.
 
 > On `twitter.json`, **within the parser-generator category**, Galley LL is
-> **2.3× faster than LALRPOP** (Rust),
+> **2.5× faster than LALRPOP** (Rust),
 > **1.7× faster than Bison/Flex** (C), and
-> **3.3× faster than Nom** (Rust) — with full AST construction
-> (504 MB/s) still outpacing LALRPOP's non-AST mode (230 MB/s).
+> **6.7× faster than Nom** (Rust) — with full AST construction
+> (496 MB/s) still outpacing LALRPOP's non-AST mode (212 MB/s).
 
-Notably, Galley's no-ast throughput of **536 MB/s** is within ~17% of
-RapidJSON's SAX mode (646 MB/s) — a hand-tuned C++ library with SIMD
+Notably, Galley's no-ast throughput of **536 MB/s** is within ~3% of
+RapidJSON's SAX mode (519 MB/s) — a hand-tuned C++ library with SIMD
 acceleration — despite Galley being a general-purpose parser generated from a grammar
 specification with no JSON-specific optimisations.
 
@@ -42,221 +42,221 @@ Each table below runs every parser on one shared input in the same harness (2 wa
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **3,125 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **1,420 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | 988.2 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 882.2 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 808.5 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 718.4 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 419.4 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 351.9 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 295.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 286.4 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 283.4 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 277.1 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 214.8 MB/s |
-| Nom          | Rust |      | General       | AST            | 207.9 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 183.5 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 163.0 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 25.5 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **3,316 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **1,426 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **1,008 MB/s** |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 850.7 MB/s |
+| Galley LL    | Zig  |      | General       | No AST         | 816.8 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 734.4 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 409.9 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 357.8 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 297.8 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 284.5 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 281.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 278.8 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 213.2 MB/s |
+| Nom          | Rust |      | General       | AST            | 196.1 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 180.7 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 159.8 MB/s |
+| Tree-sitter  | C    |      | General       | CST            | 25.0 MB/s  |
 
 ### `citm_catalog.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,334 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **3,370 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **3,299 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | **1,335 MB/s** |
-| Galley LL    | Zig  |      | General       | No AST         | **1,017 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 957.0 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 835.6 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 378.0 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 366.9 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 365.4 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 360.9 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 309.1 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 294.6 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 272.8 MB/s |
-| Nom          | Rust |      | General       | AST            | 229.9 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 173.7 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 41.4 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,436 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **3,413 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,996 MB/s** |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | **1,141 MB/s** |
+| Galley LL    | Zig  |      | General       | No AST         | **1,018 MB/s** |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | **1,001 MB/s** |
+| Galley LL    | Zig  |      | General       | AST            | 813.9 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 385.1 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 373.9 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 372.4 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 365.4 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 301.1 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 294.2 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 275.9 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 175.4 MB/s |
+| Nom          | Rust |      | General       | AST            | 164.5 MB/s |
+| Tree-sitter  | C    |      | General       | CST            | 43.2 MB/s  |
 
 ### `fgo.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **2,088 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **1,625 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **1,159 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 549.5 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 471.8 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 410.1 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 322.4 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 252.4 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 236.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 235.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 230.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 228.2 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 152.8 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 129.7 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 128.9 MB/s |
-| Nom          | Rust |      | General       | AST            | 88.5 MB/s  |
-| Tree-sitter  | C    |      | General       | CST            | 13.8 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **2,133 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **1,631 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **1,175 MB/s** |
+| Galley LL    | Zig  |      | General       | No AST         | 475.0 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 469.7 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 373.1 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 322.9 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 252.5 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 237.8 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 237.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 231.8 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 226.4 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 144.6 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 131.8 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 125.2 MB/s |
+| Nom          | Rust |      | General       | AST            | 55.2 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 13.7 MB/s  |
 
 ### `github_events.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,615 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **3,138 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,970 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 574.0 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 509.0 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 503.1 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 471.3 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 324.4 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 312.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 311.0 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 307.9 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 289.6 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 216.4 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 196.7 MB/s |
-| Nom          | Rust |      | General       | AST            | 175.9 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 170.7 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 36.8 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,969 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **3,241 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **3,036 MB/s** |
+| Galley LL    | Zig  |      | General       | No AST         | 478.3 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 472.6 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 454.6 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 396.7 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 314.5 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 303.4 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 300.6 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 297.9 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 288.4 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 185.3 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 184.4 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 177.3 MB/s |
+| Nom          | Rust |      | General       | AST            | 66.0 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 36.9 MB/s  |
 
 ### `gsoc-2018.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **5,429 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **3,303 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **3,224 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 490.0 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 445.2 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 375.3 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 358.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 349.1 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 348.9 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 348.0 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 348.0 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 346.2 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 345.6 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 309.3 MB/s |
-| Nom          | Rust |      | General       | AST            | 229.8 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 186.9 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 59.1 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **5,654 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **3,403 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **3,260 MB/s** |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 457.7 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 435.5 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 354.6 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 353.1 MB/s |
+| Galley LL    | Zig  |      | General       | No AST         | 352.5 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 350.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 348.2 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 343.1 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 316.7 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 232.5 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 224.9 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 189.6 MB/s |
+| Nom          | Rust |      | General       | AST            | 64.3 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 62.6 MB/s  |
 
 ### `lottie.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **1,332 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | 974.5 MB/s |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | 679.5 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 501.4 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 355.8 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 326.4 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 221.1 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 208.3 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 155.1 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 142.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 138.9 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 136.2 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 101.1 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 89.7 MB/s  |
-| LALRPOP      | Rust |      | General       | AST            | 75.4 MB/s  |
-| Nom          | Rust |      | General       | AST            | 54.9 MB/s  |
-| Tree-sitter  | C    |      | General       | CST            | 8.6 MB/s   |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **1,325 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **1,037 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | 673.2 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 440.4 MB/s |
+| Galley LL    | Zig  |      | General       | No AST         | 361.8 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 311.9 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 221.4 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 209.6 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 156.8 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 144.3 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 141.5 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 139.8 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 99.9 MB/s  |
+| LALRPOP      | Rust |      | General       | No AST         | 87.6 MB/s  |
+| LALRPOP      | Rust |      | General       | AST            | 74.7 MB/s  |
+| Nom          | Rust |      | General       | AST            | 46.5 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 8.8 MB/s   |
 
 ### `otfcc.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **1,336 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **1,105 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | 728.2 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 599.6 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 412.4 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 361.6 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 254.2 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 253.7 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 177.1 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 164.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 162.2 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 159.9 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 118.2 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 102.7 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 85.1 MB/s  |
-| Nom          | Rust |      | General       | AST            | 51.9 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **1,361 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **1,130 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | 737.0 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 532.5 MB/s |
+| Galley LL    | Zig  |      | General       | No AST         | 414.0 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 354.3 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 255.1 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 251.9 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 181.9 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 167.7 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 165.7 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 163.9 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 116.7 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 102.9 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 85.4 MB/s  |
+| Nom          | Rust |      | General       | AST            | 46.1 MB/s  |
 | Tree-sitter  | C    |      | General       | CST            | 8.8 MB/s   |
 
 ### `poet.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **3,895 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **3,677 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,752 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 485.9 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 444.2 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 371.4 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 361.9 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 348.4 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 347.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 343.1 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 339.8 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 337.8 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 284.6 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 276.0 MB/s |
-| Nom          | Rust |      | General       | AST            | 273.3 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 201.2 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 69.3 MB/s  |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **3,989 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **3,614 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,699 MB/s** |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 446.2 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 422.0 MB/s |
+| Galley LL    | Zig  |      | General       | No AST         | 376.1 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 357.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 343.9 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 341.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 338.0 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 335.9 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 329.6 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 216.6 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 209.6 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 201.0 MB/s |
+| Nom          | Rust |      | General       | AST            | 116.9 MB/s |
+| Tree-sitter  | C    |      | General       | CST            | 68.0 MB/s  |
 
 ### `twitter.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,241 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **2,987 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,896 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 646.4 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 542.8 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 535.5 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 503.6 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 316.5 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 300.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 298.3 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 294.6 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 287.9 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 230.1 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 216.5 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 171.5 MB/s |
-| Nom          | Rust |      | General       | AST            | 161.1 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 32.3 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **3,883 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **3,256 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **2,787 MB/s** |
+| Galley LL    | Zig  |      | General       | No AST         | 535.9 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 518.6 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 496.1 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 469.0 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 315.7 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 300.8 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 299.6 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 297.5 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 288.4 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 212.2 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 197.4 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 173.1 MB/s |
+| Nom          | Rust |      | General       | AST            | 79.7 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 33.6 MB/s  |
 
 ### `twitterescaped.json`
 
 | Parser       | Lang | SIMD | Category      | Mode           | Throughput |
 | ------------ | ---- | ---- | ------------- | -------------- | ---------- |
-| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,377 MB/s** |
-| yyjson       | C    | ✓    | JSON-specific | AST            | **2,438 MB/s** |
-| simdjson     | C++  | ✓    | JSON-specific | AST            | **1,132 MB/s** |
-| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 542.4 MB/s |
-| Galley LL    | Zig  |      | General       | No AST         | 539.3 MB/s |
-| Galley LL    | Zig  |      | General       | AST            | 515.5 MB/s |
-| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 480.6 MB/s |
-| Galley LR    | Zig  |      | General       | No AST         | 320.1 MB/s |
-| Bison / Flex | C    |      | General       | No AST         | 303.6 MB/s |
-| Bison / Flex | C    |      | General       | AST (advanced) | 291.1 MB/s |
-| Bison / Flex | C    |      | General       | AST (payload)  | 290.5 MB/s |
-| Bison / Flex | C    |      | General       | AST (simple)   | 278.5 MB/s |
-| LALRPOP      | Rust |      | General       | No AST         | 251.6 MB/s |
-| LALRPOP      | Rust |      | General       | AST            | 226.7 MB/s |
-| Galley LR    | Zig  |      | General       | AST            | 195.5 MB/s |
-| Nom          | Rust |      | General       | AST            | 129.6 MB/s |
-| Tree-sitter  | C    |      | General       | CST            | 16.1 MB/s  |
+| simdjson     | C++  | ✓    | JSON-specific | Validate       | **4,251 MB/s** |
+| yyjson       | C    | ✓    | JSON-specific | AST            | **2,433 MB/s** |
+| simdjson     | C++  | ✓    | JSON-specific | AST            | **1,182 MB/s** |
+| Galley LL    | Zig  |      | General       | No AST         | 560.2 MB/s |
+| Galley LL    | Zig  |      | General       | AST            | 491.2 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | SAX            | 468.2 MB/s |
+| RapidJSON    | C++  | ✓    | JSON-specific | AST            | 407.6 MB/s |
+| Galley LR    | Zig  |      | General       | No AST         | 312.1 MB/s |
+| Bison / Flex | C    |      | General       | No AST         | 297.4 MB/s |
+| Bison / Flex | C    |      | General       | AST (simple)   | 289.4 MB/s |
+| Bison / Flex | C    |      | General       | AST (advanced) | 288.1 MB/s |
+| Bison / Flex | C    |      | General       | AST (payload)  | 284.2 MB/s |
+| LALRPOP      | Rust |      | General       | No AST         | 217.0 MB/s |
+| LALRPOP      | Rust |      | General       | AST            | 197.9 MB/s |
+| Galley LR    | Zig  |      | General       | AST            | 191.9 MB/s |
+| Nom          | Rust |      | General       | AST            | 69.6 MB/s  |
+| Tree-sitter  | C    |      | General       | CST            | 21.2 MB/s  |
 
 ---
 
@@ -269,8 +269,11 @@ Each table below runs every parser on one shared input in the same harness (2 wa
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
   demand, checksum-verified, ignored external assets.
 - No benchmark input is stored in either repository.
-- The Flex lexer validates UTF-8 and string escapes with the same strictness as
-  Galley's unicode grammar, so Bison/Flex is compared on equal terms.
+- Every parser except Tree-sitter validates string escapes and UTF-8 with the
+  same strictness as Galley's unicode grammar: the Flex lexer, both LALRPOP
+  grammars, and Nom were tightened to match, and RapidJSON runs with encoding
+  validation enabled. Tree-sitter runs upstream as-is, with laxer string
+  rules.
 - Parsers included: Tree-sitter (C, CST), Bison/Flex (C, multiple AST modes),
   LALRPOP (Rust, Non-AST & AST), simdjson (C++, Validate & DOM), Nom (Rust, AST),
   RapidJSON (C++, DOM & SAX), yyjson (C, DOM AST).
