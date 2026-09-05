@@ -20,7 +20,7 @@ fn recordFinalizedDiagnostic(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     calls += 1;
     saw_finalized_recovery = switch (args.diagnostic) {
         .syntax => |diagnostic| diagnostic.recovery != null,
-        .indentation => unreachable,
+        .semantic, .indentation => unreachable,
     };
     return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }

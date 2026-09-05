@@ -47,6 +47,7 @@ enum {
     galley_error_no_diagnostic            = -9,
     galley_error_invalid_node             = -10,
     galley_error_io                       = -11,
+    galley_error_semantic                 = -12,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -311,7 +312,8 @@ const char *galley_status_string(long long status);
 enum {
     galley_diagnostic_kind_none        = 0,
     galley_diagnostic_kind_syntax      = 1,
-    galley_diagnostic_kind_indentation = 2
+    galley_diagnostic_kind_indentation = 2,
+    galley_diagnostic_kind_semantic    = 3
 };
 
 enum {
@@ -333,6 +335,16 @@ long long galley_diagnostic_kind(GalleySession *session);
 /* Returns how many syntax errors the most recent recovery-enabled parse
  * recorded. Fail-fast parses report at most one. */
 long long galley_syntax_error_count(GalleySession *session);
+
+/* Returns how many semantic errors the most recent parse recorded. */
+long long galley_semantic_error_count(GalleySession *session);
+
+/* Writes the variable and message of a semantic diagnostic. Returns
+ * galley_error_no_diagnostic when there is no diagnostic or it is not a
+ * semantic error. */
+long long galley_diagnostic_semantic(GalleySession *session,
+                                     const char **out_variable, size_t *out_variable_len,
+                                     const char **out_message, size_t *out_message_len);
 
 /* Writes the indentation width and emitted spaces of an indentation
  * diagnostic. Returns galley_error_no_diagnostic when there is no
@@ -383,6 +395,9 @@ long long galley_recorded_diagnostic_message(GalleySession *session, unsigned lo
                                              const char **out);
 long long galley_recorded_indentation(GalleySession *session, unsigned long long diag_index,
                                       unsigned int *out_spaces, unsigned int *out_indentation_width);
+long long galley_recorded_semantic(GalleySession *session, unsigned long long diag_index,
+                                   const char **out_variable, size_t *out_variable_len,
+                                   const char **out_message, size_t *out_message_len);
 
 /* Expected tokens and "while parsing" context chain of a recorded
  * diagnostic. */
@@ -434,6 +449,7 @@ long long galley_procedure_drop_if_empty(void *args);
 long long galley_procedure_replace_with_children(void *args);
 long long galley_procedure_left_recursive_reduction(void *args);
 long long galley_procedure_right_recursive_reduction(void *args);
+long long galley_procedure_report_semantic_error(void *args, const char *message, size_t message_len);
 
 #ifdef __cplusplus
 } /* extern "C" */

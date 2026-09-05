@@ -26,6 +26,52 @@ pub const ProcedureArguments = struct {
         }
         return self._temp_node;
     }
+
+    /// The single gate for consumer-reported semantic errors. Records an
+    /// arena-backed diagnostic, marks the current node when one exists, and
+    /// returns the total semantic error count so hooks can limit themselves.
+    /// Parsing continues; `Session` returns `ParseError.SemanticError` after
+    /// a syntax-clean parse that recorded any semantic error.
+    pub fn reportSemanticError(self: *@This(), message: []const u8) !usize {
+        const runtime_context = self.context.runtime();
+        const arena = runtime_context.arena_allocator;
+        const owned_message = try arena.dupe(u8, message);
+
+        var variable_name: []const u8 = "*";
+        var text_start: usize = 0;
+        var text_length: usize = 0;
+        if (self.currentNode()) |node| {
+            text_start = node.text_start;
+            text_length = node.text_length;
+            if (node.variable != data_structures.Node.invalid_variable and
+                node.variable < root.parser.variables.len)
+            {
+                variable_name = root.parser.variables[node.variable];
+            } else if (self.rule) |rule| {
+                if (rule.header < root.parser.variables.len) {
+                    variable_name = root.parser.variables[rule.header];
+                }
+            }
+            node.is_semantic_error = true;
+        } else if (self.rule) |rule| {
+            if (rule.header < root.parser.variables.len) {
+                variable_name = root.parser.variables[rule.header];
+            }
+        }
+
+        try runtime_context.recorded_diagnostics.append(arena, .{
+            .semantic = .{
+                .line = if (comptime root.position_tracking_enabled) self.context.line else 0,
+                .column = if (comptime root.position_tracking_enabled) self.context.column else 0,
+                .variable = variable_name,
+                .message = owned_message,
+                .text_start = text_start,
+                .text_length = text_length,
+            },
+        });
+        runtime_context.semantic_error_count += 1;
+        return runtime_context.semantic_error_count;
+    }
 };
 
 pub const Procedure = fn (args: *ProcedureArguments) anyerror!void;

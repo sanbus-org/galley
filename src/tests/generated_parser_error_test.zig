@@ -38,7 +38,7 @@ fn expectSyntaxDiagnostic(session: *parser.Session) !void {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
-        .indentation => return error.ExpectedSyntaxDiagnostic,
+        .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
     };
 
     try std.testing.expectEqual(diagnostic_line, syntax.line);
@@ -110,7 +110,7 @@ test "generated_parser_error preserves a complete Unicode unexpected token" {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |syntax| syntax,
-        .indentation => return error.ExpectedSyntaxDiagnostic,
+        .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
     };
     try std.testing.expectEqualStrings("😀", syntax.unexpected_token);
 

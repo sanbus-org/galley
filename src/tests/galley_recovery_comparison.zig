@@ -55,7 +55,7 @@ fn run(io: std.Io, allocator: std.mem.Allocator) !Summary {
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     const syntax = switch (diagnostic) {
         .syntax => |value| value,
-        .indentation => return error.ExpectedSyntaxDiagnostic,
+        .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
     };
     const recovery_resume: ?RecoveryResume = if (syntax.recovery) |recovery|
         switch (recovery.@"resume") {

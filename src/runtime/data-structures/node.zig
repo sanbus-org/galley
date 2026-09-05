@@ -45,6 +45,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             .next = invalid_pointer,
             .children_count = 0,
             .variable = NodeType.invalid_variable,
+            .is_semantic_error = false,
             .payload = undefined,
         };
 
@@ -212,6 +213,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             node.text_length = 0;
             node.children_count = 0;
             node.variable = variable;
+            node.is_semantic_error = false;
             node.payload = .{};
 
             return address;
@@ -289,6 +291,10 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         children_count: u32 = 0,
 
         variable: u16 = invalid_variable,
+        /// Set by the single `reportSemanticError` gate when a hook reports
+        /// a semantic error on this node. Parents stay unmarked; use
+        /// `hasSemanticErrorSubtree` to query a subtree.
+        is_semantic_error: bool = false,
         payload: PayloadType,
 
         const Self = @This();
@@ -917,6 +923,36 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                 .node_allocator = node_allocator,
                 .current = Self.augmentedFirst(self_address, node_allocator),
             };
+        }
+
+        /// Returns true when `self_address` or any descendant carries a
+        /// semantic error mark. Parents are never auto-marked; hooks call
+        /// this to avoid cascading diagnostics. AST mode only: no-AST
+        /// temporary children are checked directly through their flags.
+        pub fn hasSemanticErrorSubtree(self_address: Pointer, node_allocator: NodeAllocator) bool {
+            if (comptime !with_ast) {
+                @compileError("hasSemanticErrorSubtree requires AST construction; in no-AST mode check child is_semantic_error flags directly");
+            }
+            var current = self_address;
+            while (true) {
+                const node = node_allocator.at(current);
+                if (node.is_semantic_error) return true;
+                if (node.first_child != invalid_pointer) {
+                    current = node.first_child;
+                    continue;
+                }
+                var cursor = current;
+                while (true) {
+                    if (cursor == self_address) return false;
+                    const cursor_node = node_allocator.at(cursor);
+                    if (cursor_node.next != invalid_pointer) {
+                        current = cursor_node.next;
+                        break;
+                    }
+                    if (cursor_node.parent == invalid_pointer) return false;
+                    cursor = cursor_node.parent;
+                }
+            }
         }
     };
 }

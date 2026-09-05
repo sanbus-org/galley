@@ -60,11 +60,13 @@ pub const galley_error_internal: i64 = -8;
 pub const galley_error_no_diagnostic: i64 = -9;
 pub const galley_error_invalid_node: i64 = -10;
 pub const galley_error_io: i64 = -11;
+pub const galley_error_semantic: i64 = -12;
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
 pub const galley_diagnostic_kind_none: i64 = 0;
 pub const galley_diagnostic_kind_syntax: i64 = 1;
 pub const galley_diagnostic_kind_indentation: i64 = 2;
+pub const galley_diagnostic_kind_semantic: i64 = 3;
 
 /// Recovery target kinds returned by `galley_diagnostic_recovery_kind`.
 pub const galley_recovery_target_none: i64 = 0;
@@ -224,6 +226,7 @@ export fn galley_session_set_message_override(
 fn statusForError(err: anyerror) i64 {
     return switch (err) {
         error.SyntaxError => galley_error_syntax,
+        error.SemanticError => galley_error_semantic,
         error.IndentationError => galley_error_indentation,
         error.StackOverflow => galley_error_stack_overflow,
         error.ASTCapacityExceeded => galley_error_ast_capacity_exceeded,
@@ -393,7 +396,7 @@ fn recordedDiagnostic(embedded: *Embedded, diag_index: u64) ?root.ParseDiagnosti
 fn recordedSyntaxDiagnostic(embedded: *Embedded, diag_index: u64) ?root.SyntaxDiagnostic {
     return switch (recordedDiagnostic(embedded, diag_index) orelse return null) {
         .syntax => |syntax| syntax,
-        .indentation => null,
+        .semantic, .indentation => null,
     };
 }
 
@@ -457,6 +460,10 @@ fn writeDiagnosticPosition(
             out_line.?.* = syntax.line;
             out_column.?.* = syntax.column;
         },
+        .semantic => |semantic| {
+            out_line.?.* = semantic.line;
+            out_column.?.* = semantic.column;
+        },
         .indentation => |indentation| {
             out_line.?.* = indentation.line;
             out_column.?.* = indentation.column;
@@ -501,7 +508,7 @@ fn writeUnexpectedToken(diagnostic: ?root.ParseDiagnostic, out_data: ?*[*]const 
             out_len.?.* = syntax.unexpected_token.len;
             return galley_ok;
         },
-        .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation => return galley_error_no_diagnostic,
     }
 }
 
@@ -542,6 +549,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
         galley_ok => "ok",
         galley_error_null_argument => "null argument",
         galley_error_syntax => "syntax error",
+        galley_error_semantic => "semantic error",
         galley_error_indentation => "indentation error",
         galley_error_stack_overflow => "parser stack overflow",
         galley_error_ast_capacity_exceeded => "AST capacity exceeded",
@@ -560,7 +568,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
 fn countExpectedTokens(diagnostic: ?root.ParseDiagnostic) i64 {
     switch (diagnostic orelse return galley_error_no_diagnostic) {
         .syntax => |syntax| return @intCast(syntax.expected_tokens.len),
-        .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation => return galley_error_no_diagnostic,
     }
 }
 
@@ -624,7 +632,7 @@ fn writeExpectedToken(
             out_len.?.* = token.len;
             return galley_ok;
         },
-        .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation => return galley_error_no_diagnostic,
     }
 }
 
@@ -637,6 +645,7 @@ fn countContextNames(diagnostic: ?root.ParseDiagnostic) i64 {
             .while_parsing => |names| return @intCast(names.len),
             else => return 0,
         },
+        .semantic => return 1,
         .indentation => return galley_error_no_diagnostic,
     }
 }
@@ -702,6 +711,12 @@ fn writeContextName(
                 return galley_ok;
             },
             else => return galley_error_no_diagnostic,
+        },
+        .semantic => |semantic| {
+            if (index != 0) return galley_error_invalid_node;
+            out_data.?.* = semantic.variable.ptr;
+            out_len.?.* = semantic.variable.len;
+            return galley_ok;
         },
         .indentation => return galley_error_no_diagnostic,
     }
@@ -978,6 +993,7 @@ export fn galley_tree_clean_children(
 fn diagnosticKindValue(diagnostic: ?root.ParseDiagnostic) i64 {
     switch (diagnostic orelse return galley_diagnostic_kind_none) {
         .syntax => return galley_diagnostic_kind_syntax,
+        .semantic => return galley_diagnostic_kind_semantic,
         .indentation => return galley_diagnostic_kind_indentation,
     }
 }
@@ -1013,8 +1029,55 @@ export fn galley_recorded_diagnostic_count(session_ptr: ?*GalleySession) i64 {
 fn currentSyntaxDiagnostic(embedded: *Embedded) ?root.SyntaxDiagnostic {
     return switch (embedded.session.runtime_context.lastDiagnostic() orelse return null) {
         .syntax => |syntax| syntax,
-        .indentation => null,
+        .semantic, .indentation => null,
     };
+}
+
+fn writeSemanticFields(
+    diagnostic: ?root.ParseDiagnostic,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+    out_message: ?*[*]const u8,
+    out_message_len: ?*usize,
+) i64 {
+    switch (diagnostic orelse return galley_error_no_diagnostic) {
+        .semantic => |semantic| {
+            if (out_variable) |ptr| ptr.* = semantic.variable.ptr;
+            if (out_variable_len) |len| len.* = semantic.variable.len;
+            if (out_message) |ptr| ptr.* = semantic.message.ptr;
+            if (out_message_len) |len| len.* = semantic.message.len;
+            return galley_ok;
+        },
+        .syntax, .indentation => return galley_error_no_diagnostic,
+    }
+}
+
+/// Writes the variable and message of a semantic diagnostic. Fails with
+/// `galley_error_no_diagnostic` when the diagnostic is null or not semantic.
+export fn galley_diagnostic_semantic(
+    session_ptr: ?*GalleySession,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+    out_message: ?*[*]const u8,
+    out_message_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    return writeSemanticFields(embedded.session.runtime_context.lastDiagnostic(), out_variable, out_variable_len, out_message, out_message_len);
+}
+
+/// Writes the variable and message of the semantic diagnostic recorded at
+/// `diag_index`. Fails with `galley_error_no_diagnostic` when the index is
+/// out of range or the record is not semantic.
+export fn galley_recorded_semantic(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out_variable: ?*[*]const u8,
+    out_variable_len: ?*usize,
+    out_message: ?*[*]const u8,
+    out_message_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    return writeSemanticFields(recordedDiagnostic(embedded, diag_index), out_variable, out_variable_len, out_message, out_message_len);
 }
 
 /// Writes the indentation width and emitted spaces of an indentation
@@ -1031,7 +1094,7 @@ fn writeIndentationFields(
             out_indentation_width.?.* = indentation.indentation_width;
             return galley_ok;
         },
-        .syntax => return galley_error_no_diagnostic,
+        .syntax, .semantic => return galley_error_no_diagnostic,
     }
 }
 
@@ -1642,4 +1705,20 @@ export fn galley_procedure_right_recursive_reduction(args: ?*anyopaque) i64 {
         return galley_ok;
     }
     return galley_error_internal;
+}
+
+/// Reports a semantic error on the current node and returns the total
+/// semantic error count, or a negative status. Parsing continues; a
+/// syntax-clean parse with any semantic error returns `SemanticError`.
+export fn galley_procedure_report_semantic_error(args: ?*anyopaque, message_ptr: ?[*]const u8, message_len: usize) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+    const message = if (message_ptr) |ptr| ptr[0..message_len] else if (message_len == 0) @as([]const u8, &.{}) else return galley_error_null_argument;
+    const count = procedure_arguments.reportSemanticError(message) catch |e| return statusForError(e);
+    return @intCast(count);
+}
+
+/// Returns how many semantic errors the most recent parse recorded.
+export fn galley_semantic_error_count(session_ptr: ?*GalleySession) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
+    return @intCast(embedded.session.runtime_context.semantic_error_count);
 }

@@ -28,8 +28,10 @@ pub const RuntimeContext = struct {
     input_path: ?[]const u8 = null,
     arena_allocator: std.mem.Allocator,
     /// Every diagnostic recorded during the current parse, in recording
-    /// order. Bounded by the generated parsers' limit checks against
-    /// `max_errors` (indentation records at most once per parse).
+    /// order. Syntax records are bounded by the generated parsers' limit
+    /// checks against `max_errors` (indentation records at most once per
+    /// parse); semantic records are unbounded and hooks limit themselves
+    /// through `Context.semanticErrorCount`.
     /// Arena-backed: valid until the next parse begins.
     recorded_diagnostics: std.ArrayList(root.ParseDiagnostic) = .empty,
     /// Message rendered for the most recent diagnostic by the grammar's
@@ -41,6 +43,10 @@ pub const RuntimeContext = struct {
     recovery_window: usize = 500,
     syntax_error_stack_depth: usize = 0,
     syntax_error_count: usize = 0,
+    /// Aggregated semantic errors reported by procedure hooks through the
+    /// single `reportSemanticError` gate. Unbounded by design; hooks read
+    /// `Context.semanticErrorCount` to limit themselves.
+    semantic_error_count: usize = 0,
     syntax_recovery_position: ?usize = null,
     explicit_recovery_position: ?usize = null,
     explicit_recovery_target_id: ?usize = null,
@@ -80,12 +86,16 @@ pub const RuntimeContext = struct {
     /// The innermost in-progress variable name carried by `diagnostic`, if
     /// its context records one.
     fn innermostVariableName(diagnostic: root.ParseDiagnostic) ?[]const u8 {
-        if (diagnostic == .syntax) switch (diagnostic.syntax.context) {
-            .while_parsing => |names| {
-                if (names.len > 0) return names[0];
+        switch (diagnostic) {
+            .syntax => switch (diagnostic.syntax.context) {
+                .while_parsing => |names| {
+                    if (names.len > 0) return names[0];
+                },
+                else => {},
             },
-            else => {},
-        };
+            .semantic => |semantic| return semantic.variable,
+            .indentation => {},
+        }
         return null;
     }
 
@@ -117,17 +127,19 @@ pub const RuntimeContext = struct {
         if (std.mem.eql(u8, placeholder, "line")) {
             writer.print("{d}", .{switch (diagnostic) {
                 .syntax => |syntax| syntax.line,
+                .semantic => |semantic| semantic.line,
                 .indentation => |indentation| indentation.line,
             }}) catch {};
         } else if (std.mem.eql(u8, placeholder, "column")) {
             writer.print("{d}", .{switch (diagnostic) {
                 .syntax => |syntax| syntax.column,
+                .semantic => |semantic| semantic.column,
                 .indentation => |indentation| indentation.column,
             }}) catch {};
         } else if (std.mem.eql(u8, placeholder, "unexpected")) {
             switch (diagnostic) {
                 .syntax => |syntax| writer.writeAll(syntax.unexpected_token) catch {},
-                .indentation => {},
+                .semantic, .indentation => {},
             }
         } else if (std.mem.eql(u8, placeholder, "expected")) {
             switch (diagnostic) {
@@ -137,7 +149,12 @@ pub const RuntimeContext = struct {
                         writer.print("'{s}'", .{token}) catch {};
                     }
                 },
-                .indentation => {},
+                .semantic, .indentation => {},
+            }
+        } else if (std.mem.eql(u8, placeholder, "message")) {
+            switch (diagnostic) {
+                .semantic => |semantic| writer.writeAll(semantic.message) catch {},
+                .syntax, .indentation => {},
             }
         } else if (std.mem.eql(u8, placeholder, "context")) {
             switch (diagnostic) {
@@ -150,6 +167,7 @@ pub const RuntimeContext = struct {
                     },
                     else => {},
                 },
+                .semantic => |semantic| writer.writeAll(semantic.variable) catch {},
                 .indentation => {},
             }
         } else {
@@ -400,6 +418,14 @@ pub const Context = struct {
         return self.runtimeConst().syntax_error_count != 0;
     }
 
+    pub inline fn semanticErrorCount(self: *const Self) usize {
+        return self.runtimeConst().semantic_error_count;
+    }
+
+    pub inline fn hasSemanticErrors(self: *const Self) bool {
+        return self.runtimeConst().semantic_error_count != 0;
+    }
+
     pub inline fn recoveryWindow(self: *const Self) usize {
         return self.runtimeConst().recovery_window;
     }
@@ -473,7 +499,7 @@ pub const Context = struct {
         const diagnostic = &records.items[records.items.len - 1];
         switch (diagnostic.*) {
             .syntax => |*syntax| syntax.recovery = recovery,
-            .indentation => return error.MissingSyntaxDiagnostic,
+            .semantic, .indentation => return error.MissingSyntaxDiagnostic,
         }
     }
 

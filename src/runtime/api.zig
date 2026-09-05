@@ -38,6 +38,7 @@ pub const stack_overflow_recovery_available = stack_overflow_utilities.is_suppor
 
 pub const ParseError = error{
     SyntaxError,
+    SemanticError,
     IndentationError,
     StackOverflow,
     ASTCapacityExceeded,
@@ -97,8 +98,18 @@ pub const IndentationDiagnostic = struct {
     indentation_width: u16,
 };
 
+pub const SemanticDiagnostic = struct {
+    line: u32,
+    column: u32,
+    variable: []const u8,
+    message: []const u8,
+    text_start: usize = 0,
+    text_length: usize = 0,
+};
+
 pub const ParseDiagnostic = union(enum) {
     syntax: SyntaxDiagnostic,
+    semantic: SemanticDiagnostic,
     indentation: IndentationDiagnostic,
 };
 
@@ -217,6 +228,10 @@ pub const SessionReadGuard = struct {
 
     pub fn syntaxErrorCount(self: *const SessionReadGuard) usize {
         return self.session.runtime_context.syntax_error_count;
+    }
+
+    pub fn semanticErrorCount(self: *const SessionReadGuard) usize {
+        return self.session.runtime_context.semantic_error_count;
     }
 };
 
@@ -367,6 +382,28 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     indentation.column,
                     indentation.spaces,
                     indentation.indentation_width,
+                },
+            ),
+        },
+        .semantic => |semantic| switch (style) {
+            .plain => try writer.print(
+                \\SemanticError at {d}:{d}:
+                \\{s} while parsing {f}.
+                \\
+            , .{
+                semantic.line,
+                semantic.column,
+                semantic.message,
+                string_utilities.fmtString(semantic.variable),
+            }),
+            .ansi => try writer.print(
+                "\x1b[35mSemanticError at {d}:{d}:\n" ++
+                    "\x1b[37m{s}\x1b[37m while parsing \x1b[34m{f}\x1b[0m.\n",
+                .{
+                    semantic.line,
+                    semantic.column,
+                    semantic.message,
+                    string_utilities.fmtString(semantic.variable),
                 },
             ),
         },
@@ -689,6 +726,7 @@ pub const Session = struct {
         self.runtime_context.recorded_diagnostics = .empty;
         self.runtime_context.last_rendered_message = null;
         self.runtime_context.syntax_error_count = 0;
+        self.runtime_context.semantic_error_count = 0;
         self.runtime_context.syntax_recovery_position = null;
         self.runtime_context.explicit_recovery_position = null;
         self.runtime_context.explicit_recovery_target_id = null;
@@ -717,6 +755,14 @@ pub const Session = struct {
                 @branchHint(.unlikely);
                 return error.IndentationError;
             }
+        }
+        if (self.runtime_context.syntax_error_count != 0) {
+            @branchHint(.unlikely);
+            return error.SyntaxError;
+        }
+        if (self.runtime_context.semantic_error_count != 0) {
+            @branchHint(.unlikely);
+            return error.SemanticError;
         }
         var session_result = parsed;
         session_result._session_generation = self.generation;
@@ -789,7 +835,7 @@ test "syntax error stack depth is configurable per session" {
         const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
         const syntax = switch (diagnostic) {
             .syntax => |value| value,
-            .indentation => return error.ExpectedSyntaxDiagnostic,
+            .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
         };
         try std.testing.expectEqual(depth, syntax.context.while_parsing.len);
     }
