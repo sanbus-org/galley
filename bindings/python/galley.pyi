@@ -37,6 +37,7 @@ RECOVERY_MODE_EXPLICIT: Final[int]
 KIND_NONE: Final[int]
 KIND_SYNTAX: Final[int]
 KIND_INDENTATION: Final[int]
+KIND_SEMANTIC: Final[int]
 RECOVERY_TARGET_NONE: Final[int]
 RECOVERY_TARGET_LHS_VARIABLE: Final[int]
 RECOVERY_TARGET_PRODUCTION: Final[int]
@@ -54,6 +55,9 @@ class Error(Exception):
     Attributes:
         code: Raw ``galley_status`` value (negative on failure).
         diagnostic: Snapshot of the session diagnostic at failure, or ``None``.
+
+    ``str(error)`` is the rendered diagnostic message when there is one,
+    otherwise the status string.
     """
 
     code: int
@@ -87,6 +91,10 @@ class Diagnostic:
     """Innermost-first tuple of variables being parsed (syntax only)."""
     syntax_error_count: int
     """How many syntax errors the recovery-enabled parse recorded."""
+    semantic_error_count: int
+    """How many semantic errors the parse recorded."""
+    semantic: tuple[str, str] | None
+    """``(variable, message)`` for semantic errors, else ``None``."""
     indentation: tuple[int, int] | None
     """``(emitted spaces, width)`` for indentation errors, else ``None``."""
     recovery_kind: int | None
@@ -230,6 +238,10 @@ class ProcedureArguments:
 
     def current_column(self) -> int:
         """Scanner column during this reduction."""
+        ...
+
+    def report_semantic_error(self, message: str | bytes) -> int:
+        """Record a semantic error on the current node; return the total count."""
         ...
 
     def clean_children(self) -> Node | None:
