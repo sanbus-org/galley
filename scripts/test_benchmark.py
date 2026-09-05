@@ -99,7 +99,6 @@ class BenchmarkPlanningTests(unittest.TestCase):
             [
                 ("--no-ast", "--no-ast-for-terminals"),
                 ("--no-procedures", "--no-ast-for-terminals"),
-                ("--no-procedures", "--ast-for-terminals"),
             ],
             configurations,
         )
@@ -126,7 +125,6 @@ class BenchmarkPlanningTests(unittest.TestCase):
         self.assertEqual(
             [
                 ("--no-procedures", "--no-ast-for-terminals"),
-                ("--no-procedures", "--ast-for-terminals"),
             ],
             with_ast,
         )

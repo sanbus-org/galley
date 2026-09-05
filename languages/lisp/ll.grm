@@ -1,5 +1,5 @@
 Start
-| OptionalBlank Forms
+| _OptionalBlankTail Forms
 
 Forms
 | Form FormsTail
@@ -25,15 +25,15 @@ Form
 # -- Quote abbreviations (read macros) ---------------------
 
 Abbreviation
-| "'" OptionalBlank Form
-| "`" OptionalBlank Form
-| "," "@" OptionalBlank Form
-| "," OptionalBlank Form
+| "'" _OptionalBlankTail Form
+| "`" _OptionalBlankTail Form
+| "," "@" _OptionalBlankTail Form
+| "," _OptionalBlankTail Form
 
 # -- Lists: proper and dotted pairs ------------------------
 
 List
-| "(" OptionalBlank ListBody ")"
+| "(" _OptionalBlankTail ListBody ")"
 
 ListBody
 | Form ListBodyTail
@@ -57,20 +57,20 @@ HashForm
 | "#t" BooleanTrueTail
 | "#f" BooleanFalseTail
 | "#\\" CharacterContent
-| "#(" OptionalBlank VectorBody ")"
-| "#u8(" OptionalBlank BytevectorBody ")"
+| "#(" _OptionalBlankTail VectorBody ")"
+| "#u8(" _OptionalBlankTail BytevectorBody ")"
 | "#*" BitVectorBody
 | "#b" BinaryDigit BinaryDigitTail
 | "#o" OctalDigit OctalDigitTail
 | "#x" HexDigit HexDigitTail
 | "#" digit _DigitTail HashNumberDispatch
-| "#;" OptionalBlank Form
+| "#;" _OptionalBlankTail Form
 | "#|" BlockCommentBody
 | "#:" _SymbolInitial _SymbolTail
-| "#'" OptionalBlank Form
-| "#." OptionalBlank Form
-| "#+" OptionalBlank Form RequiredBlank Form
-| "#-" OptionalBlank Form RequiredBlank Form
+| "#'" _OptionalBlankTail Form
+| "#." _OptionalBlankTail Form
+| "#+" _OptionalBlankTail Form RequiredBlank Form
+| "#-" _OptionalBlankTail Form RequiredBlank Form
 | "#P" String
 | "#p" String
 | "#S" List
@@ -356,12 +356,6 @@ _SymbolTail
 |
 
 # -- Whitespace and line comments --------------------------
-
-OptionalBlank
-| space _OptionalBlankTail
-| new_line _OptionalBlankTail
-| ";" _LineCommentTail
-|
 
 RequiredBlank
 | space _OptionalBlankTail
