@@ -256,6 +256,12 @@ jobs:
           same ll_error_messages.zig examples/*/ll_error_messages.zig
           same benchmark/ll.grm examples/*/benchmark/ll.grm
           same benchmark/config.zig examples/*/benchmark/config.zig
+          for f in examples/*/benchmark/ll.grm; do
+            test -L "$f" || {
+              echo "::error::$f must be a symlink to languages/json/ll.grm"
+              exit 1
+            }
+          done
           cmp -s languages/json/ll.grm examples/c/benchmark/ll.grm || {
             echo "::error::examples/*/benchmark/ll.grm must match languages/json/ll.grm"
             exit 1
