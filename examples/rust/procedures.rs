@@ -94,6 +94,14 @@ pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
     write_stderr("Number ");
     write_bytes(arguments.text(node).unwrap_or(b""));
     write_stderr(&format!(" at {line}:{column}\n"));
+    if let Ok(value) = std::str::from_utf8(arguments.text(node).unwrap_or(b""))
+        .unwrap_or("")
+        .parse::<u64>()
+    {
+        if value > 999 {
+            let _ = arguments.report_semantic_error("value out of range");
+        }
+    }
 }
 
 #[no_mangle]
