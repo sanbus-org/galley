@@ -71,6 +71,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_node_variable_index;
     private final MethodHandle mh_galley_has_diagnostic;
     private final MethodHandle mh_galley_diagnostic_kind;
+    private final MethodHandle mh_galley_diagnostic_semantic;
     private final MethodHandle mh_galley_diagnostic_message;
     private final MethodHandle mh_galley_diagnostic_message_ansi;
     private final MethodHandle mh_galley_diagnostic_position;
@@ -81,6 +82,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_diagnostic_context_at;
     private final MethodHandle mh_galley_diagnostic_indentation;
     private final MethodHandle mh_galley_syntax_error_count;
+    private final MethodHandle mh_galley_semantic_error_count;
     private final MethodHandle mh_galley_diagnostic_recovery_kind;
     private final MethodHandle mh_galley_diagnostic_recovery_terminal;
     private final MethodHandle mh_galley_diagnostic_recovery_resume;
@@ -93,6 +95,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_recorded_unexpected_token;
     private final MethodHandle mh_galley_recorded_diagnostic_message;
     private final MethodHandle mh_galley_recorded_indentation;
+    private final MethodHandle mh_galley_recorded_semantic;
     private final MethodHandle mh_galley_recorded_expected_count;
     private final MethodHandle mh_galley_recorded_expected_token;
     private final MethodHandle mh_galley_recorded_context_count;
@@ -122,6 +125,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_procedure_replace_with_children;
     private final MethodHandle mh_galley_procedure_context_line;
     private final MethodHandle mh_galley_procedure_context_column;
+    private final MethodHandle mh_galley_procedure_report_semantic_error;
     private final MethodHandle mh_galley_install_java_dispatch; // may be null if symbol missing
 
     // Upcall stub for Java dispatch
@@ -175,6 +179,7 @@ public final class GalleyLibrary {
         this.mh_galley_node_variable_index = downcall("galley_node_variable_index", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_has_diagnostic = downcall("galley_has_diagnostic", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_kind = downcall("galley_diagnostic_kind", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_diagnostic_semantic = downcall("galley_diagnostic_semantic", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_message = downcall("galley_diagnostic_message", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_message_ansi = downcall("galley_diagnostic_message_ansi", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_position = downcall("galley_diagnostic_position", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -185,6 +190,8 @@ public final class GalleyLibrary {
         this.mh_galley_diagnostic_context_at = downcall("galley_diagnostic_context_at", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_indentation = downcall("galley_diagnostic_indentation", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_syntax_error_count = downcall("galley_syntax_error_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_semantic_error_count = downcall("galley_semantic_error_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_recorded_semantic = downcall("galley_recorded_semantic", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_recovery_kind = downcall("galley_diagnostic_recovery_kind", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_recovery_terminal = downcall("galley_diagnostic_recovery_terminal", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_recovery_resume = downcall("galley_diagnostic_recovery_resume", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -226,6 +233,7 @@ public final class GalleyLibrary {
         this.mh_galley_procedure_replace_with_children = downcall("galley_procedure_replace_with_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_procedure_context_line = downcall("galley_procedure_context_line", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+        this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_install_java_dispatch = downcallOptional("galley_install_java_dispatch", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
     }
 
@@ -345,6 +353,8 @@ public final class GalleyLibrary {
     public long galley_diagnostic_context_at(MemorySegment session, long index, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_diagnostic_context_at.invoke(session, index, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_diagnostic_indentation(MemorySegment session, MemorySegment outSpaces, MemorySegment outWidth) { try { return (long) mh_galley_diagnostic_indentation.invoke(session, outSpaces, outWidth); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_syntax_error_count(MemorySegment session) { try { return (long) mh_galley_syntax_error_count.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_semantic_error_count(MemorySegment session) { try { return (long) mh_galley_semantic_error_count.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_diagnostic_semantic(MemorySegment session, MemorySegment outVariable, MemorySegment outVariableLen, MemorySegment outMessage, MemorySegment outMessageLen) { try { return (long) mh_galley_diagnostic_semantic.invoke(session, outVariable, outVariableLen, outMessage, outMessageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // recovery (singular)
     public long galley_diagnostic_recovery_kind(MemorySegment session) { try { return (long) mh_galley_diagnostic_recovery_kind.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
@@ -361,6 +371,7 @@ public final class GalleyLibrary {
     public long galley_recorded_unexpected_token(MemorySegment session, long idx, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_recorded_unexpected_token.invoke(session, idx, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_diagnostic_message(MemorySegment session, long idx, MemorySegment out) { try { return (long) mh_galley_recorded_diagnostic_message.invoke(session, idx, out); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_indentation(MemorySegment session, long idx, MemorySegment outSpaces, MemorySegment outWidth) { try { return (long) mh_galley_recorded_indentation.invoke(session, idx, outSpaces, outWidth); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_recorded_semantic(MemorySegment session, long idx, MemorySegment outVariable, MemorySegment outVariableLen, MemorySegment outMessage, MemorySegment outMessageLen) { try { return (long) mh_galley_recorded_semantic.invoke(session, idx, outVariable, outVariableLen, outMessage, outMessageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_expected_count(MemorySegment session, long idx) { try { return (long) mh_galley_recorded_expected_count.invoke(session, idx); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_expected_token(MemorySegment session, long idx, long tokenIdx, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_recorded_expected_token.invoke(session, idx, tokenIdx, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_context_count(MemorySegment session, long idx) { try { return (long) mh_galley_recorded_context_count.invoke(session, idx); } catch (Throwable t) { throw new RuntimeException(t); } }
@@ -394,6 +405,7 @@ public final class GalleyLibrary {
     public long galley_procedure_replace_with_children(MemorySegment args) { try { return (long) mh_galley_procedure_replace_with_children.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_procedure_context_line(MemorySegment args) { try { return (int) mh_galley_procedure_context_line.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_procedure_context_column(MemorySegment args) { try { return (int) mh_galley_procedure_context_column.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_report_semantic_error(MemorySegment args, MemorySegment message, long messageLen) { try { return (long) mh_galley_procedure_report_semantic_error.invoke(args, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // procedure dispatch
     public void galley_install_java_dispatch(MemorySegment target) {

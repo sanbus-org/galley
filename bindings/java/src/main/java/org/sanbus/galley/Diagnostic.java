@@ -12,6 +12,7 @@ public final class Diagnostic {
     public static final int KIND_NONE = 0;
     public static final int KIND_SYNTAX = 1;
     public static final int KIND_INDENTATION = 2;
+    public static final int KIND_SEMANTIC = 3;
 
     public static final int RECOVERY_TARGET_NONE = 0;
     public static final int RECOVERY_TARGET_LHS_VARIABLE = 1;
@@ -30,6 +31,8 @@ public final class Diagnostic {
     private final List<byte[]> expectedTokens;
     private final List<String> context;
     private final int syntaxErrorCount;
+    private final int semanticErrorCount;
+    private final String[] semantic; // nullable: [variable, message]
     private final int[] indentation; // nullable: [spaces, width]
     private final Integer recoveryKind;
     private final byte[] recoveryTerminal;
@@ -64,7 +67,7 @@ public final class Diagnostic {
 
     public Diagnostic(int kind, int line, int column, String message, String messageAnsi,
                       byte[] unexpectedToken, List<byte[]> expectedTokens, List<String> context,
-                      int syntaxErrorCount, int[] indentation,
+                      int syntaxErrorCount, int semanticErrorCount, String[] semantic, int[] indentation,
                       Integer recoveryKind, byte[] recoveryTerminal, Integer recoveryResume,
                       String recoveryLhsVariable, RecoveryProduction recoveryProduction,
                       RecoveryOccurrence recoveryOccurrence) {
@@ -77,6 +80,8 @@ public final class Diagnostic {
         this.expectedTokens = expectedTokens != null ? Collections.unmodifiableList(expectedTokens) : Collections.emptyList();
         this.context = context != null ? Collections.unmodifiableList(context) : Collections.emptyList();
         this.syntaxErrorCount = syntaxErrorCount;
+        this.semanticErrorCount = semanticErrorCount;
+        this.semantic = semantic;
         this.indentation = indentation;
         this.recoveryKind = recoveryKind;
         this.recoveryTerminal = recoveryTerminal;
@@ -95,6 +100,8 @@ public final class Diagnostic {
     public List<byte[]> getExpectedTokens() { return expectedTokens; }
     public List<String> getContext() { return context; }
     public int getSyntaxErrorCount() { return syntaxErrorCount; }
+    public int getSemanticErrorCount() { return semanticErrorCount; }
+    public String[] getSemantic() { return semantic; }
     public int[] getIndentation() { return indentation; }
     public Integer getRecoveryKind() { return recoveryKind; }
     public byte[] getRecoveryTerminal() { return recoveryTerminal; }

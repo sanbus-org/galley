@@ -148,6 +148,24 @@ the C/C++ consumers: the build compiles the C file into the shared library
 when no `procedures.java` is present. If both Java and C files exist, Java
 takes precedence and a warning is emitted.
 
+## Semantic Errors
+
+A hook reports a semantic error when the input parses but its meaning is
+invalid. `reportSemanticError` records the diagnostic, marks the node, and
+returns the running total so hooks can limit themselves. Parsing continues;
+a syntax-clean parse with any semantic error throws `GalleyException` with
+code -12:
+
+```java
+if (Long.parseLong(text) > 999) {
+    args.reportSemanticError("value out of range");
+}
+```
+
+Read them through `session.diagnostic()` / `session.diagnostics()`; the
+snapshot carries `getKind() == Diagnostic.KIND_SEMANTIC` and
+`getSemantic()` returning `[variable, message]`.
+
 ## Error Messages
 
 To replace messages with fixed strings — no Zig file at all — pass
