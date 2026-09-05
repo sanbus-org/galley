@@ -1,18 +1,18 @@
 Value
-|@!"}"^ "{" OptionalBlank ObjectMembers OptionalBlank
-|@!"]"^ "[" OptionalBlank ArrayMembers OptionalBlank
-| IntegerNumber FloatTail OptionalBlank
-| "\u{22}" _StringContent "\u{22}" OptionalBlank
-| "null" OptionalBlank
-| "true" OptionalBlank
-| "false" OptionalBlank
+|@!"}"^ "{" _OptionalBlank ObjectMembers _OptionalBlank
+|@!"]"^ "[" _OptionalBlank ArrayMembers _OptionalBlank
+| IntegerNumber FloatTail _OptionalBlank
+| "\u{22}" _StringContent "\u{22}" _OptionalBlank
+| "null" _OptionalBlank
+| "true" _OptionalBlank
+| "false" _OptionalBlank
 
 ObjectMembers@!"}"^
-|@!"}"^ "\u{22}" _StringContent "\u{22}" OptionalBlank ":" _ValueSlot@!^","@!^"}" ObjectMembersTail "}"
+|@!"}"^ "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _ValueSlot@!^","@!^"}" ObjectMembersTail "}"
 | "}"
 
 ObjectMembersTail
-|@!^"}" "," OptionalBlank "\u{22}" _StringContent "\u{22}" OptionalBlank ":" _ValueSlot@!^","@!^"}" ObjectMembersTail
+|@!^"}" "," _OptionalBlank "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _ValueSlot@!^","@!^"}" ObjectMembersTail
 |
 
 ArrayMembers@!"]"^
@@ -24,14 +24,7 @@ ArrayMembersTail
 |
 
 _ValueSlot
-| OptionalBlank Value
-
-OptionalBlank
-| space _OptionalBlank
-| new_line _OptionalBlank
-| block_start _OptionalBlank
-| block_end _OptionalBlank
-|
+| _OptionalBlank Value
 
 _OptionalBlank
 | space _OptionalBlank

@@ -1052,11 +1052,9 @@ def run_all_modes(benchmark_fn, args):
     else:
         ast_modes = ["--no-ast", "--no-procedures"]
 
-    term_asts = ["--no-ast-for-terminals", "--ast-for-terminals"]
+    term_asts = ["--no-ast-for-terminals"]
     if args.ast_for_terminals:
         term_asts = ["--ast-for-terminals"]
-    elif args.no_ast_for_terminals:
-        term_asts = ["--no-ast-for-terminals"]
 
     for ast_mode in ast_modes:
         for term_ast in term_asts:
