@@ -402,6 +402,50 @@ public final class Session implements AutoCloseable {
         return optNode(lib.galley_node_parent(handle, address));
     }
 
+    /**
+     * Pre-order walker over the subtree rooted at {@code node}, with the
+     * root at depth 0. Pass true to prune subtrees rooted at semantic-error
+     * nodes. Returns null for invalid roots and builds without AST
+     * construction. Close the walker before closing the session or parsing
+     * again.
+     */
+    public Walker walk(Node node, boolean skipSemanticErrors) {
+        requireOpen();
+        if (node == null) return null;
+        if (node.getSession() != this) throw new IllegalArgumentException("node belongs to different session");
+        return walk(node.getAddress(), skipSemanticErrors);
+    }
+
+    public Walker walk(long address, boolean skipSemanticErrors) {
+        requireOpen();
+        MemorySegment walker = lib.galley_walker_create(handle, address, skipSemanticErrors ? 1 : 0);
+        if (walker.equals(MemorySegment.NULL)) return null;
+        return new Walker(this, walker);
+    }
+
+    Walker.WalkStep walkerNext(MemorySegment walker) {
+        requireOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outNode = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment outDepth = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment outFlag = arena.allocate(ValueLayout.JAVA_INT);
+            if (lib.galley_walker_next(walker, outNode, outDepth, outFlag) == 0) return null;
+            return new Walker.WalkStep(
+                new Node(this, outNode.get(ValueLayout.JAVA_LONG, 0)),
+                outDepth.get(ValueLayout.JAVA_INT, 0),
+                outFlag.get(ValueLayout.JAVA_INT, 0) != 0);
+        }
+    }
+
+    void walkerSkipChildren(MemorySegment walker) {
+        requireOpen();
+        lib.galley_walker_skip_children(walker);
+    }
+
+    void walkerDestroy(MemorySegment walker) {
+        lib.galley_walker_destroy(walker);
+    }
+
     public byte[] symbolName(Node node) {
         requireOpen();
         if (node == null) return null;

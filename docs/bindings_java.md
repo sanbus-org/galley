@@ -166,6 +166,24 @@ Read them through `session.diagnostic()` / `session.diagnostics()`; the
 snapshot carries `getKind() == Diagnostic.KIND_SEMANTIC` and
 `getSemantic()` returning `[variable, message]`.
 
+## Tree Walking
+
+`session.walk(node, skipSemanticErrors)` returns a pre-order `Walker` over
+the last successful parse, yielding one `Walker.WalkStep{node, depth,
+isSemanticError}` per step with the root at depth 0 — the shared runtime
+walker, so order and depths match every other binding. `Walker` is
+`Iterable` and `AutoCloseable`: close it (try-with-resources) before
+closing the session or parsing again. `skipChildren()` prunes the last
+yielded node's children:
+
+```java
+try (Walker walker = session.walk(session.rootNode(), false)) {
+    for (Walker.WalkStep step : walker) {
+        System.err.println("  ".repeat(step.depth) + new String(session.symbolName(step.node)));
+    }
+}
+```
+
 ## Error Messages
 
 To replace messages with fixed strings — no Zig file at all — pass

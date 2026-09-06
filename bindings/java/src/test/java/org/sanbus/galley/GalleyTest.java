@@ -322,6 +322,52 @@ public class GalleyTest {
             assertNull(session.variableIndex(invalid));
             assertEquals(0, session.childCount(invalid));
         }
+
+        @Test
+        void walkMatchesHandRolledRecursion() {
+            session.parse("alpha:12,beta:3");
+            Node root = session.rootNode();
+            assertNotNull(root);
+            List<long[]> expected = new ArrayList<>();
+            collectRecursive(root, 0, expected);
+            assertTrue(expected.size() > 1);
+            try (Walker walker = session.walk(root, false)) {
+                assertNotNull(walker);
+                List<long[]> walked = new ArrayList<>();
+                List<Boolean> flags = new ArrayList<>();
+                for (Walker.WalkStep step : walker) {
+                    walked.add(new long[]{step.node.getAddress(), step.depth});
+                    flags.add(step.isSemanticError);
+                }
+                assertEquals(expected.size(), walked.size());
+                for (int i = 0; i < expected.size(); i++) {
+                    assertArrayEquals(expected.get(i), walked.get(i));
+                    assertFalse(flags.get(i));
+                }
+            }
+        }
+
+        private void collectRecursive(Node node, int depth, List<long[]> out) {
+            out.add(new long[]{node.getAddress(), depth});
+            for (Node child : session.children(node)) collectRecursive(child, depth + 1, out);
+        }
+
+        @Test
+        void walkSkipChildrenPrunesSubtree() {
+            session.parse("alpha:12,beta:3");
+            Node root = session.rootNode();
+            assertNotNull(root);
+            try (Walker walker = session.walk(root, false)) {
+                assertNotNull(walker);
+                assertTrue(walker.hasNext());
+                Walker.WalkStep first = walker.next();
+                assertEquals(root.getAddress(), first.node.getAddress());
+                assertEquals(0, first.depth);
+                walker.skipChildren();
+                assertFalse(walker.hasNext());
+            }
+            assertNull(session.walk(0xFFFFFFFFFFFFFFFFL, false));
+        }
     }
 
     @Nested
