@@ -1,57 +1,64 @@
-name: Deploy VitePress Documentation
+name: Deploy VitePress site to Pages
 
 on:
   push:
     branches:
       - main
     paths:
-      - "docs/**"
-      - ".github/workflows/docs.yml"
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-small' }}
+  build:
+    name: Build Documentation
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd docs
-          npm install
+        working-directory: docs
+        run: npm ci
 
-      - name: Build documentation
-        env:
-          GITHUB_SERVER_URL: ${{ github.server_url }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          cd docs
-          npm run docs:build
+      - name: Build site
+        working-directory: docs
+        run: npm run docs:build
 
-      - name: Deploy to Pages Branch
-        run: |
-          cd docs/.vitepress/dist
-          git init
-          if [[ "${{ github.server_url }}" == *github* ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-          else
-            git config user.name "Codeberg Actions"
-            git config user.email "actions@codeberg.org"
-          fi
-          git checkout -b pages
-          git add .
-          git commit -m "Deploy docs (build #${{ github.run_number }})"
-          if [[ "${{ github.server_url }}" == *github* ]]; then
-            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
-          else
-            git push -f "https://${{ github.repository_owner }}:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${{ github.repository }}.git" pages
-          fi
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
