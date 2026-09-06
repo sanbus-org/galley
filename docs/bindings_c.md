@@ -215,13 +215,13 @@ Returns the number of bytes parsed on success, or a negative
 ### Walking the AST
 
 Node handles are stable byte indices (`GalleyNodeAddress`); editing never
-invalidates them.
+invalidates them. Walk depth-first through the shared walker rather than
+hand-rolling recursion, so order and depths match every binding:
 
 ```c
-GalleyNodeAddress root = galley_root_node(session);
-for (GalleyNodeAddress n = galley_node_first_child(session, root);
-     n != GALLEY_INVALID_NODE;
-     n = galley_node_next_sibling(session, n)) {
+GalleyWalker *walker = galley_walker_create(session, galley_root_node(session), 0);
+GalleyNodeAddress n; unsigned int depth; int is_semantic_error;
+while (galley_walker_next(walker, &n, &depth, &is_semantic_error)) {
     const char *name_data; size_t name_len;
     const char *text_data; size_t text_len;
     unsigned int line = 0, column = 0;
@@ -229,8 +229,15 @@ for (GalleyNodeAddress n = galley_node_first_child(session, root);
     galley_node_text(session, n, &text_data, &text_len);
     galley_node_line_column(session, n, &line, &column);
 }
+galley_walker_destroy(walker);
 ```
 
+`galley_walker_skip_children` prunes the last yielded node's children, and
+a nonzero third `galley_walker_create` argument prunes subtrees rooted at
+semantic-error nodes. Destroy the walker before destroying the session or
+parsing again.
+
+`galley_node_first_child`, `galley_node_next_sibling`,
 `galley_node_child_count`, `galley_node_last_child`,
 `galley_node_prior_sibling`, `galley_node_parent`, `galley_node_span`, and
 `galley_node_variable_index` complete the read surface.
