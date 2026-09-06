@@ -1,12 +1,8 @@
 import { defineConfig } from 'vitepress'
 
-const githubRepository = process.env.GITHUB_REPOSITORY || 'sanbus-org/galley'
-const githubServerUrl = process.env.GITHUB_SERVER_URL || 'https://codeberg.org'
-const isGitHub = githubServerUrl.includes('github.com')
+const repository = process.env.GITHUB_REPOSITORY || 'sanbus-org/galley'
 
-const socialLink = isGitHub
-  ? { icon: 'github', link: `https://github.com/${githubRepository}` }
-  : { icon: 'codeberg', link: `https://codeberg.org/${githubRepository}` }
+const socialLink = { icon: 'github', link: `https://github.com/${repository}` }
 
 export default defineConfig({
   title: 'Galley Compiler',
