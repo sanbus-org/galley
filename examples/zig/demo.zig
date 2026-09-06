@@ -34,22 +34,20 @@ fn symbolName(node: *const parser.data_structures.Node) []const u8 {
 fn printTree(
     stdout: *std.Io.Writer,
     session: *parser.Session,
-    allocator: *parser.data_structures.ASTAllocator,
-    address: parser.data_structures.Node.Pointer,
-    depth: u32,
+    gpa: std.mem.Allocator,
+    root: parser.data_structures.Node.Pointer,
 ) !void {
-    const node = allocator.at(address);
-    var i: u32 = 0;
-    while (i < depth) : (i += 1) try stdout.writeAll("  ");
-    try stdout.print("{s} [line {d}, {d} bytes]\n", .{
-        symbolName(node),
-        nodeLine(session, node),
-        nodeText(session, node).len,
-    });
-    var child = node.first_child;
-    while (child != parser.data_structures.Node.invalid_pointer) {
-        try printTree(stdout, session, allocator, child, depth + 1);
-        child = allocator.at(child).next;
+    var walker = parser.data_structures.TreeWalker.init(gpa, &session.node_allocator, root, .{});
+    defer walker.deinit();
+    while (walker.next()) |step| {
+        const node = session.node_allocator.at(step.address);
+        var i: u32 = 0;
+        while (i <= step.depth) : (i += 1) try stdout.writeAll("  ");
+        try stdout.print("{s} [line {d}, {d} bytes]\n", .{
+            symbolName(node),
+            nodeLine(session, node),
+            nodeText(session, node).len,
+        });
     }
 }
 
@@ -127,7 +125,7 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("expected a root node\n", .{});
             std.process.exit(1);
         };
-        try printTree(stdout, &session, &session.node_allocator, root, 1);
+        try printTree(stdout, &session, init.gpa, root);
     } else {
         try stdout.writeAll("AST construction disabled; skipping tree walk\n");
     }

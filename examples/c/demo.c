@@ -9,27 +9,29 @@ static const char *valid_sample = "alpha:12,beta:3";
 static const char *broken_sample = "alpha:";
 static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
 
-static int print_tree(GalleySession *session, GalleyNodeAddress node, unsigned depth) {
-    const char *name_data = NULL;
-    size_t name_len = 0;
-    const char *text_data = NULL;
-    size_t text_len = 0;
+static int print_tree(GalleySession *session, GalleyNodeAddress root) {
+    GalleyWalker *walker = galley_walker_create(session, root, 0);
+    if (walker == NULL) return 1;
+    GalleyNodeAddress node;
+    unsigned int depth;
+    while (galley_walker_next(walker, &node, &depth, NULL)) {
+        const char *name_data = NULL;
+        size_t name_len = 0;
+        const char *text_data = NULL;
+        size_t text_len = 0;
 
-    if (galley_node_symbol_name(session, node, &name_data, &name_len) != galley_ok)
-        return 1;
-    if (galley_node_text(session, node, &text_data, &text_len) != galley_ok)
-        return 1;
+        if (galley_node_symbol_name(session, node, &name_data, &name_len) != galley_ok ||
+            galley_node_text(session, node, &text_data, &text_len) != galley_ok) {
+            galley_walker_destroy(walker);
+            return 1;
+        }
 
-    for (unsigned i = 0; i < depth; ++i) fputs("  ", stdout);
-    unsigned int line = 0, column = 0;
-    galley_node_line_column(session, node, &line, &column);
-    printf("%.*s [line %u, %zu bytes]\n", (int)name_len, name_data, line, text_len);
-
-    GalleyNodeAddress child = galley_node_first_child(session, node);
-    while (child != GALLEY_INVALID_NODE) {
-        if (print_tree(session, child, depth + 1) != 0) return 1;
-        child = galley_node_next_sibling(session, child);
+        for (unsigned i = 0; i <= depth; ++i) fputs("  ", stdout);
+        unsigned int line = 0, column = 0;
+        galley_node_line_column(session, node, &line, &column);
+        printf("%.*s [line %u, %zu bytes]\n", (int)name_len, name_data, line, text_len);
     }
+    galley_walker_destroy(walker);
     return 0;
 }
 
@@ -87,7 +89,7 @@ int main(int argc, char **argv) {
             galley_session_destroy(session);
             return 1;
         }
-        if (print_tree(session, root, 1) != 0) {
+        if (print_tree(session, root) != 0) {
             galley_session_destroy(session);
             return 1;
         }

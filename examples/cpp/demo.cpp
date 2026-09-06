@@ -21,27 +21,29 @@ struct SessionGuard {
     SessionGuard &operator=(const SessionGuard &) = delete;
 };
 
-bool printTree(GalleySession &session, GalleyNodeAddress node, unsigned depth) {
-    const char *name_data = nullptr;
-    std::size_t name_len = 0;
-    const char *text_data = nullptr;
-    std::size_t text_len = 0;
-    if (galley_node_symbol_name(&session, node, &name_data, &name_len) != galley_ok ||
-        galley_node_text(&session, node, &text_data, &text_len) != galley_ok) {
-        return false;
-    }
+bool printTree(GalleySession &session, GalleyNodeAddress root) {
+    GalleyWalker *walker = galley_walker_create(&session, root, 0);
+    if (walker == nullptr) return false;
+    GalleyNodeAddress node = GALLEY_INVALID_NODE;
+    unsigned int depth = 0;
+    while (galley_walker_next(walker, &node, &depth, nullptr)) {
+        const char *name_data = nullptr;
+        std::size_t name_len = 0;
+        const char *text_data = nullptr;
+        std::size_t text_len = 0;
+        if (galley_node_symbol_name(&session, node, &name_data, &name_len) != galley_ok ||
+            galley_node_text(&session, node, &text_data, &text_len) != galley_ok) {
+            galley_walker_destroy(walker);
+            return false;
+        }
 
-    for (unsigned i = 0; i < depth; ++i) std::fputs("  ", stdout);
-    unsigned int line = 0, column = 0;
-    galley_node_line_column(&session, node, &line, &column);
-    std::printf("%.*s [line %u, %zu bytes]\n",
-                static_cast<int>(name_len), name_data, line, text_len);
-
-    for (GalleyNodeAddress child = galley_node_first_child(&session, node);
-         child != GALLEY_INVALID_NODE;
-         child = galley_node_next_sibling(&session, child)) {
-        if (!printTree(session, child, depth + 1)) return false;
+        for (unsigned i = 0; i <= depth; ++i) std::fputs("  ", stdout);
+        unsigned int line = 0, column = 0;
+        galley_node_line_column(&session, node, &line, &column);
+        std::printf("%.*s [line %u, %zu bytes]\n",
+                    static_cast<int>(name_len), name_data, line, text_len);
     }
+    galley_walker_destroy(walker);
     return true;
 }
 
@@ -100,7 +102,7 @@ int main(int argc, char *argv[]) {
             std::fprintf(stderr, "expected a root node\n");
             return 1;
         }
-        if (!printTree(session, root, 1)) {
+        if (!printTree(session, root)) {
             return 1;
         }
     }
