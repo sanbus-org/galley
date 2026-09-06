@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) !void {
     const capi_version = b.option([]const u8, "capi-version", "Version string reported by galley_version") orelse "dev";
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks (default: procedures.c or procedures.cpp next to parser when present)");
     const procedures_object = b.option([]const u8, "procedures-object", "Prebuilt object file or static archive implementing procedure hooks");
+    const wasm = b.option(bool, "wasm", "Emit a WASI reactor .wasm module instead of a native shared library (requires a wasm target)") orelse false;
     const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig (default: procedures.zig next to parser when present, otherwise template)");
     const config_zig_source = b.option([]const u8, "config-zig-source", "Path to config.zig (default: config.zig next to parser)");
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig (default: {ll,lr}_error_messages.zig next to parser when present, otherwise template)");
@@ -120,19 +121,39 @@ pub fn build(b: *std.Build) !void {
     capi_options.addOption([]const u8, "version", capi_version);
     capi_mod.addImport("capi_options", capi_options.createModule());
 
-    const capi_lib = b.addLibrary(.{
-        .name = lib_name,
-        .linkage = .dynamic,
-        .root_module = capi_mod,
-    });
-    capi_lib.root_module.addIncludePath(galley_dep.path("bindings/c"));
+    // WASI reactor output for the JavaScript wasm adapter (`bindings/js/wasm`):
+    // same inputs, but a `.wasm` module with all symbols exported instead of
+    // a native shared library. Host imports (`wasi_snapshot_preview1` stub
+    // plus `env.galley_js_dispatch`) are provided by the adapter at
+    // instantiation.
+    var artifact: *std.Build.Step.Compile = undefined;
+    if (wasm) {
+        if (target.result.cpu.arch != .wasm32 and target.result.cpu.arch != .wasm64) {
+            std.log.err("-Dwasm requires a wasm target (e.g. -Dtarget=wasm32-wasi)", .{});
+            return error.WasmRequiresWasmTarget;
+        }
+        const reactor = b.addExecutable(.{
+            .name = lib_name,
+            .root_module = capi_mod,
+        });
+        reactor.wasi_exec_model = .reactor;
+        reactor.rdynamic = true;
+        artifact = reactor;
+    } else {
+        artifact = b.addLibrary(.{
+            .name = lib_name,
+            .linkage = .dynamic,
+            .root_module = capi_mod,
+        });
+    }
+    artifact.root_module.addIncludePath(galley_dep.path("bindings/c"));
 
     if (procedures_c_source) |c_source| {
-        capi_lib.root_module.addCSourceFile(.{
+        artifact.root_module.addCSourceFile(.{
             .file = .{ .cwd_relative = c_source },
         });
     } else if (procedures_object) |object| {
-        capi_lib.root_module.addObjectFile(.{ .cwd_relative = object });
+        artifact.root_module.addObjectFile(.{ .cwd_relative = object });
     } else {
         const candidates = [_][]const u8{
             b.pathJoin(&.{ parser_dir, "procedures.c" }),
@@ -140,7 +161,7 @@ pub fn build(b: *std.Build) !void {
         };
         for (candidates) |candidate| {
             if (exists(b.graph.io, candidate)) {
-                capi_lib.root_module.addCSourceFile(.{
+                artifact.root_module.addCSourceFile(.{
                     .file = .{ .cwd_relative = candidate },
                 });
                 break;
@@ -148,7 +169,7 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    b.installArtifact(capi_lib);
+    b.installArtifact(artifact);
     const header_install = b.addInstallFile(galley_dep.path("bindings/c/galley.h"), "include/galley.h");
     b.getInstallStep().dependOn(&header_install.step);
 }

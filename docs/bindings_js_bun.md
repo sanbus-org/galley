@@ -68,4 +68,5 @@ behavior.
 
 - [TypeScript](/bindings_typescript) — the Node bindings over the same core
 - [Deno](/bindings_js_deno) — the Deno bindings over the same core
+- [WebAssembly](/bindings_js_wasm) — the wasm bindings over the same core
 - [C and C++](/bindings_c) — the underlying C ABI
