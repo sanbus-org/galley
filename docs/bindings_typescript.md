@@ -171,6 +171,22 @@ Read them through `session.diagnostic()` / `session.diagnostics()`; the
 snapshot carries `kind === KIND_SEMANTIC` and a `semantic` pair of
 `[variable, message]`.
 
+## Tree Walking
+
+`session.walk(root)` returns a pre-order `Walker` over the last successful
+parse, yielding one `{ node, depth, isSemanticError }` per step with the
+root at depth 0 — the shared runtime walker, so order and depths match
+every other binding. The walker is iterable and closable (`using`
+supported); `skipChildren()` prunes the last yielded node's children.
+Pass `true` to prune semantic-error subtrees:
+
+```ts
+using walker = session.walk(session.rootNode()!)!;
+for (const step of walker) {
+  console.error(`${"  ".repeat(step.depth)}${step.node.symbolName()}`);
+}
+```
+
 ## Error Messages
 
 Run `galley --fill-error-messages <language-dir>` and edit the generated

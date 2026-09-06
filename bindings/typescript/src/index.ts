@@ -7,7 +7,8 @@
  */
 
 import { loadLibrary, findLibrary } from "./ffi.js";
-import { Session } from "./session.js";
+import { Session, Walker } from "./session.js";
+import type { WalkStep } from "./session.js";
 import { Node } from "./node.js";
 import { GalleyError } from "./errors.js";
 import type { Diagnostic } from "./diagnostic.js";
@@ -21,8 +22,8 @@ import {
 } from "./procedures.js";
 
 // Re-exports
-export { Session, Node, GalleyError, ProcedureArguments, installProcedure, installProcedures, clearProcedures, listProcedures };
-export type { Diagnostic };
+export { Session, Walker, Node, GalleyError, ProcedureArguments, installProcedure, installProcedures, clearProcedures, listProcedures };
+export type { Diagnostic, WalkStep };
 export * from "./constants.js";
 
 // Module-level queries (mirror galley.h)
