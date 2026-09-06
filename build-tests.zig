@@ -207,6 +207,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             test_step.dependOn(&run_semantic_error_no_ast_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_semantic_error_no_ast_tests.step);
 
+            const run_tree_walker_tests = try addTreeWalkerTests(b, options, parser_type, selection.names);
+            test_step.dependOn(&run_tree_walker_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tree_walker_tests.step);
+
             const run_left_factoring_tests = try addLeftFactoringTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_left_factoring_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_left_factoring_tests.step);
@@ -750,6 +754,70 @@ fn addSemanticErrorTests(
     });
     const tests = b.addTest(.{
         .name = try std.fmt.allocPrint(b.allocator, "semantic-errors-{s}-{s}-tests", .{ parser_type, mode }),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addTreeWalkerTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/semantic-errors/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(try std.fmt.allocPrint(b.allocator, "{s}/tree-walker/tests", .{parser_type}));
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(try std.fmt.allocPrint(b.allocator, "tree-walker-{s}-parser.zig", .{parser_type}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(try std.fmt.allocPrint(b.allocator, "tree-walker-{s}-config.zig", .{parser_type}));
+    generate_parser.addArg("--with-ast");
+    generate_parser.addArg("--with-procedures");
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/semantic-errors/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/semantic-errors/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const parser_name = try std.fmt.allocPrint(b.allocator, "tree-walker-{s}", .{parser_type});
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        try std.fmt.allocPrint(b.allocator, "{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/tree_walker_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = try std.fmt.allocPrint(b.allocator, "tree-walker-{s}-tests", .{parser_type}),
         .root_module = test_mod,
         .filters = filters,
     });
