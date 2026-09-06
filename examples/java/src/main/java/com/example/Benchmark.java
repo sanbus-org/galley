@@ -3,6 +3,7 @@ package com.example;
 import org.sanbus.galley.GalleyException;
 import org.sanbus.galley.Session;
 import org.sanbus.galley.SessionOptions;
+import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -34,53 +35,17 @@ public final class Benchmark {
             Path candidate = Paths.get(checkout, LOGICAL_INPUT);
             if (Files.isRegularFile(candidate)) return candidate.toString();
         }
-        // from class location: examples/java/benchmark is two levels up from ... but we are in examples/java
-        // Try walking up from cwd
-        Path cwd = Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath();
-        for (int i = 0; i < 5; i++) {
-            Path candidate = cwd.resolve(LOGICAL_INPUT);
-            if (Files.isRegularFile(candidate)) return candidate.toString();
-            Path parent = cwd.getParent();
-            if (parent == null) break;
-            cwd = parent;
-        }
-        // fallback from source file location (when run via mvn exec, cwd is examples/java)
-        Path viaBenchmarkDir = Paths.get("benchmark").toAbsolutePath().getParent();
-        if (viaBenchmarkDir != null) {
-            Path candidate = viaBenchmarkDir.getParent().resolve(LOGICAL_INPUT);
-            if (Files.isRegularFile(candidate)) return candidate.toString();
-        }
-        return Paths.get("..", "..", LOGICAL_INPUT).toString();
+        return Paths.get(System.getProperty("user.dir", "."), LOGICAL_INPUT).toString();
     }
 
+    // The one parser file this benchmark runs: exact name, no searching.
     private static String benchmarkLibraryPath() {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        String name = os.contains("mac") ? "libgalley-java.dylib" : os.contains("win") ? "galley-java.dll" : "libgalley-java.so";
-        // Check GALLEY_LIBRARY_PATH first (explicit override)
         String env = System.getenv("GALLEY_LIBRARY_PATH");
-        if (env != null && Files.isRegularFile(Paths.get(env))) return env;
+        if (env != null && !env.isEmpty()) return env;
         String prop = System.getProperty("galley.library.path");
-        if (prop != null && Files.isRegularFile(Paths.get(prop))) return prop;
-        Path cwd = Paths.get(System.getProperty("user.dir", ".")).toAbsolutePath();
-        // 1) cwd is examples/java (when run from that dir)
-        Path candidate = cwd.resolve("benchmark").resolve(name);
-        if (Files.isRegularFile(candidate)) return candidate.toString();
-        // 2) cwd is project root with -f flag: examples/java/benchmark/...
-        candidate = cwd.resolve("examples/java/benchmark").resolve(name);
-        if (Files.isRegularFile(candidate)) return candidate.toString();
-        // 3) Walk up looking for examples/java/benchmark
-        Path cur = cwd;
-        for (int i = 0; i < 5; i++) {
-            candidate = cur.resolve("examples/java/benchmark").resolve(name);
-            if (Files.isRegularFile(candidate)) return candidate.toString();
-            candidate = cur.resolve("benchmark").resolve(name);
-            if (Files.isRegularFile(candidate)) return candidate.toString();
-            Path parent = cur.getParent();
-            if (parent == null) break;
-            cur = parent;
-        }
-        // Fallback to regular discovery (demo lib will be found via GalleyLibraryLoader, but we return null to let it handle)
-        return null;
+        if (prop != null && !prop.isEmpty()) return prop;
+        return Paths.get(System.getProperty("user.dir", "."),
+                "examples", "java", "benchmark", GalleyLibraryLoader.libFileName()).toString();
     }
 
     private static String withThousands(long n) {
@@ -140,17 +105,18 @@ public final class Benchmark {
         }
 
         String libPath = benchmarkLibraryPath();
-        SessionOptions opts = SessionOptions.builder().build();
-        // If benchmark lib exists, use it explicitly
-        if (libPath != null) {
-            opts = SessionOptions.builder().libraryPath(libPath).build();
+        if (!Files.isRegularFile(Paths.get(libPath))) {
+            System.err.println("missing " + libPath);
+            System.exit(1);
+            return;
         }
+        SessionOptions opts = SessionOptions.builder().libraryPath(libPath).build();
 
         Session session;
         try {
             session = new Session(opts);
-        } catch (GalleyException e) {
-            System.err.println("failed to create a parser session");
+        } catch (GalleyException | IllegalStateException e) {
+            System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);
             return;
         }

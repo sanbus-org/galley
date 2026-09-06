@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Requires the shared library built for examples/java:
  *   java -jar bindings/java/target/galley-bindings-0.1.0.jar examples/java
- * The test discovers it via GALLEY_LIBRARY_PATH or cwd.
+ * Point it at the file with GALLEY_LIBRARY_PATH (or -Dgalley.library.path);
+ * a missing file is a loud error, never a search.
  */
 public class GalleyTest {
 

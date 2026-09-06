@@ -58,9 +58,9 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
 ```
 
-Library discovery order: `SessionOptions.libraryPath` (explicit) →
-`GALLEY_LIBRARY_PATH` env → `galley.library.path` system property →
-`<cwd>/libgalley-java.*` (the library lives next to the grammar).
+Pass the built file with `SessionOptions.libraryPath`, or name it once with
+`GALLEY_LIBRARY_PATH` (or `-Dgalley.library.path`). Nothing is searched:
+a missing file is a loud error naming the exact path.
 
 ## Performance Notes
 

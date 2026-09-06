@@ -45,7 +45,12 @@ public final class Procedures {
             // Need lib reference for ProcedureArguments — use installedLib global or lookup via session
             GalleyLibrary lib = installedLib;
             if (lib == null) {
-                try { lib = GalleyLibraryLoader.load(); } catch (Exception ignored) { return; }
+                try {
+                    lib = GalleyLibraryLoader.load();
+                } catch (Exception e) {
+                    e.printStackTrace(System.err);
+                    return;
+                }
             }
             ProcedureArguments args = new ProcedureArguments(argsPtr, lib);
             try {
@@ -81,10 +86,8 @@ public final class Procedures {
     }
 
     public static void ensureDispatchForCurrentLibrary() {
-        try {
-            GalleyLibrary lib = GalleyLibraryLoader.load();
-            ensureDispatchFor(lib);
-        } catch (Exception ignored) {}
+        GalleyLibrary lib = GalleyLibraryLoader.load();
+        ensureDispatchFor(lib);
     }
 
     public static void ensureDispatchFor(GalleyLibrary lib, String libPath) {
@@ -94,11 +97,6 @@ public final class Procedures {
     public static void installProcedure(String name, Consumer<ProcedureArguments> callable) {
         if (name == null || callable == null) throw new IllegalArgumentException("name and callable required");
         TABLE.put(name, callable);
-        try {
-            GalleyLibrary lib = GalleyLibraryLoader.load();
-            ensureDispatchFor(lib);
-        } catch (Exception e) {
-        }
     }
 
     public static void installProcedure(String name, Runnable callable) {
@@ -158,12 +156,6 @@ public final class Procedures {
             Consumer<ProcedureArguments> c = (Consumer<ProcedureArguments>) val;
             TABLE.put(name, c);
             count++;
-        }
-        if (count > 0) {
-            try {
-                GalleyLibrary lib = GalleyLibraryLoader.load();
-                ensureDispatchFor(lib);
-            } catch (Exception ignored) {}
         }
         return count;
     }

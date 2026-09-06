@@ -12,4 +12,4 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
 ```
 
-Build, run, and benchmark conventions: see [examples/README.md](../README.md).
+Build, run, and benchmark conventions: see [examples/README.md](../README.md). Pass a grammar-source file as an argument to `com.example.Demo` instead of running the built-in demo. `com.example.Benchmark` prints JSON parse throughput (no AST, no procedures, no error recovery). Optional arguments are `[path] [iterations]`. Fetch large samples first: `bash scripts/fetch-large-samples.sh json`.
