@@ -1,0 +1,1 @@
+import{_ as s,o as t,c as i,a1 as a}from"./chunks/framework.BwhMLafE.js";const u=JSON.parse('{"title":"Testing","description":"","frontmatter":{},"headers":[],"relativePath":"testing.md","filePath":"testing.md"}'),n={name:"testing.md"};function r(l,e,d,o,p,h){return t(),i("div",null,[...e[0]||(e[0]=[a("",28)])])}const k=s(n,[["render",r]]);export{u as __pageData,k as default};
