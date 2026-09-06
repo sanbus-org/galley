@@ -152,6 +152,26 @@ Read them through `Session.Diagnostic` / `Session.Diagnostics`; the
 snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
 `{Variable, Message}` pair.
 
+## Tree Walking
+
+`Session.Walk` returns a pre-order `Walker` over the last successful parse,
+yielding one `WalkStep{Node, Depth, IsSemanticError}` per step with the root
+at depth 0 — the shared runtime walker, so order and depths match every
+other binding. Close it before closing the session or parsing again.
+`SkipChildren` prunes the last yielded node's children; passing `true`
+prunes semantic-error subtrees:
+
+```go
+walker, ok := session.Walk(root, false)
+if !ok { ... }
+defer walker.Close()
+for {
+    step, ok := walker.Next()
+    if !ok { break }
+    _ = step
+}
+```
+
 ## Sessions
 
 ```go
