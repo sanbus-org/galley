@@ -290,6 +290,20 @@ export class Session {
     return optNode(this, this.#ffi.galley_node_parent(h, toNodeAddress(node)) as bigint);
   }
 
+  /**
+   * Pre-order walker over the subtree rooted at `root`, with the root at
+   * depth 0. Pass true to prune subtrees rooted at semantic-error nodes.
+   * Returns null for invalid roots and builds without AST construction.
+   * Close the walker (or use `using`) before closing the session or
+   * parsing again.
+   */
+  walk(root: Node | bigint | number, skipSemanticErrors = false): Walker | null {
+    const h = this.#requireHandle();
+    const handle = this.#ffi.galley_walker_create(h, toNodeAddress(root), skipSemanticErrors ? 1 : 0);
+    if (handle === 0n || handle === null || handle === undefined) return null;
+    return new Walker(this, this.#ffi, handle as bigint);
+  }
+
   symbolNameBytes(node: Node | bigint | number): Uint8Array | null {
     const h = this.#requireHandle();
     const outData: unknown[] = [null];
@@ -882,5 +896,72 @@ export class Session {
     const st = this.#ffi.galley_variable_name(h, BigInt(index), outData, outLen);
     if ((typeof st === "bigint" ? st < 0n : (st as number) < 0)) return null;
     return copyBytes(outData[0] as bigint, outLen[0] as bigint);
+  }
+}
+
+/** One pre-order step of a {@link Walker}. */
+export interface WalkStep {
+  node: Node;
+  depth: number;
+  isSemanticError: boolean;
+}
+
+/**
+ * Pre-order tree walker over the last successful parse, yielding one
+ * {@link WalkStep} per node. Shares the session's node storage: close the
+ * walker (or use `using`) before closing the session or parsing again.
+ * Created by {@link Session.walk}.
+ */
+export class Walker implements IterableIterator<WalkStep> {
+  #session: Session;
+  #ffi: GalleyFFI;
+  #handle: bigint | null;
+
+  constructor(session: Session, ffi: GalleyFFI, handle: bigint) {
+    this.#session = session;
+    this.#ffi = ffi;
+    this.#handle = handle;
+  }
+
+  next(): IteratorResult<WalkStep> {
+    if (this.#handle === null) return { done: true, value: undefined };
+    const outNode: unknown[] = [0n];
+    const outDepth: unknown[] = [0];
+    const outFlag: unknown[] = [0];
+    const yielded = this.#ffi.galley_walker_next(this.#handle, outNode, outDepth, outFlag);
+    if (yielded === 0) return { done: true, value: undefined };
+    return {
+      done: false,
+      value: {
+        node: new Node(this.#session, toBigInt(outNode[0] as bigint)),
+        depth: Number(outDepth[0]),
+        isSemanticError: (outFlag[0] as number) !== 0,
+      },
+    };
+  }
+
+  [Symbol.iterator](): IterableIterator<WalkStep> {
+    return this;
+  }
+
+  /**
+   * Prunes the children of the last yielded step; iteration continues with
+   * its next sibling. No effect without a last step.
+   */
+  skipChildren(): void {
+    if (this.#handle === null) return;
+    this.#ffi.galley_walker_skip_children(this.#handle);
+  }
+
+  close(): void {
+    if (this.#handle !== null) {
+      this.#ffi.galley_walker_destroy(this.#handle);
+      this.#handle = null;
+    }
+  }
+
+  /** For `using walker = session.walk(...)`. */
+  [Symbol.dispose](): void {
+    this.close();
   }
 }

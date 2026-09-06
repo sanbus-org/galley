@@ -302,6 +302,63 @@ await test("terminal-only nodes have empty symbol names", () => {
   }
 });
 
+await test("walk matches hand-rolled recursion", () => {
+  const s = newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    function recurse(n, depth, out) {
+      out.push([n.address, depth]);
+      let child = s.firstChild(n);
+      while (child !== null) {
+        recurse(child, depth + 1, out);
+        child = s.nextSibling(child);
+      }
+    }
+    const expected = [];
+    recurse(root, 0, expected);
+    assert.ok(expected.length > 1);
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    try {
+      const walked = [];
+      for (const step of walker) {
+        assert.equal(step.isSemanticError, false);
+        walked.push([step.node.address, step.depth]);
+      }
+      assert.deepEqual(walked, expected);
+    } finally {
+      walker.close();
+    }
+  } finally {
+    s.close();
+  }
+});
+
+await test("walk skipChildren prunes the subtree", () => {
+  const s = newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    try {
+      const first = walker.next();
+      assert.equal(first.done, false);
+      assert.ok(first.value.node.equals(root));
+      assert.equal(first.value.depth, 0);
+      walker.skipChildren();
+      assert.equal(walker.next().done, true);
+    } finally {
+      walker.close();
+    }
+    assert.equal(s.walk(INVALID_NODE), null);
+  } finally {
+    s.close();
+  }
+});
+
 await test("invalid node accessors return null", () => {
   const s = newSession();
   try {

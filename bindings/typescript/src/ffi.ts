@@ -101,6 +101,19 @@ export interface GalleyFFI {
   galley_node_next_sibling: (session: bigint, node: bigint | number) => bigint | number;
   galley_node_prior_sibling: (session: bigint, node: bigint | number) => bigint | number;
   galley_node_parent: (session: bigint, node: bigint | number) => bigint | number;
+  galley_walker_create: (
+    session: bigint,
+    node: bigint | number,
+    skipSemanticErrors: number,
+  ) => bigint;
+  galley_walker_next: (
+    walker: bigint,
+    outNode: unknown[],
+    outDepth: unknown[],
+    outIsSemanticError: unknown[],
+  ) => number;
+  galley_walker_skip_children: (walker: bigint) => void;
+  galley_walker_destroy: (walker: bigint) => void;
   galley_node_symbol_name: (
     session: bigint,
     node: bigint | number,
@@ -462,6 +475,12 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
     galley_node_next_sibling: lib.func("uint64_t galley_node_next_sibling(void *session, uint64_t node)"),
     galley_node_prior_sibling: lib.func("uint64_t galley_node_prior_sibling(void *session, uint64_t node)"),
     galley_node_parent: lib.func("uint64_t galley_node_parent(void *session, uint64_t node)"),
+    galley_walker_create: lib.func("void *galley_walker_create(void *session, uint64_t node, int skip_semantic_errors)"),
+    galley_walker_next: lib.func(
+      "int galley_walker_next(void *walker, _Out_ uint64_t *out_node, _Out_ uint32_t *out_depth, _Out_ int *out_is_semantic_error)",
+    ),
+    galley_walker_skip_children: lib.func("void galley_walker_skip_children(void *walker)"),
+    galley_walker_destroy: lib.func("void galley_walker_destroy(void *walker)"),
     galley_node_symbol_name: lib.func(
       "int64_t galley_node_symbol_name(void *session, uint64_t node, _Out_ void **out_data, _Out_ size_t *out_len)",
     ),
