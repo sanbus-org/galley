@@ -1,0 +1,36 @@
+{
+  "name": "galley-js-bun",
+  "version": "0.1.0",
+  "description": "Galley JavaScript bindings for Bun (galley-js-core over bun:ffi and bindings/c/galley.h)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "build.mjs", "README.md"],
+  "bin": {
+    "galley-js-bun": "./build.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prebuild": "test -d ../core && ((command -v bun >/dev/null && bun --cwd ../core install --silent && bun --cwd ../core run build) || (command -v npm >/dev/null && npm --prefix ../core install --no-audit --no-fund && npm --prefix ../core run build)) >/dev/null 2>&1; exit 0",
+    "prepare": "test -d ../core && command -v npm >/dev/null && npm --prefix ../core run build >/dev/null 2>&1; tsc -p tsconfig.json --noCheck --types \"\"",
+    "prepublishOnly": "npm run build",
+    "test": "bun tests/test_bindings.mjs"
+  },
+  "keywords": ["galley", "parser", "javascript", "typescript", "ffi", "bun"],
+  "dependencies": {
+    "galley-js-core": "file:../core"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.0"
+  }
+}
