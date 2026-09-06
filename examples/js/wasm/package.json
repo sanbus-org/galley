@@ -1,0 +1,19 @@
+{
+  "name": "galley-js-wasm-example",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "galley-js-wasm": "file:../../../bindings/js/wasm"
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json",
+    "demo": "npx tsx demo.ts",
+    "benchmark": "npx tsx benchmark.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^7.0.2"
+  }
+}

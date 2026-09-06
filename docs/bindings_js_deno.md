@@ -75,4 +75,5 @@ excluded from `tsconfig.json`.
 
 - [TypeScript](/bindings_typescript) — the Node bindings over the same core
 - [Bun](/bindings_js_bun) — the Bun bindings over the same core
+- [WebAssembly](/bindings_js_wasm) — the wasm bindings over the same core
 - [C and C++](/bindings_c) — the underlying C ABI

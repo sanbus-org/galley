@@ -42,6 +42,7 @@ export default defineConfig({
           { text: 'TypeScript', link: '/bindings_typescript' },
           { text: 'Deno', link: '/bindings_js_deno' },
           { text: 'Bun', link: '/bindings_js_bun' },
+          { text: 'WebAssembly', link: '/bindings_js_wasm' },
           { text: 'Java', link: '/bindings_java' }
         ]
       },

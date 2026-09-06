@@ -4,6 +4,9 @@
 Build the example benchmark binaries first (see .github/workflows/ci.yml).
 This script runs them round-robin, scores the best of the non-warmup rounds,
 and fails if a C-ABI example is below --min-ratio of Zig's median.
+Per-language bars (--min-ratio-override) replace the global bar for the
+named languages; currently only the WebAssembly example uses one, since it
+runs the same parser compiled to wasm, which trails native codegen.
 """
 
 from __future__ import annotations
@@ -22,6 +25,9 @@ DEFAULT_ROUNDS = 3
 DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
+# Per-language bars replacing the global --min-ratio for the named
+# languages. Only wasm uses one today.
+DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.80}
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = (
     "zig",
@@ -33,6 +39,7 @@ LANGUAGE_ORDER = (
     "typescript",
     "deno",
     "bun",
+    "wasm",
     "java",
 )
 
@@ -73,11 +80,18 @@ def evaluate(
     *,
     warmup: int,
     min_ratio: float,
+    min_ratio_overrides: dict[str, float] | None = None,
     info_ratio: float = INFO_RATIO,
     reference: str = "zig",
 ) -> Report:
     if reference not in rounds:
         raise ValueError(f"missing reference language {reference!r}")
+    overrides = dict(DEFAULT_MIN_RATIO_OVERRIDES)
+    if min_ratio_overrides:
+        for name in min_ratio_overrides:
+            if name not in LANGUAGE_ORDER:
+                raise ValueError(f"unknown language in min-ratio override: {name!r}")
+        overrides.update(min_ratio_overrides)
     scored = {name: values[warmup:] for name, values in rounds.items()}
     for name, values in scored.items():
         if not values:
@@ -91,8 +105,9 @@ def evaluate(
     for name, score in scores.items():
         if name == reference:
             continue
+        bar = overrides.get(name, min_ratio)
         ratio = score / zig_median
-        if ratio < min_ratio:
+        if ratio < bar:
             failures.append(name)
         if ratio < info_ratio:
             info_band_misses.append(name)
@@ -145,6 +160,11 @@ def default_runners(root: Path) -> list[Runner]:
             cwd=root / "examples" / "js" / "bun",
         ),
         Runner(
+            "wasm",
+            ["npx", "tsx", "benchmark.ts"],
+            cwd=root / "examples" / "js" / "wasm",
+        ),
+        Runner(
             "java",
             [
                 "java",
@@ -185,10 +205,15 @@ def format_int(value: int | float) -> str:
     return f"{int(round(value)):,}"
 
 
+def format_overrides(overrides: dict[str, float]) -> str:
+    return ", ".join(f"{name}={ratio:.0%}" for name, ratio in sorted(overrides.items()))
+
+
 def print_report(
     report: Report,
     *,
     min_ratio: float,
+    min_ratio_overrides: dict[str, float],
     info_ratio: float,
     rounds: int,
     warmup: int,
@@ -202,9 +227,11 @@ def print_report(
             )
     print()
     print(f"zig median (scored rounds): {format_int(report.zig_median)}")
-    print(
-        f"fail below {min_ratio:.0%} of zig median; {info_ratio:.0%} band is informational"
-    )
+    bars = f"fail below {min_ratio:.0%} of zig median"
+    if min_ratio_overrides:
+        bars += f" (overrides: {format_overrides(min_ratio_overrides)})"
+    bars += f"; {info_ratio:.0%} band is informational"
+    print(bars)
     print("language       best        vs zig")
     for name in names:
         score = report.scores[name]
@@ -243,9 +270,11 @@ def print_report(
                 f"\n{rounds} interleaved rounds including zig; {warmup_text}; "
                 f"score is best of the remaining rounds; "
                 f"reference is zig median of those rounds. "
-                f"Fail below {min_ratio:.0%} of that median. "
-                f"{info_ratio:.0%} band is informational.\n"
+                f"Fail below {min_ratio:.0%} of that median"
             )
+            if min_ratio_overrides:
+                handle.write(f" (overrides: {format_overrides(min_ratio_overrides)})")
+            handle.write(f". {info_ratio:.0%} band is informational.\n")
 
 
 def self_test() -> None:
@@ -271,7 +300,30 @@ def self_test() -> None:
     assert "rust" in report.info_band_misses
     assert "python" in report.failures
     assert "python" in report.info_band_misses
+    overridden = evaluate(
+        rounds,
+        warmup=1,
+        min_ratio=DEFAULT_MIN_RATIO,
+        min_ratio_overrides={"python": 0.10},
+    )
+    assert "python" not in overridden.failures
+    assert "python" in overridden.info_band_misses
     print("self-test ok")
+
+
+def parse_override(text: str) -> tuple[str, float]:
+    name, separator, value = text.partition("=")
+    if not separator or not name:
+        raise ValueError(f"override must be LANG=RATIO, got {text!r}")
+    if name not in LANGUAGE_ORDER:
+        raise ValueError(f"unknown language in min-ratio override: {name!r}")
+    try:
+        ratio = float(value)
+    except ValueError:
+        raise ValueError(f"invalid ratio in min-ratio override: {text!r}") from None
+    if not 0 < ratio <= 1:
+        raise ValueError(f"ratio must be in (0, 1], got {text!r}")
+    return name, ratio
 
 
 def main() -> int:
@@ -283,6 +335,18 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument("--iterations", type=int, default=DEFAULT_ITERATIONS)
     parser.add_argument("--min-ratio", type=float, default=DEFAULT_MIN_RATIO)
+    parser.add_argument(
+        "--min-ratio-override",
+        action="append",
+        default=[],
+        metavar="LANG=RATIO",
+        help=(
+            "per-language bar replacing --min-ratio, e.g. wasm=0.80 "
+            "(repeatable; built-in: "
+            + format_overrides(DEFAULT_MIN_RATIO_OVERRIDES).replace("%", "%%")
+            + ")"
+        ),
+    )
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -309,6 +373,12 @@ def main() -> int:
         return 1
 
     runners = {runner.name: runner for runner in default_runners(root)}
+    try:
+        cli_overrides = dict(parse_override(text) for text in args.min_ratio_override)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    overrides = {**DEFAULT_MIN_RATIO_OVERRIDES, **cli_overrides}
     missing = []
     for name in LANGUAGE_ORDER:
         runner = runners[name]
@@ -328,6 +398,11 @@ def main() -> int:
                 missing.append(f"{name}: {script}")
             continue
         if name == "bun":
+            script = (runner.cwd or root) / "benchmark.ts"
+            if not script.is_file():
+                missing.append(f"{name}: {script}")
+            continue
+        if name == "wasm":
             script = (runner.cwd or root) / "benchmark.ts"
             if not script.is_file():
                 missing.append(f"{name}: {script}")
@@ -389,12 +464,14 @@ def main() -> int:
         rounds,
         warmup=args.warmup,
         min_ratio=args.min_ratio,
+        min_ratio_overrides=overrides,
         info_ratio=INFO_RATIO,
     )
     print()
     print_report(
         report,
         min_ratio=args.min_ratio,
+        min_ratio_overrides=overrides,
         info_ratio=INFO_RATIO,
         rounds=args.rounds,
         warmup=args.warmup,
@@ -406,9 +483,12 @@ def main() -> int:
             flush=True,
         )
     if report.failures:
-        names = ", ".join(report.failures)
+        parts = []
+        for name in report.failures:
+            bar = overrides.get(name, args.min_ratio)
+            parts.append(f"{name} below {bar:.0%}")
         message = (
-            f"example-benchmarks: {names} below {args.min_ratio:.0%} of zig median "
+            f"example-benchmarks: {', '.join(parts)} of zig median "
             f"({format_int(report.zig_median)} bytes/s)"
         )
         print(f"::error::{message}")

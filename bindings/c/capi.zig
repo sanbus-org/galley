@@ -16,6 +16,7 @@
 //! procedures and error-messages files (see the bindings docs).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const root = @import("galley");
 const parser = root.parser;
 const capi_options = @import("capi_options");
@@ -199,6 +200,23 @@ export fn galley_session_destroy(session_ptr: ?*GalleySession) void {
     embedded.session.deinit();
     embedded.threaded.deinit();
     std.heap.c_allocator.destroy(embedded);
+}
+
+// Host-memory helpers for the WebAssembly build (`bindings/js/wasm`): the
+// wasm linear memory is only writable by the host through exported memory,
+// so input buffers and out-parameter slots are allocated here. Present (but
+// unused) on native targets, like `galley_install_js_dispatch`; the FFI
+// adapters use their own allocators there.
+export fn galley_js_malloc(len: usize) ?[*]u8 {
+    if (comptime !builtin.cpu.arch.isWasm()) return null;
+    const slice = std.heap.c_allocator.alloc(u8, len) catch return null;
+    return slice.ptr;
+}
+
+/// Releases an allocation from `galley_js_malloc`. The length must match.
+export fn galley_js_free(ptr: [*]u8, len: usize) void {
+    if (comptime !builtin.cpu.arch.isWasm()) return;
+    std.heap.c_allocator.free(ptr[0..len]);
 }
 
 /// Registers one message override: when a syntax-error site's resolution

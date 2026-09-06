@@ -1,0 +1,15 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/procedures.zig
+/procedures_wasm.zig
+/benchmark/_ll-parser.zig
+/benchmark/_lr-parser.zig
+/benchmark/procedures.zig
+/benchmark/procedures_wasm.zig
+/benchmark/metadata.json
+/benchmark/libgalley-js-wasm.wasm
+/metadata.json
+/libgalley-js-wasm.wasm
+/dist
+/node_modules
+/package-lock.json
