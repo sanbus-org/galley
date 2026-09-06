@@ -11,9 +11,8 @@
  *
  * - `GALLEY_LIBRARY_PATH`, when set, wins outright (explicit user artifact,
  *   no build). Otherwise the fixture is built and its path returned.
- * - `GALLEY_CHECKOUT`, when unset, defaults to the enclosing Galley
- *   checkout (walk-up from the fixture dir) so `node tests/...` works with
- *   no environment. CI already sets it; then nothing changes.
+ * - `GALLEY_CHECKOUT` must name the Galley checkout to build against
+ *   (CI sets it). Unset is a loud error, never a guess.
  * - The workdir path is stable per `scope`, so the builders' content-hash
  *   caches and zig's incremental cache stay warm across runs.
  * - Builder output is captured and shown only on failure.
@@ -29,17 +28,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.resolve(HERE, "..", "..", "test-fixture");
 const FIXTURE_FILES = ["ll.grm", "config.zig", "procedures.zig", "procedures.ts"];
 
-/** Point at the enclosing checkout when the caller set no explicit one. */
-function defaultGalleyCheckout() {
-  if (process.env.GALLEY_CHECKOUT) return;
-  let directory = FIXTURE_DIR;
-  for (let depth = 0; depth < 4; depth++) {
-    if (fs.existsSync(path.join(directory, "build.zig"))) {
-      process.env.GALLEY_CHECKOUT = directory;
-      return;
-    }
-    directory = path.dirname(directory);
+/** The checkout GALLEY_CHECKOUT names, or a loud error. No guessing. */
+function requireGalleyCheckout() {
+  const checkout = process.env.GALLEY_CHECKOUT;
+  if (!checkout) {
+    throw new Error(
+      "galley test fixture: set GALLEY_CHECKOUT to a Galley checkout (must contain build.zig)",
+    );
   }
+  return checkout;
 }
 
 /**
@@ -60,7 +57,7 @@ export function ensureTestLibrary({ buildCommand, libFileName, scope }) {
   for (const file of FIXTURE_FILES) {
     fs.copyFileSync(path.join(FIXTURE_DIR, file), path.join(workDir, file));
   }
-  defaultGalleyCheckout();
+  requireGalleyCheckout();
   const [command, ...prefix] = buildCommand;
   const built = spawnSync(command, [...prefix, workDir], { encoding: "utf-8" });
   if (built.error) {

@@ -23,7 +23,7 @@
  *
  * The tool generates the parser (--emit-metadata) and builds the shared
  * library through the generic consumer build directly next to the grammar,
- * so `import { Session } from "galley-js-deno"` can locate it via cwd or
+ * so `import { Session } from "galley-js-deno"` can name it via
  * GALLEY_LIBRARY_PATH.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,

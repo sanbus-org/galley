@@ -139,6 +139,64 @@ export class Session {
     if (status < 0) throw this.#errorFromStatus(status, fallback);
   }
 
+  // -- parser metadata (mirror galley.h; bound to this session's artifact) --
+
+  version(): string {
+    return this.#port.version();
+  }
+
+  parserType(): number {
+    return this.#port.parserType();
+  }
+
+  errorRecoveryMode(): number {
+    return this.#port.errorRecoveryMode();
+  }
+
+  hasAst(): boolean {
+    return this.#port.hasAst();
+  }
+
+  hasProcedures(): boolean {
+    return this.#port.hasProcedures();
+  }
+
+  allowsNoAstTreeProcedures(): boolean {
+    return this.#port.allowsNoAstTreeProcedures();
+  }
+
+  sourceRetentionEnabled(): boolean {
+    return this.#port.sourceRetentionEnabled();
+  }
+
+  hasPositionTracking(): boolean {
+    return this.#port.hasPositionTracking();
+  }
+
+  hasInputStreaming(): boolean {
+    return this.#port.hasInputStreaming();
+  }
+
+  usesVerbatim(): boolean {
+    return this.#port.usesVerbatim();
+  }
+
+  stackOverflowRecoveryAvailable(): boolean {
+    return this.#port.stackOverflowRecoveryAvailable();
+  }
+
+  symbolCount(): number {
+    return this.#port.symbolCount();
+  }
+
+  variableCount(): number {
+    return this.#port.variableCount();
+  }
+
+  statusString(status: number): string | null {
+    return this.#port.statusString(status);
+  }
+
   // -- lifecycle -------------------------------------------------------
 
   close(): void {

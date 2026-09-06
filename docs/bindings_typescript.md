@@ -34,6 +34,20 @@ npm install
 npx galley-js-node <language-dir>
 ```
 
+Two ways to install, depending on what you are doing:
+
+```sh
+npm install --install-links   # consuming: self-contained copy, nothing else to install
+npm install                   # contributing: live symlink into the checkout
+```
+
+A plain `npm install` links the bindings without their dependencies, so a
+contributor must also run `npm install` inside `bindings/js/node`. With
+`--install-links` the package is copied with its whole subtree and the
+example works with no second install. Copies go stale: after changing
+binding sources, delete `node_modules/galley-js-node` and install again —
+reinstalling over it skips re-copying an unchanged version.
+
 The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook
 files next to your grammar (`procedures.ts` for native TypeScript hooks,
@@ -54,8 +68,8 @@ after changing the grammar; commit
 nothing the command generates. One shared library embeds one parser — split
 grammars across language directories exactly like the other bindings.
 
-`GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-js-node.*`
-when the library lives elsewhere.
+Pass the built file with `libraryPath`, or name it once with
+`GALLEY_LIBRARY_PATH`. Nothing is searched: a missing file is a loud error.
 
 ## Performance Notes
 
@@ -116,18 +130,17 @@ export function hook_print(args: ProcedureArguments): void {
 }
 ```
 
-They are auto-discovered at first `Session` construction — the runtime tries
-`procedures`/`procedures.js`/`procedures.ts` next to the shared library, in
-`process.cwd()`, and next to the entry script (whichever is found first) and
-registers any `reduction`/`reduction_*`/`hook_*` exports, exactly like
-Python's `import procedures` at extension load. Explicit registration composes
-with auto-discovery and takes precedence:
+They load from exactly one place — the directory holding the shared
+library — at first `Session` construction, registering any
+`reduction`/`reduction_*`/`hook_*` exports, exactly like Python's
+`import procedures` at extension load. Explicit registration composes
+with that and takes precedence:
 
 ```ts
 import * as procedures from "./procedures.js";
 import { Session, installProcedures } from "galley-js-node";
 
-// explicit is optional when procedures.* is auto-discoverable:
+// explicit registration, e.g. for hooks living elsewhere:
 installProcedures(procedures);
 // or for a single hook:
 // installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());

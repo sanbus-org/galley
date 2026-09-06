@@ -11,6 +11,7 @@
  */
 
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
+import { MissingArtifactError } from "galley-js-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -124,8 +125,14 @@ interface GalleySymbols {
 }
 
 // --- library discovery -------------------------------------------------
+// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// Anything else is a loud error, never a search.
 
-function libFileName(base = "galley-js-deno"): string {
+const BUILD_HINT =
+  "Build it first: deno task build in your language dir\n" +
+  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
+
+export function libFileName(base = "galley-js-deno"): string {
   if (Deno.build.os === "darwin") return `lib${base}.dylib`;
   if (Deno.build.os === "windows") return `${base}.dll`;
   return `lib${base}.so`;
@@ -140,36 +147,18 @@ function exists(filePath: string): boolean {
   }
 }
 
-function joinPath(...parts: string[]): string {
-  return parts.join("/").replace(/\/+/g, "/");
-}
-
 export function findLibrary(explicit?: string): string {
-  if (explicit && exists(explicit)) return explicit;
-  const envPath = Deno.env.get("GALLEY_LIBRARY_PATH");
-  if (envPath && exists(envPath)) return envPath;
-  // 1) file next to the grammar (cwd when running from the language dir)
-  for (const candidate of [
-    joinPath(Deno.cwd(), libFileName()),
-    joinPath(Deno.cwd(), "libgalley-js-deno.dylib"),
-    joinPath(Deno.cwd(), "libgalley-js-deno.so"),
-  ]) {
-    if (exists(candidate)) return candidate;
+  const chosen = explicit || Deno.env.get("GALLEY_LIBRARY_PATH");
+  if (!chosen) {
+    throw new MissingArtifactError(
+      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
+      BUILD_HINT,
+    );
   }
-  // 2) sibling examples/js/deno for development (from src/, three levels up)
-  try {
-    const here = new URL(".", import.meta.url).pathname;
-    for (const candidate of [
-      joinPath(here, "../../../../examples/js/deno", libFileName()),
-      joinPath(here, "../../../../../examples/js/deno", libFileName()),
-    ]) {
-      if (exists(candidate)) return candidate;
-    }
-  } catch {
-    // ignore URL parsing errors
+  if (!exists(chosen)) {
+    throw new MissingArtifactError(`at ${chosen}`, BUILD_HINT);
   }
-  // fallback: let dlopen error with the grammar-adjacent path
-  return joinPath(Deno.cwd(), libFileName());
+  return chosen;
 }
 
 // --- loader ------------------------------------------------------------

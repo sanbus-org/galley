@@ -19,17 +19,15 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import type {
   FfiPort,
   Handle,
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
-import { dispatchProcedure } from "galley-js-core";
+import { dispatchProcedure, MissingArtifactError } from "galley-js-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -255,8 +253,14 @@ function isNode(): boolean {
 }
 
 // --- library discovery (mirrors the Node adapter, `.wasm` names) -----------
+// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// Anything else is a loud error, never a search.
 
-function wasmFileName(base = LIBRARY_BASE): string {
+const BUILD_HINT =
+  `Build it first: npx galley-js-wasm <language-dir>\n` +
+  `or set GALLEY_LIBRARY_PATH=/path/to/${wasmFileName()}`;
+
+export function wasmFileName(base = LIBRARY_BASE): string {
   return `lib${base}.wasm`;
 }
 
@@ -270,31 +274,18 @@ function exists(localPath: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  if (explicit && exists(explicit)) return path.resolve(explicit);
-  if (process.env.GALLEY_LIBRARY_PATH && exists(process.env.GALLEY_LIBRARY_PATH)) {
-    return path.resolve(process.env.GALLEY_LIBRARY_PATH);
+  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
+  if (!chosen) {
+    throw new MissingArtifactError(
+      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
+      BUILD_HINT,
+    );
   }
-  // 1) file next to the grammar (cwd when running from the language dir)
-  const cwdCandidates = [
-    path.join(process.cwd(), wasmFileName()),
-    path.join(process.cwd(), wasmFileName(LIBRARY_BASE)),
-  ];
-  for (const candidate of cwdCandidates) if (exists(candidate)) return candidate;
-
-  // 2) sibling examples/js/wasm for development (from dist/, three levels up)
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const devCandidates = [
-      path.join(here, "../../../../examples/js/wasm", wasmFileName()),
-      path.join(here, "../../../../../examples/js/wasm", wasmFileName()),
-    ];
-    for (const candidate of devCandidates) if (exists(candidate)) return candidate;
-  } catch {
-    // ignore URL parsing errors in bundled contexts
+  const resolved = path.resolve(chosen);
+  if (!exists(resolved)) {
+    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
   }
-
-  // fallback: let the loader error with the grammar-adjacent path
-  return path.join(process.cwd(), wasmFileName());
+  return resolved;
 }
 
 // --- minimal WASI stub ------------------------------------------------------
@@ -439,14 +430,8 @@ function loadBytesSync(options: InitOptions): { bytes: Uint8Array<ArrayBuffer>; 
     throw new NeedInitError(options.libraryPath);
   }
   if (!isNode()) throw new NeedInitError(options.libraryPath);
+  // findLibrary throws MissingArtifactError naming the exact place.
   const wasmPath = options.libraryPath ?? seededDefault ?? findLibrary();
-  if (!exists(wasmPath)) {
-    throw new Error(
-      `Galley WebAssembly module not found at ${wasmPath}.\n` +
-        `Build it first: npx galley-js-wasm <language-dir>\n` +
-        `or set GALLEY_LIBRARY_PATH=/path/to/${wasmFileName()}`,
-    );
-  }
   return { bytes: Uint8Array.from(new Uint8Array(fs.readFileSync(wasmPath))), wasmPath };
 }
 

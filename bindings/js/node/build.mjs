@@ -22,16 +22,18 @@
  * The tool generates the parser (--emit-metadata) and builds the shared
  * library through the generic consumer build directly next to the grammar,
  * so `import { Session } from "galley-js-node"`
- * can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * can name it via GALLEY_LIBRARY_PATH.
  *
- * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT (required: existing Galley working tree). To fetch a
- *   checkout for convenience, use examples/scripts/fetch-galley.sh — that
- *   cache is an examples-only convenience, not part of the bindings.
+ * Environment: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH, and
+ *   GALLEY_CHECKOUT (required): an existing Galley working tree holding
+ *   build.zig. To fetch a checkout for convenience, use
+ *   examples/scripts/fetch-galley.sh — that cache is an examples-only
+ *   convenience, not part of the bindings.
  */
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,17 +107,18 @@ async function loadShimGenerator() {
 }
 
 function ensureBindingsInstalled() {
-  // `file:` consumers (examples/js/node) symlink this package; npm does
-  // not install our dependencies into this directory. `createRequire(import.meta.url)`
-  // in dist/ffi.js therefore cannot see koffi unless we install ourselves.
+  // Whatever the install layout (symlinked `file:` package or
+  // `--install-links` copy), the runtime dependency must resolve from
+  // this directory the same way dist/ffi.js will load it. Say so loudly
+  // instead of running a package manager behind your back.
   const bindingsDir = path.dirname(fileURLToPath(import.meta.url));
-  const koffi = path.join(bindingsDir, "node_modules", "koffi");
   const distIndex = path.join(bindingsDir, "dist", "index.js");
-  if (fs.existsSync(koffi) && fs.existsSync(distIndex)) return;
-  console.error("galley-bindings: installing JavaScript bindings dependencies...");
-  run("npm", ["install"], { cwd: bindingsDir });
-  if (!fs.existsSync(koffi)) fatal("npm install did not produce node_modules/koffi");
-  if (!fs.existsSync(distIndex)) fatal("npm install did not produce dist/index.js");
+  if (!fs.existsSync(distIndex)) fatal(`bindings not built: run npm run build in ${bindingsDir} first`);
+  try {
+    createRequire(path.join(bindingsDir, "package.json")).resolve("koffi");
+  } catch {
+    fatal(`bindings not installed: run npm install in ${bindingsDir} first`);
+  }
 }
 
 async function main() {

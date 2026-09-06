@@ -49,8 +49,8 @@ emits `dist/` for publishing) via `tsc`.
 Hook files work exactly like the Node bindings (`export function
 reduction_<Var>(args)` / `export function hook_<name>(args)` in
 `procedures.ts`, dispatched through the shared `galley_install_js_dispatch`
-shim). Bun loads TypeScript synchronously, so `procedures.*` in the
-language directory is auto-discovered via `require()`, just like Node —
+shim). Bun loads TypeScript synchronously, so `procedures.*` next to the
+shared library loads at first `Session`, just like Node —
 no explicit registration needed.
 
 ## Tests
