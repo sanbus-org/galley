@@ -15,6 +15,7 @@ import { Session } from "./session.js";
 export * from "galley-js-core";
 export { Session };
 export { findLibrary, init, initSync, seedDefault, NeedInitError };
+export { getWasmPort } from "./ffi.js";
 export type { InitOptions } from "./ffi.js";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
