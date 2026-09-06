@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Behavioral tests for the Galley Java bindings.
- * Mirrors bindings/python/tests/test_bindings.py and bindings/typescript/tests/test_bindings.mjs.
+ * Mirrors bindings/python/tests/test_bindings.py and bindings/js/node/tests/test_bindings.mjs.
  *
  * Requires the shared library built for examples/java:
  *   java -jar bindings/java/target/galley-bindings-0.1.0.jar examples/java

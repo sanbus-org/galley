@@ -4,9 +4,9 @@
  * Mirrors `bindings/python/tests/test_bindings.py`.
  *
  * Run:
- *   node bindings/typescript/tests/test_bindings.mjs
+ *   node bindings/js/node/tests/test_bindings.mjs
  * or with explicit library:
- *   GALLEY_LIBRARY_PATH=/tmp/libgalley-typescript.dylib node ...
+ *   GALLEY_LIBRARY_PATH=/tmp/libgalley-js-node.dylib node ...
  */
 
 import assert from "node:assert/strict";
@@ -16,11 +16,11 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = (() => {
-  if (process.platform === "darwin") return "libgalley-typescript.dylib";
-  if (process.platform === "win32") return "galley-typescript.dll";
-  return "libgalley-typescript.so";
+  if (process.platform === "darwin") return "libgalley-js-node.dylib";
+  if (process.platform === "win32") return "galley-js-node.dll";
+  return "libgalley-js-node.so";
 })();
-const defaultLibPath = path.resolve(__dirname, "../../../examples/typescript", exampleLib);
+const defaultLibPath = path.resolve(__dirname, "../../../../examples/js/node", exampleLib);
 const libPath = process.env.GALLEY_LIBRARY_PATH ?? (fs.existsSync(defaultLibPath) ? defaultLibPath : undefined);
 
 // Must set before import if using env-based discovery
@@ -186,7 +186,7 @@ await test("diagnostic resets after successful parse", () => {
 await test("file parsing reports end position", () => {
   const s = newSession();
   try {
-    const p = "/tmp/galley-typescript-bindings-test.kv";
+    const p = "/tmp/galley-js-node-test.kv";
     fs.writeFileSync(p, "alpha:12,beta:3");
     const parsed = s.parseFile(p);
     assert.equal(parsed, 15);

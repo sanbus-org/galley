@@ -18,7 +18,7 @@ import java.nio.file.StandardOpenOption;
  * on one session and reports bytes/s.
  *
  * Mirrors examples/python/benchmark.py, examples/go/benchmark/benchmark.go,
- * examples/typescript/benchmark.ts, and examples/rust/src/benchmark.rs.
+ * examples/js/node/benchmark.ts, and examples/rust/src/benchmark.rs.
  */
 public final class Benchmark {
 

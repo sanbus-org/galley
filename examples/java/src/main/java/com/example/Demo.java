@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * Parses a small key/value document through the Galley Java bindings,
  * mirroring examples/python/demo.py, examples/go/demo/demo.go,
- * examples/rust/src/demo.rs, and examples/typescript/demo.ts
+ * examples/rust/src/demo.rs, and examples/js/node/demo.ts
  * byte-for-byte in output.
  */
 public final class Demo {

@@ -1,5 +1,5 @@
-import { Buffer } from "node:buffer";
 import type { Session } from "./session.js";
+import { decodeUtf8 } from "./text.js";
 
 /**
  * Session-bound handle for a node in the non-relocating AST storage.
@@ -48,7 +48,7 @@ export class Node {
     this.ensureAlive();
     const bytes = this.#session.symbolNameBytes(this);
     if (bytes === null) return null;
-    return Buffer.from(bytes).toString("utf-8");
+    return decodeUtf8(bytes);
   }
 
   /** Raw symbol name bytes (Uint8Array) or null. */

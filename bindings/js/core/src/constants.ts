@@ -1,6 +1,6 @@
 /**
  * Constants mirroring `bindings/c/galley.h` status and kind enumerations.
- * These are the single source for TypeScript consumers; they must stay
+ * These are the single source for JavaScript consumers; they must stay
  * in sync with the C header.
  */
 
