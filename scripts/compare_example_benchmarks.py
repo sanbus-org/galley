@@ -23,7 +23,17 @@ DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 INFO_RATIO = 0.97
-LANGUAGE_ORDER = ("zig", "c", "cpp", "rust", "go", "python", "typescript", "java")
+LANGUAGE_ORDER = (
+    "zig",
+    "c",
+    "cpp",
+    "rust",
+    "go",
+    "python",
+    "typescript",
+    "deno",
+    "java",
+)
 
 
 @dataclass(frozen=True)
@@ -116,8 +126,27 @@ def default_runners(root: Path) -> list[Runner]:
             cwd=root / "examples" / "js" / "node",
         ),
         Runner(
+            "deno",
+            [
+                "deno",
+                "run",
+                "--sloppy-imports",
+                "--allow-ffi",
+                "--allow-read",
+                "--allow-env",
+                "benchmark.ts",
+            ],
+            cwd=root / "examples" / "js" / "deno",
+        ),
+        Runner(
             "java",
-            ["java", "--enable-native-access=ALL-UNNAMED", "-cp", "bindings/java/out:examples/java/out", "com.example.Benchmark"],
+            [
+                "java",
+                "--enable-native-access=ALL-UNNAMED",
+                "-cp",
+                "bindings/java/out:examples/java/out",
+                "com.example.Benchmark",
+            ],
             cwd=root,
         ),
     ]
@@ -287,12 +316,42 @@ def main() -> int:
             if not script.is_file():
                 missing.append(f"{name}: {script}")
             continue
+        if name == "deno":
+            script = (runner.cwd or root) / "benchmark.ts"
+            if not script.is_file():
+                missing.append(f"{name}: {script}")
+            continue
         if name == "java":
-            if not (root / "bindings" / "java" / "out" / "org" / "sanbus" / "galley" / "build" / "GalleyBuild.class").is_file():
+            if not (
+                root
+                / "bindings"
+                / "java"
+                / "out"
+                / "org"
+                / "sanbus"
+                / "galley"
+                / "build"
+                / "GalleyBuild.class"
+            ).is_file():
                 missing.append(f"{name}: bindings/java/out")
-            elif not (root / "examples" / "java" / "out" / "com" / "example" / "Benchmark.class").is_file():
+            elif not (
+                root
+                / "examples"
+                / "java"
+                / "out"
+                / "com"
+                / "example"
+                / "Benchmark.class"
+            ).is_file():
                 missing.append(f"{name}: examples/java/out")
-            elif not (root / "examples" / "java" / "benchmark" / "libgalley-java.so").is_file() and not (root / "examples" / "java" / "benchmark" / "libgalley-java.dylib").is_file():
+            elif (
+                not (
+                    root / "examples" / "java" / "benchmark" / "libgalley-java.so"
+                ).is_file()
+                and not (
+                    root / "examples" / "java" / "benchmark" / "libgalley-java.dylib"
+                ).is_file()
+            ):
                 missing.append(f"{name}: examples/java/benchmark/libgalley-java.*")
             continue
         program = Path(runner.argv[0])

@@ -40,6 +40,7 @@ export default defineConfig({
           { text: 'Go', link: '/bindings_go' },
           { text: 'Python', link: '/bindings_python' },
           { text: 'TypeScript', link: '/bindings_typescript' },
+          { text: 'Deno', link: '/bindings_js_deno' },
           { text: 'Java', link: '/bindings_java' }
         ]
       },
