@@ -267,6 +267,7 @@ node bindings/js/node/tests/test_bindings.mjs
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI
+- [Deno](/bindings_js_deno) — the Deno bindings over the same JS core
 - [Python](/bindings_python), [Rust](/bindings_rust) and [Go](/bindings_go) — bindings over the same shared library
 - [Configuration](/configuration) — config.zig schema
 - [Grammar Guidelines](/grammar_guidelines)

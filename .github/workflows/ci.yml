@@ -94,6 +94,7 @@ jobs:
           - go
           - python
           - typescript
+          - deno
           - zig
           - java
     steps:
@@ -132,6 +133,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 22
+
+      - name: Install Deno
+        if: ${{ matrix.language == 'deno' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
       - name: Build and run example (cmake)
         if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
@@ -190,6 +197,16 @@ jobs:
           npx tsx demo.ts
           node ../../../bindings/js/node/tests/test_bindings.mjs
 
+      - name: Build and run example (deno)
+        if: ${{ matrix.language == 'deno' }}
+        working-directory: examples/js/deno
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          deno task build
+          deno task demo
+          deno task test
+
       - name: Build and run example (zig)
         if: ${{ matrix.language == 'zig' }}
         working-directory: examples/zig
@@ -241,6 +258,11 @@ jobs:
           distribution: temurin
           java-version: 22
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Grammar, options, and error messages are identical across bindings
         run: |
           same() {
@@ -251,11 +273,11 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,python,zig,java}/ll.grm examples/js/node/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,python,zig,java}/config.zig examples/js/node/config.zig examples/go/demo/config.zig
-          same benchmark/ll.grm examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm
-          same benchmark/config.zig examples/{c,cpp,rust,python,zig,java}/benchmark/config.zig examples/js/node/benchmark/config.zig
-          for f in examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm; do
+          same ll.grm examples/{c,cpp,rust,python,zig,java}/ll.grm examples/js/node/ll.grm examples/js/deno/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,python,zig,java}/config.zig examples/js/node/config.zig examples/js/deno/config.zig examples/go/demo/config.zig
+          same benchmark/ll.grm examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm examples/js/deno/benchmark/ll.grm
+          same benchmark/config.zig examples/{c,cpp,rust,python,zig,java}/benchmark/config.zig examples/js/node/benchmark/config.zig examples/js/deno/benchmark/config.zig
+          for f in examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm examples/js/deno/benchmark/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -282,6 +304,7 @@ jobs:
           check bindings/rust/src/build_helper.rs
           check bindings/python/galley_bindings/build.py
           check bindings/js/node/build.mjs
+          check bindings/js/deno/build.ts
           check bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
           for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
             check "$f"
@@ -295,12 +318,13 @@ jobs:
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
           ./zig-out/bin/galley --emit-metadata "examples/js/node" >/dev/null
+          ./zig-out/bin/galley --emit-metadata "examples/js/deno" >/dev/null
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,python,zig,java}/_ll-parser.zig examples/js/node/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,zig,java}/_ll-parser.zig examples/js/node/_ll-parser.zig examples/js/deno/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,python,java}/procedures.zig examples/js/node/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,java}/procedures.zig examples/js/node/procedures.zig examples/js/deno/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -316,12 +340,14 @@ jobs:
           names examples/go/demo/procedures.go > /tmp/names-go.txt
           names examples/python/procedures.py > /tmp/names-python.txt
           names examples/js/node/procedures.ts > /tmp/names-typescript.txt
+          names examples/js/deno/procedures.ts > /tmp/names-deno.txt
           names examples/java/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-python.txt || { echo "::error::C and Python procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-typescript.txt || { echo "::error::C and TypeScript procedure entry points differ"; exit 1; }
+          diff /tmp/names-c.txt /tmp/names-deno.txt || { echo "::error::C and Deno procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-java.txt || { echo "::error::C and Java procedure entry points differ"; exit 1; }
           names examples/zig/procedures.zig > /tmp/names-zig.txt
           diff /tmp/names-c.txt /tmp/names-zig.txt || { echo "::error::C and Zig procedure entry points differ"; exit 1; }
@@ -389,6 +415,10 @@ jobs:
           GALLEY_CHECKOUT="$PWD/../../.." npx galley-js-node . >/dev/null
           npx tsx demo.ts >/tmp/out-js-node.txt 2>/tmp/err-js-node.txt
           cd ../../..
+          cd examples/js/deno
+          GALLEY_CHECKOUT="$PWD/../../.." deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts . >/dev/null
+          deno run --sloppy-imports --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-js-deno.txt 2>/tmp/err-js-deno.txt
+          cd ../../..
           cd examples/zig
           zig build
           zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
@@ -416,6 +446,7 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-go.txt
           compare /tmp/out-c.txt /tmp/out-python.txt
           compare /tmp/out-c.txt /tmp/out-js-node.txt
+          compare /tmp/out-c.txt /tmp/out-js-deno.txt
           compare /tmp/out-c.txt /tmp/out-zig.txt
           compare /tmp/out-c.txt /tmp/out-java.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
@@ -423,6 +454,7 @@ jobs:
           compare /tmp/err-c.txt /tmp/err-go.txt
           compare /tmp/err-c.txt /tmp/err-python.txt
           compare /tmp/err-c.txt /tmp/err-js-node.txt
+          compare /tmp/err-c.txt /tmp/err-js-deno.txt
           compare /tmp/err-c.txt /tmp/err-zig.txt
           compare /tmp/err-c.txt /tmp/err-java.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
@@ -466,6 +498,11 @@ jobs:
           distribution: temurin
           java-version: 22
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Build example benchmarks
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
@@ -487,6 +524,8 @@ jobs:
           cd ../js/node
           npm install
           npx galley-js-node benchmark
+          cd ../deno
+          deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts benchmark
           cd ../../zig
           zig build -Doptimize=ReleaseFast
           cd ../..
