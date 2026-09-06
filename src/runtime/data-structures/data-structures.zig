@@ -47,6 +47,7 @@ pub const max_syntax_error_stack_depth = @import("context.zig").max_syntax_error
 pub const SyntaxErrorStack = @import("context.zig").SyntaxErrorStack;
 pub const Offsets = @import("offsets.zig").Offsets;
 pub const ProcedureArguments = @import("procedure-utilities.zig").ProcedureArguments;
+pub const TreeWalker = @import("tree-walker.zig").TreeWalker;
 pub const Procedure = @import("procedure-utilities.zig").Procedure;
 pub const wrap_procedure = @import("procedure-utilities.zig").wrapProcedure;
 pub const Token = @import("token.zig").Token;
