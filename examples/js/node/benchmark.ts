@@ -6,10 +6,9 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Session } from "galley-js-node";
+import { Session, libFileName } from "galley-js-node";
 
 const LOGICAL_INPUT = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS = 10;
@@ -26,15 +25,9 @@ function resolveInput(explicit: string | undefined): string {
 
 function jsonLibrary(): string {
   const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark");
-  const names =
-    os.platform() === "darwin"
-      ? ["libgalley-js-node.dylib", "libgalley-js-node.so"]
-      : ["libgalley-js-node.so", "libgalley-js-node.dylib"];
-  for (const name of names) {
-    const candidate = path.join(dir, name);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  console.error(`missing ${path.join(dir, names[0])}`);
+  const candidate = path.join(dir, libFileName());
+  if (fs.existsSync(candidate)) return candidate;
+  console.error(`missing ${candidate}`);
   process.exit(1);
 }
 

@@ -20,7 +20,7 @@
  *
  * The tool generates the parser (--emit-metadata), builds the WASI reactor
  * module through the generic consumer build (`-Dwasm`) directly next to the grammar so
- * `import { Session } from "galley-js-wasm"` can locate it via cwd or
+ * `import { Session } from "galley-js-wasm"` can name it via
  * GALLEY_LIBRARY_PATH.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
@@ -31,6 +31,7 @@
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,18 +104,18 @@ async function loadShimGenerator() {
 }
 
 function ensureBindingsInstalled() {
-  // `file:` consumers (examples/js/wasm) link this package; the package
-  // manager does not install our dependencies into this directory, so the
-  // `galley-js-core` import in dist/ would not resolve unless we install
-  // ourselves.
+  // Whatever the install layout (symlinked `file:` package or
+  // `--install-links` copy), the runtime dependency must resolve from
+  // this directory the same way the built output will load it. Say so
+  // loudly instead of running a package manager behind your back.
   const bindingsDir = path.dirname(fileURLToPath(import.meta.url));
-  const core = path.join(bindingsDir, "node_modules", "galley-js-core");
   const distIndex = path.join(bindingsDir, "dist", "index.js");
-  if (fs.existsSync(core) && fs.existsSync(distIndex)) return;
-  console.error("galley-bindings: installing JavaScript bindings dependencies...");
-  run("npm", ["install"], { cwd: bindingsDir });
-  if (!fs.existsSync(core)) fatal("npm install did not produce node_modules/galley-js-core");
-  if (!fs.existsSync(distIndex)) fatal("npm install did not produce dist/index.js");
+  if (!fs.existsSync(distIndex)) fatal(`bindings not built: run npm run build in ${bindingsDir} first`);
+  try {
+    createRequire(path.join(bindingsDir, "package.json")).resolve("galley-js-core");
+  } catch {
+    fatal(`bindings not installed: run npm install in ${bindingsDir} first`);
+  }
 }
 
 async function main() {

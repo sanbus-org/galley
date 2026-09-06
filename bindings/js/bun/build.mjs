@@ -21,7 +21,7 @@
  *
  * The tool generates the parser (--emit-metadata), builds the shared library
  * through the generic consumer build directly next to the grammar so `import { Session } from "galley-js-bun"`
- * can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * can name it via GALLEY_LIBRARY_PATH.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
  *   GALLEY_CHECKOUT (required: existing Galley working tree). To fetch a
@@ -104,36 +104,14 @@ async function loadShimGenerator() {
 }
 
 function ensureBindingsInstalled() {
-  // `file:` consumers (examples/js/bun) link this package; the package
-  // manager does not install our dependencies into this directory, so the
-  // `galley-js-core` import in dist/ would not resolve unless we install
-  // ourselves. Prefer bun when running under it, npm otherwise.
-  // Install managers may skip lifecycle scripts, so build explicitly when
-  // dist is still missing after install (prebuild covers the same for
-  // direct `run build` invocations).
+  // `file:` consumers (examples/js/bun) link this package without its
+  // dependencies. That is a broken install, not something to repair here:
+  // say so loudly instead of running a package manager behind your back.
   const bindingsDir = path.dirname(fileURLToPath(import.meta.url));
-  const coreDir = path.join(bindingsDir, "..", "core");
   const core = path.join(bindingsDir, "node_modules", "galley-js-core");
-  const coreDistIndex = path.join(coreDir, "dist", "index.js");
   const distIndex = path.join(bindingsDir, "dist", "index.js");
-  const isBun = typeof globalThis.Bun !== "undefined";
-  const pkg = isBun ? "bun" : "npm";
-  if (!fs.existsSync(core)) {
-    console.error("galley-bindings: installing JavaScript bindings dependencies...");
-    run(pkg, ["install"], { cwd: bindingsDir });
-  }
-  if (fs.existsSync(coreDir) && !fs.existsSync(coreDistIndex)) {
-    console.error("galley-bindings: building galley-js-core...");
-    run(pkg, ["install"], { cwd: coreDir });
-    run(pkg, ["run", "build"], { cwd: coreDir });
-  }
-  if (!fs.existsSync(distIndex)) {
-    console.error("galley-bindings: building JavaScript bindings...");
-    run(pkg, ["run", "build"], { cwd: bindingsDir });
-  }
-  if (!fs.existsSync(core)) fatal("install did not produce node_modules/galley-js-core");
-  if (!fs.existsSync(distIndex)) fatal("install did not produce dist/index.js");
-  return bindingsDir;
+  if (fs.existsSync(core) && fs.existsSync(distIndex)) return bindingsDir;
+  fatal(`bindings not installed: run bun install in ${bindingsDir} first`);
 }
 
 async function main() {
