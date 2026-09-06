@@ -24,6 +24,9 @@ use std::path::Path;
 /// Opaque session handle; never constructed in Rust.
 enum GalleySessionRaw {}
 
+/// Opaque walker handle; never constructed in Rust.
+enum GalleyWalkerRaw {}
+
 extern "C" {
     fn galley_version() -> *const c_char;
     fn galley_session_create() -> *mut GalleySessionRaw;
@@ -42,6 +45,19 @@ extern "C" {
     fn galley_node_next_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
     fn galley_node_prior_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
     fn galley_node_parent(session: *mut GalleySessionRaw, node: u64) -> u64;
+    fn galley_walker_create(
+        session: *mut GalleySessionRaw,
+        node: u64,
+        skip_semantic_errors: i32,
+    ) -> *mut GalleyWalkerRaw;
+    fn galley_walker_next(
+        walker: *mut GalleyWalkerRaw,
+        out_node: *mut u64,
+        out_depth: *mut u32,
+        out_is_semantic_error: *mut i32,
+    ) -> i32;
+    fn galley_walker_skip_children(walker: *mut GalleyWalkerRaw);
+    fn galley_walker_destroy(walker: *mut GalleyWalkerRaw);
     fn galley_node_symbol_name(
         session: *mut GalleySessionRaw,
         node: u64,
@@ -316,6 +332,55 @@ impl NodeHandle {
     pub const INVALID: NodeHandle = NodeHandle(u64::MAX);
 }
 
+/// One pre-order step of a [`Walker`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WalkStep {
+    pub node: NodeHandle,
+    pub depth: u32,
+    pub is_semantic_error: bool,
+}
+
+/// Borrowing pre-order walker over the last successful parse's tree. Walks
+/// share the session's node storage: finish the walk before the next parse.
+/// Created by [`Session::walk`].
+pub struct Walker<'session> {
+    raw: *mut GalleyWalkerRaw,
+    _session: PhantomData<&'session Session>,
+}
+
+impl Drop for Walker<'_> {
+    fn drop(&mut self) {
+        unsafe { galley_walker_destroy(self.raw) }
+    }
+}
+
+impl Iterator for Walker<'_> {
+    type Item = WalkStep;
+
+    fn next(&mut self) -> Option<WalkStep> {
+        let mut node = 0u64;
+        let mut depth = 0u32;
+        let mut flag = 0i32;
+        let yielded = unsafe { galley_walker_next(self.raw, &mut node, &mut depth, &mut flag) };
+        if yielded == 0 {
+            return None;
+        }
+        Some(WalkStep {
+            node: NodeHandle(node),
+            depth,
+            is_semantic_error: flag != 0,
+        })
+    }
+}
+
+impl Walker<'_> {
+    /// Prunes the children of the last yielded step; iteration continues
+    /// with its next sibling. No effect without a last step.
+    pub fn skip_children(&mut self) {
+        unsafe { galley_walker_skip_children(self.raw) }
+    }
+}
+
 /// A parsing session. Not thread-safe; not cloneable.
 ///
 /// Results borrow from the session: they stay valid until the next parse or
@@ -488,6 +553,24 @@ impl Session {
     }
     pub fn parent(&self, node: NodeHandle) -> Option<NodeHandle> {
         self.raw_link(|s| unsafe { galley_node_parent(s, node.0) })
+    }
+
+    /// Pre-order walker over the subtree rooted at `root`, yielding one
+    /// [`WalkStep`] per node with the root at depth 0. The walker borrows
+    /// the session, so no new parse can invalidate it mid-walk. Returns
+    /// `None` for invalid roots and builds without AST construction.
+    pub fn walk(&self, root: NodeHandle, skip_semantic_errors: bool) -> Option<Walker<'_>> {
+        if !has_ast() {
+            return None;
+        }
+        let raw = unsafe { galley_walker_create(self.inner, root.0, skip_semantic_errors as i32) };
+        if raw.is_null() {
+            return None;
+        }
+        Some(Walker {
+            raw,
+            _session: PhantomData,
+        })
     }
 
     /// Children of `node`, first to last.

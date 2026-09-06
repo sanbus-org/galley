@@ -74,6 +74,21 @@ Read them through `Session::diagnostic` / `Session::diagnostics`; the
 snapshot carries `kind == DiagnosticKind::Semantic` and
 `semantic == Some((variable, message))`.
 
+## Tree Walking
+
+`Session::walk` returns a borrowing pre-order `Walker` over the last
+successful parse, yielding one `WalkStep { node, depth, is_semantic_error }`
+per node with the root at depth 0 — the shared runtime walker, so order
+and depths match every other binding. `skip_children` prunes the last
+yielded node's children; passing `true` prunes semantic-error subtrees:
+
+```rust
+let root = session.root_node().expect("root");
+for step in session.walk(root, false).expect("walker") {
+    println!("{:width$}{:?}", "", step.node, width = step.depth as usize * 2);
+}
+```
+
 Because the helper drives rustc directly, editors would see
 `procedures.rs` as outside any module tree. The example's Cargo.toml
 therefore declares it as a staticlib example target — mirroring exactly
