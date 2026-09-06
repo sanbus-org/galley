@@ -1,11 +1,13 @@
 package com.example;
 
 import org.sanbus.galley.*;
+import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 /**
@@ -22,6 +24,16 @@ public final class Demo {
     private static final String SAMPLE_PATH = "/tmp/galley-java-example.json";
 
     private Demo() {}
+
+    // The one parser file this demo runs: explicit path, no searching.
+    private static String libraryPath() {
+        String env = System.getenv("GALLEY_LIBRARY_PATH");
+        if (env != null && !env.isEmpty()) return env;
+        String prop = System.getProperty("galley.library.path");
+        if (prop != null && !prop.isEmpty()) return prop;
+        return Paths.get(System.getProperty("user.dir", "."),
+                "examples", "java", GalleyLibraryLoader.libFileName()).toString();
+    }
 
     private static void printTree(Node node, int depth) {
         byte[] nameBytes = node.symbolName();
@@ -56,19 +68,20 @@ public final class Demo {
             System.err.println("failed to register procedures: " + e);
         }
 
-        System.out.println("galley version: " + Galley.version());
         SessionOptions opts = SessionOptions.builder()
+                .libraryPath(libraryPath())
                 .maxErrors(10)
                 .messageOverride("Number", "expected a number after ':' (digits only) at line {line}")
                 .build();
         Session session;
         try {
             session = new Session(opts);
-        } catch (GalleyException e) {
-            System.err.println("failed to create a parser session");
+        } catch (GalleyException | IllegalStateException e) {
+            System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);
             return;
         }
+        System.out.println("galley version: " + session.version());
 
         try {
             // With a path argument: parse the file and nothing else.
@@ -98,7 +111,7 @@ public final class Demo {
                 return;
             }
             System.out.println("parsed " + parsed + " bytes, " + session.nodeCount() + " AST nodes");
-            if (!Galley.hasAst()) {
+            if (!session.hasAst()) {
                 System.out.println("AST construction disabled; skipping tree walk");
             } else {
                 Node root = session.rootNode();
@@ -169,7 +182,7 @@ public final class Demo {
             System.out.println("file parse: " + parsed + " bytes, ended at " + pos[0] + ":" + pos[1]);
 
             // Tree editing
-            if (Galley.hasAst()) {
+            if (session.hasAst()) {
                 Node root = session.rootNode();
                 if (root == null) {
                     System.err.println("expected the root to have children");

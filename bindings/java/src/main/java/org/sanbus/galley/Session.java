@@ -37,7 +37,7 @@ public final class Session implements AutoCloseable {
         if (options == null) options = SessionOptions.defaults();
         this.libraryPath = options.getLibraryPath();
         this.lib = GalleyLibraryLoader.load(libraryPath);
-        try { Procedures.ensureForLibrary(lib); } catch (Exception ignored) {}
+        Procedures.ensureForLibrary(lib);
 
         MemorySegment h;
         boolean hasNonDefault = options.getMaxErrors() != 10 ||
@@ -1092,6 +1092,36 @@ public final class Session implements AutoCloseable {
             return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
         }
     }
+
+    // -- parser metadata (bound to this session's own library) --
+
+    public String version() { return lib.galley_version(); }
+
+    public int parserType() { return (int) lib.galley_parser_type(); }
+
+    public int errorRecoveryMode() { return (int) lib.galley_error_recovery_mode(); }
+
+    public boolean hasAst() { return lib.galley_has_ast() != 0; }
+
+    public boolean hasProcedures() { return lib.galley_has_procedures() != 0; }
+
+    public boolean allowsNoAstTreeProcedures() { return lib.galley_allows_no_ast_tree_procedures() != 0; }
+
+    public boolean sourceRetentionEnabled() { return lib.galley_source_retention_enabled() != 0; }
+
+    public boolean hasPositionTracking() { return lib.galley_has_position_tracking() != 0; }
+
+    public boolean hasInputStreaming() { return lib.galley_has_input_streaming() != 0; }
+
+    public boolean usesVerbatim() { return lib.galley_uses_verbatim() != 0; }
+
+    public boolean stackOverflowRecoveryAvailable() { return lib.galley_stack_overflow_recovery_available() != 0; }
+
+    public long symbolCount() { return lib.galley_symbol_count(); }
+
+    public long variableCount() { return lib.galley_variable_count(); }
+
+    public String statusString(long status) { return lib.galley_status_string(status); }
 
     // Expose handle for internal use
     MemorySegment getHandle() { return handle; }

@@ -1,15 +1,16 @@
 package org.sanbus.galley.internal;
 
-import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads the Galley shared library via Panama SymbolLookup, mirroring
- * bindings/js/node/src/ffi.ts and bindings/python/galley_bindings/build.py.
- * No JNA.
+ * bindings/js/node/src/ffi.ts. No JNA.
+ *
+ * One place, named up front: an explicit path or GALLEY_LIBRARY_PATH
+ * (or the -Dgalley.library.path equivalent). Anything else is a loud
+ * error, never a search.
  */
 public final class GalleyLibraryLoader {
 
@@ -26,63 +27,43 @@ public final class GalleyLibraryLoader {
         return "lib" + base + ".so";
     }
 
-    private static boolean exists(String path) {
-        return path != null && Files.exists(Paths.get(path));
+    /** Exact file name of the parser artifact for this binding. */
+    public static String libFileName() {
+        return libFileName("galley-java");
+    }
+
+    private static String buildHint() {
+        return "Build it first: java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>\n"
+                + "or set GALLEY_LIBRARY_PATH=/path/to/" + libFileName();
     }
 
     public static String findLibrary(String explicit) {
-        if (explicit != null && !explicit.isEmpty() && exists(explicit)) {
-            return Paths.get(explicit).toAbsolutePath().toString();
+        String chosen = (explicit != null && !explicit.isEmpty()) ? explicit : null;
+        if (chosen == null) {
+            String env = System.getenv("GALLEY_LIBRARY_PATH");
+            if (env != null && !env.isEmpty()) chosen = env;
         }
-        String env = System.getenv("GALLEY_LIBRARY_PATH");
-        if (env != null && !env.isEmpty() && exists(env)) {
-            return Paths.get(env).toAbsolutePath().toString();
+        if (chosen == null) {
+            String prop = System.getProperty("galley.library.path");
+            if (prop != null && !prop.isEmpty()) chosen = prop;
         }
-        String prop = System.getProperty("galley.library.path");
-        if (prop != null && !prop.isEmpty() && exists(prop)) {
-            return Paths.get(prop).toAbsolutePath().toString();
+        if (chosen == null) {
+            throw new IllegalStateException(
+                    "galley: parser artifact not found: no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH.\n"
+                    + buildHint());
         }
-        String cwd = System.getProperty("user.dir", ".");
-        String[] candidates = {
-                Paths.get(cwd, libFileName("galley-java")).toString(),
-                Paths.get(cwd, libFileName("galley")).toString(),
-                Paths.get(cwd, "libgalley-java.dylib").toString(),
-                Paths.get(cwd, "libgalley-java.so").toString(),
-        };
-        for (String c : candidates) if (exists(c)) return c;
-
-        try {
-            Path cur = Paths.get(cwd).toAbsolutePath();
-            for (int i = 0; i < 4; i++) {
-                Path example = cur.resolve("examples/java").resolve(libFileName("galley-java"));
-                if (Files.exists(example)) return example.toString();
-                Path lang = cur.resolve("languages");
-                if (Files.exists(lang)) break;
-                cur = cur.getParent();
-                if (cur == null) break;
-            }
-        } catch (Exception ignored) {}
-
-        // Fallback: let the load fail with the cwd candidate so the error
-        // tells the user to build first. No cache search: the library lives
-        // next to the grammar.
-        return Paths.get(cwd, libFileName("galley-java")).toString();
+        String resolved = Paths.get(chosen).toAbsolutePath().toString();
+        if (!Files.exists(Paths.get(resolved))) {
+            throw new IllegalStateException(
+                    "galley: parser artifact not found: at " + resolved + ".\n"
+                    + buildHint());
+        }
+        return resolved;
     }
 
     public static synchronized GalleyLibrary load(String explicitPath) {
         String libPath = findLibrary(explicitPath);
-        if (explicitPath != null && !explicitPath.isEmpty()) {
-            libPath = Paths.get(explicitPath).toAbsolutePath().toString();
-        }
         if (cachedLibrary != null && libPath.equals(cachedPath)) return cachedLibrary;
-
-        File f = new File(libPath);
-        if (!f.exists()) {
-            throw new IllegalStateException(
-                    "Galley shared library not found at " + libPath + ".\n" +
-                    "Build it first: java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>\n" +
-                    "or set GALLEY_LIBRARY_PATH=/path/to/" + libFileName("galley-java"));
-        }
 
         GalleyLibrary lib = CACHE.get(libPath);
         if (lib != null) {

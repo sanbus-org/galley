@@ -19,10 +19,10 @@ import java.util.*;
  *   GALLEY_CHECKOUT (required: existing Galley working tree).
  *
  * Generates parser (--emit-metadata), builds shared library through generic
- * consumer build directly next to the grammar, so Session can locate it via
- * cwd or GALLEY_LIBRARY_PATH. To fetch a checkout for convenience, use
- * examples/scripts/fetch-galley.sh — that cache is an examples-only
- * convenience, not part of the bindings.
+ * consumer build directly next to the grammar, so the consumer can name it
+ * outright via SessionOptions.libraryPath or GALLEY_LIBRARY_PATH. To fetch
+ * a checkout for convenience, use examples/scripts/fetch-galley.sh — that
+ * cache is an examples-only convenience, not part of the bindings.
  */
 public final class GalleyBuild {
 
