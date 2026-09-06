@@ -376,6 +376,63 @@ export fn galley_node_text(
     return galley_ok;
 }
 
+const GalleyWalker = struct {
+    walker: root.data_structures.TreeWalker,
+};
+
+/// Creates a depth-first walker rooted at `root_address` (see
+/// `galley_root_node`). Pass nonzero `skip_semantic_errors` to prune
+/// subtrees rooted at semantic-error nodes. Destroy with
+/// `galley_walker_destroy` before destroying the session or parsing again:
+/// node addresses resolve against the live allocator. Returns null without
+/// AST construction or on invalid arguments.
+export fn galley_walker_create(session_ptr: ?*GalleySession, root_address: GalleyNodeAddress, skip_semantic_errors: i32) ?*GalleyWalker {
+    if (comptime !parser.is_ast_enabled) return null;
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return null));
+    if (embedded.nodeAt(root_address) == null) return null;
+    const handle = std.heap.c_allocator.create(GalleyWalker) catch return null;
+    handle.* = .{
+        .walker = root.data_structures.TreeWalker.init(
+            std.heap.c_allocator,
+            &embedded.session.node_allocator,
+            @intCast(root_address),
+            .{ .skip_semantic_error_subtrees = skip_semantic_errors != 0 },
+        ),
+    };
+    return handle;
+}
+
+/// Yields the next node in pre-order into `out_node`/`out_depth` (and
+/// `out_is_semantic_error` unless null), returning 1. Returns 0 when the
+/// walk is done or the arguments are invalid, so `while` loops terminate.
+export fn galley_walker_next(walker_ptr: ?*GalleyWalker, out_node: ?*GalleyNodeAddress, out_depth: ?*u32, out_is_semantic_error: ?*i32) i32 {
+    if (comptime !parser.is_ast_enabled) return 0;
+    const handle = walker_ptr orelse return 0;
+    const node_slot = out_node orelse return 0;
+    const depth_slot = out_depth orelse return 0;
+    const step = handle.walker.next() orelse return 0;
+    node_slot.* = @intCast(step.address);
+    depth_slot.* = step.depth;
+    if (out_is_semantic_error) |flag| flag.* = if (step.is_semantic_error) 1 else 0;
+    return 1;
+}
+
+/// Prunes the children of the last yielded node; the next `galley_walker_next`
+/// continues with its next sibling. No effect without a last step.
+export fn galley_walker_skip_children(walker_ptr: ?*GalleyWalker) void {
+    if (comptime !parser.is_ast_enabled) return;
+    const handle = walker_ptr orelse return;
+    handle.walker.skipChildren();
+}
+
+/// Destroys a walker created by `galley_walker_create`. Null-tolerant.
+export fn galley_walker_destroy(walker_ptr: ?*GalleyWalker) void {
+    if (comptime !parser.is_ast_enabled) return;
+    const handle = walker_ptr orelse return;
+    handle.walker.deinit();
+    std.heap.c_allocator.destroy(handle);
+}
+
 /// Returns nonzero when the previous parse produced a diagnostic.
 export fn galley_has_diagnostic(session_ptr: ?*GalleySession) i32 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));

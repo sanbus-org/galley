@@ -179,6 +179,30 @@ GalleyNodeAddress galley_node_next_sibling(GalleySession *session, GalleyNodeAdd
 GalleyNodeAddress galley_node_prior_sibling(GalleySession *session, GalleyNodeAddress node);
 GalleyNodeAddress galley_node_parent(GalleySession *session, GalleyNodeAddress node);
 
+/* Opaque depth-first tree walker; see galley_walker_create. */
+typedef struct GalleyWalker GalleyWalker;
+
+/* Creates a pre-order walker rooted at node (see galley_root_node). Pass
+ * nonzero skip_semantic_errors to prune subtrees rooted at semantic-error
+ * nodes. Destroy with galley_walker_destroy before destroying the session
+ * or parsing again: node addresses resolve against the live allocator.
+ * Returns NULL without AST construction or on invalid arguments. */
+GalleyWalker *galley_walker_create(GalleySession *session, GalleyNodeAddress node,
+                                   int skip_semantic_errors);
+
+/* Yields the next node into *out_node / *out_depth (*out_is_semantic_error
+ * unless NULL), returning 1. Returns 0 when the walk is done or the
+ * arguments are invalid, so while loops terminate. */
+int galley_walker_next(GalleyWalker *walker, GalleyNodeAddress *out_node,
+                       unsigned int *out_depth, int *out_is_semantic_error);
+
+/* Prunes the children of the last yielded node; the next galley_walker_next
+ * continues with its next sibling. No effect without a last step. */
+void galley_walker_skip_children(GalleyWalker *walker);
+
+/* Destroys a walker created by galley_walker_create. NULL-tolerant. */
+void galley_walker_destroy(GalleyWalker *walker);
+
 /* Writes the byte offset and length of a node's matched source span into
  * *out_start / *out_len. Offsets index the input of the most recent
  * parse. */
