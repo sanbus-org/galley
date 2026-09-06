@@ -12,16 +12,15 @@
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
-import * as os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import type {
   FfiPort,
   Handle,
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
+import { MissingArtifactError } from "galley-js-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -347,21 +346,14 @@ export interface GalleyFFI {
 }
 
 // --- library discovery -------------------------------------------------
+// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// Anything else is a loud error, never a search.
 
-function defaultCacheDir(): string {
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library", "Caches", "galley-bindings", "js-node", "capi");
-  }
-  if (process.platform === "win32") {
-    const base = process.env.LOCALAPPDATA ?? os.tmpdir();
-    return path.join(base, "galley-bindings", "js-node", "capi");
-  }
-  const base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  return path.join(base, "galley-bindings", "js-node", "capi");
-}
+const BUILD_HINT =
+  `Build it first: npx galley-js-node <language-dir>\n` +
+  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
 
-function libFileName(base = "galley-js-node"): string {
+export function libFileName(base = "galley-js-node"): string {
   if (process.platform === "darwin") return `lib${base}.dylib`;
   if (process.platform === "win32") return `${base}.dll`;
   return `lib${base}.so`;
@@ -377,38 +369,18 @@ function exists(p: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  if (explicit && exists(explicit)) return path.resolve(explicit);
-  if (process.env.GALLEY_LIBRARY_PATH && exists(process.env.GALLEY_LIBRARY_PATH)) {
-    return path.resolve(process.env.GALLEY_LIBRARY_PATH);
+  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
+  if (!chosen) {
+    throw new MissingArtifactError(
+      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
+      BUILD_HINT,
+    );
   }
-  // 1) cwd / language-dir copies (build.mjs copies lib next to grammar)
-  const cwdCandidates = [
-    path.join(process.cwd(), libFileName()),
-    path.join(process.cwd(), libFileName("galley-js-node")),
-    path.join(process.cwd(), "libgalley-js-node.dylib"),
-    path.join(process.cwd(), "libgalley-js-node.so"),
-    // also try language-dir relative to this file when run from dist
-  ];
-  for (const c of cwdCandidates) if (exists(c)) return c;
-
-  // 2) cache dir (same as build.mjs prefix)
-  const cacheLib = path.join(defaultCacheDir(), "lib", libFileName());
-  if (exists(cacheLib)) return cacheLib;
-
-  // 3) sibling examples/js/node for development (from dist/, three levels up)
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const devCandidates = [
-      path.join(here, "../../../../examples/js/node", libFileName()),
-      path.join(here, "../../../../../examples/js/node", libFileName()),
-    ];
-    for (const c of devCandidates) if (exists(c)) return c;
-  } catch {
-    // ignore URL parsing errors in bundled contexts
+  const resolved = path.resolve(chosen);
+  if (!exists(resolved)) {
+    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
   }
-
-  // fallback: let koffi error with cache path
-  return cacheLib;
+  return resolved;
 }
 
 // --- loader ------------------------------------------------------------
@@ -418,13 +390,6 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
   if (cached && (!normalizedExplicit || cachedPath === normalizedExplicit)) return cached;
 
   const libPath = findLibrary(normalizedExplicit);
-  if (!exists(libPath)) {
-    throw new Error(
-      `Galley shared library not found at ${libPath}.\n` +
-        `Build it first: npx galley-js-node <language-dir>\n` +
-        `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`,
-    );
-  }
 
   const lib = koffi.load(libPath);
 

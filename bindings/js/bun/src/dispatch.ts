@@ -11,7 +11,6 @@
 
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import process from "node:process";
 import { JSCallback, FFIType, toArrayBuffer } from "bun:ffi";
 
 import { dispatchProcedure, installProcedures, listProcedures } from "galley-js-core";
@@ -54,27 +53,12 @@ function tryAutoRegister(libPath: string): void {
     return false;
   };
 
-  const candidateBaseDirectories: string[] = [];
-  try {
-    candidateBaseDirectories.push(path.dirname(libPath));
-  } catch {}
-  candidateBaseDirectories.push(process.cwd());
-  try {
-    const entryFile = process.argv[1];
-    if (entryFile) {
-      const entryDirectory = path.dirname(path.resolve(entryFile));
-      if (!candidateBaseDirectories.includes(entryDirectory)) {
-        candidateBaseDirectories.push(entryDirectory);
-      }
-    }
-  } catch {}
-
+  // One place: the directory holding the loaded library. Anything found
+  // there belongs to this grammar; nothing else is even looked at.
+  const baseDirectory = path.dirname(libPath);
   const extensions = ["", ".js", ".ts"];
-  for (const baseDirectory of candidateBaseDirectories) {
-    for (const extension of extensions) {
-      const candidatePath = path.join(baseDirectory, `procedures${extension}`);
-      if (tryLoadModule(candidatePath)) return;
-    }
+  for (const extension of extensions) {
+    if (tryLoadModule(path.join(baseDirectory, `procedures${extension}`))) return;
   }
 }
 

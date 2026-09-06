@@ -201,6 +201,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm install
+          npm --prefix ../../../bindings/js/node install
           npx galley-js-node .
           npx tsx demo.ts
           node ../../../bindings/js/node/tests/test_bindings.mjs
@@ -222,6 +223,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           bun install
+          (cd ../../../bindings/js/bun && bun install && bun run build)
           bunx galley-js-bun .
           bun demo.ts
           bun ../../../bindings/js/bun/tests/test_bindings.mjs
@@ -233,6 +235,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm install
+          npm --prefix ../../../bindings/js/wasm install
           npx galley-js-wasm .
           npx tsx demo.ts
           node ../../../bindings/js/wasm/tests/test_bindings.mjs
@@ -327,7 +330,7 @@ jobs:
         run: |
           check() {
             file="$1"
-            for var in GALLEY_CHECKOUT GALLEY_REPOSITORY GALLEY_TAG ZIG_EXECUTABLE; do
+            for var in GALLEY_CHECKOUT ZIG_EXECUTABLE; do
               if ! grep -q "$var" "$file"; then
                 echo "::error::$file missing $var handling (Galley checkout contract)"
                 exit 1
@@ -588,14 +591,17 @@ jobs:
           python -m galley_bindings benchmark
           cd ../js/node
           npm install
+          npm --prefix ../../../bindings/js/node install
           npx galley-js-node benchmark
           cd ../deno
           deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts benchmark
           cd ../bun
           bun install
+          (cd ../../../bindings/js/bun && bun install && bun run build)
           bunx galley-js-bun benchmark
           cd ../wasm
           npm install
+          npm --prefix ../../../bindings/js/wasm install
           npx galley-js-wasm benchmark
           cd ../../zig
           zig build -Doptimize=ReleaseFast

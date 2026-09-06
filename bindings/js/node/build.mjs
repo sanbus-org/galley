@@ -22,13 +22,11 @@
  * The tool generates the parser (--emit-metadata), builds the shared library
  * through the generic consumer build, and copies libgalley-js-node.* into
  * the language directory so `import { Session } from "galley-js-node"`
- * can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * can name it via GALLEY_LIBRARY_PATH.
  *
- * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT (existing Galley working tree, wins over fetching),
- *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Without GALLEY_CHECKOUT
- *   the script clones GALLEY_REPOSITORY at GALLEY_TAG, matching the Rust,
- *   Go, and Python consumers.
+ * Environment: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH, and
+ *   GALLEY_CHECKOUT (required): an existing Galley working tree holding
+ *   build.zig. There is no fetching: a missing checkout is a fatal error.
  */
 
 import { spawnSync } from "node:child_process";
@@ -39,8 +37,6 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LIBRARY_NAME = "galley-js-node";
-const DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git";
-const DEFAULT_GALLEY_TAG = "main";
 
 function fatal(msg) {
   console.error(`galley-bindings: ${msg}`);
@@ -76,38 +72,17 @@ function cacheDir() {
   return dir;
 }
 
-function resolveGalley(cacheDirPath) {
-  // GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
-  // into <cache>/galley-src. Mirrors bindings/go/cmd/galley,
-  // bindings/rust/src/build_helper.rs, and galley_bindings.build: a nearby
-  // checkout is not used unless GALLEY_CHECKOUT points at it.
+function resolveGalley() {
+  // Exactly one source: the checkout GALLEY_CHECKOUT names. Anything else
+  // is a loud error, never a silent network fetch.
   const checkoutEnv = process.env.GALLEY_CHECKOUT;
-  if (checkoutEnv) {
-    if (!fs.existsSync(path.join(checkoutEnv, "build.zig"))) {
-      fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
-    }
-    return path.resolve(checkoutEnv);
+  if (!checkoutEnv) {
+    fatal("set GALLEY_CHECKOUT to a Galley repository checkout (must contain build.zig)");
   }
-  const tag = process.env.GALLEY_TAG ?? DEFAULT_GALLEY_TAG;
-  const repository = process.env.GALLEY_REPOSITORY ?? DEFAULT_GALLEY_REPOSITORY;
-  const dir = cacheDirPath ?? cacheDir();
-  const sourceDir = path.join(dir, "galley-src");
-  const stamp = path.join(dir, "galley-tag");
-  let previous = "";
-  try {
-    if (fs.existsSync(stamp)) previous = fs.readFileSync(stamp, "utf-8").trim();
-  } catch {}
-  if (fs.existsSync(sourceDir) && previous === tag) return sourceDir;
-  try {
-    fs.rmSync(sourceDir, { recursive: true, force: true });
-  } catch {}
-  run("git", ["clone", "--depth", "1", "--branch", tag, "--single-branch", "--recurse-submodules=false", repository, sourceDir]);
-  try {
-    fs.writeFileSync(stamp, tag, "utf-8");
-  } catch (e) {
-    fatal(`failed to write tag stamp: ${e.message}`);
+  if (!fs.existsSync(path.join(checkoutEnv, "build.zig"))) {
+    fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
   }
-  return sourceDir;
+  return path.resolve(checkoutEnv);
 }
 
 function detectParser(languageDir) {
@@ -153,17 +128,14 @@ async function loadShimGenerator() {
 }
 
 function ensureBindingsInstalled() {
-  // `file:` consumers (examples/js/node) symlink this package; npm does
-  // not install our dependencies into this directory. `createRequire(import.meta.url)`
-  // in dist/ffi.js therefore cannot see koffi unless we install ourselves.
+  // `file:` consumers (examples/js/node) link this package without its
+  // dependencies. That is a broken install, not something to repair here:
+  // say so loudly instead of running a package manager behind your back.
   const bindingsDir = path.dirname(fileURLToPath(import.meta.url));
   const koffi = path.join(bindingsDir, "node_modules", "koffi");
   const distIndex = path.join(bindingsDir, "dist", "index.js");
   if (fs.existsSync(koffi) && fs.existsSync(distIndex)) return;
-  console.error("galley-bindings: installing JavaScript bindings dependencies...");
-  run("npm", ["install"], { cwd: bindingsDir });
-  if (!fs.existsSync(koffi)) fatal("npm install did not produce node_modules/koffi");
-  if (!fs.existsSync(distIndex)) fatal("npm install did not produce dist/index.js");
+  fatal(`bindings not installed: run npm install in ${bindingsDir} first`);
 }
 
 async function main() {
@@ -176,7 +148,7 @@ async function main() {
   const languageDir = path.resolve(process.argv[2]);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
 
-  const galleySource = resolveGalley(cacheDir());
+  const galleySource = resolveGalley();
   const cli = path.join(galleySource, "zig-out", "bin", "galley");
   if (!fs.existsSync(cli)) {
     run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: galleySource });

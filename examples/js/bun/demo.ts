@@ -6,13 +6,20 @@
 
 import * as fs from "node:fs";
 import { Buffer } from "node:buffer";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   Session,
-  version,
-  hasAst,
   KIND_SYNTAX,
   KIND_INDENTATION,
+  libFileName,
 } from "galley-js-bun";
+
+// The one parser file this demo runs: exact path, no searching.
+const LIBRARY_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  libFileName(),
+);
 
 const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";
@@ -35,15 +42,14 @@ function printTree(node: import("galley-js-bun").Node, depth: number): void {
 }
 
 async function main(): Promise<number> {
-  console.log(`galley version: ${version()}`);
-
   let session: Session;
   try {
-    session = new Session({ maxErrors: 10 });
+    session = new Session({ libraryPath: LIBRARY_PATH, maxErrors: 10 });
   } catch {
     console.error("failed to create a parser session");
     return 1;
   }
+  console.log(`galley version: ${session.version()}`);
 
   // emulate Python's `with` via try/finally close
   try {
@@ -84,7 +90,7 @@ async function main(): Promise<number> {
       return 1;
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!hasAst()) {
+    if (!session.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -164,7 +170,7 @@ async function main(): Promise<number> {
     console.log(`file parse: ${parsed} bytes, ended at ${endLine}:${endColumn}`);
 
     // Tree editing: detach the root's children, then reattach them.
-    if (hasAst()) {
+    if (session.hasAst()) {
       const root = session.rootNode();
       if (!root) {
         console.error("expected the root to have children");

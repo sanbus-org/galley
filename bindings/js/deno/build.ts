@@ -24,13 +24,11 @@
  * The tool generates the parser (--emit-metadata), builds the shared library
  * through the generic consumer build, and copies libgalley-js-deno.* into
  * the language directory so `import { Session } from "galley-js-deno"`
- * can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * can name it via GALLEY_LIBRARY_PATH.
  *
- * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT (existing Galley working tree, wins over fetching),
- *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Without GALLEY_CHECKOUT
- *   the script clones GALLEY_REPOSITORY at GALLEY_TAG, matching the Rust,
- *   Go, and Python consumers.
+ * Environment: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH, and
+ *   GALLEY_CHECKOUT (required): an existing Galley working tree holding
+ *   build.zig. There is no fetching: a missing checkout is a fatal error.
  */
 
 import * as path from "node:path";
@@ -38,8 +36,6 @@ import { createHash } from "node:crypto";
 import { emitJsProcedureShim } from "../core/build/shim.mjs";
 
 const LIBRARY_NAME = "galley-js-deno";
-const DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git";
-const DEFAULT_GALLEY_TAG = "main";
 
 function fatal(msg: string): never {
   console.error(`galley-bindings: ${msg}`);
@@ -88,39 +84,17 @@ function cacheDir(): string {
   return dir;
 }
 
-function resolveGalley(cacheDirPath: string): string {
-  // GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
-  // into <cache>/galley-src.
+function resolveGalley(): string {
+  // Exactly one source: the checkout GALLEY_CHECKOUT names. Anything else
+  // is a loud error, never a silent network fetch.
   const checkoutEnv = Deno.env.get("GALLEY_CHECKOUT");
-  if (checkoutEnv) {
-    if (!exists(path.join(checkoutEnv, "build.zig"))) {
-      fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
-    }
-    return path.resolve(checkoutEnv);
+  if (!checkoutEnv) {
+    fatal("set GALLEY_CHECKOUT to a Galley repository checkout (must contain build.zig)");
   }
-  const tag = Deno.env.get("GALLEY_TAG") ?? DEFAULT_GALLEY_TAG;
-  const repository = Deno.env.get("GALLEY_REPOSITORY") ?? DEFAULT_GALLEY_REPOSITORY;
-  const sourceDir = path.join(cacheDirPath, "galley-src");
-  const stamp = path.join(cacheDirPath, "galley-tag");
-  let previous = "";
-  try {
-    if (exists(stamp)) previous = Deno.readTextFileSync(stamp).trim();
-  } catch {
-    // ignore
+  if (!exists(path.join(checkoutEnv, "build.zig"))) {
+    fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
   }
-  if (exists(sourceDir) && previous === tag) return sourceDir;
-  try {
-    Deno.removeSync(sourceDir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  awaitRun("git", ["clone", "--depth", "1", "--branch", tag, "--single-branch", "--recurse-submodules=false", repository, sourceDir]);
-  try {
-    Deno.writeTextFileSync(stamp, tag);
-  } catch (e) {
-    fatal(`failed to write tag stamp: ${(e as Error).message}`);
-  }
-  return sourceDir;
+  return path.resolve(checkoutEnv);
 }
 
 function awaitRun(cmd: string, args: string[]): void {
@@ -172,7 +146,7 @@ async function main(): Promise<void> {
   const languageDir = path.resolve(Deno.args[0]);
   if (!exists(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
 
-  const galleySource = resolveGalley(cacheDir());
+  const galleySource = resolveGalley();
   const cli = path.join(galleySource, "zig-out", "bin", "galley");
   if (!exists(cli)) {
     await run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: galleySource });

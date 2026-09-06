@@ -13,15 +13,15 @@
  * Adapters are imported dynamically by specifier string (never resolved
  * statically), so bundlers only ever see the backends that are actually
  * imported, and a backend missing from `node_modules` degrades to
- * "unavailable" instead of failing the load. Each adapter owns its own
- * artifact discovery (`findLibrary`); the loader only checks existence
- * before attempting a load, so a present-but-broken library still fails
- * loudly instead of silently falling back.
+ * "unavailable" instead of failing the load. Each adapter resolves exactly
+ * one named artifact or throws `MissingArtifactError`; the loader catches
+ * exactly that class to try the next engine. A present-but-broken library
+ * throws anything else and fails loudly instead of silently falling back.
  */
 
-import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import type { FfiPort } from "galley-js-core";
+import { MissingArtifactError } from "galley-js-core";
 
 export type Runtime = "node" | "bun" | "deno" | "browser";
 export type Backend = "native" | "wasm";
@@ -54,7 +54,6 @@ export function detectRuntime(): Runtime {
 }
 
 interface NativeAdapter {
-  findLibrary(explicit?: string): string;
   getPort(explicit?: string): FfiPort;
 }
 
@@ -87,13 +86,9 @@ async function loadNativeAdapter(runtime: NativeRuntime): Promise<NativeAdapter 
   } catch {
     return null;
   }
-  const findLibrary = loaded["findLibrary"];
   const getPort = loaded[port];
-  if (typeof findLibrary !== "function" || typeof getPort !== "function") return null;
-  return {
-    findLibrary: findLibrary as NativeAdapter["findLibrary"],
-    getPort: getPort as NativeAdapter["getPort"],
-  };
+  if (typeof getPort !== "function") return null;
+  return { getPort: getPort as NativeAdapter["getPort"] };
 }
 
 async function loadWasmAdapter(): Promise<WasmAdapter | null> {
@@ -139,8 +134,8 @@ function noteWasmFallback(quiet: boolean | undefined): void {
   );
 }
 
-/** Try the native leg. Missing artifacts yield null; present-but-broken
- * libraries throw loudly (an ABI mismatch is a user error, not a
+/** Try the native leg. A missing artifact yields null; a present-but-broken
+ * library throws loudly (an ABI mismatch is a user error, not a
  * fallback case). */
 async function tryNative(
   runtime: NativeRuntime,
@@ -148,9 +143,12 @@ async function tryNative(
 ): Promise<FfiPort | null> {
   const adapter = await loadNativeAdapter(runtime);
   if (!adapter) return null;
-  const resolved = adapter.findLibrary(libraryPath);
-  if (!fs.existsSync(resolved)) return null;
-  return adapter.getPort(libraryPath);
+  try {
+    return adapter.getPort(libraryPath);
+  } catch (error) {
+    if (MissingArtifactError.is(error)) return null;
+    throw error;
+  }
 }
 
 /** Try the wasm leg through the shared adapter. */
@@ -162,7 +160,7 @@ async function tryWasm(options: InitOptions): Promise<FfiPort | null> {
     await wasm.init({ libraryPath: explicit, url: options.url, bytes: options.wasmBytes });
   } catch (error) {
     if (error instanceof wasm.NeedInitError) throw error;
-    if (error instanceof Error && error.message.includes("not found")) return null;
+    if (MissingArtifactError.is(error)) return null;
     throw error;
   }
   return wasm.getWasmPort(explicit);
@@ -259,12 +257,14 @@ function tryNativeSync(runtime: NativeRuntime, libraryPath: string | undefined):
   const { module: specifier, port } = NATIVE_ADAPTERS[runtime];
   const loaded = requireAdapterModule(specifier);
   if (!loaded) return null;
-  const findLibrary = loaded["findLibrary"];
   const getPort = loaded[port];
-  if (typeof findLibrary !== "function" || typeof getPort !== "function") return null;
-  const resolved = (findLibrary as NativeAdapter["findLibrary"])(libraryPath);
-  if (!fs.existsSync(resolved)) return null;
-  return (getPort as NativeAdapter["getPort"])(libraryPath);
+  if (typeof getPort !== "function") return null;
+  try {
+    return (getPort as NativeAdapter["getPort"])(libraryPath);
+  } catch (error) {
+    if (MissingArtifactError.is(error)) return null;
+    throw error;
+  }
 }
 
 /** Synchronous wasm attempt through the shared adapter (Node/Bun only:
@@ -280,7 +280,7 @@ function tryWasmSync(options: InitOptions): FfiPort | null {
   try {
     wasm.initSync({ libraryPath: explicit, bytes: options.wasmBytes });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("not found")) return null;
+    if (MissingArtifactError.is(error)) return null;
     throw error;
   }
   const getWasmPort = loaded["getWasmPort"];

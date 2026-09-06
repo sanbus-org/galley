@@ -46,15 +46,14 @@ import { Session, version, hasAst } from "galley-js-node";
 ```
 
 `ZIG_EXECUTABLE` selects zig. The TypeScript package targets Node 18+.
-`GALLEY_CHECKOUT` uses an existing Galley working tree; otherwise the
-command clones `GALLEY_REPOSITORY` at `GALLEY_TAG` (default `main`),
-matching the Rust, Go, and Python consumers. Regenerate after changing the
-grammar; commit nothing the command generates. One shared library embeds one
+`GALLEY_CHECKOUT` (required) names an existing Galley working tree holding
+`build.zig`; a missing checkout is a fatal error, never a fetch.
+Regenerate after changing the grammar; commit nothing the command generates. One shared library embeds one
 parser — split grammars across language directories exactly like the other
 bindings.
 
-`GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-js-node.*`
-when the library lives elsewhere (e.g. in a cache dir).
+Pass the built file with `libraryPath`, or name it once with
+`GALLEY_LIBRARY_PATH`. Nothing is searched: a missing file is a loud error.
 
 ## Performance Notes
 
@@ -115,18 +114,17 @@ export function hook_print(args: ProcedureArguments): void {
 }
 ```
 
-They are auto-discovered at first `Session` construction — the runtime tries
-`procedures`/`procedures.js`/`procedures.ts` next to the shared library, in
-`process.cwd()`, and next to the entry script (whichever is found first) and
-registers any `reduction`/`reduction_*`/`hook_*` exports, exactly like
-Python's `import procedures` at extension load. Explicit registration composes
-with auto-discovery and takes precedence:
+They load from exactly one place — the directory holding the shared
+library — at first `Session` construction, registering any
+`reduction`/`reduction_*`/`hook_*` exports, exactly like Python's
+`import procedures` at extension load. Explicit registration composes
+with that and takes precedence:
 
 ```ts
 import * as procedures from "./procedures.js";
 import { Session, installProcedures } from "galley-js-node";
 
-// explicit is optional when procedures.* is auto-discoverable:
+// explicit registration, e.g. for hooks living elsewhere:
 installProcedures(procedures);
 // or for a single hook:
 // installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());

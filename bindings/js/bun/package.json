@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prebuild": "test -d ../core && ((command -v bun >/dev/null && bun --cwd ../core install --silent && bun --cwd ../core run build) || (command -v npm >/dev/null && npm --prefix ../core install --no-audit --no-fund && npm --prefix ../core run build)) >/dev/null 2>&1; exit 0",
+    "prebuild": "test -d ../core && ((command -v bun >/dev/null && bun --cwd ../core install --silent && bun --cwd ../core run build) || (command -v npm >/dev/null && npm --prefix ../core install --no-audit --no-fund && npm --prefix ../core run build)) >/dev/null 2>&1; if test ! -L node_modules/galley-js-core -a -d ../core/dist; then rm -rf node_modules/galley-js-core/dist && cp -R ../core/dist node_modules/galley-js-core/dist; fi >/dev/null 2>&1; exit 0",
     "prepare": "test -d ../core && command -v npm >/dev/null && npm --prefix ../core run build >/dev/null 2>&1; tsc -p tsconfig.json --noCheck --types \"\"",
     "prepublishOnly": "npm run build",
     "test": "bun tests/test_bindings.mjs"

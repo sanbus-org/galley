@@ -13,7 +13,7 @@ import { Session } from "./session.ts";
 export * from "galley-js-core";
 export { Session };
 export { findLibrary };
-export { getDenoPort } from "./ffi.ts";
+export { getDenoPort, libFileName } from "./ffi.ts";
 import type { SessionOptions as SessionOptionsType, WalkStep as WalkStepType, Diagnostic as DiagnosticType } from "galley-js-core";
 export type { SessionOptionsType as SessionOptions, WalkStepType as WalkStep, DiagnosticType as Diagnostic };
 

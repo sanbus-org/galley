@@ -9,12 +9,11 @@
 
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
+import { MissingArtifactError } from "galley-js-core";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
@@ -129,21 +128,14 @@ interface GalleySymbols {
 }
 
 // --- library discovery -------------------------------------------------
+// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// Anything else is a loud error, never a search.
 
-function defaultCacheDir(): string {
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library", "Caches", "galley-bindings", "js-bun", "capi");
-  }
-  if (process.platform === "win32") {
-    const base = process.env.LOCALAPPDATA ?? os.tmpdir();
-    return path.join(base, "galley-bindings", "js-bun", "capi");
-  }
-  const base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  return path.join(base, "galley-bindings", "js-bun", "capi");
-}
+const BUILD_HINT =
+  `Build it first: bunx galley-js-bun <language-dir>\n` +
+  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
 
-function libFileName(base = "galley-js-bun"): string {
+export function libFileName(base = "galley-js-bun"): string {
   if (process.platform === "darwin") return `lib${base}.dylib`;
   if (process.platform === "win32") return `${base}.dll`;
   return `lib${base}.so`;
@@ -159,36 +151,18 @@ function exists(candidate: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  if (explicit && exists(explicit)) return path.resolve(explicit);
-  if (process.env.GALLEY_LIBRARY_PATH && exists(process.env.GALLEY_LIBRARY_PATH)) {
-    return path.resolve(process.env.GALLEY_LIBRARY_PATH);
+  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
+  if (!chosen) {
+    throw new MissingArtifactError(
+      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
+      BUILD_HINT,
+    );
   }
-  // 1) cwd / language-dir copies (build.mjs copies lib next to grammar)
-  const cwdCandidates = [
-    path.join(process.cwd(), libFileName()),
-    path.join(process.cwd(), "libgalley-js-bun.dylib"),
-    path.join(process.cwd(), "libgalley-js-bun.so"),
-  ];
-  for (const c of cwdCandidates) if (exists(c)) return c;
-
-  // 2) cache dir (same as build.mjs prefix)
-  const cacheLib = path.join(defaultCacheDir(), "lib", libFileName());
-  if (exists(cacheLib)) return cacheLib;
-
-  // 3) sibling examples/js/bun for development (from dist/, three levels up)
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const devCandidates = [
-      path.join(here, "../../../../examples/js/bun", libFileName()),
-      path.join(here, "../../../../../examples/js/bun", libFileName()),
-    ];
-    for (const c of devCandidates) if (exists(c)) return c;
-  } catch {
-    // ignore URL parsing errors in bundled contexts
+  const resolved = path.resolve(chosen);
+  if (!exists(resolved)) {
+    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
   }
-
-  // fallback: let dlopen error with cache path
-  return cacheLib;
+  return resolved;
 }
 
 // --- loader ------------------------------------------------------------

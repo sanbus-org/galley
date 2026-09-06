@@ -13,7 +13,7 @@ import { Session } from "./session.js";
 export * from "galley-js-core";
 export { Session };
 export { findLibrary };
-export { getBunPort } from "./ffi.js";
+export { getBunPort, libFileName } from "./ffi.js";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)

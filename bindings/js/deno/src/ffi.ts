@@ -11,6 +11,7 @@
  */
 
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
+import { MissingArtifactError } from "galley-js-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -124,8 +125,14 @@ interface GalleySymbols {
 }
 
 // --- library discovery -------------------------------------------------
+// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// Anything else is a loud error, never a search.
 
-function libFileName(base = "galley-js-deno"): string {
+const BUILD_HINT =
+  "Build it first: deno task build in your language dir\n" +
+  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
+
+export function libFileName(base = "galley-js-deno"): string {
   if (Deno.build.os === "darwin") return `lib${base}.dylib`;
   if (Deno.build.os === "windows") return `${base}.dll`;
   return `lib${base}.so`;
@@ -140,50 +147,18 @@ function exists(filePath: string): boolean {
   }
 }
 
-function joinPath(...parts: string[]): string {
-  return parts.join("/").replace(/\/+/g, "/");
-}
-
-function defaultCacheDir(): string {
-  const home = Deno.env.get("HOME") ?? "/tmp";
-  if (Deno.build.os === "darwin") return joinPath(home, "Library", "Caches", "galley-bindings", "js-deno", "capi");
-  if (Deno.build.os === "windows") {
-    const base = Deno.env.get("LOCALAPPDATA") ?? Deno.env.get("TMPDIR") ?? home;
-    return joinPath(base, "galley-bindings", "js-deno", "capi");
-  }
-  const base = Deno.env.get("XDG_CACHE_HOME") ?? joinPath(home, ".cache");
-  return joinPath(base, "galley-bindings", "js-deno", "capi");
-}
-
 export function findLibrary(explicit?: string): string {
-  if (explicit && exists(explicit)) return explicit;
-  const envPath = Deno.env.get("GALLEY_LIBRARY_PATH");
-  if (envPath && exists(envPath)) return envPath;
-  // 1) cwd / language-dir copies (build.ts copies lib next to grammar)
-  for (const candidate of [
-    joinPath(Deno.cwd(), libFileName()),
-    joinPath(Deno.cwd(), "libgalley-js-deno.dylib"),
-    joinPath(Deno.cwd(), "libgalley-js-deno.so"),
-  ]) {
-    if (exists(candidate)) return candidate;
+  const chosen = explicit || Deno.env.get("GALLEY_LIBRARY_PATH");
+  if (!chosen) {
+    throw new MissingArtifactError(
+      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
+      BUILD_HINT,
+    );
   }
-  // 2) cache dir (same as build.ts prefix)
-  const cacheLib = joinPath(defaultCacheDir(), "lib", libFileName());
-  if (exists(cacheLib)) return cacheLib;
-  // 3) sibling examples/js/deno for development (from src/, three levels up)
-  try {
-    const here = new URL(".", import.meta.url).pathname;
-    for (const candidate of [
-      joinPath(here, "../../../../examples/js/deno", libFileName()),
-      joinPath(here, "../../../../../examples/js/deno", libFileName()),
-    ]) {
-      if (exists(candidate)) return candidate;
-    }
-  } catch {
-    // ignore URL parsing errors
+  if (!exists(chosen)) {
+    throw new MissingArtifactError(`at ${chosen}`, BUILD_HINT);
   }
-  // fallback: let dlopen error with cache path
-  return cacheLib;
+  return chosen;
 }
 
 // --- loader ------------------------------------------------------------
