@@ -273,6 +273,66 @@ func (s *Session) Children(node Node) []Node {
 	return children
 }
 
+// WalkStep is one pre-order step of a Walker.
+type WalkStep struct {
+	Node            Node
+	Depth           uint32
+	IsSemanticError bool
+}
+
+// Walker is a pre-order tree walker over the last successful parse. Close
+// it before closing the session or parsing again.
+type Walker struct {
+	ptr     *C.GalleyWalker
+	session *Session
+}
+
+// Walk returns a pre-order Walker over the subtree rooted at node, with the
+// root at depth 0. Pass true to prune subtrees rooted at semantic-error
+// nodes. The second result is false for invalid roots and builds without
+// AST construction.
+func (s *Session) Walk(root Node, skipSemanticErrors bool) (*Walker, bool) {
+	if !HasAST() {
+		return nil, false
+	}
+	ptr := C.galley_walker_create(s.ptr, C.ulonglong(root), boolToCInt(skipSemanticErrors))
+	if ptr == nil {
+		return nil, false
+	}
+	return &Walker{ptr: ptr, session: s}, true
+}
+
+// Next advances the walker, reporting false when the walk is done.
+func (w *Walker) Next() (WalkStep, bool) {
+	if w.ptr == nil {
+		return WalkStep{}, false
+	}
+	var node C.ulonglong
+	var depth C.uint
+	var flag C.int
+	if C.galley_walker_next(w.ptr, &node, &depth, &flag) == 0 {
+		return WalkStep{}, false
+	}
+	return WalkStep{Node: Node(node), Depth: uint32(depth), IsSemanticError: flag != 0}, true
+}
+
+// SkipChildren prunes the children of the last yielded node; the next call
+// continues with its next sibling. No effect without a last step.
+func (w *Walker) SkipChildren() {
+	if w.ptr == nil {
+		return
+	}
+	C.galley_walker_skip_children(w.ptr)
+}
+
+// Close destroys the walker. Safe to call more than once.
+func (w *Walker) Close() {
+	if w.ptr != nil {
+		C.galley_walker_destroy(w.ptr)
+		w.ptr = nil
+	}
+}
+
 // SymbolName returns the grammar symbol name of a node (empty for
 // terminal-only nodes).
 func (s *Session) SymbolName(node Node) ([]byte, bool) {
