@@ -125,6 +125,17 @@ const Embedded = struct {
         return self.session.node_allocator.at(@intCast(address));
     }
 
+    /// Validates a C-ABI address against the live tree and narrows it to the
+    /// runtime pointer width. The C ABI is `u64` on all platforms while
+    /// `Node.Pointer` is `usize`, so on 32-bit targets (wasm32) a direct
+    /// pass does not compile; every mutation entry point goes through here.
+    /// Null means invalid-node, including `GALLEY_INVALID_NODE` and any
+    /// address above the pointer range.
+    fn livePointer(self: *Embedded, address: GalleyNodeAddress) ?root.data_structures.Node.Pointer {
+        _ = self.nodeAt(address) orelse return null;
+        return @intCast(address);
+    }
+
     fn nodeInput(self: *Embedded) []const u8 {
         if (self.session.active_context) |ctx| return ctx.diagnosticInput();
         return self.last_input;
@@ -925,9 +936,9 @@ export fn galley_tree_append_children(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(parent) orelse return galley_error_invalid_node;
-    _ = ctx.embedded.nodeAt(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.appendChildren(parent, ctx.allocator, first_node) catch |err| switch (err) {
+    const parent_ptr = ctx.embedded.livePointer(parent) orelse return galley_error_invalid_node;
+    const first_ptr = ctx.embedded.livePointer(first_node) orelse return galley_error_invalid_node;
+    root.data_structures.Node.appendChildren(parent_ptr, ctx.allocator, first_ptr) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
         else => return galley_error_internal,
     };
@@ -943,9 +954,9 @@ export fn galley_tree_insert_before(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(target) orelse return galley_error_invalid_node;
-    _ = ctx.embedded.nodeAt(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertBefore(target, ctx.allocator, first_node) catch |err| switch (err) {
+    const target_ptr = ctx.embedded.livePointer(target) orelse return galley_error_invalid_node;
+    const first_ptr = ctx.embedded.livePointer(first_node) orelse return galley_error_invalid_node;
+    root.data_structures.Node.insertBefore(target_ptr, ctx.allocator, first_ptr) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
         else => return galley_error_internal,
     };
@@ -961,9 +972,9 @@ export fn galley_tree_insert_after(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(target) orelse return galley_error_invalid_node;
-    _ = ctx.embedded.nodeAt(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertAfter(target, ctx.allocator, first_node) catch |err| switch (err) {
+    const target_ptr = ctx.embedded.livePointer(target) orelse return galley_error_invalid_node;
+    const first_ptr = ctx.embedded.livePointer(first_node) orelse return galley_error_invalid_node;
+    root.data_structures.Node.insertAfter(target_ptr, ctx.allocator, first_ptr) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
         else => return galley_error_internal,
     };
@@ -983,8 +994,8 @@ export fn galley_tree_remove_siblings(
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
     if (out_head == null) return galley_error_null_argument;
-    _ = ctx.embedded.nodeAt(node) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.remove(node, ctx.allocator, count) catch |err| switch (err) {
+    const node_ptr = ctx.embedded.livePointer(node) orelse return galley_error_invalid_node;
+    const head = root.data_structures.Node.remove(node_ptr, ctx.allocator, count) catch |err| switch (err) {
         error.CountExceedsRemainingSiblings => return galley_error_invalid_node,
     };
     out_head.?.* = head;
@@ -1010,8 +1021,8 @@ export fn galley_tree_promote_children_over_wrapper(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(wrapper) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.promoteChildrenOverWrapper(wrapper, ctx.allocator) orelse {
+    const wrapper_ptr = ctx.embedded.livePointer(wrapper) orelse return galley_error_invalid_node;
+    const head = root.data_structures.Node.promoteChildrenOverWrapper(wrapper_ptr, ctx.allocator) orelse {
         out_head.?.* = galley_invalid_node;
         return galley_ok;
     };
@@ -1029,8 +1040,8 @@ export fn galley_tree_clean_children(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(node) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.cleanChildren(node, ctx.allocator) catch |err| switch (err) {
+    const node_ptr = ctx.embedded.livePointer(node) orelse return galley_error_invalid_node;
+    const head = root.data_structures.Node.cleanChildren(node_ptr, ctx.allocator) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
     };
     if (head == root.data_structures.Node.invalid_pointer) {
@@ -1449,9 +1460,9 @@ export fn galley_tree_insert_children_at(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(parent) orelse return galley_error_invalid_node;
-    _ = ctx.embedded.nodeAt(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertChildren(parent, ctx.allocator, index, first_node) catch |err| switch (err) {
+    const parent_ptr = ctx.embedded.livePointer(parent) orelse return galley_error_invalid_node;
+    const first_ptr = ctx.embedded.livePointer(first_node) orelse return galley_error_invalid_node;
+    root.data_structures.Node.insertChildren(parent_ptr, ctx.allocator, index, first_ptr) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
     };
     return galley_ok;
@@ -1469,8 +1480,8 @@ export fn galley_tree_remove_children_at(
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
     if (out_head == null) return galley_error_null_argument;
-    _ = ctx.embedded.nodeAt(parent) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.removeChildren(parent, ctx.allocator, index, count) catch |err| switch (err) {
+    const parent_ptr = ctx.embedded.livePointer(parent) orelse return galley_error_invalid_node;
+    const head = root.data_structures.Node.removeChildren(parent_ptr, ctx.allocator, index, count) catch |err| switch (err) {
         error.IndexOutOfBounds => return galley_error_invalid_node,
         error.CountExceedsRemainingSiblings => return galley_error_invalid_node,
     };
@@ -1487,8 +1498,8 @@ export fn galley_tree_remove_children_at(
 export fn galley_tree_unlink_wrapper(session_ptr: ?*GalleySession, wrapper: GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const ctx = mutableAllocator(session_ptr) orelse return galley_error_internal;
-    _ = ctx.embedded.nodeAt(wrapper) orelse return galley_error_invalid_node;
-    root.data_structures.Node.unlinkWrapper(wrapper, ctx.allocator);
+    const wrapper_ptr = ctx.embedded.livePointer(wrapper) orelse return galley_error_invalid_node;
+    root.data_structures.Node.unlinkWrapper(wrapper_ptr, ctx.allocator);
     return galley_ok;
 }
 
@@ -1499,6 +1510,7 @@ export fn galley_tree_unlink_wrapper(session_ptr: ?*GalleySession, wrapper: Gall
 export fn galley_reserve_nodes(session_ptr: ?*GalleySession, capacity: u64) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (comptime !parser.is_ast_enabled) return galley_ok;
+    if (capacity > std.math.maxInt(usize)) return galley_error_ast_capacity_exceeded;
     embedded.session.node_allocator.ensureCapacity(@intCast(capacity)) catch |err| switch (err) {
         error.OutOfMemory => return galley_error_out_of_memory,
         error.ASTCapacityTooLarge => return galley_error_ast_capacity_exceeded,
