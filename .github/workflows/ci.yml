@@ -348,6 +348,9 @@ jobs:
           done
           echo "Galley checkout contract enforced in all bindings"
 
+      - name: JavaScript packages share one lockstep version
+        run: python3 scripts/check_js_versions.py
+
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install

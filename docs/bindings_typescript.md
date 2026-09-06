@@ -268,6 +268,7 @@ node bindings/js/node/tests/test_bindings.mjs
 
 - [C and C++](/bindings_c) — the underlying C ABI
 - [Deno](/bindings_js_deno), [Bun](/bindings_js_bun), [WebAssembly](/bindings_js_wasm) — the Deno, Bun, and wasm bindings over the same JS core
+- [Universal (npm)](/bindings_js_universal) — one package selecting between them at runtime
 - [Python](/bindings_python), [Rust](/bindings_rust) and [Go](/bindings_go) — bindings over the same shared library
 - [Configuration](/configuration) — config.zig schema
 - [Grammar Guidelines](/grammar_guidelines)

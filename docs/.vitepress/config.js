@@ -43,6 +43,7 @@ export default defineConfig({
           { text: 'Deno', link: '/bindings_js_deno' },
           { text: 'Bun', link: '/bindings_js_bun' },
           { text: 'WebAssembly', link: '/bindings_js_wasm' },
+          { text: 'Universal (npm)', link: '/bindings_js_universal' },
           { text: 'Java', link: '/bindings_java' }
         ]
       },

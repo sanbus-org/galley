@@ -1,0 +1,36 @@
+{
+  "name": "@sanbus-org/galley",
+  "version": "0.0.1",
+  "description": "Universal Galley JavaScript bindings: one package for Node, Bun, Deno, and browsers over galley-js-core, with native-first backend selection and WebAssembly fallback",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "test -d ../core && npm --prefix ../core run build >/dev/null 2>&1; tsc -p tsconfig.json --noCheck --types \"\"",
+    "prepublishOnly": "npm run build",
+    "test": "node tests/test_loader.mjs"
+  },
+  "keywords": ["galley", "parser", "javascript", "typescript", "ffi", "wasm"],
+  "dependencies": {
+    "galley-js-core": "file:../core",
+    "galley-js-node": "file:../node",
+    "galley-js-bun": "file:../bun",
+    "galley-js-deno": "file:../deno",
+    "galley-js-wasm": "file:../wasm"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

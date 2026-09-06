@@ -1,0 +1,13 @@
+{
+  "name": "galley-js-deno",
+  "version": "0.0.1",
+  "description": "Galley JavaScript bindings for Deno (galley-js-core over Deno.dlopen and bindings/c/galley.h)",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "src", "build.ts", "README.md"],
+  "dependencies": {
+    "galley-js-core": "file:../core"
+  }
+}

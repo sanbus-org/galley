@@ -1,76 +1,85 @@
 /**
- * Galley JavaScript bindings for Bun — public surface.
+ * Universal Galley JavaScript bindings — public surface.
  *
- * Binds the runtime-neutral `galley-js-core` to the `bun:ffi` port. Mirrors
- * the layout of `bindings/python/galley.pyi` and the C header
- * `bindings/c/galley.h`.
+ * One package for Node, Bun, Deno, and browsers over `galley-js-core`,
+ * with native-first backend selection and WebAssembly fallback. Call
+ * `await init()` once, then use the synchronous `Session` API; under Node
+ * and Bun the backend also resolves synchronously on first use.
  */
 
-import { getBunPort, findLibrary } from "./ffi.js";
+import { ensureSync } from "./loader.js";
 import { Session } from "./session.js";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "galley-js-core";
 export { Session };
-export { findLibrary };
-export { getBunPort } from "./ffi.js";
+export {
+  init,
+  backend,
+  currentBackend,
+  detectRuntime,
+  type InitOptions,
+  type Runtime,
+  type Backend,
+} from "./loader.js";
+export type { UniversalSessionOptions } from "./session.js";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)
 export function version(): string {
-  return getBunPort().version();
+  return ensureSync().version();
 }
 
 export function parserType(): number {
-  return getBunPort().parserType();
+  return ensureSync().parserType();
 }
 
 export function errorRecoveryMode(): number {
-  return getBunPort().errorRecoveryMode();
+  return ensureSync().errorRecoveryMode();
 }
 
 export function hasAst(): boolean {
-  return getBunPort().hasAst();
+  return ensureSync().hasAst();
 }
 
 export function hasProcedures(): boolean {
-  return getBunPort().hasProcedures();
+  return ensureSync().hasProcedures();
 }
 
 export function allowsNoAstTreeProcedures(): boolean {
-  return getBunPort().allowsNoAstTreeProcedures();
+  return ensureSync().allowsNoAstTreeProcedures();
 }
 
 export function sourceRetentionEnabled(): boolean {
-  return getBunPort().sourceRetentionEnabled();
+  return ensureSync().sourceRetentionEnabled();
 }
 
 export function hasPositionTracking(): boolean {
-  return getBunPort().hasPositionTracking();
+  return ensureSync().hasPositionTracking();
 }
 
 export function hasInputStreaming(): boolean {
-  return getBunPort().hasInputStreaming();
+  return ensureSync().hasInputStreaming();
 }
 
 export function usesVerbatim(): boolean {
-  return getBunPort().usesVerbatim();
+  return ensureSync().usesVerbatim();
 }
 
 export function stackOverflowRecoveryAvailable(): boolean {
-  return getBunPort().stackOverflowRecoveryAvailable();
+  return ensureSync().stackOverflowRecoveryAvailable();
 }
 
 export function symbolCount(): number {
-  return getBunPort().symbolCount();
+  return ensureSync().symbolCount();
 }
 
 export function variableCount(): number {
-  return getBunPort().variableCount();
+  return ensureSync().variableCount();
 }
 
 export function statusString(status: number): string | null {
-  return getBunPort().statusString(status);
+  return ensureSync().statusString(status);
 }
 
 // Preserve original Python naming aliases for docs parity
