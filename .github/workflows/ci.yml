@@ -181,14 +181,14 @@ jobs:
 
       - name: Build and run example (typescript)
         if: ${{ matrix.language == 'typescript' }}
-        working-directory: examples/typescript
+        working-directory: examples/js/node
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm install
-          npx galley-typescript-bindings .
+          npx galley-js-node .
           npx tsx demo.ts
-          node ../../bindings/typescript/tests/test_bindings.mjs
+          node ../../../bindings/js/node/tests/test_bindings.mjs
 
       - name: Build and run example (zig)
         if: ${{ matrix.language == 'zig' }}
@@ -251,11 +251,11 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,python,typescript,zig,java}/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,python,typescript,zig,java}/config.zig examples/go/demo/config.zig
-          same benchmark/ll.grm examples/*/benchmark/ll.grm
-          same benchmark/config.zig examples/*/benchmark/config.zig
-          for f in examples/*/benchmark/ll.grm; do
+          same ll.grm examples/{c,cpp,rust,python,zig,java}/ll.grm examples/js/node/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,python,zig,java}/config.zig examples/js/node/config.zig examples/go/demo/config.zig
+          same benchmark/ll.grm examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm
+          same benchmark/config.zig examples/{c,cpp,rust,python,zig,java}/benchmark/config.zig examples/js/node/benchmark/config.zig
+          for f in examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/node/benchmark/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -281,7 +281,7 @@ jobs:
           check bindings/go/cmd/galley/main.go
           check bindings/rust/src/build_helper.rs
           check bindings/python/galley_bindings/build.py
-          check bindings/typescript/build.mjs
+          check bindings/js/node/build.mjs
           check bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
           for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
             check "$f"
@@ -291,15 +291,16 @@ jobs:
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust python typescript java; do
+          for lang in c cpp rust python java; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
+          ./zig-out/bin/galley --emit-metadata "examples/js/node" >/dev/null
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,zig,java}/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,zig,java}/_ll-parser.zig examples/js/node/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,python,typescript,java}/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,python,java}/procedures.zig examples/js/node/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -314,7 +315,7 @@ jobs:
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/demo/procedures.go > /tmp/names-go.txt
           names examples/python/procedures.py > /tmp/names-python.txt
-          names examples/typescript/procedures.ts > /tmp/names-typescript.txt
+          names examples/js/node/procedures.ts > /tmp/names-typescript.txt
           names examples/java/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
@@ -383,11 +384,11 @@ jobs:
           GALLEY_CHECKOUT="$PWD/../.." python -m galley_bindings . >/dev/null
           python demo.py >/tmp/out-python.txt 2>/tmp/err-python.txt
           cd ../..
-          cd examples/typescript
+          cd examples/js/node
           npm install >/dev/null 2>&1
-          GALLEY_CHECKOUT="$PWD/../.." npx galley-typescript-bindings . >/dev/null
-          npx tsx demo.ts >/tmp/out-typescript.txt 2>/tmp/err-typescript.txt
-          cd ../..
+          GALLEY_CHECKOUT="$PWD/../../.." npx galley-js-node . >/dev/null
+          npx tsx demo.ts >/tmp/out-js-node.txt 2>/tmp/err-js-node.txt
+          cd ../../..
           cd examples/zig
           zig build
           zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
@@ -414,14 +415,14 @@ jobs:
           compare /tmp/out-c.txt /tmp/out-rust.txt
           compare /tmp/out-c.txt /tmp/out-go.txt
           compare /tmp/out-c.txt /tmp/out-python.txt
-          compare /tmp/out-c.txt /tmp/out-typescript.txt
+          compare /tmp/out-c.txt /tmp/out-js-node.txt
           compare /tmp/out-c.txt /tmp/out-zig.txt
           compare /tmp/out-c.txt /tmp/out-java.txt
           compare /tmp/err-c.txt /tmp/err-cpp.txt
           compare /tmp/err-c.txt /tmp/err-rust.txt
           compare /tmp/err-c.txt /tmp/err-go.txt
           compare /tmp/err-c.txt /tmp/err-python.txt
-          compare /tmp/err-c.txt /tmp/err-typescript.txt
+          compare /tmp/err-c.txt /tmp/err-js-node.txt
           compare /tmp/err-c.txt /tmp/err-zig.txt
           compare /tmp/err-c.txt /tmp/err-java.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
@@ -483,10 +484,10 @@ jobs:
           cd ../python
           pip install -e .
           python -m galley_bindings benchmark
-          cd ../typescript
+          cd ../js/node
           npm install
-          npx galley-typescript-bindings benchmark
-          cd ../zig
+          npx galley-js-node benchmark
+          cd ../../zig
           zig build -Doptimize=ReleaseFast
           cd ../..
 

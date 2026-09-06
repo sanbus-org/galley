@@ -1,0 +1,23 @@
+{
+  "name": "galley-js-core",
+  "version": "0.1.0",
+  "description": "Runtime-neutral core for the Galley JavaScript bindings (Node, Bun, Deno). Pure TypeScript: no node:, bun:, or Deno imports. Each runtime ships a thin adapter implementing FfiPort.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./build/shim.mjs": "./build/shim.mjs"
+  },
+  "files": ["dist", "src", "build", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

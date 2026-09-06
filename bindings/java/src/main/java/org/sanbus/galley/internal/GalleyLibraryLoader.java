@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads the Galley shared library via Panama SymbolLookup, mirroring
- * bindings/typescript/src/ffi.ts and bindings/python/galley_bindings/build.py.
+ * bindings/js/node/src/ffi.ts and bindings/python/galley_bindings/build.py.
  * No JNA.
  */
 public final class GalleyLibraryLoader {

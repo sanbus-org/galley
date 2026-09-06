@@ -4,9 +4,9 @@ Requires `node` ≥ 22.6, `zig`, and `git`.
 
 ```sh
 npm install
-npx galley-typescript-bindings .
+npx galley-js-node .
 npx tsx demo.ts
-npx galley-typescript-bindings benchmark
+npx galley-js-node benchmark
 npx tsx benchmark.ts
 ```
 

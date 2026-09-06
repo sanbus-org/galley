@@ -6,7 +6,7 @@
 //
 // This file is the Java counterpart of examples/python/procedures.py,
 // examples/go/demo/procedures.go, examples/rust/procedures.rs, and
-// examples/typescript/procedures.ts. Hooks are registered at runtime via
+// examples/js/node/procedures.ts. Hooks are registered at runtime via
 // org.sanbus.galley.Procedures.installProcedure; the file's existence
 // next to the grammar triggers the build tool to generate the Zig shim
 // (procedures_java.zig) that dispatches through those registrations.

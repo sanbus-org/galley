@@ -1,10 +1,12 @@
 /**
- * Low-level koffi bindings over `bindings/c/galley.h`.
+ * Node adapter for the Galley JavaScript bindings: low-level koffi bindings
+ * over `bindings/c/galley.h`, implementing the core `FfiPort`.
  *
- * This is the single FFI boundary for the TypeScript bindings (mirroring
+ * This is the single FFI boundary for the Node runtime (mirroring
  * `bindings/python/_galley.c` and `bindings/go/assets/wrapper.go.tmpl`).
- * All higher-level `Session`/`Node` code goes through this module; no
- * caller touches koffi directly.
+ * Library discovery, memory copying, and integer normalization live here;
+ * all session logic lives in `galley-js-core`. No caller touches koffi
+ * directly outside this module and `dispatch.ts`.
  */
 
 import { Buffer } from "node:buffer";
@@ -14,6 +16,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import type {
+  FfiPort,
+  Handle,
+  SessionCOptions,
+  WalkedStep,
+} from "galley-js-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -315,8 +323,8 @@ export interface GalleyFFI {
     outHead: unknown[],
   ) => bigint | number;
 
-  // procedure dispatch (TypeScript shim)
-  galley_install_typescript_dispatch: ((target: unknown) => void) | null;
+  // procedure dispatch (shared JS shim; see galley-js-core/build/shim.mjs)
+  galley_install_js_dispatch: ((target: unknown) => void) | null;
 
   // procedure-hook state; tree queries use galley_node_* on the session
   galley_procedure_session: (args: bigint) => bigint;
@@ -343,17 +351,17 @@ export interface GalleyFFI {
 function defaultCacheDir(): string {
   const home = os.homedir();
   if (process.platform === "darwin") {
-    return path.join(home, "Library", "Caches", "galley-bindings", "typescript", "capi");
+    return path.join(home, "Library", "Caches", "galley-bindings", "js-node", "capi");
   }
   if (process.platform === "win32") {
     const base = process.env.LOCALAPPDATA ?? os.tmpdir();
-    return path.join(base, "galley-bindings", "typescript", "capi");
+    return path.join(base, "galley-bindings", "js-node", "capi");
   }
   const base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  return path.join(base, "galley-bindings", "typescript", "capi");
+  return path.join(base, "galley-bindings", "js-node", "capi");
 }
 
-function libFileName(base = "galley-typescript"): string {
+function libFileName(base = "galley-js-node"): string {
   if (process.platform === "darwin") return `lib${base}.dylib`;
   if (process.platform === "win32") return `${base}.dll`;
   return `lib${base}.so`;
@@ -376,9 +384,9 @@ export function findLibrary(explicit?: string): string {
   // 1) cwd / language-dir copies (build.mjs copies lib next to grammar)
   const cwdCandidates = [
     path.join(process.cwd(), libFileName()),
-    path.join(process.cwd(), libFileName("galley-typescript")),
-    path.join(process.cwd(), "libgalley-typescript.dylib"),
-    path.join(process.cwd(), "libgalley-typescript.so"),
+    path.join(process.cwd(), libFileName("galley-js-node")),
+    path.join(process.cwd(), "libgalley-js-node.dylib"),
+    path.join(process.cwd(), "libgalley-js-node.so"),
     // also try language-dir relative to this file when run from dist
   ];
   for (const c of cwdCandidates) if (exists(c)) return c;
@@ -387,12 +395,12 @@ export function findLibrary(explicit?: string): string {
   const cacheLib = path.join(defaultCacheDir(), "lib", libFileName());
   if (exists(cacheLib)) return cacheLib;
 
-  // 3) sibling examples/typescript for development
+  // 3) sibling examples/js/node for development (from dist/, three levels up)
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const devCandidates = [
-      path.join(here, "../../examples/typescript", libFileName()),
-      path.join(here, "../../../examples/typescript", libFileName()),
+      path.join(here, "../../../../examples/js/node", libFileName()),
+      path.join(here, "../../../../../examples/js/node", libFileName()),
     ];
     for (const c of devCandidates) if (exists(c)) return c;
   } catch {
@@ -413,7 +421,7 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
   if (!exists(libPath)) {
     throw new Error(
       `Galley shared library not found at ${libPath}.\n` +
-        `Build it first: npx galley-typescript-bindings <language-dir>\n` +
+        `Build it first: npx galley-js-node <language-dir>\n` +
         `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`,
     );
   }
@@ -612,9 +620,9 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
       "int64_t galley_tree_remove_children_at(void *session, uint64_t parent, size_t index, size_t count, _Out_ uint64_t *out_head)",
     ),
 
-    galley_install_typescript_dispatch: (() => {
+    galley_install_js_dispatch: (() => {
       try {
-        return lib.func("void galley_install_typescript_dispatch(void *target)") as unknown as (
+        return lib.func("void galley_install_js_dispatch(void *target)") as unknown as (
           target: unknown,
         ) => void;
       } catch {
@@ -682,4 +690,715 @@ export function copyBytes(ptr: bigint, len: bigint | number): Uint8Array {
 
 export function copyStringBytes(ptr: bigint, len: bigint | number): string {
   return Buffer.from(copyBytes(ptr, len)).toString("utf-8");
+}
+
+/** Decode core-side bytes for koffi `str` parameters (lossless UTF-8 round trip). */
+function decodeParam(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("utf-8");
+}
+
+// --- FfiPort implementation ----------------------------------------------
+
+type StatusFn = (outData: unknown[], outLen: unknown[]) => bigint | number;
+
+function isNegative(st: bigint | number): boolean {
+  return typeof st === "bigint" ? st < 0n : (st as number) < 0;
+}
+
+/**
+ * Node's {@link FfiPort}: normalizes koffi's `bigint | number` unions and
+ * `_Out_` arrays into the structured values the core expects. All memory
+ * copying happens here; the core only sees owned bytes.
+ */
+export class NodePort implements FfiPort {
+  readonly ffi: GalleyFFI;
+  readonly libraryPath: string;
+
+  constructor(ffi: GalleyFFI) {
+    this.ffi = ffi;
+    this.libraryPath = ffi.libPath;
+  }
+
+  // -- module-level queries --------------------------------------------
+
+  version(): string {
+    return this.ffi.galley_version();
+  }
+
+  parserType(): number {
+    return toNumber(this.ffi.galley_parser_type());
+  }
+
+  errorRecoveryMode(): number {
+    return toNumber(this.ffi.galley_error_recovery_mode());
+  }
+
+  hasAst(): boolean {
+    return this.ffi.galley_has_ast() !== 0;
+  }
+
+  hasProcedures(): boolean {
+    return this.ffi.galley_has_procedures() !== 0;
+  }
+
+  allowsNoAstTreeProcedures(): boolean {
+    return this.ffi.galley_allows_no_ast_tree_procedures() !== 0;
+  }
+
+  sourceRetentionEnabled(): boolean {
+    return this.ffi.galley_source_retention_enabled() !== 0;
+  }
+
+  hasPositionTracking(): boolean {
+    return this.ffi.galley_has_position_tracking() !== 0;
+  }
+
+  hasInputStreaming(): boolean {
+    return this.ffi.galley_has_input_streaming() !== 0;
+  }
+
+  usesVerbatim(): boolean {
+    return this.ffi.galley_uses_verbatim() !== 0;
+  }
+
+  stackOverflowRecoveryAvailable(): boolean {
+    return this.ffi.galley_stack_overflow_recovery_available() !== 0;
+  }
+
+  symbolCount(): number {
+    return toNumber(this.ffi.galley_symbol_count());
+  }
+
+  variableCount(): number {
+    return toNumber(this.ffi.galley_variable_count());
+  }
+
+  statusString(status: number): string | null {
+    return this.ffi.galley_status_string(status);
+  }
+
+  // -- sessions ---------------------------------------------------------
+
+  createSession(options: SessionCOptions | null): Handle {
+    let handle: bigint;
+    if (options === null) {
+      handle = this.ffi.galley_session_create() as bigint;
+    } else {
+      const cOptions: Record<string, unknown> = {
+        max_errors: options.maxErrors,
+        recovery_window: options.recoveryWindow,
+        stack_overflow_recovery: options.stackOverflowRecovery,
+        syntax_error_stack_depth: options.syntaxErrorStackDepth,
+        verbosity: options.verbosity,
+        ast_preallocation_ratio: options.astPreallocationRatio,
+        ast_preallocation_cap: options.astPreallocationCap,
+      };
+      // @ts-ignore koffi expects object for struct pointer
+      handle = this.ffi.galley_session_create_ex(cOptions as never) as bigint;
+    }
+    if (handle === 0n || handle === null || handle === undefined) return null;
+    return handle;
+  }
+
+  destroySession(handle: Handle): void {
+    this.ffi.galley_session_destroy(handle as bigint);
+  }
+
+  setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number {
+    return toNumber(
+      this.ffi.galley_session_set_message_override(
+        handle as bigint,
+        decodeParam(name),
+        name.length,
+        decodeParam(message),
+        message.length,
+      ),
+    );
+  }
+
+  // -- parsing ----------------------------------------------------------
+
+  parse(handle: Handle, data: Uint8Array): number {
+    return toNumber(this.ffi.galley_parse(handle as bigint, data, data.length));
+  }
+
+  parseFile(handle: Handle, filePath: string): number {
+    return toNumber(this.ffi.galley_parse_file(handle as bigint, filePath));
+  }
+
+  lastPosition(handle: Handle): [number, number] | null {
+    const outLine: unknown[] = [0];
+    const outCol: unknown[] = [0];
+    const st = this.ffi.galley_last_position(handle as bigint, outLine, outCol);
+    if (isNegative(st)) return null;
+    return [outLine[0] as number, outCol[0] as number];
+  }
+
+  // -- arena and navigation ----------------------------------------------
+
+  nodeCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_node_count(handle as bigint));
+  }
+
+  reserveNodes(handle: Handle, capacity: bigint): number {
+    return toNumber(this.ffi.galley_reserve_nodes(handle as bigint, capacity));
+  }
+
+  nodeCapacity(handle: Handle): number {
+    return toNumber(this.ffi.galley_node_capacity(handle as bigint));
+  }
+
+  rootNode(handle: Handle): bigint {
+    return toBigInt(this.ffi.galley_root_node(handle as bigint));
+  }
+
+  nodeValid(handle: Handle, node: bigint): boolean {
+    return this.ffi.galley_node_is_valid(handle as bigint, node) !== 0;
+  }
+
+  childCount(handle: Handle, node: bigint): number {
+    return this.ffi.galley_node_child_count(handle as bigint, node);
+  }
+
+  firstChild(handle: Handle, node: bigint): bigint {
+    return toBigInt(this.ffi.galley_node_first_child(handle as bigint, node));
+  }
+
+  lastChild(handle: Handle, node: bigint): bigint {
+    return toBigInt(this.ffi.galley_node_last_child(handle as bigint, node));
+  }
+
+  nextSibling(handle: Handle, node: bigint): bigint {
+    return toBigInt(this.ffi.galley_node_next_sibling(handle as bigint, node));
+  }
+
+  priorSibling(handle: Handle, node: bigint): bigint {
+    return toBigInt(this.ffi.galley_node_prior_sibling(handle as bigint, node));
+  }
+
+  parent(handle: Handle, node: bigint): bigint {
+    return toBigInt(this.ffi.galley_node_parent(handle as bigint, node));
+  }
+
+  // -- walker ------------------------------------------------------------
+
+  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null {
+    const walker = this.ffi.galley_walker_create(handle as bigint, node, skipSemanticErrors ? 1 : 0);
+    if (walker === 0n || walker === null || walker === undefined) return null;
+    return walker as bigint;
+  }
+
+  walkerNext(walker: Handle): WalkedStep | null {
+    const outNode: unknown[] = [0n];
+    const outDepth: unknown[] = [0];
+    const outFlag: unknown[] = [0];
+    const yielded = this.ffi.galley_walker_next(walker as bigint, outNode, outDepth, outFlag);
+    if (yielded === 0) return null;
+    return {
+      node: toBigInt(outNode[0] as bigint),
+      depth: Number(outDepth[0]),
+      isSemanticError: (outFlag[0] as number) !== 0,
+    };
+  }
+
+  walkerSkipChildren(walker: Handle): void {
+    this.ffi.galley_walker_skip_children(walker as bigint);
+  }
+
+  walkerDestroy(walker: Handle): void {
+    this.ffi.galley_walker_destroy(walker as bigint);
+  }
+
+  // -- node accessors -----------------------------------------------------
+
+  nodeSymbolName(handle: Handle, node: bigint): Uint8Array | null {
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_node_symbol_name(handle as bigint, node, outData, outLen);
+    if (isNegative(st)) return null;
+    return copyBytes(outData[0] as bigint, outLen[0] as bigint | number);
+  }
+
+  nodeText(handle: Handle, node: bigint): Uint8Array | null {
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_node_text(handle as bigint, node, outData, outLen);
+    if (isNegative(st)) return null;
+    return copyBytes(outData[0] as bigint, outLen[0] as bigint | number);
+  }
+
+  nodeSpan(handle: Handle, node: bigint): [bigint, bigint] | null {
+    const outStart: unknown[] = [0n];
+    const outLen: unknown[] = [0n];
+    const st = this.ffi.galley_node_span(handle as bigint, node, outStart, outLen);
+    if (isNegative(st)) return null;
+    return [toBigInt(outStart[0] as bigint), toBigInt(outLen[0] as bigint)];
+  }
+
+  nodeLineColumn(handle: Handle, node: bigint): [number, number] | null {
+    const outLine: unknown[] = [0];
+    const outCol: unknown[] = [0];
+    const st = this.ffi.galley_node_line_column(handle as bigint, node, outLine, outCol);
+    if (isNegative(st)) return null;
+    return [outLine[0] as number, outCol[0] as number];
+  }
+
+  nodeVariableIndex(handle: Handle, node: bigint): number {
+    return toNumber(this.ffi.galley_node_variable_index(handle as bigint, node));
+  }
+
+  symbolNameAt(handle: Handle, index: number): Uint8Array | null {
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_symbol_name(handle as bigint, BigInt(index), outData, outLen);
+    if (isNegative(st)) return null;
+    return copyBytes(outData[0] as bigint, outLen[0] as bigint);
+  }
+
+  symbolIsTerminal(handle: Handle, index: number): boolean {
+    return this.ffi.galley_symbol_is_terminal(handle as bigint, BigInt(index)) !== 0;
+  }
+
+  variableNameAt(handle: Handle, index: number): Uint8Array | null {
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_variable_name(handle as bigint, BigInt(index), outData, outLen);
+    if (isNegative(st)) return null;
+    return copyBytes(outData[0] as bigint, outLen[0] as bigint);
+  }
+
+  // -- diagnostics ---------------------------------------------------------
+
+  #tryCopyBytes(fn: StatusFn): Uint8Array | null {
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = fn(outData, outLen);
+    if (isNegative(st)) return null;
+    const ptr = outData[0] as bigint | null;
+    if (ptr === null || ptr === 0n) return null;
+    return copyBytes(ptr as bigint, outLen[0] as bigint);
+  }
+
+  #readSemanticPair(
+    fn: (
+      outVariable: unknown[],
+      outVariableLen: unknown[],
+      outMessage: unknown[],
+      outMessageLen: unknown[],
+    ) => bigint | number,
+  ): [string, string] | null {
+    const outVariable: unknown[] = [null];
+    const outVariableLen: unknown[] = [0];
+    const outMessage: unknown[] = [null];
+    const outMessageLen: unknown[] = [0];
+    const st = fn(outVariable, outVariableLen, outMessage, outMessageLen);
+    if (isNegative(st)) return null;
+    if (outVariable[0] === null || outMessage[0] === null) return null;
+    return [
+      copyStringBytes(outVariable[0] as bigint, outVariableLen[0] as bigint),
+      copyStringBytes(outMessage[0] as bigint, outMessageLen[0] as bigint),
+    ];
+  }
+
+  hasDiagnostic(handle: Handle): boolean {
+    return this.ffi.galley_has_diagnostic(handle as bigint) !== 0;
+  }
+
+  diagnosticKind(handle: Handle): number {
+    return toNumber(this.ffi.galley_diagnostic_kind(handle as bigint));
+  }
+
+  diagnosticMessage(handle: Handle): string | null {
+    const out: unknown[] = [null];
+    if (toNumber(this.ffi.galley_diagnostic_message(handle as bigint, out)) !== 0) return null;
+    return out[0] as string;
+  }
+
+  diagnosticMessageAnsi(handle: Handle): string | null {
+    const out: unknown[] = [null];
+    if (toNumber(this.ffi.galley_diagnostic_message_ansi(handle as bigint, out)) !== 0) return null;
+    return out[0] as string;
+  }
+
+  diagnosticPosition(handle: Handle): [number, number] | null {
+    const outLine: unknown[] = [0];
+    const outCol: unknown[] = [0];
+    if (isNegative(this.ffi.galley_diagnostic_position(handle as bigint, outLine, outCol)))
+      return null;
+    return [outLine[0] as number, outCol[0] as number];
+  }
+
+  diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_diagnostic_unexpected_token(h, od, ol),
+    );
+  }
+
+  diagnosticExpectedCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_diagnostic_expected_count(handle as bigint));
+  }
+
+  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_diagnostic_expected_at(h, index, od, ol),
+    );
+  }
+
+  diagnosticContextCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_diagnostic_context_count(handle as bigint));
+  }
+
+  diagnosticContextAt(handle: Handle, index: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_diagnostic_context_at(h, index, od, ol),
+    );
+  }
+
+  syntaxErrorCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_syntax_error_count(handle as bigint));
+  }
+
+  semanticErrorCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_semantic_error_count(handle as bigint));
+  }
+
+  diagnosticSemantic(handle: Handle): [string, string] | null {
+    const h = handle as bigint;
+    return this.#readSemanticPair((ov, ovl, om, oml) =>
+      this.ffi.galley_diagnostic_semantic(h, ov, ovl, om, oml),
+    );
+  }
+
+  diagnosticIndentation(handle: Handle): [number, number] | null {
+    const outSpaces: unknown[] = [0];
+    const outWidth: unknown[] = [0];
+    if (toNumber(this.ffi.galley_diagnostic_indentation(handle as bigint, outSpaces, outWidth)) !== 0)
+      return null;
+    return [outSpaces[0] as number, outWidth[0] as number];
+  }
+
+  diagnosticRecoveryKind(handle: Handle): number {
+    return toNumber(this.ffi.galley_diagnostic_recovery_kind(handle as bigint));
+  }
+
+  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_diagnostic_recovery_terminal(h, od, ol),
+    );
+  }
+
+  diagnosticRecoveryResume(handle: Handle): number | null {
+    const out: unknown[] = [0n];
+    if (toNumber(this.ffi.galley_diagnostic_recovery_resume(handle as bigint, out)) !== 0)
+      return null;
+    return toNumber(out[0] as bigint);
+  }
+
+  diagnosticRecoveryLhsVariable(handle: Handle): string | null {
+    const h = handle as bigint;
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_diagnostic_recovery_lhs_variable(h, outData, outLen);
+    if (isNegative(st) || outData[0] === null) return null;
+    return copyStringBytes(outData[0] as bigint, outLen[0] as bigint);
+  }
+
+  diagnosticRecoveryProduction(handle: Handle): [string, number] | null {
+    const outVar: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const outIdx: unknown[] = [0];
+    if (
+      toNumber(this.ffi.galley_diagnostic_recovery_production(handle as bigint, outVar, outLen, outIdx)) !==
+      0
+    )
+      return null;
+    return [copyStringBytes(outVar[0] as bigint, outLen[0] as bigint), outIdx[0] as number];
+  }
+
+  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | null {
+    const outParent: unknown[] = [null];
+    const outParentLen: unknown[] = [0];
+    const outRhs: unknown[] = [0];
+    const outSym: unknown[] = [0];
+    const outVar: unknown[] = [null];
+    const outVarLen: unknown[] = [0];
+    if (
+      toNumber(
+        this.ffi.galley_diagnostic_recovery_occurrence(
+          handle as bigint,
+          outParent,
+          outParentLen,
+          outRhs,
+          outSym,
+          outVar,
+          outVarLen,
+        ),
+      ) !== 0
+    )
+      return null;
+    return [
+      copyStringBytes(outParent[0] as bigint, outParentLen[0] as bigint),
+      outRhs[0] as number,
+      outSym[0] as number,
+      copyStringBytes(outVar[0] as bigint, outVarLen[0] as bigint),
+    ];
+  }
+
+  recordedDiagnosticCount(handle: Handle): number {
+    return toNumber(this.ffi.galley_recorded_diagnostic_count(handle as bigint));
+  }
+
+  recordedDiagnosticKind(handle: Handle, diagIndex: number): number {
+    return toNumber(this.ffi.galley_recorded_diagnostic_kind(handle as bigint, diagIndex));
+  }
+
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null {
+    const outLine: unknown[] = [0];
+    const outCol: unknown[] = [0];
+    if (isNegative(this.ffi.galley_recorded_diagnostic_position(handle as bigint, diagIndex, outLine, outCol)))
+      return null;
+    return [outLine[0] as number, outCol[0] as number];
+  }
+
+  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_recorded_unexpected_token(h, diagIndex, od, ol),
+    );
+  }
+
+  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
+    const out: unknown[] = [null];
+    if (
+      toNumber(this.ffi.galley_recorded_diagnostic_message(handle as bigint, diagIndex, out)) !== 0
+    )
+      return null;
+    return out[0] as string;
+  }
+
+  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null {
+    const outSpaces: unknown[] = [0];
+    const outWidth: unknown[] = [0];
+    if (
+      toNumber(this.ffi.galley_recorded_indentation(handle as bigint, diagIndex, outSpaces, outWidth)) !==
+      0
+    )
+      return null;
+    return [outSpaces[0] as number, outWidth[0] as number];
+  }
+
+  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null {
+    const h = handle as bigint;
+    return this.#readSemanticPair((ov, ovl, om, oml) =>
+      this.ffi.galley_recorded_semantic(h, diagIndex, ov, ovl, om, oml),
+    );
+  }
+
+  recordedExpectedCount(handle: Handle, diagIndex: number): number {
+    return toNumber(this.ffi.galley_recorded_expected_count(handle as bigint, diagIndex));
+  }
+
+  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_recorded_expected_token(h, diagIndex, tokenIndex, od, ol),
+    );
+  }
+
+  recordedContextCount(handle: Handle, diagIndex: number): number {
+    return toNumber(this.ffi.galley_recorded_context_count(handle as bigint, diagIndex));
+  }
+
+  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_recorded_context_name(h, diagIndex, contextIndex, od, ol),
+    );
+  }
+
+  recordedRecoveryKind(handle: Handle, diagIndex: number): number {
+    return toNumber(this.ffi.galley_recorded_recovery_kind(handle as bigint, diagIndex));
+  }
+
+  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | null {
+    const h = handle as bigint;
+    return this.#tryCopyBytes((od, ol) =>
+      this.ffi.galley_recorded_recovery_terminal(h, diagIndex, od, ol),
+    );
+  }
+
+  recordedRecoveryResume(handle: Handle, diagIndex: number): number | null {
+    const out: unknown[] = [0n];
+    if (toNumber(this.ffi.galley_recorded_recovery_resume(handle as bigint, diagIndex, out)) !== 0)
+      return null;
+    return toNumber(out[0] as bigint);
+  }
+
+  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | null {
+    const h = handle as bigint;
+    const outData: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const st = this.ffi.galley_recorded_recovery_lhs_variable(h, diagIndex, outData, outLen);
+    if (isNegative(st) || outData[0] === null) return null;
+    return copyStringBytes(outData[0] as bigint, outLen[0] as bigint);
+  }
+
+  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | null {
+    const outVar: unknown[] = [null];
+    const outLen: unknown[] = [0];
+    const outIdx: unknown[] = [0];
+    if (
+      toNumber(
+        this.ffi.galley_recorded_recovery_production(handle as bigint, diagIndex, outVar, outLen, outIdx),
+      ) !== 0
+    )
+      return null;
+    return [copyStringBytes(outVar[0] as bigint, outLen[0] as bigint), outIdx[0] as number];
+  }
+
+  recordedRecoveryOccurrence(
+    handle: Handle,
+    diagIndex: number,
+  ): [string, number, number, string] | null {
+    const outParent: unknown[] = [null];
+    const outParentLen: unknown[] = [0];
+    const outRhs: unknown[] = [0];
+    const outSym: unknown[] = [0];
+    const outVar: unknown[] = [null];
+    const outVarLen: unknown[] = [0];
+    if (
+      toNumber(
+        this.ffi.galley_recorded_recovery_occurrence(
+          handle as bigint,
+          diagIndex,
+          outParent,
+          outParentLen,
+          outRhs,
+          outSym,
+          outVar,
+          outVarLen,
+        ),
+      ) !== 0
+    )
+      return null;
+    return [
+      copyStringBytes(outParent[0] as bigint, outParentLen[0] as bigint),
+      outRhs[0] as number,
+      outSym[0] as number,
+      copyStringBytes(outVar[0] as bigint, outVarLen[0] as bigint),
+    ];
+  }
+
+  // -- tree editing ----------------------------------------------------------
+
+  treeAppendChildren(handle: Handle, parent: bigint, first: bigint): number {
+    return toNumber(this.ffi.galley_tree_append_children(handle as bigint, parent, first));
+  }
+
+  treeInsertBefore(handle: Handle, target: bigint, first: bigint): number {
+    return toNumber(this.ffi.galley_tree_insert_before(handle as bigint, target, first));
+  }
+
+  treeInsertAfter(handle: Handle, target: bigint, first: bigint): number {
+    return toNumber(this.ffi.galley_tree_insert_after(handle as bigint, target, first));
+  }
+
+  treeRemoveSiblings(handle: Handle, node: bigint, count: number): { status: number; head: bigint } {
+    const outHead: unknown[] = [0n];
+    const st = this.ffi.galley_tree_remove_siblings(handle as bigint, node, count, outHead);
+    return { status: toNumber(st), head: toBigInt(outHead[0] as bigint) };
+  }
+
+  treeRemoveSelf(handle: Handle, node: bigint): { status: number; head: bigint } {
+    const outHead: unknown[] = [0n];
+    const st = this.ffi.galley_tree_remove_self(handle as bigint, node, outHead);
+    return { status: toNumber(st), head: toBigInt(outHead[0] as bigint) };
+  }
+
+  treePromoteChildrenOverWrapper(handle: Handle, wrapper: bigint): { status: number; head: bigint } {
+    const outHead: unknown[] = [0n];
+    const st = this.ffi.galley_tree_promote_children_over_wrapper(handle as bigint, wrapper, outHead);
+    return { status: toNumber(st), head: toBigInt(outHead[0] as bigint) };
+  }
+
+  treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
+    const outHead: unknown[] = [0n];
+    const st = this.ffi.galley_tree_clean_children(handle as bigint, node, outHead);
+    return { status: toNumber(st), head: toBigInt(outHead[0] as bigint) };
+  }
+
+  treeUnlinkWrapper(handle: Handle, wrapper: bigint): number {
+    return toNumber(this.ffi.galley_tree_unlink_wrapper(handle as bigint, wrapper));
+  }
+
+  treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
+    return toNumber(this.ffi.galley_tree_insert_children_at(handle as bigint, parent, index, first));
+  }
+
+  treeRemoveChildrenAt(
+    handle: Handle,
+    parent: bigint,
+    index: number,
+    count: number,
+  ): { status: number; head: bigint } {
+    const outHead: unknown[] = [0n];
+    const st = this.ffi.galley_tree_remove_children_at(handle as bigint, parent, index, count, outHead);
+    return { status: toNumber(st), head: toBigInt(outHead[0] as bigint) };
+  }
+
+  // -- procedure hooks ----------------------------------------------------------
+
+  procCurrentNode(args: Handle): bigint {
+    return toBigInt(this.ffi.galley_procedure_current_node(args as bigint));
+  }
+
+  procSetCurrentNode(args: Handle, node: bigint): void {
+    this.ffi.galley_procedure_set_current_node(args as bigint, node);
+  }
+
+  procDropSelf(args: Handle): number {
+    return toNumber(this.ffi.galley_procedure_drop_self(args as bigint));
+  }
+
+  procDropChildren(args: Handle): number {
+    return toNumber(this.ffi.galley_procedure_drop_children(args as bigint));
+  }
+
+  procDropIfEmpty(args: Handle): number {
+    return toNumber(this.ffi.galley_procedure_drop_if_empty(args as bigint));
+  }
+
+  procReplaceWithChildren(args: Handle): number {
+    return toNumber(this.ffi.galley_procedure_replace_with_children(args as bigint));
+  }
+
+  procContextLine(args: Handle): number {
+    return this.ffi.galley_procedure_context_line(args as bigint);
+  }
+
+  procContextColumn(args: Handle): number {
+    return this.ffi.galley_procedure_context_column(args as bigint);
+  }
+
+  procReportSemanticError(args: Handle, message: Uint8Array): number {
+    return toNumber(
+      this.ffi.galley_procedure_report_semantic_error(args as bigint, decodeParam(message), message.length),
+    );
+  }
+}
+
+const portCache = new Map<string, NodePort>();
+
+/** Port for the library at `explicitPath` (or default discovery), cached per path. */
+export function getNodePort(explicitPath?: string): NodePort {
+  const ffi = loadLibrary(explicitPath);
+  const cached = portCache.get(ffi.libPath);
+  if (cached) return cached;
+  const port = new NodePort(ffi);
+  portCache.set(ffi.libPath, port);
+  return port;
 }

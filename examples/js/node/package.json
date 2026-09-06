@@ -1,10 +1,10 @@
 {
-  "name": "galley-typescript-example",
+  "name": "galley-js-node-example",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "dependencies": {
-    "galley-typescript-bindings": "file:../../bindings/typescript"
+    "galley-js-node": "file:../../../bindings/js/node"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

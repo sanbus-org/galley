@@ -4,12 +4,12 @@ Galley-generated parsers can be consumed from TypeScript / Node.js through a
 `koffi`-based FFI layer over the same shared library as the C API
 ([`bindings/c/galley.h`](https://github.com/sanbus-org/galley/blob/main/bindings/c/galley.h)).
 The package in
-[`bindings/typescript`](https://github.com/sanbus-org/galley/tree/main/bindings/typescript)
+[`bindings/js/node`](https://github.com/sanbus-org/galley/tree/main/bindings/js/node)
 wraps that API directly — sessions, `Node` objects, structured diagnostics,
 and tree editing — with no subprocess or code-generation at runtime.
 
 A complete, runnable consumer lives in
-[`examples/typescript`](https://github.com/sanbus-org/galley/tree/main/examples/typescript);
+[`examples/js/node`](https://github.com/sanbus-org/galley/tree/main/examples/js/node);
 it is built and executed by CI on every push, byte-for-byte identical in
 output to the C, C++, Rust, Go, and Python examples.
 
@@ -21,7 +21,7 @@ checkout:
 ```json
 {
   "dependencies": {
-    "galley-typescript-bindings": "file:../../bindings/typescript"
+    "galley-js-node": "file:../../../bindings/js/node"
   }
 }
 ```
@@ -31,18 +31,18 @@ containing `ll.grm` and `config.zig`):
 
 ```sh
 npm install
-npx galley-typescript-bindings <language-dir>
+npx galley-js-node <language-dir>
 ```
 
 The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook
 files next to your grammar (`procedures.ts` for native TypeScript hooks,
 `procedures.c` for legacy C hooks, `procedures.zig`,
-`ll_error_messages.zig`), and copies `libgalley-typescript.{dylib,so}` next
+`ll_error_messages.zig`), and copies `libgalley-js-node.{dylib,so}` next
 to your grammar. Import the bindings from that directory:
 
 ```ts
-import { Session, version, hasAst } from "galley-typescript-bindings";
+import { Session, version, hasAst } from "galley-js-node";
 ```
 
 `ZIG_EXECUTABLE` selects zig. The TypeScript package targets Node 18+.
@@ -53,7 +53,7 @@ grammar; commit nothing the command generates. One shared library embeds one
 parser — split grammars across language directories exactly like the other
 bindings.
 
-`GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-typescript.*`
+`GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-js-node.*`
 when the library lives elsewhere (e.g. in a cache dir).
 
 ## Performance Notes
@@ -92,7 +92,7 @@ and Rust's `procedures.rs`:
 
 ```ts
 // procedures.ts
-import type { ProcedureArguments } from "galley-typescript-bindings";
+import type { ProcedureArguments } from "galley-js-node";
 
 export function reduction_Pair(args: ProcedureArguments): void {
   const node = args.currentNode();
@@ -124,7 +124,7 @@ with auto-discovery and takes precedence:
 
 ```ts
 import * as procedures from "./procedures.js";
-import { Session, installProcedures } from "galley-typescript-bindings";
+import { Session, installProcedures } from "galley-js-node";
 
 // explicit is optional when procedures.* is auto-discoverable:
 installProcedures(procedures);
@@ -132,15 +132,15 @@ installProcedures(procedures);
 // installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
 ```
 
-The build command `npx galley-typescript-bindings <language-dir>` detects
-`procedures.ts` / `procedures.js` and generates a `procedures_typescript.zig`
+The build command `npx galley-js-node <language-dir>` detects
+`procedures.ts` / `procedures.js` and generates a `procedures_js.zig`
 shim that routes every grammar hook
-through a single JS callback (`galley_install_typescript_dispatch`), exactly like
+through a single JS callback (`galley_install_js_dispatch`), exactly like
 Python's `procedures_python.zig` and Go's `procedures_go.zig`. Unregistered hooks
 are silent no-ops. You can also manage hooks at runtime:
 
 ```ts
-import { installProcedure, installProcedures, clearProcedures, listProcedures } from "galley-typescript-bindings";
+import { installProcedure, installProcedures, clearProcedures, listProcedures } from "galley-js-node";
 installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
 listProcedures(); // ["reduction_Pair", ...]
 clearProcedures();
@@ -198,7 +198,7 @@ built-in generic renderer. LR grammars use `lr_error_messages.zig`.
 ## Sessions
 
 ```ts
-import { Session, GalleyError } from "galley-typescript-bindings";
+import { Session, GalleyError } from "galley-js-node";
 
 using session = new Session({ maxErrors: 10, recoveryWindow: 500 });
 try {
@@ -259,9 +259,9 @@ indentation details, and the full structured recovery information — or
 The bindings ship a behavioral suite that runs against any built module:
 
 ```sh
-npm install --prefix examples/typescript
-npx --prefix examples/typescript galley-typescript-bindings examples/typescript
-node bindings/typescript/tests/test_bindings.mjs
+npm install --prefix examples/js/node
+npx --prefix examples/js/node galley-js-node examples/js/node
+node bindings/js/node/tests/test_bindings.mjs
 ```
 
 ## Related Pages

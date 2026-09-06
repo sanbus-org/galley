@@ -113,7 +113,7 @@ def default_runners(root: Path) -> list[Runner]:
         Runner(
             "typescript",
             ["npx", "tsx", "benchmark.ts"],
-            cwd=root / "examples" / "typescript",
+            cwd=root / "examples" / "js" / "node",
         ),
         Runner(
             "java",
