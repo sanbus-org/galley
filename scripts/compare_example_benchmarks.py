@@ -7,6 +7,8 @@ and fails if a C-ABI example is below --min-ratio of Zig's median.
 Per-language bars (--min-ratio-override) replace the global bar for the
 named languages; currently only the WebAssembly example uses one, since it
 runs the same parser compiled to wasm, which trails native codegen.
+Per-language round counts (--rounds-override) replace --rounds for the
+named languages.
 """
 
 from __future__ import annotations
@@ -28,6 +30,11 @@ DEFAULT_MIN_RATIO = 0.94
 # Per-language bars replacing the global --min-ratio for the named
 # languages. Only wasm uses one today.
 DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.80}
+# Per-language round counts replacing --rounds for the named languages.
+# zig is the reference every other language is divided by, so its median
+# has to be stable; extra runs pin the baseline down. wasm has measured
+# noisier than the rest in CI, so it gets extra runs too.
+DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {"zig": 6, "wasm": 6}
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = (
     "zig",
@@ -209,6 +216,10 @@ def format_overrides(overrides: dict[str, float]) -> str:
     return ", ".join(f"{name}={ratio:.0%}" for name, ratio in sorted(overrides.items()))
 
 
+def format_rounds_overrides(overrides: dict[str, int]) -> str:
+    return ", ".join(f"{name}={count}" for name, count in sorted(overrides.items()))
+
+
 def print_report(
     report: Report,
     *,
@@ -216,15 +227,17 @@ def print_report(
     min_ratio_overrides: dict[str, float],
     info_ratio: float,
     rounds: int,
+    round_counts: dict[str, int],
     warmup: int,
 ) -> None:
     names = [name for name in LANGUAGE_ORDER if name in report.rounds]
     print("round  language       bytes_per_second")
-    for index in range(len(next(iter(report.rounds.values())))):
+    width = max(len(report.rounds[name]) for name in names)
+    for index in range(width):
         for name in names:
-            print(
-                f"{index + 1:>5}  {name:<13} {format_int(report.rounds[name][index])}"
-            )
+            values = report.rounds[name]
+            cell = format_int(values[index]) if index < len(values) else "-"
+            print(f"{index + 1:>5}  {name:<13} {cell}")
     print()
     print(f"zig median (scored rounds): {format_int(report.zig_median)}")
     bars = f"fail below {min_ratio:.0%} of zig median"
@@ -266,8 +279,16 @@ def print_report(
                 warmup_text = "round 1 is warmup"
             else:
                 warmup_text = f"first {warmup} rounds are warmup"
+            shown = {
+                name: count
+                for name, count in round_counts.items()
+                if name in names and count != rounds
+            }
+            rounds_text = f"{rounds} interleaved rounds"
+            if shown:
+                rounds_text += f" (overrides: {format_rounds_overrides(shown)})"
             handle.write(
-                f"\n{rounds} interleaved rounds including zig; {warmup_text}; "
+                f"\n{rounds_text} including zig; {warmup_text}; "
                 f"score is best of the remaining rounds; "
                 f"reference is zig median of those rounds. "
                 f"Fail below {min_ratio:.0%} of that median"
@@ -308,6 +329,14 @@ def self_test() -> None:
     )
     assert "python" not in overridden.failures
     assert "python" in overridden.info_band_misses
+    assert parse_rounds_override("zig=6") == ("zig", 6)
+    for bad in ("zig", "=6", "cobol=6", "zig=six", "zig=0", "zig=-2"):
+        try:
+            parse_rounds_override(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"parse_rounds_override accepted {bad!r}")
     print("self-test ok")
 
 
@@ -326,6 +355,21 @@ def parse_override(text: str) -> tuple[str, float]:
     return name, ratio
 
 
+def parse_rounds_override(text: str) -> tuple[str, int]:
+    name, separator, value = text.partition("=")
+    if not separator or not name:
+        raise ValueError(f"override must be LANG=COUNT, got {text!r}")
+    if name not in LANGUAGE_ORDER:
+        raise ValueError(f"unknown language in rounds override: {name!r}")
+    try:
+        count = int(value)
+    except ValueError:
+        raise ValueError(f"invalid count in rounds override: {text!r}") from None
+    if count < 1:
+        raise ValueError(f"count must be >= 1, got {text!r}")
+    return name, count
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
@@ -335,6 +379,18 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument("--iterations", type=int, default=DEFAULT_ITERATIONS)
     parser.add_argument("--min-ratio", type=float, default=DEFAULT_MIN_RATIO)
+    parser.add_argument(
+        "--rounds-override",
+        action="append",
+        default=[],
+        metavar="LANG=COUNT",
+        help=(
+            "per-language round count replacing --rounds, e.g. zig=6 "
+            "(repeatable; built-in: "
+            + format_rounds_overrides(DEFAULT_ROUNDS_OVERRIDES)
+            + ")"
+        ),
+    )
     parser.add_argument(
         "--min-ratio-override",
         action="append",
@@ -354,8 +410,19 @@ def main() -> int:
     if args.rounds < 1:
         print("rounds must be >= 1", file=sys.stderr)
         return 1
-    if args.warmup < 0 or args.warmup >= args.rounds:
-        print("warmup must be >= 0 and < rounds", file=sys.stderr)
+    try:
+        cli_rounds = dict(parse_rounds_override(text) for text in args.rounds_override)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    round_counts = dict(DEFAULT_ROUNDS_OVERRIDES)
+    round_counts.update(cli_rounds)
+    for name in LANGUAGE_ORDER:
+        round_counts.setdefault(name, args.rounds)
+    if args.warmup < 0 or args.warmup >= min(round_counts.values()):
+        print(
+            "warmup must be >= 0 and below every language round count", file=sys.stderr
+        )
         return 1
     if args.iterations < 1:
         print("iterations must be >= 1", file=sys.stderr)
@@ -447,13 +514,20 @@ def main() -> int:
         print("missing benchmark binaries:\n  " + "\n  ".join(missing), file=sys.stderr)
         return 1
 
+    start = f"interleaved {args.rounds} rounds"
+    extra_rounds = {
+        name: count for name, count in round_counts.items() if count != args.rounds
+    }
+    if extra_rounds:
+        start += f" (overrides: {format_rounds_overrides(extra_rounds)})"
     print(
-        f"interleaved {args.rounds} rounds "
-        f"(warmup {args.warmup}), {args.iterations} iterations, sample {sample}"
+        f"{start} (warmup {args.warmup}), {args.iterations} iterations, sample {sample}"
     )
     rounds: dict[str, list[int]] = {name: [] for name in LANGUAGE_ORDER}
-    for round_index in range(args.rounds):
+    for round_index in range(max(round_counts.values())):
         for name in LANGUAGE_ORDER:
+            if round_index >= round_counts[name]:
+                continue
             bps = run_one(runners[name], sample, args.iterations)
             rounds[name].append(bps)
             print(
@@ -474,6 +548,7 @@ def main() -> int:
         min_ratio_overrides=overrides,
         info_ratio=INFO_RATIO,
         rounds=args.rounds,
+        round_counts=round_counts,
         warmup=args.warmup,
     )
     if report.info_band_misses:
