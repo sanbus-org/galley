@@ -32,6 +32,7 @@ LANGUAGE_ORDER = (
     "python",
     "typescript",
     "deno",
+    "bun",
     "java",
 )
 
@@ -137,6 +138,11 @@ def default_runners(root: Path) -> list[Runner]:
                 "benchmark.ts",
             ],
             cwd=root / "examples" / "js" / "deno",
+        ),
+        Runner(
+            "bun",
+            ["bun", "benchmark.ts"],
+            cwd=root / "examples" / "js" / "bun",
         ),
         Runner(
             "java",
@@ -317,6 +323,11 @@ def main() -> int:
                 missing.append(f"{name}: {script}")
             continue
         if name == "deno":
+            script = (runner.cwd or root) / "benchmark.ts"
+            if not script.is_file():
+                missing.append(f"{name}: {script}")
+            continue
+        if name == "bun":
             script = (runner.cwd or root) / "benchmark.ts"
             if not script.is_file():
                 missing.append(f"{name}: {script}")

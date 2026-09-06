@@ -74,4 +74,5 @@ excluded from `tsconfig.json`.
 ## Related Pages
 
 - [TypeScript](/bindings_typescript) — the Node bindings over the same core
+- [Bun](/bindings_js_bun) — the Bun bindings over the same core
 - [C and C++](/bindings_c) — the underlying C ABI

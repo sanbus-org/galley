@@ -1,0 +1,18 @@
+{
+  "name": "galley-js-bun-example",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "galley-js-bun": "file:../../../bindings/js/bun"
+  },
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "demo": "bun demo.ts",
+    "benchmark": "bun benchmark.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -41,6 +41,7 @@ export default defineConfig({
           { text: 'Python', link: '/bindings_python' },
           { text: 'TypeScript', link: '/bindings_typescript' },
           { text: 'Deno', link: '/bindings_js_deno' },
+          { text: 'Bun', link: '/bindings_js_bun' },
           { text: 'Java', link: '/bindings_java' }
         ]
       },
