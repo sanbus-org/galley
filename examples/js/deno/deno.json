@@ -6,6 +6,6 @@
     "build": "deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts .",
     "demo": "deno run --sloppy-imports --allow-ffi --allow-read --allow-write --allow-env demo.ts",
     "benchmark": "deno run --sloppy-imports --allow-ffi --allow-read --allow-env benchmark.ts",
-    "test": "deno check --sloppy-imports ../../../bindings/js/deno/src/index.ts && deno run --sloppy-imports --no-check --allow-ffi --allow-read --allow-write --allow-env ../../../bindings/js/deno/tests/test_bindings.ts"
+    "test": "deno check --sloppy-imports ../../../bindings/js/deno/src/index.ts && deno run --sloppy-imports --no-check --allow-ffi --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/tests/test_bindings.ts"
   }
 }

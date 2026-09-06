@@ -11,7 +11,8 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./build/shim.mjs": "./build/shim.mjs"
+    "./build/shim.mjs": "./build/shim.mjs",
+    "./build/fixture.mjs": "./build/fixture.mjs"
   },
   "files": ["dist", "src", "build", "README.md"],
   "scripts": {
