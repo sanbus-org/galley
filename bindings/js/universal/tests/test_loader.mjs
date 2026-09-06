@@ -5,32 +5,30 @@
  * Run:
  *   node bindings/js/universal/tests/test_loader.mjs
  *
- * Uses the keyvalue example artifacts: the native library from
- * examples/js/node and the wasm module from examples/js/wasm.
+ * Uses the shared fixture (bindings/js/test-fixture), built on demand
+ * with the node and wasm builders into a temp workdir.
  */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
-const nativeLib =
-  process.platform === "darwin"
-    ? path.join(repoRoot, "examples", "js", "node", "libgalley-js-node.dylib")
-    : path.join(repoRoot, "examples", "js", "node", "libgalley-js-node.so");
-const wasmModule = path.join(repoRoot, "examples", "js", "wasm", "libgalley-js-wasm.wasm");
-
-for (const [name, file] of [
-  ["native library", nativeLib],
-  ["wasm module", wasmModule],
-]) {
-  if (!fs.existsSync(file)) {
-    console.error(`missing ${name} at ${file}: build the examples first`);
-    process.exit(2);
-  }
-}
+// Self-built shared fixture (bindings/js/test-fixture); never examples/.
+const nativeLib = ensureTestLibrary({
+  buildCommand: ["node", path.join(repoRoot, "bindings", "js", "node", "build.mjs")],
+  libFileName:
+    process.platform === "darwin" ? "libgalley-js-node.dylib" : "libgalley-js-node.so",
+  scope: "node",
+});
+const wasmModule = ensureTestLibrary({
+  buildCommand: ["node", path.join(repoRoot, "bindings", "js", "wasm", "build.mjs")],
+  libFileName: "libgalley-js-wasm.wasm",
+  scope: "wasm",
+});
 
 const { init, backend, detectRuntime, Session, version } = await import("../dist/index.js");
 const { __resetLoader: resetLoader } = await import("../dist/loader.js");
@@ -151,7 +149,7 @@ await test("missing everything explains how to build", async () => {
     skip("missing everything explains how to build", "artifacts discoverable in this checkout");
     return;
   }
-  await assert.rejects(init({ libraryPath: "/nonexistent/x.so" }), /galley build/);
+  await assert.rejects(init({ libraryPath: "/nonexistent/x.so" }), /Build one first/);
   assert.equal(backend(), null);
 });
 

@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = (() => {
@@ -26,11 +27,23 @@ const exampleLib = (() => {
   if (process.platform === "win32") return "galley-js-deno.dll";
   return "libgalley-js-deno.so";
 })();
-const defaultLibPath = path.resolve(__dirname, "../../../../examples/js/deno", exampleLib);
-const libPath = process.env.GALLEY_LIBRARY_PATH ?? (fs.existsSync(defaultLibPath) ? defaultLibPath : undefined);
+// Self-built shared fixture (bindings/js/test-fixture); never examples/.
+const libPath = ensureTestLibrary({
+  buildCommand: [
+    "deno",
+    "run",
+    "--allow-read",
+    "--allow-write",
+    "--allow-run",
+    "--allow-env",
+    path.join(__dirname, "..", "build.ts"),
+  ],
+  libFileName: exampleLib,
+  scope: "deno",
+});
 
 // Must set before import if using env-based discovery
-if (libPath && !process.env.GALLEY_LIBRARY_PATH) process.env.GALLEY_LIBRARY_PATH = libPath;
+if (!process.env.GALLEY_LIBRARY_PATH) process.env.GALLEY_LIBRARY_PATH = libPath;
 
 const {
   Session,
