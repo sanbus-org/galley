@@ -201,6 +201,26 @@ class Node:
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
+class Walker(Iterator[tuple[Node, int, bool]]):
+    """Pre-order tree walker over ``(node, depth, is_semantic_error)`` tuples.
+
+    Returned by ``Session.walk``; the root yields at depth 0. Destroy the
+    walker (or let it go out of scope) before closing the session or
+    parsing again.
+    """
+
+    def __next__(self) -> tuple[Node, int, bool]:
+        """Next ``(node, depth, is_semantic_error)`` tuple in pre-order."""
+        ...
+
+    def __iter__(self) -> Walker:
+        """The walker is its own iterator."""
+        ...
+
+    def skip_children(self) -> None:
+        """Prune the children of the last yielded node."""
+        ...
+
 class ProcedureArguments:
     """Parse-time arguments passed to a procedure hook.
 
@@ -361,6 +381,13 @@ class Session:
     def next_sibling(self, node: Node | int) -> Node | None: ...
     def prior_sibling(self, node: Node | int) -> Node | None: ...
     def parent(self, node: Node | int) -> Node | None: ...
+    def walk(self, root: Node | int, skip_semantic_errors: bool = False) -> Walker:
+        """Pre-order walker over ``root`` yielding ``(node, depth, is_semantic_error)``.
+
+        Pass ``skip_semantic_errors`` to prune subtrees rooted at
+        semantic-error nodes. Raises ``ValueError`` for an invalid root.
+        """
+        ...
     def symbol_name(self, node: Node | int) -> bytes | None:
         """Symbol name bytes, or ``None`` for an invalid node."""
         ...

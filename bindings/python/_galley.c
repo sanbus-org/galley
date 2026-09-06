@@ -315,8 +315,15 @@ typedef struct {
     GalleyNodeAddress address;
 } NodeObject;
 
+typedef struct WalkerObject {
+    PyObject_HEAD
+    PyObject *session_obj;
+    GalleyWalker *walker;
+} WalkerObject;
+
 static PyTypeObject Session_Type;
 static PyTypeObject Node_Type;
+static PyTypeObject Walker_Type;
 
 /* ------------------------------------------------------------------ */
 /* Argument helpers                                                    */
@@ -889,6 +896,48 @@ static PyObject *Session_parent(PyObject *self, PyObject *node)
     if (session == NULL)
         return NULL;
     return node_link_result(self, session, node, galley_node_parent);
+}
+
+PyDoc_STRVAR(walk_doc,
+"walk(root, skip_semantic_errors=False)\n"
+"\n"
+"Returns a pre-order Walker over the subtree rooted at ``root``. Each\n"
+"iteration yields a ``(node, depth, is_semantic_error)`` tuple, with the\n"
+"root at depth 0. Pass a true ``skip_semantic_errors`` to prune subtrees\n"
+"rooted at semantic-error nodes. Raises ValueError for an invalid root\n"
+"or a build without AST construction.");
+
+static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords)
+{
+    GalleySession *session = require_session(self);
+    PyObject *root = NULL;
+    GalleyNodeAddress address;
+    int skip = 0;
+    GalleyWalker *walker;
+    WalkerObject *walker_obj;
+    static char *names[] = {"root", "skip_semantic_errors", NULL};
+
+    if (session == NULL)
+        return NULL;
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "O|$p:walk", names,
+                                     &root, &skip))
+        return NULL;
+    if (node_argument(root, &address) < 0)
+        return NULL;
+    walker = galley_walker_create(session, address, skip);
+    if (walker == NULL) {
+        PyErr_SetString(PyExc_ValueError,
+                        "cannot walk from this node (invalid root or no AST build)");
+        return NULL;
+    }
+    walker_obj = PyObject_New(WalkerObject, &Walker_Type);
+    if (walker_obj == NULL) {
+        galley_walker_destroy(walker);
+        return NULL;
+    }
+    walker_obj->session_obj = Py_NewRef(self);
+    walker_obj->walker = walker;
+    return (PyObject *)walker_obj;
 }
 
 PyDoc_STRVAR(symbol_name_doc,
@@ -1934,6 +1983,8 @@ static PyMethodDef Session_methods[] = {
      METH_O, prior_sibling_doc},
     {"parent", (PyCFunction)(void (*)(void))Session_parent, METH_O,
      parent_doc},
+    {"walk", (PyCFunction)(void (*)(void))Session_walk,
+     METH_VARARGS | METH_KEYWORDS, walk_doc},
     {"symbol_name", (PyCFunction)(void (*)(void))Session_symbol_name, METH_O,
      symbol_name_doc},
     {"text", (PyCFunction)(void (*)(void))Session_text, METH_O, text_doc},
@@ -2363,6 +2414,101 @@ static PyTypeObject Node_Type = {
     .tp_hash = (hashfunc)Node_hash,
     .tp_repr = (reprfunc)Node_repr,
     .tp_str = (reprfunc)Node_repr,
+};
+
+/* ------------------------------------------------------------------ */
+/* Walker — shared pre-order tree traversal                           */
+/* ------------------------------------------------------------------ */
+
+static void Walker_dealloc(WalkerObject *self)
+{
+    if (self->walker != NULL) {
+        galley_walker_destroy(self->walker);
+        self->walker = NULL;
+    }
+    Py_XDECREF(self->session_obj);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *Walker_iternext(WalkerObject *self)
+{
+    GalleyNodeAddress address = GALLEY_INVALID_NODE;
+    unsigned int depth = 0;
+    int is_semantic_error = 0;
+    SessionObject *session_obj;
+    NodeObject *node_obj;
+    PyObject *tuple;
+    PyObject *depth_obj;
+    PyObject *flag_obj;
+
+    if (self->walker == NULL) {
+        PyErr_SetString(PyExc_ValueError, "walker is closed");
+        return NULL;
+    }
+    if (!galley_walker_next(self->walker, &address, &depth, &is_semantic_error))
+        return NULL;
+    session_obj = (SessionObject *)self->session_obj;
+    if (session_obj->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return NULL;
+    }
+    node_obj = PyObject_New(NodeObject, &Node_Type);
+    if (node_obj == NULL)
+        return NULL;
+    node_obj->session_obj = Py_NewRef(self->session_obj);
+    node_obj->session = session_obj->session;
+    node_obj->address = address;
+    depth_obj = PyLong_FromUnsignedLong(depth);
+    if (depth_obj == NULL) {
+        Py_DECREF(node_obj);
+        return NULL;
+    }
+    flag_obj = PyBool_FromLong(is_semantic_error);
+    tuple = PyTuple_New(3);
+    if (tuple == NULL) {
+        Py_DECREF(node_obj);
+        Py_DECREF(depth_obj);
+        return NULL;
+    }
+    PyTuple_SET_ITEM(tuple, 0, (PyObject *)node_obj);
+    PyTuple_SET_ITEM(tuple, 1, depth_obj);
+    PyTuple_SET_ITEM(tuple, 2, flag_obj);
+    return tuple;
+}
+
+PyDoc_STRVAR(walker_skip_children_doc,
+"skip_children()\n"
+"\n"
+"Prunes the children of the last yielded node; the next iteration\n"
+"continues with its next sibling. No effect without a last step.");
+
+static PyObject *Walker_skip_children(WalkerObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (self->walker == NULL) {
+        PyErr_SetString(PyExc_ValueError, "walker is closed");
+        return NULL;
+    }
+    galley_walker_skip_children(self->walker);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef Walker_methods[] = {
+    {"skip_children", (PyCFunction)(void (*)(void))Walker_skip_children,
+     METH_NOARGS, walker_skip_children_doc},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyTypeObject Walker_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "galley.Walker",
+    .tp_basicsize = sizeof(WalkerObject),
+    .tp_itemsize = 0,
+    .tp_dealloc = (destructor)Walker_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "Pre-order tree walker. Iterates (node, depth, is_semantic_error) tuples.",
+    .tp_methods = Walker_methods,
+    .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc)Walker_iternext,
 };
 
 /* ------------------------------------------------------------------ */
@@ -2812,6 +2958,8 @@ PyMODINIT_FUNC PyInit_galley(void)
         return NULL;
     if (PyType_Ready(&ProcedureArgs_Type) < 0)
         return NULL;
+    if (PyType_Ready(&Walker_Type) < 0)
+        return NULL;
     if (PyType_Ready(&Diagnostic_Type) < 0)
         return NULL;
 
@@ -2852,6 +3000,11 @@ PyMODINIT_FUNC PyInit_galley(void)
     if (PyModule_AddObject(module, "ProcedureArguments",
                            (PyObject *)&ProcedureArgs_Type) < 0) {
         Py_DECREF(&ProcedureArgs_Type);
+        goto fail;
+    }
+    Py_INCREF(&Walker_Type);
+    if (PyModule_AddObject(module, "Walker", (PyObject *)&Walker_Type) < 0) {
+        Py_DECREF(&Walker_Type);
         goto fail;
     }
 

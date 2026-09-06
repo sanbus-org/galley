@@ -155,6 +155,20 @@ keep their `reduction_<VariableName>` names (plus the general `reduction`);
 author-defined grammar hooks are declared as `hook_<name>`. Semantic
 payloads are unavailable through bindings.
 
+## Tree Walking
+
+`session.walk(root)` returns a pre-order `Walker` over the last successful
+parse, yielding `(node, depth, is_semantic_error)` tuples with the root at
+depth 0 — the shared runtime walker, so order and depths match every other
+binding. `walker.skip_children()` prunes the last yielded node's children;
+`session.walk(root, skip_semantic_errors=True)` prunes subtrees rooted at
+semantic-error nodes:
+
+```python
+for node, depth, is_error in session.walk(session.root_node()):
+    print("  " * depth, session.symbol_name(node))
+```
+
 ## Error Messages
 
 Run `galley --fill-error-messages <language-dir>` and edit the generated

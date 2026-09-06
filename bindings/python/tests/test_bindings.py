@@ -309,6 +309,63 @@ class WalkTests(unittest.TestCase):
         self.assertIsNone(self.session.variable_index(invalid))
         self.assertEqual(self.session.child_count(invalid), 0)
 
+    def test_walk_matches_hand_rolled_recursion(self) -> None:
+        if not galley.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
+
+        def recurse(node: galley.Node, depth: int, out: list[tuple[int, int]]) -> None:
+            out.append((int(node), depth))
+            child = self.session.first_child(node)
+            while child is not None:
+                recurse(child, depth + 1, out)
+                child = self.session.next_sibling(child)
+
+        expected: list[tuple[int, int]] = []
+        recurse(root, 0, expected)
+        self.assertGreater(len(expected), 1)
+
+        walked = [(int(node), depth) for node, depth, _ in self.session.walk(root)]
+        self.assertEqual(expected, walked)
+        first = next(iter(self.session.walk(root)))
+        node, depth, is_error = first
+        self.assertEqual(node, root)
+        self.assertEqual(depth, 0)
+        self.assertFalse(is_error)
+
+    def test_walk_skip_children_prunes_subtree(self) -> None:
+        if not galley.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        first = next(walker)
+        self.assertEqual(first[0], root)
+        walker.skip_children()
+        self.assertEqual(list(walker), [])
+        with self.assertRaises(ValueError):
+            self.session.walk(0xFFFFFFFFFFFFFFFF)
+
+    def test_walk_reports_no_error_flags_on_a_clean_tree(self) -> None:
+        if not galley.has_ast():
+            self.skipTest("no AST build")
+        # Failed parses keep the previous successful tree, so error-marked
+        # nodes are only reachable through the Zig-native session; bindings
+        # walk the last successful parse, which carries no marks. Semantic
+        # pruning itself is covered by the runtime fixture tests.
+        root = self.session.root_node()
+        assert root is not None
+        flagged = [node for node, _, is_error in self.session.walk(root) if is_error]
+        self.assertEqual(flagged, [])
+        pruned = [
+            int(node)
+            for node, _, _ in self.session.walk(root, skip_semantic_errors=True)
+        ]
+        full = [int(node) for node, _, _ in self.session.walk(root)]
+        self.assertEqual(pruned, full)
+
 
 class EditTests(unittest.TestCase):
     session: galley.Session
