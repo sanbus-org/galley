@@ -898,6 +898,154 @@ static PyObject *Session_parent(PyObject *self, PyObject *node)
     return node_link_result(self, session, node, galley_node_parent);
 }
 
+static PyObject *address_or_none(GalleyNodeAddress address)
+{
+    if (address == GALLEY_INVALID_NODE)
+        return Py_NewRef(Py_None);
+    return PyLong_FromUnsignedLongLong(address);
+}
+
+PyDoc_STRVAR(snapshot_doc,
+"snapshot()\n"
+"\n"
+"Returns the most recent successful parse as flat tuples in a single\n"
+"call: a dict with ``count`` and one entry per node address for\n"
+"``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
+"``span_start`` and ``span_len``. Missing links and variables are None.\n"
+"Walk ``parent``/``first_child``/``next`` directly instead of one call\n"
+"per node; resolve spans against ``last_input()``.");
+
+static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    GalleySession *session = require_session(self);
+    unsigned long long count;
+    GalleyNodeAddress *parent = NULL;
+    GalleyNodeAddress *first_child = NULL;
+    GalleyNodeAddress *next = NULL;
+    unsigned int *child_count = NULL;
+    long long *variable = NULL;
+    unsigned long long *span_start = NULL;
+    unsigned long long *span_len = NULL;
+    long long total;
+    PyObject *result = NULL;
+    PyObject *t_parent = NULL;
+    PyObject *t_first = NULL;
+    PyObject *t_next = NULL;
+    PyObject *t_child_count = NULL;
+    PyObject *t_variable = NULL;
+    PyObject *t_span_start = NULL;
+    PyObject *t_span_len = NULL;
+    unsigned long long i;
+
+    if (session == NULL)
+        return NULL;
+    count = galley_node_count(session);
+    if (count > 0) {
+        parent = PyMem_Malloc(count * sizeof(*parent));
+        first_child = PyMem_Malloc(count * sizeof(*first_child));
+        next = PyMem_Malloc(count * sizeof(*next));
+        child_count = PyMem_Malloc(count * sizeof(*child_count));
+        variable = PyMem_Malloc(count * sizeof(*variable));
+        span_start = PyMem_Malloc(count * sizeof(*span_start));
+        span_len = PyMem_Malloc(count * sizeof(*span_len));
+        if (parent == NULL || first_child == NULL || next == NULL ||
+            child_count == NULL || variable == NULL ||
+            span_start == NULL || span_len == NULL) {
+            PyErr_NoMemory();
+            goto done;
+        }
+    }
+    total = galley_tree_snapshot(session, parent, first_child, next,
+                                 child_count, variable, span_start,
+                                 span_len, count);
+    if (total < 0) {
+        set_error_from_status(total);
+        goto done;
+    }
+    if ((unsigned long long)total != count) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "node count changed during snapshot");
+        goto done;
+    }
+    t_parent = PyTuple_New((Py_ssize_t)count);
+    t_first = PyTuple_New((Py_ssize_t)count);
+    t_next = PyTuple_New((Py_ssize_t)count);
+    t_child_count = PyTuple_New((Py_ssize_t)count);
+    t_variable = PyTuple_New((Py_ssize_t)count);
+    t_span_start = PyTuple_New((Py_ssize_t)count);
+    t_span_len = PyTuple_New((Py_ssize_t)count);
+    if (t_parent == NULL || t_first == NULL || t_next == NULL ||
+        t_child_count == NULL || t_variable == NULL ||
+        t_span_start == NULL || t_span_len == NULL)
+        goto done;
+    for (i = 0; i < count; ++i) {
+        PyObject *item;
+        item = address_or_none(parent[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_parent, (Py_ssize_t)i, item);
+        item = address_or_none(first_child[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_first, (Py_ssize_t)i, item);
+        item = address_or_none(next[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_next, (Py_ssize_t)i, item);
+        item = PyLong_FromUnsignedLong(child_count[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_child_count, (Py_ssize_t)i, item);
+        if (variable[i] < 0)
+            item = Py_NewRef(Py_None);
+        else
+            item = PyLong_FromLongLong(variable[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_variable, (Py_ssize_t)i, item);
+        item = PyLong_FromUnsignedLongLong(span_start[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_span_start, (Py_ssize_t)i, item);
+        item = PyLong_FromUnsignedLongLong(span_len[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_span_len, (Py_ssize_t)i, item);
+    }
+    result = PyDict_New();
+    if (result == NULL)
+        goto done;
+    {
+        PyObject *count_obj = PyLong_FromUnsignedLongLong(count);
+        int ok = -1;
+        if (count_obj != NULL) {
+            ok = PyDict_SetItemString(result, "count", count_obj);
+            Py_DECREF(count_obj);
+        }
+        if (ok < 0)
+            Py_CLEAR(result);
+    }
+    if (result == NULL)
+        goto done;
+    if (PyDict_SetItemString(result, "parent", t_parent) < 0 ||
+        PyDict_SetItemString(result, "first_child", t_first) < 0 ||
+        PyDict_SetItemString(result, "next", t_next) < 0 ||
+        PyDict_SetItemString(result, "child_count", t_child_count) < 0 ||
+        PyDict_SetItemString(result, "variable", t_variable) < 0 ||
+        PyDict_SetItemString(result, "span_start", t_span_start) < 0 ||
+        PyDict_SetItemString(result, "span_len", t_span_len) < 0)
+        Py_CLEAR(result);
+done:
+    Py_XDECREF(t_parent);
+    Py_XDECREF(t_first);
+    Py_XDECREF(t_next);
+    Py_XDECREF(t_child_count);
+    Py_XDECREF(t_variable);
+    Py_XDECREF(t_span_start);
+    Py_XDECREF(t_span_len);
+    PyMem_Free(parent);
+    PyMem_Free(first_child);
+    PyMem_Free(next);
+    PyMem_Free(child_count);
+    PyMem_Free(variable);
+    PyMem_Free(span_start);
+    PyMem_Free(span_len);
+    return result;
+}
+
 PyDoc_STRVAR(walk_doc,
 "walk(root, skip_semantic_errors=False)\n"
 "\n"
@@ -966,6 +1114,25 @@ static PyObject *Session_text(PyObject *self, PyObject *node)
     if (session == NULL)
         return NULL;
     return node_bytes_result(session, node, galley_node_text);
+}
+
+PyDoc_STRVAR(last_input_doc,
+"last_input()\n"
+"\n"
+"Returns the retained input of the most recent parse as bytes: the\n"
+"buffer that snapshot spans index. Empty before the first parse.");
+
+static PyObject *Session_last_input(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    GalleySession *session = require_session(self);
+    const char *data = NULL;
+    size_t length = 0;
+
+    if (session == NULL)
+        return NULL;
+    if (check_status(galley_last_input(session, &data, &length)) < 0)
+        return NULL;
+    return PyBytes_FromStringAndSize(data, (Py_ssize_t)length);
 }
 
 PyDoc_STRVAR(span_doc,
@@ -1983,6 +2150,10 @@ static PyMethodDef Session_methods[] = {
      METH_O, prior_sibling_doc},
     {"parent", (PyCFunction)(void (*)(void))Session_parent, METH_O,
      parent_doc},
+    {"snapshot", (PyCFunction)(void (*)(void))Session_snapshot, METH_NOARGS,
+     snapshot_doc},
+    {"last_input", (PyCFunction)(void (*)(void))Session_last_input,
+     METH_NOARGS, last_input_doc},
     {"walk", (PyCFunction)(void (*)(void))Session_walk,
      METH_VARARGS | METH_KEYWORDS, walk_doc},
     {"symbol_name", (PyCFunction)(void (*)(void))Session_symbol_name, METH_O,

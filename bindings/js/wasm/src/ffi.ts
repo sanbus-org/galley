@@ -25,9 +25,10 @@ import type {
   FfiPort,
   Handle,
   SessionCOptions,
+  TreeSnapshot,
   WalkedStep,
 } from "galley-js-core";
-import { dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "galley-js-core";
+import { GalleyError, dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "galley-js-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -88,6 +89,17 @@ interface GalleyWasmExports {
   galley_node_next_sibling(session: number, node: bigint): bigint;
   galley_node_prior_sibling(session: number, node: bigint): bigint;
   galley_node_parent(session: number, node: bigint): bigint;
+  galley_tree_snapshot(
+    session: number,
+    outParent: number,
+    outFirstChild: number,
+    outNext: number,
+    outChildCount: number,
+    outVariable: number,
+    outSpanStart: number,
+    outSpanLen: number,
+    capacity: bigint,
+  ): bigint;
   galley_walker_create(session: number, node: bigint, skipSemanticErrors: number): number;
   galley_walker_next(walker: number, outNode: number, outDepth: number, outFlag: number): number;
   galley_walker_skip_children(walker: number): void;
@@ -778,6 +790,66 @@ export class WasmPort implements FfiPort {
 
   parent(handle: Handle, node: bigint): bigint {
     return asAddress(this.wasm.galley_node_parent(handle as number, asI64(node)));
+  }
+
+  treeSnapshot(handle: Handle): TreeSnapshot {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const count = this.nodeCount(handle);
+      const empty = {
+        count,
+        parent: new BigUint64Array(0),
+        firstChild: new BigUint64Array(0),
+        next: new BigUint64Array(0),
+        childCount: new Uint32Array(0),
+        variable: new BigInt64Array(0),
+        spanStart: new BigUint64Array(0),
+        spanLen: new BigUint64Array(0),
+      };
+      if (count === 0) return empty;
+      // Eight-byte columns first (parent, firstChild, next, spanStart,
+      // spanLen, variable), then the u32 childCount tail: every column
+      // stays naturally aligned for bulk typed-array copies.
+      const stride = count * 8;
+      const offParent = 0;
+      const offFirst = stride;
+      const offNext = stride * 2;
+      const offSpanStart = stride * 3;
+      const offSpanLen = stride * 4;
+      const offVariable = stride * 5;
+      const offChildCount = stride * 6;
+      const total = offChildCount + count * 4;
+      const base = this.malloc(total);
+      try {
+        const status = this.wasm.galley_tree_snapshot(
+          handle as number, base + offParent, base + offFirst, base + offNext,
+          base + offChildCount, base + offVariable, base + offSpanStart,
+          base + offSpanLen, BigInt(count),
+        );
+        if (isNegative(status)) throw new GalleyError("galley_tree_snapshot failed", Number(status));
+        if (status !== BigInt(count)) continue;
+        const memory = this.memoryBytes();
+        const column64 = (offset: number) =>
+          new BigUint64Array(memory.buffer, memory.byteOffset + base + offset, count);
+        const parent = new BigUint64Array(count);
+        parent.set(column64(offParent));
+        const firstChild = new BigUint64Array(count);
+        firstChild.set(column64(offFirst));
+        const next = new BigUint64Array(count);
+        next.set(column64(offNext));
+        const spanStart = new BigUint64Array(count);
+        spanStart.set(column64(offSpanStart));
+        const spanLen = new BigUint64Array(count);
+        spanLen.set(column64(offSpanLen));
+        const variable = new BigInt64Array(count);
+        variable.set(new BigInt64Array(memory.buffer, memory.byteOffset + base + offVariable, count));
+        const childCount = new Uint32Array(count);
+        childCount.set(new Uint32Array(memory.buffer, memory.byteOffset + base + offChildCount, count));
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+      } finally {
+        this.free(base, total);
+      }
+    }
+    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
   }
 
   // -- walker -------------------------------------------------------------------

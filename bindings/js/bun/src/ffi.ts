@@ -12,8 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { resolveArtifact, artifactFileName } from "galley-js-core";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "galley-js-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
@@ -55,6 +55,17 @@ interface GalleySymbols {
   galley_node_next_sibling(session: NativeHandle, node: bigint): bigint;
   galley_node_prior_sibling(session: NativeHandle, node: bigint): bigint;
   galley_node_parent(session: NativeHandle, node: bigint): bigint;
+  galley_tree_snapshot(
+    session: NativeHandle,
+    outParent: number,
+    outFirstChild: number,
+    outNext: number,
+    outChildCount: number,
+    outVariable: number,
+    outSpanStart: number,
+    outSpanLen: number,
+    capacity: bigint,
+  ): bigint;
   galley_walker_create(session: NativeHandle, node: bigint, skipSemanticErrors: number): NativeHandle;
   galley_walker_next(walker: NativeHandle, outNode: number, outDepth: number, outFlag: number): number;
   galley_walker_skip_children(walker: NativeHandle): void;
@@ -195,6 +206,10 @@ const BASE_SYMBOLS = {
   galley_node_next_sibling: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
   galley_node_prior_sibling: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
   galley_node_parent: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
+  galley_tree_snapshot: {
+    args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
+    returns: FFIType.i64,
+  },
   galley_walker_create: { args: [FFIType.ptr, FFIType.u64, FFIType.i32], returns: FFIType.ptr },
   galley_walker_next: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
   galley_walker_skip_children: { args: [FFIType.ptr], returns: FFIType.void },
@@ -469,6 +484,28 @@ export class BunPort implements FfiPort {
 
   parent(handle: Handle, node: bigint): bigint {
     return this.native.galley_node_parent(handle as NativeHandle, node);
+  }
+
+  treeSnapshot(handle: Handle): TreeSnapshot {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const count = this.nodeCount(handle);
+      const parent = new BigUint64Array(count);
+      const firstChild = new BigUint64Array(count);
+      const next = new BigUint64Array(count);
+      const childCount = new Uint32Array(count);
+      const variable = new BigInt64Array(count);
+      const spanStart = new BigUint64Array(count);
+      const spanLen = new BigUint64Array(count);
+      const total = this.native.galley_tree_snapshot(
+        handle as NativeHandle, ptr(parent), ptr(firstChild), ptr(next), ptr(childCount),
+        ptr(variable), ptr(spanStart), ptr(spanLen), BigInt(count),
+      );
+      if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total));
+      if (total === BigInt(count)) {
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+      }
+    }
+    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
   }
 
   // -- walker ------------------------------------------------------------

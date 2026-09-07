@@ -76,6 +76,22 @@ extern "C" {
         out_start: *mut u64,
         out_len: *mut u64,
     ) -> i64;
+    fn galley_tree_snapshot(
+        session: *mut GalleySessionRaw,
+        out_parent: *mut u64,
+        out_first_child: *mut u64,
+        out_next: *mut u64,
+        out_child_count: *mut u32,
+        out_variable: *mut i64,
+        out_span_start: *mut u64,
+        out_span_len: *mut u64,
+        capacity: u64,
+    ) -> i64;
+    fn galley_last_input(
+        session: *mut GalleySessionRaw,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
+    ) -> i64;
     fn galley_node_line_column(
         session: *mut GalleySessionRaw,
         node: u64,
@@ -330,6 +346,16 @@ pub struct NodeHandle(u64);
 impl NodeHandle {
     /// Sentinel meaning "no node here".
     pub const INVALID: NodeHandle = NodeHandle(u64::MAX);
+
+    /// Raw address backing this handle (indexes [`TreeSnapshot`] columns).
+    pub fn index(self) -> u64 {
+        self.0
+    }
+
+    /// Handle for a raw address (see [`NodeHandle::index`]).
+    pub fn from_index(index: u64) -> NodeHandle {
+        NodeHandle(index)
+    }
 }
 
 /// One pre-order step of a [`Walker`].
@@ -338,6 +364,22 @@ pub struct WalkStep {
     pub node: NodeHandle,
     pub depth: u32,
     pub is_semantic_error: bool,
+}
+
+/// Flat bulk read of the last successful parse (see
+/// [`Session::snapshot`]): one entry per node address. Missing links read
+/// as [`NodeHandle::INVALID`], missing variables as -1, and spans index
+/// [`Session::last_input`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeSnapshot {
+    pub count: u64,
+    pub parent: Vec<u64>,
+    pub first_child: Vec<u64>,
+    pub next: Vec<u64>,
+    pub child_count: Vec<u32>,
+    pub variable: Vec<i64>,
+    pub span_start: Vec<u64>,
+    pub span_len: Vec<u64>,
 }
 
 /// Borrowing pre-order walker over the last successful parse's tree. Walks
@@ -553,6 +595,64 @@ impl Session {
     }
     pub fn parent(&self, node: NodeHandle) -> Option<NodeHandle> {
         self.raw_link(|s| unsafe { galley_node_parent(s, node.0) })
+    }
+
+    /// Flat bulk read of the last successful parse in a single call: one
+    /// entry per node address. Walk `parent`/`first_child`/`next` directly
+    /// instead of one call per node; `variable` holds -1 for nodes without
+    /// a variable and spans index [`Session::last_input`].
+    pub fn snapshot(&self) -> TreeSnapshot {
+        let count = self.node_count() as usize;
+        let mut parent = vec![u64::MAX; count];
+        let mut first_child = vec![u64::MAX; count];
+        let mut next = vec![u64::MAX; count];
+        let mut child_count = vec![0u32; count];
+        let mut variable = vec![-1i64; count];
+        let mut span_start = vec![0u64; count];
+        let mut span_len = vec![0u64; count];
+        let total = unsafe {
+            galley_tree_snapshot(
+                self.inner,
+                parent.as_mut_ptr(),
+                first_child.as_mut_ptr(),
+                next.as_mut_ptr(),
+                child_count.as_mut_ptr(),
+                variable.as_mut_ptr(),
+                span_start.as_mut_ptr(),
+                span_len.as_mut_ptr(),
+                count as u64,
+            )
+        };
+        assert!(
+            total >= 0,
+            "galley_tree_snapshot failed with status {total}"
+        );
+        assert_eq!(
+            total as u64, count as u64,
+            "node count changed during snapshot"
+        );
+        TreeSnapshot {
+            count: count as u64,
+            parent,
+            first_child,
+            next,
+            child_count,
+            variable,
+            span_start,
+            span_len,
+        }
+    }
+
+    /// Retained input of the most recent parse: the buffer snapshot spans
+    /// index. Empty before the first parse.
+    pub fn last_input(&self) -> &[u8] {
+        unsafe {
+            let mut data: *const c_char = std::ptr::null();
+            let mut len = 0usize;
+            let status = galley_last_input(self.inner, &mut data, &mut len);
+            assert_eq!(status, 0, "galley_last_input failed with status {status}");
+            std::slice::from_raw_parts(data as *const u8, len)
+        }
     }
 
     /// Pre-order walker over the subtree rooted at `root`, yielding one

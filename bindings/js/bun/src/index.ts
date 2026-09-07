@@ -14,7 +14,7 @@ export * from "galley-js-core";
 export { Session };
 export { findLibrary };
 export { getBunPort, libFileName } from "./ffi.ts";
-export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
+export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)
 export function version(): string {

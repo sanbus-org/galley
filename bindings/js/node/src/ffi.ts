@@ -18,9 +18,10 @@ import type {
   FfiPort,
   Handle,
   SessionCOptions,
+  TreeSnapshot,
   WalkedStep,
 } from "galley-js-core";
-import { resolveArtifact, artifactFileName } from "galley-js-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -146,6 +147,17 @@ export interface GalleyFFI {
     outCol: unknown[],
   ) => bigint | number;
   galley_node_variable_index: (session: bigint, node: bigint | number) => bigint | number;
+  galley_tree_snapshot: (
+    session: bigint,
+    outParent: BigUint64Array,
+    outFirstChild: BigUint64Array,
+    outNext: BigUint64Array,
+    outChildCount: Uint32Array,
+    outVariable: BigInt64Array,
+    outSpanStart: BigUint64Array,
+    outSpanLen: BigUint64Array,
+    capacity: bigint | number,
+  ) => bigint | number;
 
   // diagnostics (singular)
   galley_has_diagnostic: (session: bigint) => number;
@@ -459,6 +471,9 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
       "int64_t galley_node_line_column(void *session, uint64_t node, _Out_ uint32_t *out_line, _Out_ uint32_t *out_column)",
     ),
     galley_node_variable_index: lib.func("int64_t galley_node_variable_index(void *session, uint64_t node)"),
+    galley_tree_snapshot: lib.func(
+      "int64_t galley_tree_snapshot(void *session, uint64_t *out_parent, uint64_t *out_first_child, uint64_t *out_next, uint32_t *out_child_count, int64_t *out_variable, uint64_t *out_span_start, uint64_t *out_span_len, uint64_t capacity)",
+    ),
 
     galley_has_diagnostic: lib.func("int galley_has_diagnostic(void *session)"),
     galley_diagnostic_kind: lib.func("int64_t galley_diagnostic_kind(void *session)"),
@@ -835,6 +850,32 @@ export class NodePort implements FfiPort {
 
   parent(handle: Handle, node: bigint): bigint {
     return toBigInt(this.ffi.galley_node_parent(handle as bigint, node));
+  }
+
+  treeSnapshot(handle: Handle): TreeSnapshot {
+    // No await between sizing and filling, so the count cannot change.
+    // Retry once on mismatch for safety against future async hooks.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const count = this.nodeCount(handle);
+      const parent = new BigUint64Array(count);
+      const firstChild = new BigUint64Array(count);
+      const next = new BigUint64Array(count);
+      const childCount = new Uint32Array(count);
+      const variable = new BigInt64Array(count);
+      const spanStart = new BigUint64Array(count);
+      const spanLen = new BigUint64Array(count);
+      const total = toNumber(
+        this.ffi.galley_tree_snapshot(
+          handle as bigint, parent, firstChild, next, childCount,
+          variable, spanStart, spanLen, BigInt(count),
+        ),
+      );
+      if (isNegative(total)) throw new GalleyError("galley_tree_snapshot failed", total);
+      if (total === count) {
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+      }
+    }
+    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
   }
 
   // -- walker ------------------------------------------------------------

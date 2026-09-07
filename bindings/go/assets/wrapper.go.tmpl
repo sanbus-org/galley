@@ -264,6 +264,68 @@ func (s *Session) Parent(node Node) (Node, bool) {
 	return cToNode(C.galley_node_parent(s.ptr, C.ulonglong(node)))
 }
 
+// Snapshot holds the most recent successful parse as flat slices: one
+// entry per node address. Missing links read as InvalidNode, missing
+// variables as -1, and spans index LastInput.
+type Snapshot struct {
+	Count      uint64
+	Parent     []Node
+	FirstChild []Node
+	Next       []Node
+	ChildCount []uint32
+	Variable   []int64
+	SpanStart  []uint64
+	SpanLen    []uint64
+}
+
+// Snapshot returns the most recent successful parse in a single call.
+// Walk Parent/FirstChild/Next directly instead of one call per node.
+func (s *Session) Snapshot() (Snapshot, error) {
+	count := s.NodeCount()
+	snap := Snapshot{
+		Count:      count,
+		Parent:     make([]Node, count),
+		FirstChild: make([]Node, count),
+		Next:       make([]Node, count),
+		ChildCount: make([]uint32, count),
+		Variable:   make([]int64, count),
+		SpanStart:  make([]uint64, count),
+		SpanLen:    make([]uint64, count),
+	}
+	if count == 0 {
+		return snap, nil
+	}
+	total := C.galley_tree_snapshot(
+		s.ptr,
+		(*C.ulonglong)(unsafe.Pointer(&snap.Parent[0])),
+		(*C.ulonglong)(unsafe.Pointer(&snap.FirstChild[0])),
+		(*C.ulonglong)(unsafe.Pointer(&snap.Next[0])),
+		(*C.uint)(unsafe.Pointer(&snap.ChildCount[0])),
+		(*C.longlong)(unsafe.Pointer(&snap.Variable[0])),
+		(*C.ulonglong)(unsafe.Pointer(&snap.SpanStart[0])),
+		(*C.ulonglong)(unsafe.Pointer(&snap.SpanLen[0])),
+		C.ulonglong(count),
+	)
+	if total < 0 {
+		return Snapshot{}, Error(int32(total))
+	}
+	if uint64(total) != count {
+		return Snapshot{}, ErrInternal
+	}
+	return snap, nil
+}
+
+// LastInput returns the retained input of the most recent parse: the
+// buffer snapshot spans index. Empty before the first parse.
+func (s *Session) LastInput() []byte {
+	var data *C.char
+	var length C.size_t
+	if C.galley_last_input(s.ptr, &data, &length) != 0 {
+		return nil
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length))
+}
+
 // Children returns the direct children of a node in document order.
 func (s *Session) Children(node Node) []Node {
 	children := []Node{}

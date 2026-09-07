@@ -250,6 +250,65 @@ await test("symbol names text spans and positions", () => {
   }
 });
 
+await test("snapshot matches per-node accessors in one crossing", () => {
+  const s = newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const snap = s.snapshot();
+    assert.equal(snap.count, s.nodeCount());
+    assert.ok(snap.count > 0);
+    for (const column of [snap.parent, snap.firstChild, snap.next, snap.spanStart, snap.spanLen]) {
+      assert.equal(column.length, snap.count);
+    }
+    assert.equal(snap.childCount.length, snap.count);
+    assert.equal(snap.variable.length, snap.count);
+    for (let i = 0; i < snap.count; i++) {
+      const node = BigInt(i);
+      const parent = s.parent(node);
+      assert.equal(snap.parent[i], parent === null ? INVALID_NODE : parent.address);
+      const first = s.firstChild(node);
+      assert.equal(snap.firstChild[i], first === null ? INVALID_NODE : first.address);
+      const next = s.nextSibling(node);
+      assert.equal(snap.next[i], next === null ? INVALID_NODE : next.address);
+      assert.equal(snap.childCount[i], s.childCount(node));
+      const variable = s.variableIndex(node);
+      assert.equal(snap.variable[i], variable === null ? -1n : BigInt(variable));
+      const span = s.span(node);
+      assert.ok(span !== null);
+      assert.equal(snap.spanStart[i], span[0]);
+      assert.equal(snap.spanLen[i], span[1]);
+    }
+    // The snapshot alone drives the same preorder walk as the walker.
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    const preorder = [];
+    const stack = [root.address];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      preorder.push(node);
+      let child = snap.firstChild[Number(node)];
+      const chain = [];
+      while (child !== INVALID_NODE) {
+        chain.push(child);
+        child = snap.next[Number(child)];
+      }
+      assert.equal(chain.length, snap.childCount[Number(node)]);
+      for (let k = chain.length - 1; k >= 0; k--) stack.push(chain[k]);
+    }
+    const walked = [];
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    try {
+      for (const step of walker) walked.push(step.node.address);
+    } finally {
+      walker.close();
+    }
+    assert.deepEqual(preorder, walked);
+  } finally {
+    s.close();
+  }
+});
+
 await test("Node object mirrors Session navigation", () => {
   const s = newSession();
   try {

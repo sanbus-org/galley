@@ -31,6 +31,25 @@ export interface WalkedStep {
   isSemanticError: boolean;
 }
 
+/**
+ * Flat bulk read of the most recent successful parse, one slot per node
+ * address. `parent` holds `INVALID_NODE` for the root, `firstChild`/`next`
+ * hold `INVALID_NODE` where the link does not exist, `variable` holds -1
+ * for nodes without a variable, and `spanStart`/`spanLen` are byte
+ * offsets into the parsed input. Parent, firstChild, and next alone
+ * describe the whole tree with no further calls.
+ */
+export interface TreeSnapshot {
+  count: number;
+  parent: BigUint64Array;
+  firstChild: BigUint64Array;
+  next: BigUint64Array;
+  childCount: Uint32Array;
+  variable: BigInt64Array;
+  spanStart: BigUint64Array;
+  spanLen: BigUint64Array;
+}
+
 /** Native dispatch callback installed by the adapter; receives a decoded hook name. */
 export type DispatchHandler = (name: string, args: Handle) => void;
 
@@ -79,6 +98,8 @@ export interface FfiPort {
   nextSibling(handle: Handle, node: bigint): bigint;
   priorSibling(handle: Handle, node: bigint): bigint;
   parent(handle: Handle, node: bigint): bigint;
+  /** Flat bulk read of the most recent successful parse (see `TreeSnapshot`). */
+  treeSnapshot(handle: Handle): TreeSnapshot;
 
   // -- walker ------------------------------------------------------------
   /** Null without AST construction or on invalid arguments. */
