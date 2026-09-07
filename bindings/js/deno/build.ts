@@ -21,25 +21,21 @@
  * * `ll_error_messages.zig` / `lr_error_messages.zig` — custom syntax-error
  *   message hooks.
  *
- * The tool generates the parser (--emit-metadata), builds the shared library
- * through the generic consumer build, and copies libgalley-js-deno.* into
- * the language directory so `import { Session } from "galley-js-deno"`
- * can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * The tool generates the parser (--emit-metadata) and builds the shared
+ * library through the generic consumer build directly next to the grammar,
+ * so `import { Session } from "galley-js-deno"` can locate it via cwd or
+ * GALLEY_LIBRARY_PATH.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT (existing Galley working tree, wins over fetching),
- *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Without GALLEY_CHECKOUT
- *   the script clones GALLEY_REPOSITORY at GALLEY_TAG, matching the Rust,
- *   Go, and Python consumers.
+ *   GALLEY_CHECKOUT (required: existing Galley working tree). To fetch a
+ *   checkout for convenience, use examples/scripts/fetch-galley.sh — that
+ *   cache is an examples-only convenience, not part of the bindings.
  */
 
 import * as path from "node:path";
-import { createHash } from "node:crypto";
 import { emitJsProcedureShim } from "../core/build/shim.mjs";
 
 const LIBRARY_NAME = "galley-js-deno";
-const DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git";
-const DEFAULT_GALLEY_TAG = "main";
 
 function fatal(msg: string): never {
   console.error(`galley-bindings: ${msg}`);
@@ -77,50 +73,17 @@ function exists(filePath: string): boolean {
   }
 }
 
-function cacheDir(): string {
-  const home = Deno.env.get("HOME") ?? "/tmp";
-  let dir: string;
-  if (Deno.build.os === "darwin") dir = path.join(home, "Library", "Caches");
-  else if (Deno.build.os === "windows") dir = Deno.env.get("LOCALAPPDATA") ?? Deno.tmpdir();
-  else dir = Deno.env.get("XDG_CACHE_HOME") ?? path.join(home, ".cache");
-  dir = path.join(dir, "galley-bindings", "js-deno");
-  Deno.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function resolveGalley(cacheDirPath: string): string {
-  // GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
-  // into <cache>/galley-src.
+function resolveGalley(): string {
+  // GALLEY_CHECKOUT is required. Fetching a checkout into the system cache
+  // is an examples-only convenience (examples/scripts/fetch-galley.sh).
   const checkoutEnv = Deno.env.get("GALLEY_CHECKOUT");
-  if (checkoutEnv) {
-    if (!exists(path.join(checkoutEnv, "build.zig"))) {
-      fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
-    }
-    return path.resolve(checkoutEnv);
+  if (!checkoutEnv) {
+    fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout (examples/scripts/fetch-galley.sh can fetch one)");
   }
-  const tag = Deno.env.get("GALLEY_TAG") ?? DEFAULT_GALLEY_TAG;
-  const repository = Deno.env.get("GALLEY_REPOSITORY") ?? DEFAULT_GALLEY_REPOSITORY;
-  const sourceDir = path.join(cacheDirPath, "galley-src");
-  const stamp = path.join(cacheDirPath, "galley-tag");
-  let previous = "";
-  try {
-    if (exists(stamp)) previous = Deno.readTextFileSync(stamp).trim();
-  } catch {
-    // ignore
+  if (!exists(path.join(checkoutEnv, "build.zig"))) {
+    fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
   }
-  if (exists(sourceDir) && previous === tag) return sourceDir;
-  try {
-    Deno.removeSync(sourceDir, { recursive: true });
-  } catch {
-    // ignore
-  }
-  awaitRun("git", ["clone", "--depth", "1", "--branch", tag, "--single-branch", "--recurse-submodules=false", repository, sourceDir]);
-  try {
-    Deno.writeTextFileSync(stamp, tag);
-  } catch (e) {
-    fatal(`failed to write tag stamp: ${(e as Error).message}`);
-  }
-  return sourceDir;
+  return path.resolve(checkoutEnv);
 }
 
 function awaitRun(cmd: string, args: string[]): void {
@@ -134,11 +97,11 @@ function awaitRun(cmd: string, args: string[]): void {
   if (!out.success) fatal(`command failed: ${cmd} ${args.join(" ")} (exit ${out.code})`);
 }
 
-function detectParser(languageDir: string): [string, string] {
+function findGeneratedParser(languageDir: string): string {
   const hasLL = exists(path.join(languageDir, "_ll-parser.zig"));
   const hasLR = exists(path.join(languageDir, "_lr-parser.zig"));
-  if (hasLL && !hasLR) return ["_ll-parser.zig", "ll"];
-  if (hasLR && !hasLL) return ["_lr-parser.zig", "lr"];
+  if (hasLL && !hasLR) return "_ll-parser.zig";
+  if (hasLR && !hasLL) return "_lr-parser.zig";
   if (hasLL && hasLR) {
     fatal(
       `both _ll-parser.zig and _lr-parser.zig exist in ${languageDir}; one library embeds one parser — split the language dirs`,
@@ -172,7 +135,7 @@ async function main(): Promise<void> {
   const languageDir = path.resolve(Deno.args[0]);
   if (!exists(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
 
-  const galleySource = resolveGalley(cacheDir());
+  const galleySource = resolveGalley();
   const cli = path.join(galleySource, "zig-out", "bin", "galley");
   if (!exists(cli)) {
     await run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: galleySource });
@@ -187,13 +150,8 @@ async function main(): Promise<void> {
 
   await run(cli, ["--emit-metadata", languageDir]);
 
-  const [parserSource, parserType] = detectParser(languageDir);
+  const parserSource = findGeneratedParser(languageDir);
 
-  const prefix = path.join(
-    cacheDir(),
-    "capi",
-    createHash("sha256").update(languageDir).digest("hex").slice(0, 16),
-  );
   // JS-native procedures take precedence over C procedures: if a
   // procedures.ts/js exists, generate a JS dispatch shim and use it
   // instead of the C extern stub. When neither JS nor C implementations
@@ -233,11 +191,11 @@ async function main(): Promise<void> {
     "--build-file",
     path.join(galleySource, "bindings/c/consumer/build.zig"),
     `-Dparser-source=${path.join(languageDir, parserSource)}`,
-    `-Dparser-type=${parserType}`,
     `-Dlib-name=${LIBRARY_NAME}`,
+    `-Doutput=${libFileName()}`,
     "-Doptimize=ReleaseFast",
     "--prefix",
-    prefix,
+    languageDir,
     "install",
   ];
   if (proceduresZigSource !== null) {
@@ -246,20 +204,13 @@ async function main(): Promise<void> {
   if (proceduresCSource !== null) {
     consumerArgs.splice(consumerArgs.length - 1, 0, `-Dprocedures-c-source=${proceduresCSource}`);
   }
-  const errMsgCandidate = path.join(languageDir, `${parserType}_error_messages.zig`);
-  if (exists(errMsgCandidate)) {
-    consumerArgs.splice(consumerArgs.length - 1, 0, `-Derror-messages-zig-source=${errMsgCandidate}`);
-  }
+  // config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
+  // build from the parser location.
   await run(zigExecutable(), consumerArgs, { cwd: galleySource });
 
-  const builtLib = path.join(prefix, "lib", libFileName());
-  if (!exists(builtLib)) fatal(`expected library not found at ${builtLib}`);
-
-  // Copy into language dir for cwd-based discovery.
   const dest = path.join(languageDir, libFileName());
-  Deno.copyFileSync(builtLib, dest);
+  if (!exists(dest)) fatal(`expected library not found at ${dest}`);
   console.log(`galley-bindings: built ${dest}; import from ${languageDir} (or set GALLEY_LIBRARY_PATH)`);
-  console.log(`  cache: ${builtLib}`);
 }
 
 main();

@@ -19,20 +19,17 @@
  *   message hooks.
  *
  * The tool generates the parser (--emit-metadata), builds the WASI reactor
- * module through the generic consumer build (`-Dwasm`), and copies
- * libgalley-js-wasm.wasm into the language directory so
+ * module through the generic consumer build (`-Dwasm`) directly next to the grammar so
  * `import { Session } from "galley-js-wasm"` can locate it via cwd or
  * GALLEY_LIBRARY_PATH.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT (existing Galley working tree, wins over fetching),
- *   GALLEY_REPOSITORY, GALLEY_TAG (default main). Without GALLEY_CHECKOUT
- *   the script clones GALLEY_REPOSITORY at GALLEY_TAG, matching the Rust,
- *   Go, and Python consumers.
+ *   GALLEY_CHECKOUT (required: existing Galley working tree). To fetch a
+ *   checkout for convenience, use examples/scripts/fetch-galley.sh — that
+ *   cache is an examples-only convenience, not part of the bindings.
  */
 
 import { spawnSync } from "node:child_process";
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -40,8 +37,6 @@ import { fileURLToPath } from "node:url";
 
 const LIBRARY_NAME = "galley-js-wasm";
 const WASM_TARGET = "wasm32-wasi";
-const DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git";
-const DEFAULT_GALLEY_TAG = "main";
 
 function fatal(msg) {
   console.error(`galley-bindings: ${msg}`);
@@ -66,56 +61,24 @@ function zigExecutable() {
   return process.env.ZIG_EXECUTABLE ?? "zig";
 }
 
-function cacheDir() {
-  const home = os.homedir();
-  let base;
-  if (process.platform === "darwin") base = path.join(home, "Library", "Caches");
-  else if (process.platform === "win32") base = process.env.LOCALAPPDATA ?? os.tmpdir();
-  else base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  const dir = path.join(base, "galley-bindings", "js-wasm");
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function resolveGalley(cacheDirPath) {
-  // GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
-  // into <cache>/galley-src. Mirrors bindings/go/cmd/galley,
-  // bindings/rust/src/build_helper.rs, and galley_bindings.build: a nearby
-  // checkout is not used unless GALLEY_CHECKOUT points at it.
+function resolveGalley() {
+  // GALLEY_CHECKOUT is required. Fetching a checkout into the system cache
+  // is an examples-only convenience (examples/scripts/fetch-galley.sh).
   const checkoutEnv = process.env.GALLEY_CHECKOUT;
-  if (checkoutEnv) {
-    if (!fs.existsSync(path.join(checkoutEnv, "build.zig"))) {
-      fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
-    }
-    return path.resolve(checkoutEnv);
+  if (!checkoutEnv) {
+    fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout (examples/scripts/fetch-galley.sh can fetch one)");
   }
-  const tag = process.env.GALLEY_TAG ?? DEFAULT_GALLEY_TAG;
-  const repository = process.env.GALLEY_REPOSITORY ?? DEFAULT_GALLEY_REPOSITORY;
-  const dir = cacheDirPath ?? cacheDir();
-  const sourceDir = path.join(dir, "galley-src");
-  const stamp = path.join(dir, "galley-tag");
-  let previous = "";
-  try {
-    if (fs.existsSync(stamp)) previous = fs.readFileSync(stamp, "utf-8").trim();
-  } catch {}
-  if (fs.existsSync(sourceDir) && previous === tag) return sourceDir;
-  try {
-    fs.rmSync(sourceDir, { recursive: true, force: true });
-  } catch {}
-  run("git", ["clone", "--depth", "1", "--branch", tag, "--single-branch", "--recurse-submodules=false", repository, sourceDir]);
-  try {
-    fs.writeFileSync(stamp, tag, "utf-8");
-  } catch (e) {
-    fatal(`failed to write tag stamp: ${e.message}`);
+  if (!fs.existsSync(path.join(checkoutEnv, "build.zig"))) {
+    fatal(`GALLEY_CHECKOUT=${checkoutEnv} is not a Galley repository checkout (no build.zig)`);
   }
-  return sourceDir;
+  return path.resolve(checkoutEnv);
 }
 
-function detectParser(languageDir) {
+function findGeneratedParser(languageDir) {
   const hasLL = fs.existsSync(path.join(languageDir, "_ll-parser.zig"));
   const hasLR = fs.existsSync(path.join(languageDir, "_lr-parser.zig"));
-  if (hasLL && !hasLR) return ["_ll-parser.zig", "ll"];
-  if (hasLR && !hasLL) return ["_lr-parser.zig", "lr"];
+  if (hasLL && !hasLR) return "_ll-parser.zig";
+  if (hasLR && !hasLL) return "_lr-parser.zig";
   if (hasLL && hasLR)
     fatal(
       `both _ll-parser.zig and _lr-parser.zig exist in ${languageDir}; one module embeds one parser — split the language dirs`,
@@ -175,7 +138,7 @@ async function main() {
   const languageDir = path.resolve(process.argv[2]);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
 
-  const galleySource = resolveGalley(cacheDir());
+  const galleySource = resolveGalley();
   const cli = path.join(galleySource, "zig-out", "bin", "galley");
   if (!fs.existsSync(cli)) {
     run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: galleySource });
@@ -190,13 +153,8 @@ async function main() {
 
   run(cli, ["--emit-metadata", languageDir]);
 
-  const [parserSource, parserType] = detectParser(languageDir);
+  const parserSource = findGeneratedParser(languageDir);
 
-  const prefix = path.join(
-    cacheDir(),
-    "capi",
-    crypto.createHash("sha256").update(languageDir).digest("hex").slice(0, 16),
-  );
   // JS-native procedures take precedence over C procedures: if a
   // procedures.ts/js exists, generate a wasm dispatch shim and use it
   // instead of the C extern stub. When neither JS nor C implementations
@@ -242,13 +200,13 @@ async function main() {
     "--build-file",
     path.join(galleySource, "bindings/c/consumer/build.zig"),
     `-Dparser-source=${path.join(languageDir, parserSource)}`,
-    `-Dparser-type=${parserType}`,
     `-Dlib-name=${LIBRARY_NAME}`,
     `-Dtarget=${WASM_TARGET}`,
     "-Dwasm",
+    `-Doutput=${wasmFileName()}`,
     "-Doptimize=ReleaseFast",
     "--prefix",
-    prefix,
+    languageDir,
     "install",
   ];
   if (proceduresZigSource !== null) {
@@ -257,20 +215,13 @@ async function main() {
   if (proceduresCSource !== null) {
     consumerArgs.splice(consumerArgs.length - 1, 0, `-Dprocedures-c-source=${proceduresCSource}`);
   }
-  const errMsgCandidate = path.join(languageDir, `${parserType}_error_messages.zig`);
-  if (fs.existsSync(errMsgCandidate)) {
-    consumerArgs.splice(consumerArgs.length - 1, 0, `-Derror-messages-zig-source=${errMsgCandidate}`);
-  }
+  // config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
+  // build from the parser location.
   run(zigExecutable(), consumerArgs, { cwd: galleySource });
 
-  const builtModule = path.join(prefix, "bin", `${LIBRARY_NAME}.wasm`);
-  if (!fs.existsSync(builtModule)) fatal(`expected module not found at ${builtModule}`);
-
-  // Copy into language dir for cwd-based discovery (like the native adapters)
   const dest = path.join(languageDir, wasmFileName());
-  fs.copyFileSync(builtModule, dest);
+  if (!fs.existsSync(dest)) fatal(`expected module not found at ${dest}`);
   console.log(`galley-bindings: built ${dest}; import from ${languageDir} (or set GALLEY_LIBRARY_PATH)`);
-  console.log(`  cache: ${builtModule}`);
 }
 
 main().catch((e) => fatal(e?.message ?? String(e)));

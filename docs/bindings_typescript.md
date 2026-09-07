@@ -38,23 +38,24 @@ The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook
 files next to your grammar (`procedures.ts` for native TypeScript hooks,
 `procedures.c` for legacy C hooks, `procedures.zig`,
-`ll_error_messages.zig`), and copies `libgalley-js-node.{dylib,so}` next
-to your grammar. Import the bindings from that directory:
+`ll_error_messages.zig`), and builds `libgalley-js-node.{dylib,so}` directly
+next to your grammar. Import the bindings from that directory:
 
 ```ts
 import { Session, version, hasAst } from "galley-js-node";
 ```
 
 `ZIG_EXECUTABLE` selects zig. The TypeScript package targets Node 18+.
-`GALLEY_CHECKOUT` uses an existing Galley working tree; otherwise the
-command clones `GALLEY_REPOSITORY` at `GALLEY_TAG` (default `main`),
-matching the Rust, Go, and Python consumers. Regenerate after changing the
-grammar; commit nothing the command generates. One shared library embeds one
-parser — split grammars across language directories exactly like the other
-bindings.
+`GALLEY_CHECKOUT` (required) points at a Galley working tree — for
+convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches
+one into the system cache, but that cache is examples-only, not part of the
+bindings. The library is built directly next to the grammar. Regenerate
+after changing the grammar; commit
+nothing the command generates. One shared library embeds one parser — split
+grammars across language directories exactly like the other bindings.
 
 `GALLEY_LIBRARY_PATH` overrides the discovery of `libgalley-js-node.*`
-when the library lives elsewhere (e.g. in a cache dir).
+when the library lives elsewhere.
 
 ## Performance Notes
 

@@ -130,19 +130,6 @@ interface GalleySymbols {
 
 // --- library discovery -------------------------------------------------
 
-function defaultCacheDir(): string {
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library", "Caches", "galley-bindings", "js-bun", "capi");
-  }
-  if (process.platform === "win32") {
-    const base = process.env.LOCALAPPDATA ?? os.tmpdir();
-    return path.join(base, "galley-bindings", "js-bun", "capi");
-  }
-  const base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  return path.join(base, "galley-bindings", "js-bun", "capi");
-}
-
 function libFileName(base = "galley-js-bun"): string {
   if (process.platform === "darwin") return `lib${base}.dylib`;
   if (process.platform === "win32") return `${base}.dll`;
@@ -163,7 +150,7 @@ export function findLibrary(explicit?: string): string {
   if (process.env.GALLEY_LIBRARY_PATH && exists(process.env.GALLEY_LIBRARY_PATH)) {
     return path.resolve(process.env.GALLEY_LIBRARY_PATH);
   }
-  // 1) cwd / language-dir copies (build.mjs copies lib next to grammar)
+  // 1) file next to the grammar (cwd when running from the language dir)
   const cwdCandidates = [
     path.join(process.cwd(), libFileName()),
     path.join(process.cwd(), "libgalley-js-bun.dylib"),
@@ -171,11 +158,7 @@ export function findLibrary(explicit?: string): string {
   ];
   for (const c of cwdCandidates) if (exists(c)) return c;
 
-  // 2) cache dir (same as build.mjs prefix)
-  const cacheLib = path.join(defaultCacheDir(), "lib", libFileName());
-  if (exists(cacheLib)) return cacheLib;
-
-  // 3) sibling examples/js/bun for development (from dist/, three levels up)
+  // 2) sibling examples/js/bun for development (from dist/, three levels up)
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const devCandidates = [
@@ -187,8 +170,8 @@ export function findLibrary(explicit?: string): string {
     // ignore URL parsing errors in bundled contexts
   }
 
-  // fallback: let dlopen error with cache path
-  return cacheLib;
+  // fallback: let dlopen error with the grammar-adjacent path
+  return path.join(process.cwd(), libFileName());
 }
 
 // --- loader ------------------------------------------------------------

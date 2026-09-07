@@ -145,11 +145,13 @@ fn main() {
 }
 ```
 
-The helper resolves Galley (`GALLEY_CHECKOUT` env var wins; otherwise it
-shallow-clones `GALLEY_REPOSITORY` at `GALLEY_TAG`, skipping benchmarking
-submodules), builds the generator CLI, generates the parser from your
-grammar's `ll.grm`, compiles the C-API shared library,
-and emits the cargo directives that link your binary against it.
+The helper requires `GALLEY_CHECKOUT` (a Galley working tree) — for
+convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches
+one into the system cache, but that cache is examples-only, not part of the
+bindings. It builds the generator CLI, generates the parser from your
+grammar's `ll.grm`, compiles the C-API shared library directly next to the
+grammar, and emits the cargo directives
+that link your binary against it.
 
 Generation-time options come from
 [`config.zig`](/configuration) in the language directory — edit it and

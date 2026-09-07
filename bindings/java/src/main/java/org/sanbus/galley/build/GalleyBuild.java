@@ -3,7 +3,6 @@ package org.sanbus.galley.build;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -19,17 +18,17 @@ import java.util.regex.Pattern;
  * the other bindings.
  *
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
- *   GALLEY_CHECKOUT, GALLEY_REPOSITORY, GALLEY_TAG (default main).
+ *   GALLEY_CHECKOUT (required: existing Galley working tree).
  *
  * Generates parser (--emit-metadata), builds shared library through generic
- * consumer build, and copies libgalley-java.* into language dir so
- * Session can locate it via cwd or GALLEY_LIBRARY_PATH.
+ * consumer build directly next to the grammar, so Session can locate it via
+ * cwd or GALLEY_LIBRARY_PATH. To fetch a checkout for convenience, use
+ * examples/scripts/fetch-galley.sh — that cache is an examples-only
+ * convenience, not part of the bindings.
  */
 public final class GalleyBuild {
 
     private static final String LIBRARY_NAME = "galley-java";
-    private static final String DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git";
-    private static final String DEFAULT_GALLEY_TAG = "main";
 
     private GalleyBuild() {}
 
@@ -80,65 +79,23 @@ public final class GalleyBuild {
         return (v != null && !v.isEmpty()) ? v : "zig";
     }
 
-    private static Path cacheDir() {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        String home = System.getProperty("user.home", "");
-        Path base;
-        if (os.contains("mac")) {
-            base = Paths.get(home, "Library", "Caches");
-        } else if (os.contains("win")) {
-            String env = System.getenv("LOCALAPPDATA");
-            base = (env != null && !env.isEmpty()) ? Paths.get(env) : Paths.get(System.getProperty("java.io.tmpdir"));
-        } else {
-            String env = System.getenv("XDG_CACHE_HOME");
-            base = (env != null && !env.isEmpty()) ? Paths.get(env) : Paths.get(home, ".cache");
-        }
-        Path dir = base.resolve("galley-bindings").resolve("java");
-        try { Files.createDirectories(dir); } catch (IOException e) { fatal("failed to create cache dir: " + e.getMessage()); }
-        return dir;
-    }
-
-    private static Path resolveGalley(Path cacheDirPath) {
+    private static Path resolveGalley() {
         String checkoutEnv = System.getenv("GALLEY_CHECKOUT");
-        if (checkoutEnv != null && !checkoutEnv.isEmpty()) {
-            Path checkout = Paths.get(checkoutEnv);
-            if (!Files.exists(checkout.resolve("build.zig"))) {
-                fatal("GALLEY_CHECKOUT=" + checkout + " is not a Galley repository checkout (no build.zig)");
-            }
-            return checkout.toAbsolutePath();
+        if (checkoutEnv == null || checkoutEnv.isEmpty()) {
+            fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout (examples/scripts/fetch-galley.sh can fetch one)");
         }
-        String tag = System.getenv("GALLEY_TAG");
-        if (tag == null || tag.isEmpty()) tag = DEFAULT_GALLEY_TAG;
-        String repository = System.getenv("GALLEY_REPOSITORY");
-        if (repository == null || repository.isEmpty()) repository = DEFAULT_GALLEY_REPOSITORY;
-        Path dir = cacheDirPath != null ? cacheDirPath : cacheDir();
-        Path sourceDir = dir.resolve("galley-src");
-        Path stamp = dir.resolve("galley-tag");
-        String previous = "";
-        try {
-            if (Files.exists(stamp)) previous = Files.readString(stamp, StandardCharsets.UTF_8).trim();
-        } catch (IOException ignored) {}
-        if (Files.exists(sourceDir) && previous.equals(tag)) return sourceDir;
-        try {
-            if (Files.exists(sourceDir)) deleteRecursive(sourceDir);
-        } catch (IOException ignored) {}
-        run(Arrays.asList("git", "clone", "--depth", "1", "--branch", tag, "--single-branch", "--recurse-submodules=false", repository, sourceDir.toString()), null);
-        try { Files.writeString(stamp, tag, StandardCharsets.UTF_8); } catch (IOException e) { fatal("failed to write tag stamp: " + e.getMessage()); }
-        return sourceDir;
+        Path checkout = Paths.get(checkoutEnv);
+        if (!Files.exists(checkout.resolve("build.zig"))) {
+            fatal("GALLEY_CHECKOUT=" + checkout + " is not a Galley repository checkout (no build.zig)");
+        }
+        return checkout.toAbsolutePath();
     }
 
-    private static void deleteRecursive(Path p) throws IOException {
-        if (!Files.exists(p)) return;
-        Files.walk(p).sorted(Comparator.reverseOrder()).forEach(path -> {
-            try { Files.delete(path); } catch (IOException ignored) {}
-        });
-    }
-
-    private static String[] detectParser(Path languageDir) {
+    private static String findGeneratedParser(Path languageDir) {
         boolean hasLL = Files.exists(languageDir.resolve("_ll-parser.zig"));
         boolean hasLR = Files.exists(languageDir.resolve("_lr-parser.zig"));
-        if (hasLL && !hasLR) return new String[]{"_ll-parser.zig", "ll"};
-        if (!hasLL && hasLR) return new String[]{"_lr-parser.zig", "lr"};
+        if (hasLL && !hasLR) return "_ll-parser.zig";
+        if (!hasLL && hasLR) return "_lr-parser.zig";
         if (hasLL && hasLR) fatal("both _ll-parser.zig and _lr-parser.zig exist in " + languageDir + "; one library embeds one parser — split the language dirs");
         fatal("generation produced no parser in " + languageDir);
         return null;
@@ -210,8 +167,7 @@ public final class GalleyBuild {
         Path languageDir = Paths.get(args[0]).toAbsolutePath().normalize();
         if (!Files.isRegularFile(languageDir.resolve("ll.grm"))) fatal(languageDir + " does not contain ll.grm");
 
-        Path cache = cacheDir();
-        Path galleySource = resolveGalley(cache);
+        Path galleySource = resolveGalley();
         Path cli = galleySource.resolve("zig-out").resolve("bin").resolve("galley");
         if (!Files.exists(cli)) {
             run(Arrays.asList(zigExecutable(), "build", "-Doptimize=ReleaseFast", "install"), galleySource);
@@ -224,20 +180,9 @@ public final class GalleyBuild {
 
         run(Arrays.asList(cli.toString(), "--emit-metadata", languageDir.toString()), null);
 
-        String[] parserInfo = detectParser(languageDir);
-        String parserSource = parserInfo[0];
-        String parserType = parserInfo[1];
-
-        // Compute prefix hash for cache
-        String hash;
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(languageDir.toString().getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 8; i++) sb.append(String.format("%02x", digest[i]));
-            hash = sb.toString();
-        } catch (Exception e) { hash = "default"; }
-        Path prefix = cache.resolve("capi").resolve(hash);
+        // One library embeds one parser; locate the file generation produced.
+        // The family is inferred by the consumer build from the filename.
+        String parserSource = findGeneratedParser(languageDir);
 
         Path javaProceduresFile = findJavaProceduresFile(languageDir);
         String proceduresZigSource = null;
@@ -268,10 +213,10 @@ public final class GalleyBuild {
                 zigExecutable(), "build",
                 "--build-file", galleySource.resolve("bindings").resolve("c").resolve("consumer").resolve("build.zig").toString(),
                 "-Dparser-source=" + languageDir.resolve(parserSource).toString(),
-                "-Dparser-type=" + parserType,
                 "-Dlib-name=" + LIBRARY_NAME,
+                "-Doutput=" + libFileName(LIBRARY_NAME),
                 "-Doptimize=ReleaseFast",
-                "--prefix", prefix.toString(),
+                "--prefix", languageDir.toString(),
                 "install"
         ));
         // Insert procedures before "install" arg (last)
@@ -284,17 +229,12 @@ public final class GalleyBuild {
             consumerArgs.add(insertPos, "-Dprocedures-c-source=" + proceduresCSource);
             insertPos++;
         }
-        Path errMsgCandidate = languageDir.resolve(parserType + "_error_messages.zig");
-        if (Files.isRegularFile(errMsgCandidate)) {
-            consumerArgs.add(insertPos, "-Derror-messages-zig-source=" + errMsgCandidate.toString());
-        }
+        // config.zig and {ll,lr}_error_messages.zig are inferred by the
+        // consumer build from the parser location.
         run(consumerArgs, galleySource);
 
-        Path builtLib = prefix.resolve("lib").resolve(libFileName(LIBRARY_NAME));
-        if (!Files.exists(builtLib)) fatal("expected library not found at " + builtLib);
         Path dest = languageDir.resolve(libFileName(LIBRARY_NAME));
-        try { Files.copy(builtLib, dest, StandardCopyOption.REPLACE_EXISTING); } catch (IOException e) { fatal("failed to copy library: " + e.getMessage()); }
+        if (!Files.exists(dest)) fatal("expected library not found at " + dest);
         System.out.println("galley-bindings: built " + dest + "; import from " + languageDir + " (or set GALLEY_LIBRARY_PATH)");
-        System.out.println("  cache: " + builtLib);
     }
 }

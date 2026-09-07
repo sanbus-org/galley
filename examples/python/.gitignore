@@ -15,5 +15,7 @@
 /metadata.json
 /galley.*.so
 /galley.pyi
+/libgalley-python.*
+/benchmark/libgalley-python.*
 /*.egg-info/
 /.venv/

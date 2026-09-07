@@ -5,6 +5,8 @@
 /benchmark/_lr-parser.zig
 /benchmark/procedures.zig
 /benchmark/metadata.json
+/benchmark/libgalley-rust.*
 
 /target/
 /metadata.json
+/libgalley-rust.*

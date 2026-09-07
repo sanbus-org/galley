@@ -31,9 +31,9 @@ GALLEY_CHECKOUT=/path/to/galley bunx galley-js-bun .
 bun demo.ts
 ```
 
-The build generates the parser (`--emit-metadata`), compiles the shared
-library through Galley's generic consumer build file, and copies
-`libgalley-js-bun.{dylib,so}` next to your grammar. Import the bindings
+The build generates the parser (`--emit-metadata`) and compiles the shared
+library through Galley's generic consumer build file directly next to your
+grammar. Import the bindings
 from that directory:
 
 ```ts

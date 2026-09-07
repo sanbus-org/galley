@@ -36,11 +36,13 @@ $ go build .
 $ ./my-parser-consumer
 ```
 
-`gen` resolves Galley exactly like the Rust build helper:
-`GALLEY_CHECKOUT` (existing working tree) wins over `GALLEY_REPOSITORY` +
-`GALLEY_TAG` (default `main`); `ZIG_EXECUTABLE` selects zig. It generates
-the parser, builds the shared library, detects optional hook files next to
-your grammar (`procedures.go`, `ll_error_messages.zig`), and emits
+`gen` requires `GALLEY_CHECKOUT` (a Galley working tree);
+`ZIG_EXECUTABLE` selects zig. For convenience,
+`GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the
+system cache, but that cache is examples-only, not part of the bindings.
+It generates the parser, builds the shared library directly next to the
+grammar, detects optional hook files next
+to your grammar (`procedures.go`, `ll_error_messages.zig`), and emits
 `<language-dir>/galley/galley.go` — a generated cgo bridge bound
 to this library. Regenerate after changing the grammar; commit nothing it
 generates.

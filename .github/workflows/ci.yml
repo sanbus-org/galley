@@ -323,30 +323,52 @@ jobs:
             exit 1
           }
 
-      - name: Galley checkout resolution is consistent across bindings
+      - name: Galley checkout contract is core-minimal, fetch is examples-only
         run: |
-          check() {
+          check_core() {
             file="$1"
-            for var in GALLEY_CHECKOUT GALLEY_REPOSITORY GALLEY_TAG ZIG_EXECUTABLE; do
+            for var in GALLEY_CHECKOUT ZIG_EXECUTABLE; do
               if ! grep -q "$var" "$file"; then
-                echo "::error::$file missing $var handling (Galley checkout contract)"
+                echo "::error::$file missing $var handling (core requires GALLEY_CHECKOUT)"
                 exit 1
               fi
             done
-            echo "Galley fetch contract present in $file"
+            for banned in GALLEY_REPOSITORY GALLEY_TAG galley-src galley-tag UserCacheDir cacheDir Library/Caches XDG_CACHE_HOME; do
+              if grep -q "$banned" "$file"; then
+                echo "::error::$file mentions $banned (fetching and per-grammar cache are examples-only, not core)"
+                exit 1
+              fi
+            done
+            if ! grep -q "fetch-galley.sh" "$file"; then
+              echo "::error::$file does not point at examples/scripts/fetch-galley.sh (core must document the examples-only fetch)"
+              exit 1
+            fi
+            echo "Core contract present in $file"
           }
-          check bindings/go/cmd/galley/main.go
-          check bindings/rust/src/build_helper.rs
-          check bindings/python/galley_bindings/build.py
-          check bindings/js/node/build.mjs
-          check bindings/js/deno/build.ts
-          check bindings/js/bun/build.mjs
-          check bindings/js/wasm/build.mjs
-          check bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
+          check_core bindings/go/cmd/galley/main.go
+          check_core bindings/rust/src/build_helper.rs
+          check_core bindings/python/galley_bindings/build.py
+          check_core bindings/js/node/build.mjs
+          check_core bindings/js/deno/build.ts
+          check_core bindings/js/bun/build.mjs
+          check_core bindings/js/wasm/build.mjs
+          check_core bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
           for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
-            check "$f"
+            for var in GALLEY_CHECKOUT GALLEY_REPOSITORY GALLEY_TAG ZIG_EXECUTABLE; do
+              if ! grep -q "$var" "$f"; then
+                echo "::error::$f missing $var handling (examples own the fetch)"
+                exit 1
+              fi
+            done
+            echo "Examples fetch contract present in $f"
           done
-          echo "Galley checkout contract enforced in all bindings"
+          for var in GALLEY_REPOSITORY GALLEY_TAG; do
+            if ! grep -q "$var" examples/scripts/fetch-galley.sh; then
+              echo "::error::examples/scripts/fetch-galley.sh missing $var handling"
+              exit 1
+            fi
+          done
+          echo "Galley checkout contract enforced: core requires checkout, examples own the fetch"
 
       - name: JavaScript packages share one lockstep version
         run: python3 scripts/check_js_versions.py
@@ -408,9 +430,8 @@ jobs:
           ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
           zig build --build-file bindings/c/consumer/build.zig \
             "-Dparser-source=$work/_lr-parser.zig" \
-            "-Dparser-type=lr" \
-            -Dlib-name=keyvalue-lr -Doptimize=ReleaseFast \
-            --prefix "$work/out" install
+            -Dlib-name=keyvalue-lr -Doutput=libkeyvalue-lr.so -Doptimize=ReleaseFast \
+            --prefix "$work" install
           cat > "$work/driver.c" <<'EOF'
           #include <galley.h>
           #include <stdio.h>
@@ -436,8 +457,8 @@ jobs:
               return 0;
           }
           EOF
-          cc "$work/driver.c" -I"$work/out/include" -L"$work/out/lib" \
-            -lkeyvalue-lr -Wl,-rpath,"$work/out/lib" -o "$work/driver"
+          cc "$work/driver.c" -I"bindings/c" -L"$work" \
+            -lkeyvalue-lr -Wl,-rpath,"$work" -o "$work/driver"
           "$work/driver"
 
       - name: Example output is identical across bindings
@@ -480,7 +501,7 @@ jobs:
           zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
           cd ../..
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+          GALLEY_CHECKOUT="$PWD" java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo >/tmp/out-java.txt 2>/tmp/err-java.txt
 

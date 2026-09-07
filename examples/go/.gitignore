@@ -4,12 +4,14 @@
 /demo/procedures_go.zig
 /demo/metadata.json
 /demo/galley/
+/demo/libgalley-go.*
 /benchmark/_ll-parser.zig
 /benchmark/_lr-parser.zig
 /benchmark/procedures.zig
 /benchmark/procedures_go.zig
 /benchmark/metadata.json
 /benchmark/galley/
+/benchmark/libgalley-go.*
 
 /galley-go-example
 /galley-go-benchmark
