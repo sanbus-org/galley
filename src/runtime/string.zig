@@ -39,6 +39,59 @@ pub fn fmtString(string: []const u8) StringFormatter {
     return .{ .string = string };
 }
 
+/// Display names for the synthetic control-byte terminals, which never occur
+/// as user-typable input: end of input and the indentation pair. Exact
+/// full-token match only, so real content bytes are never renamed.
+/// A future per-grammar table plugs in here; until then these three are fixed.
+pub fn tokenDisplayName(token: []const u8) ?[]const u8 {
+    if (token.len != 1) return null;
+    return switch (token[0]) {
+        0x00 => "End of input",
+        0x01 => "Indent",
+        0x02 => "Dedent",
+        else => null,
+    };
+}
+
+const TokenFormatter = struct {
+    token: []const u8,
+
+    pub fn format(
+        self: @This(),
+        writer: *std.Io.Writer,
+    ) !void {
+        if (tokenDisplayName(self.token)) |name| {
+            try writer.writeAll(name);
+        } else {
+            try writeHumanReadableString(self.token, writer);
+        }
+    }
+};
+
+/// Render a terminal token for user-facing output: synthetic terminals show
+/// their display name, everything else renders exactly as before.
+pub fn fmtToken(token: []const u8) TokenFormatter {
+    return .{ .token = token };
+}
+
+test "synthetic terminals render display names" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+
+    try output.writer.print("{f}", .{fmtToken("\x00")});
+    try output.writer.print("|{f}", .{fmtToken("\x01")});
+    try output.writer.print("|{f}", .{fmtToken("\x02")});
+    try std.testing.expectEqualStrings("End of input|Indent|Dedent", output.written());
+}
+
+test "token formatter leaves other bytes exactly as before" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+
+    try output.writer.print("{f}|{f}|{f}", .{ fmtToken("{"), fmtToken("\x03"), fmtToken("a\x00b") });
+    try std.testing.expectEqualStrings("{|\\x03|a\\x00b", output.written());
+}
+
 test "string formatter preserves valid Unicode and escapes unsafe bytes" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();

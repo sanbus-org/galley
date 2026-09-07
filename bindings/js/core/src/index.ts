@@ -12,6 +12,7 @@ import { GalleyError, MissingArtifactError } from "./errors.ts";
 import { resolveArtifact, artifactFileName, wasmArtifactFileName } from "./artifact.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
+import { displayTokenName } from "./diagnostic.ts";
 import type { FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler } from "./port.ts";
 import {
   installProcedure,
@@ -35,6 +36,7 @@ export {
   resolveArtifact,
   artifactFileName,
   wasmArtifactFileName,
+  displayTokenName,
   ProcedureArguments,
   installProcedure,
   installProcedures,
