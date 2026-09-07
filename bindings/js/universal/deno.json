@@ -1,0 +1,22 @@
+{
+  "imports": {
+    "galley-js-core": "../core/src/index.ts",
+    "galley-js-node": "../node/src/index.ts",
+    "galley-js-bun": "../bun/src/index.ts",
+    "galley-js-deno": "../deno/src/index.ts",
+    "galley-js-wasm": "../wasm/src/index.ts"
+  },
+  "tasks": {
+    "check": "deno check src/index.ts",
+    "test": "deno check src/index.ts && deno run --no-check --allow-ffi --allow-read --allow-write --allow-run --allow-env tests/test_loader_deno.ts"
+  },
+  "compilerOptions": {
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.window"
+    ]
+  }
+}
