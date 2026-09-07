@@ -111,24 +111,6 @@ def resolve_galley() -> Path:
     return checkout
 
 
-# find_generated_parser locates the parser file generation produced (one
-# library embeds one parser; both families present is ambiguous). The parser
-# family itself is inferred by the consumer build from the filename.
-def find_generated_parser(language_dir: Path) -> str:
-    has_ll = (language_dir / "_ll-parser.zig").exists()
-    has_lr = (language_dir / "_lr-parser.zig").exists()
-    if has_ll and not has_lr:
-        return "_ll-parser.zig"
-    if has_lr and not has_ll:
-        return "_lr-parser.zig"
-    if has_ll and has_lr:
-        fatal(
-            f"both _ll-parser.zig and _lr-parser.zig exist in {language_dir}; "
-            "one library embeds one parser — split the language dirs"
-        )
-    fatal(f"generation produced no parser in {language_dir}")
-
-
 def find_python_procedures_file(language_dir: Path) -> Path | None:
     candidate = language_dir / "procedures.py"
     if candidate.is_file():
@@ -267,7 +249,9 @@ def main() -> None:
 
     run([cli, "--emit-metadata", language_dir])
 
-    parser_source = find_generated_parser(language_dir)
+    # One library embeds one parser; the consumer build locates the file
+    # generation produced from -Dlanguage-dir and infers the family from
+    # the filename.
     procedure_hooks = read_procedure_hooks(language_dir)
 
     # Python-native procedures take precedence over C procedures: if a
@@ -316,7 +300,7 @@ def main() -> None:
         "build",
         "--build-file",
         galley_source / "bindings" / "c" / "consumer" / "build.zig",
-        f"-Dparser-source={language_dir / parser_source}",
+        f"-Dlanguage-dir={language_dir}",
         f"-Dlib-name={LIBRARY_NAME}",
         f"-Doutput={library_file_name()}",
         "-Doptimize=ReleaseFast",

@@ -8,9 +8,10 @@
 //! when no explicit flag is given: `config.zig`, `procedures.zig`, and
 //! `{ll,lr}_error_messages.zig` next to the parser are used automatically
 //! when present, with language-agnostic templates as fallback. The parser
-//! family is likewise inferred from the parser filename (`_ll-parser.zig`
-//! vs `_lr-parser.zig`); pass `-Dparser-type` only for non-standard
-//! filenames. A C/C++
+//! itself is likewise located from `-Dlanguage-dir` (`_ll-parser.zig` vs
+//! `_lr-parser.zig` in that dir; none or both is an error) and its family
+//! inferred from the filename; pass `-Dparser-source` (and `-Dparser-type`
+//! only for non-standard filenames) for non-standard layouts. A C/C++
 //! procedure implementation (`procedures.c` or `procedures.cpp` next to the
 //! parser) is likewise compiled in when present. Explicit flags override
 //! inference and are for non-standard layouts only — the reference
@@ -58,8 +59,29 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const parser_source = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (required)") orelse
+    const parser_source_option = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (default: discovered from -Dlanguage-dir)");
+    const language_dir_option = b.option([]const u8, "language-dir", "Language directory containing the generated parser (_ll-parser.zig or _lr-parser.zig; one library embeds one parser)");
+    // One library embeds one parser; locate the file generation produced
+    // (both present is ambiguous and unsupported). An explicit
+    // -Dparser-source wins; otherwise discover from -Dlanguage-dir.
+    const parser_source = parser_source_option orelse blk: {
+        const language_dir = language_dir_option orelse {
+            std.log.err("pass either -Dparser-source=<file> or -Dlanguage-dir=<dir>: one library embeds one parser", .{});
+            return error.MissingParserSource;
+        };
+        const ll_candidate = b.pathJoin(&.{ language_dir, "_ll-parser.zig" });
+        const lr_candidate = b.pathJoin(&.{ language_dir, "_lr-parser.zig" });
+        const has_ll = exists(b.graph.io, ll_candidate);
+        const has_lr = exists(b.graph.io, lr_candidate);
+        if (has_ll and !has_lr) break :blk ll_candidate;
+        if (has_lr and !has_ll) break :blk lr_candidate;
+        if (has_ll and has_lr) {
+            std.log.err("both _ll-parser.zig and _lr-parser.zig exist in {s}; one library embeds one parser — split the language dirs", .{language_dir});
+            return error.AmbiguousParser;
+        }
+        std.log.err("generation produced no parser in {s}", .{language_dir});
         return error.MissingParserSource;
+    };
     const parser_type_option = b.option([]const u8, "parser-type", "Parser family: ll or lr (default: inferred from the parser filename, _ll-parser.zig vs _lr-parser.zig)");
     const parser_basename = std.fs.path.basename(parser_source);
     const inferred_type: ?[]const u8 = if (std.mem.indexOf(u8, parser_basename, "_lr-parser") != null)
@@ -98,7 +120,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const parser_dir = std.fs.path.dirname(parser_source) orelse ".";
+    const parser_dir = if (parser_source_option == null and language_dir_option != null)
+        language_dir_option.?
+    else
+        std.fs.path.dirname(parser_source) orelse ".";
     const language_dir: std.Build.LazyPath = .{ .cwd_relative = parser_dir };
     const procedures_file: std.Build.LazyPath = if (procedures_zig_source) |src|
         .{ .cwd_relative = src }

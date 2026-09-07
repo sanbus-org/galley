@@ -74,31 +74,6 @@ func mustAbsolute(path string) string {
 	return absolute
 }
 
-// findGeneratedParser locates the parser file generation produced (one
-// library embeds one parser; both families present is ambiguous). The family
-// is inferred by the consumer build from the filename.
-func findGeneratedParser(languageDir string) (parserSource string, err error) {
-	var hasLL, hasLR bool
-	if _, err := os.Stat(filepath.Join(languageDir, "_ll-parser.zig")); err == nil {
-		hasLL = true
-	}
-	if _, err := os.Stat(filepath.Join(languageDir, "_lr-parser.zig")); err == nil {
-		hasLR = true
-	}
-	switch {
-	case hasLL && !hasLR:
-		return "_ll-parser.zig", nil
-	case hasLR && !hasLL:
-		return "_lr-parser.zig", nil
-	case hasLL && hasLR:
-		return "", fmt.Errorf(
-			"both _ll-parser.zig and _lr-parser.zig exist in %s; one library embeds one parser — split the language dirs",
-			languageDir)
-	default:
-		return "", fmt.Errorf("generation produced no parser in %s", languageDir)
-	}
-}
-
 // resolveGalley returns the Galley checkout from GALLEY_CHECKOUT, which is
 // required. Fetching a checkout into the system cache is an examples-only
 // convenience (examples/scripts/fetch-galley.sh), not part of the bindings.
@@ -155,14 +130,9 @@ func main() {
 	generate := exec.Command(cli, "--emit-metadata", languageDir)
 	run(generate)
 
-	// One library embeds one parser; locate the file generation produced
-	// (both present is ambiguous and unsupported). The family is inferred
-	// by the consumer build from the filename.
-	parserSource, err := findGeneratedParser(languageDir)
-	if err != nil {
-		fatal("%v", err)
-	}
-
+	// One library embeds one parser; the consumer build locates the file
+	// generation produced from -Dlanguage-dir and infers the family from
+	// the filename.
 	// Procedure hooks are written in Go: procedures.go next to the grammar
 	// declares the exported entry points compiled into the consumer binary
 	// itself. This tool never ships Go code inside the shared library —
@@ -202,7 +172,7 @@ func main() {
 
 	consumerBuild := exec.Command(zigExecutable(), "build",
 		"--build-file", filepath.Join(galleySource, "bindings", "c", "consumer", "build.zig"),
-		"-Dparser-source="+filepath.Join(languageAbsolute, parserSource),
+		"-Dlanguage-dir="+languageAbsolute,
 		"-Dlib-name="+libName,
 		"-Doutput="+libraryFileName(),
 		"-Doptimize=ReleaseFast",

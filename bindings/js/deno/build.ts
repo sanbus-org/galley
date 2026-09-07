@@ -97,20 +97,6 @@ function awaitRun(cmd: string, args: string[]): void {
   if (!out.success) fatal(`command failed: ${cmd} ${args.join(" ")} (exit ${out.code})`);
 }
 
-function findGeneratedParser(languageDir: string): string {
-  const hasLL = exists(path.join(languageDir, "_ll-parser.zig"));
-  const hasLR = exists(path.join(languageDir, "_lr-parser.zig"));
-  if (hasLL && !hasLR) return "_ll-parser.zig";
-  if (hasLR && !hasLL) return "_lr-parser.zig";
-  if (hasLL && hasLR) {
-    fatal(
-      `both _ll-parser.zig and _lr-parser.zig exist in ${languageDir}; one library embeds one parser — split the language dirs`,
-    );
-  }
-  fatal(`generation produced no parser in ${languageDir}`);
-  throw new Error("unreachable");
-}
-
 function libFileName(base = LIBRARY_NAME): string {
   if (Deno.build.os === "darwin") return `lib${base}.dylib`;
   if (Deno.build.os === "windows") return `${base}.dll`;
@@ -150,8 +136,9 @@ async function main(): Promise<void> {
 
   await run(cli, ["--emit-metadata", languageDir]);
 
-  const parserSource = findGeneratedParser(languageDir);
-
+  // One library embeds one parser; the consumer build locates the file
+  // generation produced from -Dlanguage-dir and infers the family from
+  // the filename.
   // JS-native procedures take precedence over C procedures: if a
   // procedures.ts/js exists, generate a JS dispatch shim and use it
   // instead of the C extern stub. When neither JS nor C implementations
@@ -190,7 +177,7 @@ async function main(): Promise<void> {
     "build",
     "--build-file",
     path.join(galleySource, "bindings/c/consumer/build.zig"),
-    `-Dparser-source=${path.join(languageDir, parserSource)}`,
+    `-Dlanguage-dir=${languageDir}`,
     `-Dlib-name=${LIBRARY_NAME}`,
     `-Doutput=${libFileName()}`,
     "-Doptimize=ReleaseFast",

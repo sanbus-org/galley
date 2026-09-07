@@ -1,8 +1,9 @@
 //! C application-binary interface for a generated Galley parser.
 //!
 //! Built as a shared library through `bindings/c/consumer/build.zig` (the
-//! external entry point: pass the generated parser source with
-//! `-Dparser-source` and the library name with `-Dlib-name`). The C header
+//! external entry point: pass the language directory with `-Dlanguage-dir`
+//! (or the generated parser source with `-Dparser-source`) and the library
+//! name with `-Dlib-name`). The C header
 //! shipped next to the library is `bindings/c/galley.h`; the examples in
 //! `examples/c` and `examples/cpp` are reference consumers.
 //!

@@ -158,18 +158,15 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     let procedures_zig = language_dir.join("procedures.zig");
     let procedures_rs = language_dir.join("procedures.rs");
 
-    // One library embeds one parser; locate the file generation produced
-    // (both present is ambiguous and unsupported). The family is inferred
-    // by the consumer build from the filename.
-    let parser_source = match find_generated_parser(
-        generated_parser_exists(language_dir, "_ll-parser.zig"),
-        generated_parser_exists(language_dir, "_lr-parser.zig"),
-    ) {
-        Ok(detected) => detected,
-        Err(message) => panic!("{}: {}", language_dir.display(), message),
-    };
-    let generated_parser = language_dir.join(parser_source);
-    println!("cargo:rerun-if-changed={}", generated_parser.display());
+    // One library embeds one parser; the consumer build locates the file
+    // generation produced from the language dir and infers the family
+    // from the filename.
+    for candidate in ["_ll-parser.zig", "_lr-parser.zig"] {
+        let path = language_dir.join(candidate);
+        if path.exists() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
     for candidate in ["ll_error_messages.zig", "lr_error_messages.zig"] {
         let path = language_dir.join(candidate);
         if path.exists() {
@@ -187,15 +184,12 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     } else {
         "libgalley-rust.so"
     };
-    let generated_absolute = generated_parser
-        .canonicalize()
-        .unwrap_or_else(|_| generated_parser.clone());
     run_or_panic({
         let mut c = Command::new(zig_executable());
         c.arg("build")
             .arg("--build-file")
             .arg(galley_source.join("bindings/c/consumer/build.zig"))
-            .arg(format!("-Dparser-source={}", generated_absolute.display()))
+            .arg(format!("-Dlanguage-dir={}", language_absolute.display()))
             .arg("-Dlib-name=galley-rust")
             .arg(format!("-Doutput={library_file}"))
             .arg("-Doptimize=ReleaseFast")
@@ -266,49 +260,4 @@ fn compile_procedures_archive(source: &Path, out_dir: &Path) -> PathBuf {
         c
     });
     archive
-}
-
-fn generated_parser_exists(language_dir: &Path, file_name: &str) -> bool {
-    language_dir.join(file_name).exists()
-}
-
-/// One library embeds one parser; locate the file generation produced.
-/// Returns the generated source file name. The family is inferred by the
-/// consumer build from the filename.
-fn find_generated_parser(has_ll: bool, has_lr: bool) -> Result<&'static str, String> {
-    match (has_ll, has_lr) {
-        (true, false) => Ok("_ll-parser.zig"),
-        (false, true) => Ok("_lr-parser.zig"),
-        (false, false) => Err("generation produced no parser".to_string()),
-        (true, true) => Err(
-            "both _ll-parser.zig and _lr-parser.zig exist; one library embeds \
-             one parser — split the language dirs"
-                .to_string(),
-        ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::find_generated_parser;
-
-    #[test]
-    fn finds_ll_parser() {
-        assert_eq!(find_generated_parser(true, false), Ok("_ll-parser.zig"));
-    }
-
-    #[test]
-    fn finds_lr_parser() {
-        assert_eq!(find_generated_parser(false, true), Ok("_lr-parser.zig"));
-    }
-
-    #[test]
-    fn rejects_missing_parser() {
-        assert!(find_generated_parser(false, false).is_err());
-    }
-
-    #[test]
-    fn rejects_ambiguous_parsers() {
-        assert!(find_generated_parser(true, true).is_err());
-    }
 }
