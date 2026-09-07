@@ -104,7 +104,8 @@ procedures already import `galley`, and that cycle would not compile. A
 separate hooks package still works if `main` imports it so the
 `//export`ed symbols stay in the binary.
 
-Mechanically, gen reads the grammar's generated hook list and produces a
+Mechanically, gen reads the generator's hook list (`procedures` in
+metadata.json) and produces a
 Zig shim module containing one nullable function-pointer slot per hook;
 your binary's init registers each `//export`ed address into its slot. The
 parser calls through those slots directly, so hook code executes in *your*

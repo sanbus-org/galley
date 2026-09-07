@@ -170,7 +170,7 @@ async function main(): Promise<void> {
     }
     console.error(`galley-bindings: using JS procedures from ${jsProceduresFile}`);
     const shimPath = path.join(languageDir, "procedures_js.zig");
-    emitJsProcedureShim(path.join(languageDir, "procedures.zig"), shimPath);
+    emitJsProcedureShim(path.join(languageDir, "metadata.json"), shimPath);
     proceduresZigSource = shimPath;
   } else if (hasCProcedures) {
     if (exists(path.join(languageDir, "procedures.zig"))) proceduresZigSource = path.join(languageDir, "procedures.zig");
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
   } else {
     if (exists(path.join(languageDir, "procedures.zig"))) {
       const shimPath = path.join(languageDir, "procedures_js.zig");
-      emitJsProcedureShim(path.join(languageDir, "procedures.zig"), shimPath);
+      emitJsProcedureShim(path.join(languageDir, "metadata.json"), shimPath);
       proceduresZigSource = shimPath;
     }
   }
