@@ -13,7 +13,7 @@ import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { resolveArtifact } from "galley-js-core";
+import { resolveArtifact, artifactFileName } from "galley-js-core";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
@@ -136,9 +136,7 @@ const BUILD_HINT =
   `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
 
 export function libFileName(base = "galley-js-bun"): string {
-  if (process.platform === "darwin") return `lib${base}.dylib`;
-  if (process.platform === "win32") return `${base}.dll`;
-  return `lib${base}.so`;
+  return artifactFileName(base, process.platform);
 }
 
 function exists(candidate: string): boolean {
@@ -151,7 +149,6 @@ function exists(candidate: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  // The decision lives in core; this adapter passes its host access.
   return resolveArtifact(explicit, {
     getEnv: (name) => process.env[name],
     resolvePath: (candidate) => path.resolve(candidate),

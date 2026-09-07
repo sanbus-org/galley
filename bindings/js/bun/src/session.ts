@@ -8,8 +8,8 @@
 
 import { Session as CoreSession } from "galley-js-core";
 import type { SessionOptions } from "galley-js-core";
-import { getBunPort } from "./ffi.js";
-import { ensureDispatchFor } from "./dispatch.js";
+import { getBunPort } from "./ffi.ts";
+import { ensureDispatchFor } from "./dispatch.ts";
 
 export type { SessionOptions };
 

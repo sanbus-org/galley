@@ -34,6 +34,7 @@
 
 import * as path from "node:path";
 import { emitJsProcedureShim } from "../core/build/shim.mjs";
+import { artifactFileName } from "../core/src/artifact.ts";
 
 const LIBRARY_NAME = "galley-js-deno";
 
@@ -98,9 +99,7 @@ function awaitRun(cmd: string, args: string[]): void {
 }
 
 function libFileName(base = LIBRARY_NAME): string {
-  if (Deno.build.os === "darwin") return `lib${base}.dylib`;
-  if (Deno.build.os === "windows") return `${base}.dll`;
-  return `lib${base}.so`;
+  return artifactFileName(base, Deno.build.os);
 }
 
 function findJsProceduresFile(languageDir: string): string | null {

@@ -7,8 +7,8 @@
  * and Bun the backend also resolves synchronously on first use.
  */
 
-import { ensureSync } from "./loader.js";
-import { Session } from "./session.js";
+import { ensureSync } from "./loader.ts";
+import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "galley-js-core";
@@ -21,8 +21,8 @@ export {
   type InitOptions,
   type Runtime,
   type Backend,
-} from "./loader.js";
-export type { UniversalSessionOptions } from "./session.js";
+} from "./loader.ts";
+export type { UniversalSessionOptions } from "./session.ts";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)

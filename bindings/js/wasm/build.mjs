@@ -76,7 +76,7 @@ function resolveGalley() {
 }
 
 function wasmFileName(base = LIBRARY_NAME) {
-  return `lib${base}.wasm`;
+  return wasmArtifactFileName(base);
 }
 
 function findJsProceduresFile(languageDir) {
@@ -103,6 +103,20 @@ async function loadShimGenerator() {
   }
 }
 
+// The filename mapping lives in galley-js-core; loaded lazily like the
+// shim generator above so a missing install still fails loudly below.
+let artifactFileName;
+let wasmArtifactFileName;
+async function loadArtifactFileName() {
+  try {
+    ({ artifactFileName, wasmArtifactFileName } = await import("galley-js-core"));
+  } catch (e) {
+    fatal(
+      `cannot load galley-js-core (${e.message}); run npm install in bindings/js/wasm first`,
+    );
+  }
+}
+
 function ensureBindingsInstalled() {
   // Whatever the install layout (symlinked `file:` package or
   // `--install-links` copy), the runtime dependency must resolve from
@@ -123,6 +137,7 @@ async function main() {
 
   ensureBindingsInstalled();
   const { emitJsProcedureShimWasm } = await loadShimGenerator();
+  await loadArtifactFileName();
 
   const languageDir = path.resolve(process.argv[2]);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);

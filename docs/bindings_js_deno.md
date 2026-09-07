@@ -40,9 +40,9 @@ import { Session, version, hasAst } from "galley-js-deno";
 ```
 
 `ZIG_EXECUTABLE` selects zig. Deno runs the adapter's TypeScript sources
-directly — no build step. The core sources use Node-style `.js` import
-specifiers, so invocations pass `--sloppy-imports` (already wired into the
-`deno task` entries).
+directly — no build step. Sources use explicit `.ts` import specifiers, so
+plain strict `deno run` / `deno check` work with no extra flags (already
+wired into the `deno task` entries).
 
 ## Procedures
 

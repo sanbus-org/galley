@@ -13,14 +13,11 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { artifactFileName } from "galley-js-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const exampleLib = (() => {
-  if (process.platform === "darwin") return "libgalley-js-node.dylib";
-  if (process.platform === "win32") return "galley-js-node.dll";
-  return "libgalley-js-node.so";
-})();
+const exampleLib = artifactFileName("galley-js-node", process.platform);
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
 const libPath = ensureTestLibrary({
   buildCommand: ["node", path.join(__dirname, "..", "build.mjs")],

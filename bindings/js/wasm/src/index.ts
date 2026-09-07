@@ -8,15 +8,15 @@
  * where the module auto-initializes synchronously on first use).
  */
 
-import { getWasmPort, findLibrary, init, initSync, seedDefault, NeedInitError } from "./ffi.js";
-import { Session } from "./session.js";
+import { getWasmPort, findLibrary, init, initSync, seedDefault, NeedInitError } from "./ffi.ts";
+import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "galley-js-core";
 export { Session };
 export { findLibrary, init, initSync, seedDefault, NeedInitError };
-export { getWasmPort, wasmFileName } from "./ffi.js";
-export type { InitOptions } from "./ffi.js";
+export { getWasmPort, wasmFileName } from "./ffi.ts";
+export type { InitOptions } from "./ffi.ts";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)

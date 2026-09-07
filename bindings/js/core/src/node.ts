@@ -1,5 +1,5 @@
-import type { Session } from "./session.js";
-import { decodeUtf8 } from "./text.js";
+import type { Session } from "./session.ts";
+import { decodeUtf8 } from "./text.ts";
 
 /**
  * Session-bound handle for a node in the non-relocating AST storage.

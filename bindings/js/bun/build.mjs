@@ -74,9 +74,7 @@ function resolveGalley() {
 }
 
 function libFileName(base = LIBRARY_NAME) {
-  if (process.platform === "darwin") return `lib${base}.dylib`;
-  if (process.platform === "win32") return `${base}.dll`;
-  return `lib${base}.so`;
+  return artifactFileName(base, process.platform);
 }
 
 function findJsProceduresFile(languageDir) {
@@ -103,6 +101,19 @@ async function loadShimGenerator() {
   }
 }
 
+// The filename mapping lives in galley-js-core; loaded lazily like the
+// shim generator above so a missing install still fails loudly below.
+let artifactFileName;
+async function loadArtifactFileName() {
+  try {
+    ({ artifactFileName } = await import("galley-js-core"));
+  } catch (e) {
+    fatal(
+      `cannot load galley-js-core (${e.message}); run npm install in bindings/js/bun first`,
+    );
+  }
+}
+
 function ensureBindingsInstalled() {
   // `file:` consumers (examples/js/bun) link this package without its
   // dependencies. That is a broken install, not something to repair here:
@@ -120,6 +131,7 @@ async function main() {
 
   const bindingsDir = ensureBindingsInstalled();
   const { emitJsProcedureShim } = await loadShimGenerator();
+  await loadArtifactFileName();
 
   const languageDir = path.resolve(process.argv[2]);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);

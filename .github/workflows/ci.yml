@@ -488,7 +488,7 @@ jobs:
           cd ../../..
           cd examples/js/deno
           GALLEY_CHECKOUT="$PWD/../../.." deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts . >/dev/null
-          deno run --sloppy-imports --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-js-deno.txt 2>/tmp/err-js-deno.txt
+          deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-js-deno.txt 2>/tmp/err-js-deno.txt
           cd ../../..
           cd examples/js/bun
           bun install >/dev/null 2>&1

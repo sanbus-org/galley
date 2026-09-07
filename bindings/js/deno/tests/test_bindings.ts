@@ -19,14 +19,11 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { artifactFileName } from "../../core/src/artifact.ts";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const exampleLib = (() => {
-  if (process.platform === "darwin") return "libgalley-js-deno.dylib";
-  if (process.platform === "win32") return "galley-js-deno.dll";
-  return "libgalley-js-deno.so";
-})();
+const exampleLib = artifactFileName("galley-js-deno", process.platform);
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
 const libPath = ensureTestLibrary({
   buildCommand: [

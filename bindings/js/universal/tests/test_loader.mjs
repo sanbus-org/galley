@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { artifactFileName, wasmArtifactFileName } from "galley-js-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,13 +21,12 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
 const nativeLib = ensureTestLibrary({
   buildCommand: ["node", path.join(repoRoot, "bindings", "js", "node", "build.mjs")],
-  libFileName:
-    process.platform === "darwin" ? "libgalley-js-node.dylib" : "libgalley-js-node.so",
+  libFileName: artifactFileName("galley-js-node", process.platform),
   scope: "node",
 });
 const wasmModule = ensureTestLibrary({
   buildCommand: ["node", path.join(repoRoot, "bindings", "js", "wasm", "build.mjs")],
-  libFileName: "libgalley-js-wasm.wasm",
+  libFileName: wasmArtifactFileName("galley-js-wasm"),
   scope: "wasm",
 });
 

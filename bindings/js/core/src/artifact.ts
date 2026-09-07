@@ -1,4 +1,4 @@
-import { MissingArtifactError } from "./errors.js";
+import { MissingArtifactError } from "./errors.ts";
 
 /**
  * Host capabilities artifact resolution needs from each adapter.
@@ -12,6 +12,31 @@ export interface ArtifactHost {
   resolvePath(candidate: string): string;
   existsSync(candidate: string): boolean;
   buildHint: string;
+}
+
+/**
+ * Shared library filename mapping for every JavaScript adapter.
+ * One library name per platform: `lib<base>.dylib` on macOS, `<base>.dll`
+ * on Windows (no `lib` prefix), `lib<base>.so` elsewhere. The platform
+ * string comes from the host (`process.platform` under Node/Bun, where
+ * Windows reports `win32`; `Deno.build.os`, where it reports `windows`);
+ * both spellings map to the Windows name here so the adapters cannot
+ * diverge. Each adapter keeps a thin `libFileName` wrapper passing its
+ * own base name; the mapping lives here.
+ */
+export function artifactFileName(base: string, platform: string): string {
+  if (platform === "darwin") return `lib${base}.dylib`;
+  if (platform === "win32" || platform === "windows") return `${base}.dll`;
+  return `lib${base}.so`;
+}
+
+/**
+ * Shared wasm artifact filename. WebAssembly modules are platform-neutral:
+ * always `lib<base>.wasm`. The wasm adapter keeps a thin `wasmFileName`
+ * wrapper passing its base name.
+ */
+export function wasmArtifactFileName(base: string): string {
+  return `lib${base}.wasm`;
 }
 
 /**

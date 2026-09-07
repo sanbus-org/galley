@@ -7,7 +7,7 @@
 
 import { Session as CoreSession } from "galley-js-core";
 import type { SessionOptions } from "galley-js-core";
-import { ensureSync, type InitOptions } from "./loader.js";
+import { ensureSync, type InitOptions } from "./loader.ts";
 
 export type UniversalSessionOptions = SessionOptions & InitOptions;
 export type { SessionOptions };

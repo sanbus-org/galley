@@ -7,13 +7,13 @@
  * to supply its port from `SessionOptions.libraryPath`.
  */
 
-import { INVALID_NODE } from "./constants.js";
-import type { Diagnostic } from "./diagnostic.js";
-import { GalleyError } from "./errors.js";
-import type { FfiPort, Handle, SessionCOptions } from "./port.js";
-import { decodeUtf8, encodeUtf8 } from "./text.js";
-import { Node } from "./node.js";
-import { setParsingSession } from "./procedures.js";
+import { INVALID_NODE } from "./constants.ts";
+import type { Diagnostic } from "./diagnostic.ts";
+import { GalleyError } from "./errors.ts";
+import type { FfiPort, Handle, SessionCOptions } from "./port.ts";
+import { decodeUtf8, encodeUtf8 } from "./text.ts";
+import { Node } from "./node.ts";
+import { setParsingSession } from "./procedures.ts";
 
 export interface SessionOptions {
   maxErrors?: number; // default 10
