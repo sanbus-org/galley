@@ -121,8 +121,8 @@ Procedures.installProcedure("reduction_Pair", args -> {
 });
 ```
 
-Mechanically, the build tool reads the grammar's generated hook list
-(`procedures.zig`) and produces a Zig shim (`procedures_java.zig`)
+Mechanically, the build tool reads the generator's hook list (`procedures`
+in metadata.json) and produces a Zig shim (`procedures_java.zig`)
 containing one dispatch slot per hook; the JVM registers each Java hook
 address into that single slot at `Procedures.installProcedure` time
 (via JNA `galley_install_java_dispatch`). The parser calls through the slot

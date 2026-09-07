@@ -1301,8 +1301,10 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
 /// After generating parsers, writes two files into the language directory:
 ///
 /// `metadata.json` — structured description of the generated parser(s):
-/// flags, variable names, symbol names. Useful for build tooling and
-/// language-binding generators.
+/// flags, variable names, symbol names, and the `procedures` hook list
+/// (every extern entry of `procedures.zig`, so bindings render their
+/// dispatch shims from data instead of scanning Zig source). Useful for
+/// build tooling and language-binding generators.
 ///
 /// `procedures.zig` — extern declarations for every `reduction_<VariableName>`
 /// hook plus the general `reduction` fallback, and for every author-defined
@@ -1310,6 +1312,69 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
 /// C/C++/Rust source implements these functions; the linker resolves them
 /// when the shared library is built.
 fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) !void {
+    // Collect the procedure hook list once: the general `reduction`
+    // fallback, one `reduction_<Variable>` per variable in each generated
+    // parser, and every author-defined `hook_<name>`. Both files below
+    // render from this list, so the extern declarations and the data
+    // description cannot diverge.
+    var hook_names: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (hook_names.items) |name| init.gpa.free(name);
+        hook_names.deinit(init.gpa);
+    }
+    try hook_names.append(init.gpa, try init.gpa.dupe(u8, "reduction"));
+    const hook_parser_types = [_][]const u8{ "ll", "lr" };
+    for (hook_parser_types) |pt| {
+        const output_name = try std.fmt.allocPrint(init.gpa, "_{s}-parser.zig", .{pt});
+        defer init.gpa.free(output_name);
+        const path = try std.fs.path.join(init.gpa, &.{ language_dir, output_name });
+        defer init.gpa.free(path);
+
+        std.Io.Dir.cwd().access(init.io, path, .{}) catch continue;
+        const content = std.Io.Dir.cwd().readFileAlloc(
+            init.io,
+            path,
+            init.gpa,
+            .limited(max_source_size),
+        ) catch continue;
+        defer init.gpa.free(content);
+
+        const proc_prefix = "pub const variables = &[_][]const u8{";
+        if (std.mem.indexOf(u8, content, proc_prefix)) |arr_start| {
+            const inner_start = arr_start + proc_prefix.len;
+            const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
+            var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
+            while (items.next()) |item| {
+                const trimmed = std.mem.trim(u8, item, " \t\r\n");
+                if (trimmed.len < 2 or trimmed[0] != '"') continue;
+                const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
+                const variable_name = trimmed[1..end_q];
+                const hook_name = try std.fmt.allocPrint(init.gpa, "reduction_{s}", .{variable_name});
+                hook_names.append(init.gpa, hook_name) catch |err| {
+                    init.gpa.free(hook_name);
+                    return err;
+                };
+            }
+        }
+
+        const hooks_prefix = "pub const user_hook_names = [_][]const u8{";
+        if (std.mem.indexOf(u8, content, hooks_prefix)) |hooks_start| {
+            const hooks_inner_start = hooks_start + hooks_prefix.len;
+            const hooks_inner_end = std.mem.indexOfPos(u8, content, hooks_inner_start, "} ;") orelse std.mem.indexOfPos(u8, content, hooks_inner_start, "\n};") orelse continue;
+            var hook_items = std.mem.splitScalar(u8, content[hooks_inner_start..hooks_inner_end], ',');
+            while (hook_items.next()) |hook_item| {
+                const trimmed = std.mem.trim(u8, hook_item, " \t\r\n");
+                if (trimmed.len < 2 or trimmed[0] != '"') continue;
+                const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
+                const hook_name = try init.gpa.dupe(u8, trimmed[1..end_q]);
+                hook_names.append(init.gpa, hook_name) catch |err| {
+                    init.gpa.free(hook_name);
+                    return err;
+                };
+            }
+        }
+    }
+
     const meta_path = try std.fs.path.join(init.gpa, &.{ language_dir, "metadata.json" });
     defer init.gpa.free(meta_path);
     var file = try std.Io.Dir.cwd().createFile(init.io, meta_path, .{});
@@ -1345,6 +1410,9 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
             ) catch continue;
             defer init.gpa.free(content);
 
+            // Fields are comma-prefixed (no trailing commas) so the file is
+            // valid JSON for the bindings, which read it with stdlib parsers.
+            var first_field = true;
             inline for (.{
                 .{ "is_ast_enabled", "is_ast_enabled" },
                 .{ "are_procedures_enabled", "are_procedures_enabled" },
@@ -1356,20 +1424,32 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
                 const pattern = "pub const " ++ entry[0] ++ " = ";
                 if (std.mem.indexOf(u8, content, pattern)) |idx| {
                     const rest = content[idx + pattern.len ..];
-                    if (std.mem.startsWith(u8, rest, "true")) {
-                        try w.print("    \"{s}\": true,\n", .{entry[1]});
-                    } else if (std.mem.startsWith(u8, rest, "false")) {
-                        try w.print("    \"{s}\": false,\n", .{entry[1]});
+                    const value: ?[]const u8 = if (std.mem.startsWith(u8, rest, "true"))
+                        "true"
+                    else if (std.mem.startsWith(u8, rest, "false"))
+                        "false"
+                    else
+                        null;
+                    if (value) |v| {
+                        if (!first_field) try w.writeAll(",\n");
+                        first_field = false;
+                        try w.print("    \"{s}\": {s}", .{ entry[1], v });
                     }
                 }
             }
 
-            if (std.mem.indexOf(u8, content, ".automatic") != null) {
-                try w.writeAll("    \"error_recovery_mode\": \"automatic\",\n");
-            } else if (std.mem.indexOf(u8, content, ".explicit") != null) {
-                try w.writeAll("    \"error_recovery_mode\": \"explicit\",\n");
-            } else if (std.mem.indexOf(u8, content, "ErrorRecoveryMode") != null) {
-                try w.writeAll("    \"error_recovery_mode\": \"disabled\",\n");
+            const recovery_value: ?[]const u8 = if (std.mem.indexOf(u8, content, ".automatic") != null)
+                "\"automatic\""
+            else if (std.mem.indexOf(u8, content, ".explicit") != null)
+                "\"explicit\""
+            else if (std.mem.indexOf(u8, content, "ErrorRecoveryMode") != null)
+                "\"disabled\""
+            else
+                null;
+            if (recovery_value) |v| {
+                if (!first_field) try w.writeAll(",\n");
+                first_field = false;
+                try w.print("    \"error_recovery_mode\": {s}", .{v});
             }
 
             const table_names = [_][]const u8{ "variables", "symbols" };
@@ -1379,6 +1459,8 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
                 const arr_start = std.mem.indexOf(u8, content, prefix) orelse continue;
                 const inner_start = arr_start + prefix.len;
                 const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
+                if (!first_field) try w.writeAll(",\n");
+                first_field = false;
                 try w.print("    \"{s}\": [", .{table});
                 var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
                 var first_item = true;
@@ -1398,22 +1480,30 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
                     try w.writeByte('"');
                     first_item = false;
                 }
-                try w.writeAll("],\n");
+                try w.writeAll("]");
             }
 
-            try w.writeAll("  }");
+            try w.writeAll("\n  }");
         }
 
-        try w.writeAll("\n}\n");
+        // Hook names are grammar identifiers (`reduction_*`, `hook_*`), so
+        // they need no JSON escaping.
+        if (wrote_any) try w.writeAll(",\n");
+        try w.writeAll("  \"procedures\": [");
+        for (hook_names.items, 0..) |hook_name, i| {
+            if (i != 0) try w.writeAll(", ");
+            try w.print("\"{s}\"", .{hook_name});
+        }
+        try w.writeAll("]\n}\n");
         try w.flush();
     }
 
-    // Generate procedures.zig with extern declarations for each hook.
-    // No prefix, no wrappers — the consumer's C functions ARE the
-    // implementations; the linker resolves them at library build time.
-    // Reduction hooks keep their established `reduction_` names; author-
-    // defined grammar hooks arrive pre-namespaced as `hook_<name>` (the
-    // generated parser's user_hook_names table lists them verbatim).
+    // Generate procedures.zig from the same hook list: no prefix, no
+    // wrappers — the consumer's C functions ARE the implementations; the
+    // linker resolves them at library build time. Reduction hooks keep
+    // their established `reduction_` names; author-defined grammar hooks
+    // arrive pre-namespaced as `hook_<name>` (the generated parser's
+    // user_hook_names table lists them verbatim).
     const proc_path = try std.fs.path.join(init.gpa, &.{ language_dir, "procedures.zig" });
     defer init.gpa.free(proc_path);
     var proc_file = try std.Io.Dir.cwd().createFile(init.io, proc_path, .{});
@@ -1428,52 +1518,8 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
         try w.writeAll("pub const Payload = struct {};\n\n");
 
         const argument_type = "*root.data_structures.ProcedureArguments";
-        try w.print("pub extern fn reduction({s}) void;\n", .{argument_type});
-
-        const proc_parser_types = [_][]const u8{ "ll", "lr" };
-        for (proc_parser_types) |pt| {
-            const output_name = try std.fmt.allocPrint(init.gpa, "_{s}-parser.zig", .{pt});
-            defer init.gpa.free(output_name);
-            const path = try std.fs.path.join(init.gpa, &.{ language_dir, output_name });
-            defer init.gpa.free(path);
-
-            std.Io.Dir.cwd().access(init.io, path, .{}) catch continue;
-            const content = std.Io.Dir.cwd().readFileAlloc(
-                init.io,
-                path,
-                init.gpa,
-                .limited(max_source_size),
-            ) catch continue;
-            defer init.gpa.free(content);
-
-            const proc_prefix = "pub const variables = &[_][]const u8{";
-            if (std.mem.indexOf(u8, content, proc_prefix)) |arr_start| {
-                const inner_start = arr_start + proc_prefix.len;
-                const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
-                var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
-
-                while (items.next()) |item| {
-                    const trimmed = std.mem.trim(u8, item, " \t\r\n");
-                    if (trimmed.len < 2 or trimmed[0] != '"') continue;
-                    const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
-                    const variable_name = trimmed[1..end_q];
-                    try w.print("pub extern fn reduction_{s}({s}) void;\n", .{ variable_name, argument_type });
-                }
-            }
-
-            const hooks_prefix = "pub const user_hook_names = [_][]const u8{";
-            if (std.mem.indexOf(u8, content, hooks_prefix)) |hooks_start| {
-                const hooks_inner_start = hooks_start + hooks_prefix.len;
-                const hooks_inner_end = std.mem.indexOfPos(u8, content, hooks_inner_start, "} ;") orelse std.mem.indexOfPos(u8, content, hooks_inner_start, "\n};") orelse continue;
-                var hook_items = std.mem.splitScalar(u8, content[hooks_inner_start..hooks_inner_end], ',');
-                while (hook_items.next()) |hook_item| {
-                    const trimmed = std.mem.trim(u8, hook_item, " \t\r\n");
-                    if (trimmed.len < 2 or trimmed[0] != '"') continue;
-                    const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
-                    const hook_name = trimmed[1..end_q];
-                    try w.print("pub extern fn {s}({s}) void;\n", .{ hook_name, argument_type });
-                }
-            }
+        for (hook_names.items) |hook_name| {
+            try w.print("pub extern fn {s}({s}) void;\n", .{ hook_name, argument_type });
         }
         try w.flush();
     }

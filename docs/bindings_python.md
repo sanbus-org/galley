@@ -121,8 +121,9 @@ def hook_print(args: galley.ProcedureArguments) -> None:
     print(f'@print "{text}" at {line}:{column}', file=sys.stderr)
 ```
 
-Mechanically, `python -m galley_bindings` reads the grammar's generated
-hook list and produces a Zig shim module containing one dispatch slot;
+Mechanically, `python -m galley_bindings` reads the generator's hook list
+(`procedures` in metadata.json) and produces a Zig shim module containing
+one dispatch slot;
 the extension registers the Python callables into that slot at import
 time (it tries `import procedures` on `sys.path` — the language dir is
 typically on `PYTHONPATH` — and falls back to explicit registration).

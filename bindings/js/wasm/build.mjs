@@ -177,8 +177,7 @@ async function main() {
       );
     }
     console.error(`galley-bindings: using JS procedures from ${jsProceduresFile}`);
-    const templatePath = path.join(languageDir, "procedures.zig");
-    emitJsProcedureShimWasm(templatePath, wasmShimPath);
+    emitJsProcedureShimWasm(path.join(languageDir, "metadata.json"), wasmShimPath);
     proceduresZigSource = wasmShimPath;
   } else if (hasCProcedures) {
     if (fs.existsSync(path.join(languageDir, "procedures.zig")))
@@ -189,8 +188,7 @@ async function main() {
       proceduresCSource = path.join(languageDir, "procedures.cpp");
   } else {
     if (fs.existsSync(path.join(languageDir, "procedures.zig"))) {
-      const templatePath = path.join(languageDir, "procedures.zig");
-      emitJsProcedureShimWasm(templatePath, wasmShimPath);
+      emitJsProcedureShimWasm(path.join(languageDir, "metadata.json"), wasmShimPath);
       proceduresZigSource = wasmShimPath;
     }
   }
