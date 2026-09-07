@@ -6,17 +6,16 @@ import (
 	"testing"
 )
 
-func TestDetectParser(t *testing.T) {
+func TestFindGeneratedParser(t *testing.T) {
 	cases := []struct {
 		name       string
 		hasLL      bool
 		hasLR      bool
 		wantSource string
-		wantType   string
 		wantErr    bool
 	}{
-		{name: "ll only", hasLL: true, wantSource: "_ll-parser.zig", wantType: "ll"},
-		{name: "lr only", hasLR: true, wantSource: "_lr-parser.zig", wantType: "lr"},
+		{name: "ll only", hasLL: true, wantSource: "_ll-parser.zig"},
+		{name: "lr only", hasLR: true, wantSource: "_lr-parser.zig"},
 		{name: "neither", wantErr: true},
 		{name: "both is ambiguous", hasLL: true, hasLR: true, wantErr: true},
 	}
@@ -34,18 +33,18 @@ func TestDetectParser(t *testing.T) {
 			if testCase.hasLR {
 				write("_lr-parser.zig")
 			}
-			source, parserType, err := detectParser(dir)
+			source, err := findGeneratedParser(dir)
 			if testCase.wantErr {
 				if err == nil {
-					t.Fatalf("expected an error, got source=%q type=%q", source, parserType)
+					t.Fatalf("expected an error, got source=%q", source)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if source != testCase.wantSource || parserType != testCase.wantType {
-				t.Fatalf("got %q/%q, want %q/%q", source, parserType, testCase.wantSource, testCase.wantType)
+			if source != testCase.wantSource {
+				t.Fatalf("got %q, want %q", source, testCase.wantSource)
 			}
 		})
 	}

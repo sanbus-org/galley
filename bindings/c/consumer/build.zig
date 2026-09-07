@@ -7,12 +7,15 @@
 //! All language-owned Zig sources are inferred from the parser location
 //! when no explicit flag is given: `config.zig`, `procedures.zig`, and
 //! `{ll,lr}_error_messages.zig` next to the parser are used automatically
-//! when present, with language-agnostic templates as fallback. A C/C++
+//! when present, with language-agnostic templates as fallback. The parser
+//! family is likewise inferred from the parser filename (`_ll-parser.zig`
+//! vs `_lr-parser.zig`); pass `-Dparser-type` only for non-standard
+//! filenames. A C/C++
 //! procedure implementation (`procedures.c` or `procedures.cpp` next to the
 //! parser) is likewise compiled in when present. Explicit flags override
 //! inference and are for non-standard layouts only — the reference
-//! `examples/c` and `examples/cpp` builds pass only `parser-source` and
-//! `parser-type` and rely on inference.
+//! `examples/c` and `examples/cpp` builds pass only `parser-source`
+//! and rely on inference.
 //!
 //! Procedure hook implementations enter the shared library through one of
 //! two inputs:
@@ -32,7 +35,11 @@
 //! is built. Passing both inputs fails: one implementation owns the entry
 //! points.
 //!
-//! Installs `lib<lib-name>.dylib|so` and `include/galley.h`.
+//! Installs the library either as a bare file under `--prefix` (with
+//! `-Doutput=<filename>`, where `--prefix` is the grammar directory) or,
+//! without `-Doutput`, as a `lib/` + `include/` tree. The header is only
+//! installed with `-Dinstall-header`; consumers that need it read it from
+//! the Galley checkout (`bindings/c/galley.h`) instead.
 
 const std = @import("std");
 const galley_pkg = @import("galley");
@@ -53,7 +60,18 @@ pub fn build(b: *std.Build) !void {
 
     const parser_source = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (required)") orelse
         return error.MissingParserSource;
-    const parser_type = b.option([]const u8, "parser-type", "Parser family: ll or lr (default ll)") orelse "ll";
+    const parser_type_option = b.option([]const u8, "parser-type", "Parser family: ll or lr (default: inferred from the parser filename, _ll-parser.zig vs _lr-parser.zig)");
+    const parser_basename = std.fs.path.basename(parser_source);
+    const inferred_type: ?[]const u8 = if (std.mem.indexOf(u8, parser_basename, "_lr-parser") != null)
+        "lr"
+    else if (std.mem.indexOf(u8, parser_basename, "_ll-parser") != null)
+        "ll"
+    else
+        null;
+    const parser_type = parser_type_option orelse inferred_type orelse {
+        std.log.err("cannot infer parser family from '{s}': expected _ll-parser.zig or _lr-parser.zig in the filename, or pass -Dparser-type=ll|lr", .{parser_source});
+        return error.MissingParserType;
+    };
     const lib_name = b.option([]const u8, "lib-name", "Installed library base name (default galley-parser)") orelse "galley-parser";
     const capi_version = b.option([]const u8, "capi-version", "Version string reported by galley_version") orelse "dev";
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks (default: procedures.c or procedures.cpp next to parser when present)");
@@ -62,6 +80,8 @@ pub fn build(b: *std.Build) !void {
     const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig (default: procedures.zig next to parser when present, otherwise template)");
     const config_zig_source = b.option([]const u8, "config-zig-source", "Path to config.zig (default: config.zig next to parser)");
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig (default: {ll,lr}_error_messages.zig next to parser when present, otherwise template)");
+    const output = b.option([]const u8, "output", "Bare filename to install the library as directly under --prefix (e.g. libgalley-python.dylib); --prefix is then the grammar dir");
+    const install_header = b.option(bool, "install-header", "Install include/galley.h under --prefix") orelse false;
 
     if (procedures_c_source != null and procedures_object != null) {
         std.log.err("pass either -Dprocedures-c-source or -Dprocedures-object, not both: one implementation owns the procedure entry points", .{});
@@ -169,7 +189,14 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    b.installArtifact(artifact);
-    const header_install = b.addInstallFile(galley_dep.path("bindings/c/galley.h"), "include/galley.h");
-    b.getInstallStep().dependOn(&header_install.step);
+    if (output) |out| {
+        const installed = b.addInstallFile(artifact.getEmittedBin(), out);
+        b.getInstallStep().dependOn(&installed.step);
+    } else {
+        b.installArtifact(artifact);
+    }
+    if (install_header) {
+        const header_install = b.addInstallFile(galley_dep.path("bindings/c/galley.h"), "include/galley.h");
+        b.getInstallStep().dependOn(&header_install.step);
+    }
 }

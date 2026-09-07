@@ -30,9 +30,9 @@ GALLEY_CHECKOUT=/path/to/galley deno task build
 deno task demo
 ```
 
-The build generates the parser (`--emit-metadata`), compiles the shared
-library through Galley's generic consumer build file, and copies
-`libgalley-js-deno.{dylib,so}` next to your grammar. Import the bindings
+The build generates the parser (`--emit-metadata`) and compiles the shared
+library through Galley's generic consumer build file directly next to your
+grammar. Import the bindings
 via the example's import map:
 
 ```ts

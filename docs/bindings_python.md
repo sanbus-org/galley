@@ -52,12 +52,14 @@ root = session.root_node()
 `ZIG_EXECUTABLE` selects zig; `CC` overrides the compiler used for the
 extension module (defaults to the one that built your interpreter). The
 module targets the interpreter that ran the build command; rebuild per
-Python version. `GALLEY_CHECKOUT` uses an existing Galley working tree;
-otherwise the script clones `GALLEY_REPOSITORY` at `GALLEY_TAG` (default
-`main`), matching the Rust, Go, and C consumers. Regenerate after changing
-the grammar; commit nothing the command generates. One module embeds one
-parser — split grammars across language directories exactly like the other
-bindings.
+Python version. `GALLEY_CHECKOUT` (required) points at a Galley working
+tree — for convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)`
+fetches one into the system cache, but that cache is examples-only, not part
+of the bindings. The grammar library (`libgalley-python.*`) is built directly
+next to the grammar. Regenerate
+after changing the grammar; commit nothing the command generates. One module
+embeds one parser — split grammars across language directories exactly like
+the other bindings.
 
 ## Performance Notes
 

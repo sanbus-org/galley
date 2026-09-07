@@ -26,22 +26,6 @@ public final class GalleyLibraryLoader {
         return "lib" + base + ".so";
     }
 
-    private static String defaultCacheDir() {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        String home = System.getProperty("user.home", "");
-        if (os.contains("mac")) {
-            return Paths.get(home, "Library", "Caches", "galley-bindings", "java", "capi").toString();
-        }
-        if (os.contains("win")) {
-            String base = System.getenv("LOCALAPPDATA");
-            if (base == null || base.isEmpty()) base = System.getProperty("java.io.tmpdir", "");
-            return Paths.get(base, "galley-bindings", "java", "capi").toString();
-        }
-        String base = System.getenv("XDG_CACHE_HOME");
-        if (base == null || base.isEmpty()) base = Paths.get(home, ".cache").toString();
-        return Paths.get(base, "galley-bindings", "java", "capi").toString();
-    }
-
     private static boolean exists(String path) {
         return path != null && Files.exists(Paths.get(path));
     }
@@ -79,22 +63,10 @@ public final class GalleyLibraryLoader {
             }
         } catch (Exception ignored) {}
 
-        String cacheLib = Paths.get(defaultCacheDir(), "lib", libFileName("galley-java")).toString();
-        if (exists(cacheLib)) return cacheLib;
-        try {
-            Path cacheBase = Paths.get(defaultCacheDir());
-            if (Files.isDirectory(cacheBase)) {
-                try (java.nio.file.DirectoryStream<Path> stream = Files.newDirectoryStream(cacheBase)) {
-                    for (Path sub : stream) {
-                        if (!Files.isDirectory(sub)) continue;
-                        Path candidate = sub.resolve("lib").resolve(libFileName("galley-java"));
-                        if (Files.exists(candidate)) return candidate.toString();
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-
-        return cacheLib;
+        // Fallback: let the load fail with the cwd candidate so the error
+        // tells the user to build first. No cache search: the library lives
+        // next to the grammar.
+        return Paths.get(cwd, libFileName("galley-java")).toString();
     }
 
     public static synchronized GalleyLibrary load(String explicitPath) {

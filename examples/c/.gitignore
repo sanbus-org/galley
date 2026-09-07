@@ -9,3 +9,5 @@
 /compile_commands.json
 /build
 /metadata.json
+/libkeyvalue-c.*
+/benchmark/libbenchmark-c.*

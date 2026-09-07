@@ -122,20 +122,22 @@ Galley-side build knowledge is required:
    ```
 
 2. **Compile** the generated parser into a shared library with Galley's
-   generic consumer build file:
+   generic consumer build file, directly next to the grammar:
 
    ```sh
    zig build --build-file <galley>/bindings/c/consumer/build.zig \
        "-Dparser-source=/path/to/language-dir/_ll-parser.zig" \
-       "-Dparser-type=ll" \
        "-Dlib-name=mylang" \
+       "-Doutput=libmylang.so" \
        "-Doptimize=ReleaseFast" \
-       --prefix /out install
-   # → /out/lib/libmylang.dylib|so and /out/include/galley.h
+       --prefix /path/to/language-dir install
+   # → /path/to/language-dir/libmylang.so (no lib/ layer, no header;
+   #    read galley.h from <galley>/bindings/c, or pass -Dinstall-header)
    ```
 
    Both parser families work identically through this ABI: pass the
-   `_lr-parser.zig` source with `-Dparser-type=lr` for an LR grammar.
+   `_lr-parser.zig` source for an LR grammar — the family is inferred from
+   the filename (`-Dparser-type` only for non-standard filenames).
    One library embeds one parser.
 
 Generation-time options come from [`config.zig`](/configuration) in the
@@ -147,28 +149,29 @@ when no explicit flag is given — `config.zig`, `procedures.zig`,
 template), and a `procedures.c` or `procedures.cpp` implementation when
 present. Explicit flags (`-Dconfig-zig-source`, `-Dprocedures-zig-source`,
 `-Dprocedures-c-source` / `-Dprocedures-object`,
-`-Derror-messages-zig-source`) override inference and exist only for
+`-Derror-messages-zig-source`, `-Dparser-type`) override inference and exist only for
 non-standard layouts where those files live elsewhere. The reference
 `examples/c` and `examples/cpp` builds rely entirely on inference and
-pass only `parser-source` and `parser-type`.
+pass only `parser-source`.
 
 ### What the examples' CMake does
 
 Both examples wire steps 1–2 into CMake so a plain
-`cmake -S examples/c -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build` fetches Galley, builds
+`cmake -S examples/c -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build` fetches Galley (into the build dir — examples-only convenience), builds
 its CLI, generates the parser from the example's own `ll.grm`, compiles the
-library, builds `build/bin/demo` and `build/bin/benchmark`, and runs nothing else. Generation also
+library next to the grammar, builds `build/bin/demo` and `build/bin/benchmark`, and runs nothing else. Generation also
 re-runs automatically whenever `ll.grm` or `config.zig` changes.
 
 Useful variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `GALLEY_REPOSITORY` | Repository fetched when no checkout is given |
-| `GALLEY_TAG` | Revision to fetch (default `main`) |
+| `GALLEY_REPOSITORY` | Repository fetched when no checkout is given (examples-only) |
+| `GALLEY_TAG` | Revision to fetch (default `main`, examples-only) |
 | `GALLEY_CHECKOUT` | Existing Galley working tree; skips fetching |
 
-Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) live in
+Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) and the
+grammar library (`libkeyvalue-c.*`, `libbenchmark-c.*`) live in
 the example directory and are gitignored.
 After a build, `build/bin/` contains `demo` and `benchmark` — the
 Galley CLI stays inside its own tree.

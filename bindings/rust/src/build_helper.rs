@@ -10,10 +10,10 @@
 //! }
 //! ```
 //!
-//! The helper resolves Galley (`GALLEY_CHECKOUT` env var wins; otherwise it
-//! shallow-clones `GALLEY_REPOSITORY` at `GALLEY_TAG`, skipping submodules),
+//! The helper requires `GALLEY_CHECKOUT` (an existing Galley working tree),
 //! builds the generator CLI, generates the parser, compiles the C-API shared
-//! library, and emits the cargo directives that link your binary against it.
+//! library directly next to the grammar, and emits the cargo directives that
+//! link your binary against it.
 //! Hooks are written in Rust: when the language directory contains a
 //! generated `procedures.zig` and a `procedures.rs` implementing its hooks,
 //! the helper compiles `procedures.rs` with rustc into a static archive and
@@ -22,15 +22,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GALLEY_REPOSITORY: &str = "https://github.com/sanbus-org/galley.git";
-
 /// Resolved locations produced (or reused) by this helper.
 pub struct GalleyLayout {
-    /// The Galley checkout used (fetched copy or `GALLEY_CHECKOUT`).
+    /// The Galley checkout used (`GALLEY_CHECKOUT`).
     pub source_dir: PathBuf,
-    /// Shared library file (`lib<name>.dylib` / `.so`).
+    /// Shared library file next to the grammar (`lib<name>.dylib` / `.so`).
     pub library: PathBuf,
-    /// Installed header location, for reference.
+    /// Header directory in the checkout (`<galley>/bindings/c`).
     pub include_dir: PathBuf,
 }
 
@@ -47,7 +45,7 @@ fn run_or_panic(mut command: Command) {
     }
 }
 
-fn resolve_galley(out_dir: &Path) -> PathBuf {
+fn resolve_galley() -> PathBuf {
     if let Some(checkout) = env("GALLEY_CHECKOUT") {
         let checkout = PathBuf::from(checkout);
         assert!(
@@ -58,50 +56,19 @@ fn resolve_galley(out_dir: &Path) -> PathBuf {
         println!("cargo:rerun-if-env-changed=GALLEY_CHECKOUT");
         return checkout;
     }
-
-    let tag = env("GALLEY_TAG").unwrap_or_else(|| "main".into());
-    let repository = env("GALLEY_REPOSITORY").unwrap_or_else(|| GALLEY_REPOSITORY.into());
-    println!("cargo:rerun-if-env-changed=GALLEY_REPOSITORY");
-    println!("cargo:rerun-if-env-changed=GALLEY_TAG");
-
-    let source_dir = out_dir.join("galley-src");
-    let stamp = out_dir.join("galley-tag");
-    let git = |args: &[&str]| {
-        let mut c = Command::new("git");
-        c.args(args);
-        run_or_panic(c)
-    };
-
-    if source_dir.exists() {
-        // Reuse an earlier fetch; refresh only when GALLEY_TAG changed.
-        let stamp = out_dir.join("galley-tag");
-        let previous = std::fs::read_to_string(&stamp).unwrap_or_default();
-        if previous.trim_end() == tag {
-            return source_dir;
-        }
-    }
-    let _ = std::fs::remove_dir_all(&source_dir);
-    git(&[
-        "clone",
-        "--depth",
-        "1",
-        "--branch",
-        &tag,
-        "--single-branch",
-        "--recurse-submodules=false",
-        &repository,
-        source_dir.to_str().expect("non-utf8 OUT_DIR"),
-    ]);
-    std::fs::write(&stamp, &tag).expect("write galley tag stamp");
-    source_dir
+    panic!(
+        "GALLEY_CHECKOUT is not set; point it at a Galley checkout \
+         (examples/scripts/fetch-galley.sh can fetch one — that cache is an \
+         examples-only convenience, not part of the bindings)"
+    );
 }
 
 /// Generates the parser for `language_dir` (must contain `ll.grm` and the
 /// language's `config.zig`) and emits cargo directives linking the current
 /// crate's binary against the resulting shared library.
 ///
-/// Environment overrides: `GALLEY_CHECKOUT`, `GALLEY_REPOSITORY`,
-/// `GALLEY_TAG`. The library is always built in ReleaseFast.
+/// Requires `GALLEY_CHECKOUT`. The library is always built in ReleaseFast,
+/// directly next to the grammar (`OUT_DIR` keeps only the procedures archive).
 pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     let language_dir = language_dir.as_ref();
     assert!(
@@ -119,7 +86,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     );
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
-    let galley_source = resolve_galley(&out_dir);
+    let galley_source = resolve_galley();
     println!(
         "cargo:rerun-if-changed={}",
         galley_source.join("bindings/c/capi.zig").display()
@@ -164,8 +131,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     if !String::from_utf8_lossy(&help.stdout).contains("--emit-metadata") {
         panic!(
             "the Galley at {} is too old for the bindings workflow (no --emit-metadata support); \
-             point GALLEY_CHECKOUT at a current Galley checkout, or remove the stale copy and \
-             update GALLEY_TAG so a fresh Galley is fetched",
+             point GALLEY_CHECKOUT at a current Galley checkout",
             galley_source.display()
         );
     }
@@ -192,9 +158,10 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     let procedures_zig = language_dir.join("procedures.zig");
     let procedures_rs = language_dir.join("procedures.rs");
 
-    // One library embeds one parser; detect which family generation
-    // produced (both present is ambiguous and unsupported).
-    let (parser_source, parser_type) = match detect_parser_family(
+    // One library embeds one parser; locate the file generation produced
+    // (both present is ambiguous and unsupported). The family is inferred
+    // by the consumer build from the filename.
+    let parser_source = match find_generated_parser(
         generated_parser_exists(language_dir, "_ll-parser.zig"),
         generated_parser_exists(language_dir, "_lr-parser.zig"),
     ) {
@@ -203,10 +170,23 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     };
     let generated_parser = language_dir.join(parser_source);
     println!("cargo:rerun-if-changed={}", generated_parser.display());
-    let error_messages_zig = language_dir.join(format!("{parser_type}_error_messages.zig"));
+    for candidate in ["ll_error_messages.zig", "lr_error_messages.zig"] {
+        let path = language_dir.join(candidate);
+        if path.exists() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
 
-    // Compile the shared library through the generic consumer build file.
-    let prefix = out_dir.join("galley-capi");
+    // Compile the shared library through the generic consumer build file,
+    // directly next to the grammar.
+    let language_absolute = language_dir
+        .canonicalize()
+        .unwrap_or_else(|_| language_dir.to_path_buf());
+    let library_file: &str = if cfg!(target_os = "macos") {
+        "libgalley-rust.dylib"
+    } else {
+        "libgalley-rust.so"
+    };
     let generated_absolute = generated_parser
         .canonicalize()
         .unwrap_or_else(|_| generated_parser.clone());
@@ -216,11 +196,11 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             .arg("--build-file")
             .arg(galley_source.join("bindings/c/consumer/build.zig"))
             .arg(format!("-Dparser-source={}", generated_absolute.display()))
-            .arg(format!("-Dparser-type={parser_type}"))
             .arg("-Dlib-name=galley-rust")
+            .arg(format!("-Doutput={library_file}"))
             .arg("-Doptimize=ReleaseFast")
             .arg("--prefix")
-            .arg(&prefix)
+            .arg(&language_absolute)
             .arg("install")
             .current_dir(&galley_source);
         if procedures_zig.exists() {
@@ -233,9 +213,6 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             let archive = compile_procedures_archive(&procedures_rs, &out_dir);
             c.arg(format!("-Dprocedures-object={}", archive.display()));
         }
-        if error_messages_zig.exists() {
-            println!("cargo:rerun-if-changed={}", error_messages_zig.display());
-        }
         let config_zig = language_dir.join("config.zig");
         if config_zig.exists() {
             println!("cargo:rerun-if-changed={}", config_zig.display());
@@ -243,22 +220,19 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         c
     });
 
-    let library = if cfg!(target_os = "macos") {
-        prefix.join("lib/libgalley-rust.dylib")
-    } else {
-        prefix.join("lib/libgalley-rust.so")
-    };
-    let include_dir = prefix.join("include");
+    let library = language_absolute.join(library_file);
+    let include_dir = galley_source.join("bindings/c");
 
     println!(
         "cargo:rustc-link-search=native={}",
-        prefix.join("lib").display()
+        language_absolute.display()
     );
     println!("cargo:rustc-link-lib=dylib=galley-rust");
     // Locate the dylib when the example runs from target/debug.
+    // The path is absolute, so moving the folder afterwards breaks the link.
     println!(
         "cargo:rustc-link-arg=-Wl,-rpath,{}",
-        prefix.join("lib").display()
+        language_absolute.display()
     );
 
     GalleyLayout {
@@ -298,15 +272,13 @@ fn generated_parser_exists(language_dir: &Path, file_name: &str) -> bool {
     language_dir.join(file_name).exists()
 }
 
-/// One library embeds one parser; detect which family generation produced.
-/// Returns the generated source file name and the `-Dparser-type` value.
-fn detect_parser_family(
-    has_ll: bool,
-    has_lr: bool,
-) -> Result<(&'static str, &'static str), String> {
+/// One library embeds one parser; locate the file generation produced.
+/// Returns the generated source file name. The family is inferred by the
+/// consumer build from the filename.
+fn find_generated_parser(has_ll: bool, has_lr: bool) -> Result<&'static str, String> {
     match (has_ll, has_lr) {
-        (true, false) => Ok(("_ll-parser.zig", "ll")),
-        (false, true) => Ok(("_lr-parser.zig", "lr")),
+        (true, false) => Ok("_ll-parser.zig"),
+        (false, true) => Ok("_lr-parser.zig"),
         (false, false) => Err("generation produced no parser".to_string()),
         (true, true) => Err(
             "both _ll-parser.zig and _lr-parser.zig exist; one library embeds \
@@ -318,31 +290,25 @@ fn detect_parser_family(
 
 #[cfg(test)]
 mod tests {
-    use super::detect_parser_family;
+    use super::find_generated_parser;
 
     #[test]
-    fn detects_ll_family() {
-        assert_eq!(
-            detect_parser_family(true, false),
-            Ok(("_ll-parser.zig", "ll"))
-        );
+    fn finds_ll_parser() {
+        assert_eq!(find_generated_parser(true, false), Ok("_ll-parser.zig"));
     }
 
     #[test]
-    fn detects_lr_family() {
-        assert_eq!(
-            detect_parser_family(false, true),
-            Ok(("_lr-parser.zig", "lr"))
-        );
+    fn finds_lr_parser() {
+        assert_eq!(find_generated_parser(false, true), Ok("_lr-parser.zig"));
     }
 
     #[test]
     fn rejects_missing_parser() {
-        assert!(detect_parser_family(false, false).is_err());
+        assert!(find_generated_parser(false, false).is_err());
     }
 
     #[test]
-    fn rejects_ambiguous_families() {
-        assert!(detect_parser_family(true, true).is_err());
+    fn rejects_ambiguous_parsers() {
+        assert!(find_generated_parser(true, true).is_err());
     }
 }

@@ -17,7 +17,7 @@ output to the Python, Go, Rust, and TypeScript examples.
 
 ## Getting Started
 
-Requires `java` ≥ 22, `javac`, `zig` 0.16, and `git` (`GALLEY_CHECKOUT` skips `git`).
+Requires `java` ≥ 22, `javac`, and `zig` 0.16 (`git` is only needed by `examples/scripts/fetch-galley.sh`).
 
 Build the bindings (no Maven, no JNA):
 
@@ -32,16 +32,17 @@ directory containing `ll.grm` and `config.zig`):
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>
 ```
 
-The tool resolves Galley exactly like the other bindings:
-`GALLEY_CHECKOUT` (existing working tree) wins over `GALLEY_REPOSITORY` +
-`GALLEY_TAG` (default `main`); `ZIG_EXECUTABLE` selects zig. It generates
-the parser (`--emit-metadata`), builds the shared library through
-`bindings/c/consumer/build.zig`, detects optional hook files next to your
+The tool requires `GALLEY_CHECKOUT` (a Galley working tree);
+`ZIG_EXECUTABLE` selects zig. For convenience,
+`GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the
+system cache, but that cache is examples-only, not part of the bindings.
+It generates the parser (`--emit-metadata`), builds the shared library
+through `bindings/c/consumer/build.zig` directly next to the grammar,
+and detects optional hook files next to your
 grammar (`procedures.java` for native Java hooks, `procedures.c` for legacy
-C hooks, `ll_error_messages.zig`), and copies `libgalley-java.*` into the
-language directory. Regenerate after changing the grammar; commit nothing it
-generates. One library embeds one parser — split grammars across language
-directories exactly like the other bindings.
+C hooks, `ll_error_messages.zig`). Regenerate after changing the grammar;
+commit nothing it generates. One library embeds one parser — split grammars
+across language directories exactly like the other bindings.
 
 Run the demo:
 
@@ -59,8 +60,7 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out 
 
 Library discovery order: `SessionOptions.libraryPath` (explicit) →
 `GALLEY_LIBRARY_PATH` env → `galley.library.path` system property →
-`<cwd>/libgalley-java.*` → `~/Library/Caches/galley-bindings/java/capi/lib/libgalley-java.*`
-(macOS) or `~/.cache/galley-bindings/java/capi/lib/libgalley-java.*` (Linux).
+`<cwd>/libgalley-java.*` (the library lives next to the grammar).
 
 ## Performance Notes
 

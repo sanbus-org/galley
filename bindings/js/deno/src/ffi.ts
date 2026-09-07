@@ -144,22 +144,11 @@ function joinPath(...parts: string[]): string {
   return parts.join("/").replace(/\/+/g, "/");
 }
 
-function defaultCacheDir(): string {
-  const home = Deno.env.get("HOME") ?? "/tmp";
-  if (Deno.build.os === "darwin") return joinPath(home, "Library", "Caches", "galley-bindings", "js-deno", "capi");
-  if (Deno.build.os === "windows") {
-    const base = Deno.env.get("LOCALAPPDATA") ?? Deno.env.get("TMPDIR") ?? home;
-    return joinPath(base, "galley-bindings", "js-deno", "capi");
-  }
-  const base = Deno.env.get("XDG_CACHE_HOME") ?? joinPath(home, ".cache");
-  return joinPath(base, "galley-bindings", "js-deno", "capi");
-}
-
 export function findLibrary(explicit?: string): string {
   if (explicit && exists(explicit)) return explicit;
   const envPath = Deno.env.get("GALLEY_LIBRARY_PATH");
   if (envPath && exists(envPath)) return envPath;
-  // 1) cwd / language-dir copies (build.ts copies lib next to grammar)
+  // 1) file next to the grammar (cwd when running from the language dir)
   for (const candidate of [
     joinPath(Deno.cwd(), libFileName()),
     joinPath(Deno.cwd(), "libgalley-js-deno.dylib"),
@@ -167,10 +156,7 @@ export function findLibrary(explicit?: string): string {
   ]) {
     if (exists(candidate)) return candidate;
   }
-  // 2) cache dir (same as build.ts prefix)
-  const cacheLib = joinPath(defaultCacheDir(), "lib", libFileName());
-  if (exists(cacheLib)) return cacheLib;
-  // 3) sibling examples/js/deno for development (from src/, three levels up)
+  // 2) sibling examples/js/deno for development (from src/, three levels up)
   try {
     const here = new URL(".", import.meta.url).pathname;
     for (const candidate of [
@@ -182,8 +168,8 @@ export function findLibrary(explicit?: string): string {
   } catch {
     // ignore URL parsing errors
   }
-  // fallback: let dlopen error with cache path
-  return cacheLib;
+  // fallback: let dlopen error with the grammar-adjacent path
+  return joinPath(Deno.cwd(), libFileName());
 }
 
 // --- loader ------------------------------------------------------------

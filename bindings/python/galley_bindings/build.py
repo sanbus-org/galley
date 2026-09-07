@@ -25,30 +25,29 @@ the consumer shared-library build — then compiles the extension module in
 bindings/python/_galley.c against the built library, leaving
 galley<ext-suffix> next to your grammar ready to import.
 
+The grammar library (libgalley-python.*) is built directly next to the
+grammar.
+
 Environment overrides: ZIG_EXECUTABLE (default zig), CC (default taken
-from the running interpreter's build), GALLEY_CHECKOUT (existing Galley
-working tree, wins over fetching), GALLEY_REPOSITORY, GALLEY_TAG (default
-main). Without GALLEY_CHECKOUT the script clones GALLEY_REPOSITORY at
-GALLEY_TAG, matching the Rust, Go, and C consumers.
+from the running interpreter's build), GALLEY_CHECKOUT (required: existing
+Galley working tree). To fetch a checkout for convenience, use
+examples/scripts/fetch-galley.sh, which clones into the system cache —
+that cache is an examples-only convenience, not part of the bindings.
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import shlex
 import subprocess
 import sys
 import sysconfig
-import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
 LIBRARY_NAME = "galley-python"
-DEFAULT_GALLEY_REPOSITORY = "https://github.com/sanbus-org/galley.git"
-DEFAULT_GALLEY_TAG = "main"
 
 
 def fatal(message: str) -> NoReturn:
@@ -86,29 +85,42 @@ def compiler_executable() -> str:
     return shlex.split(sysconfig.get_config_var("CC") or "cc")[0]
 
 
-def cache_dir() -> Path:
+def library_file_name() -> str:
     if sys.platform == "darwin":
-        root = os.environ.get("HOME", str(Path.home())) + "/Library/Caches"
-    elif os.name == "nt":
-        root = os.environ.get("LOCALAPPDATA", tempfile.gettempdir())
-    else:
-        root = os.environ.get(
-            "XDG_CACHE_HOME", os.environ.get("HOME", str(Path.home())) + "/.cache"
+        return f"lib{LIBRARY_NAME}.dylib"
+    if os.name == "nt":
+        return f"{LIBRARY_NAME}.dll"
+    return f"lib{LIBRARY_NAME}.so"
+
+
+def resolve_galley() -> Path:
+    # GALLEY_CHECKOUT is required. Fetching a checkout into the system
+    # cache is an examples-only convenience
+    # (examples/scripts/fetch-galley.sh), not part of the bindings.
+    checkout_env = os.environ.get("GALLEY_CHECKOUT")
+    if not checkout_env:
+        fatal(
+            "GALLEY_CHECKOUT is not set; point it at a Galley checkout "
+            "(examples/scripts/fetch-galley.sh can fetch one)"
         )
-    directory = Path(root) / "galley-bindings" / "python"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+    checkout = Path(checkout_env)
+    if not (checkout / "build.zig").is_file():
+        fatal(
+            f"GALLEY_CHECKOUT={checkout} is not a Galley repository checkout (no build.zig)"
+        )
+    return checkout
 
 
-# detect_parser reports which parser family generation produced (one
-# library embeds one parser; both families present is ambiguous).
-def detect_parser(language_dir: Path) -> tuple[str, str]:
+# find_generated_parser locates the parser file generation produced (one
+# library embeds one parser; both families present is ambiguous). The parser
+# family itself is inferred by the consumer build from the filename.
+def find_generated_parser(language_dir: Path) -> str:
     has_ll = (language_dir / "_ll-parser.zig").exists()
     has_lr = (language_dir / "_lr-parser.zig").exists()
     if has_ll and not has_lr:
-        return "_ll-parser.zig", "ll"
+        return "_ll-parser.zig"
     if has_lr and not has_ll:
-        return "_lr-parser.zig", "lr"
+        return "_lr-parser.zig"
     if has_ll and has_lr:
         fatal(
             f"both _ll-parser.zig and _lr-parser.zig exist in {language_dir}; "
@@ -198,65 +210,9 @@ def emit_python_procedure_shim(template_path: Path, output_path: Path) -> None:
     output_path.write_text("\n".join(builder) + "\n", encoding="utf-8")
 
 
-def resolve_galley(cache_dir_path: Path | None = None) -> Path:
-    # GALLEY_CHECKOUT wins; otherwise clone GALLEY_REPOSITORY at GALLEY_TAG
-    # into <cache>/galley-src. Mirrors bindings/go/cmd/galley and
-    # bindings/rust/src/build_helper.rs: a nearby checkout is not used
-    # unless GALLEY_CHECKOUT points at it.
-    checkout_env = os.environ.get("GALLEY_CHECKOUT")
-    if checkout_env:
-        checkout = Path(checkout_env)
-        if not (checkout / "build.zig").exists():
-            fatal(
-                f"GALLEY_CHECKOUT={checkout} is not a Galley repository checkout (no build.zig)"
-            )
-        return checkout
-    # Fetch into the same cache dir as the capi prefix.
-    if cache_dir_path is None:
-        cache_dir_path = cache_dir()
-    else:
-        cache_dir_path = Path(cache_dir_path)
-    tag = os.environ.get("GALLEY_TAG", DEFAULT_GALLEY_TAG)
-    repository = os.environ.get("GALLEY_REPOSITORY", DEFAULT_GALLEY_REPOSITORY)
-    source_dir = cache_dir_path / "galley-src"
-    stamp = cache_dir_path / "galley-tag"
-    try:
-        previous = stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else ""
-    except OSError:
-        previous = ""
-    if source_dir.exists() and previous == tag:
-        return source_dir
-    # Fresh clone
-    import shutil
-
-    if source_dir.exists():
-        shutil.rmtree(source_dir, ignore_errors=True)
-    run(
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            tag,
-            "--single-branch",
-            "--recurse-submodules=false",
-            repository,
-            str(source_dir),
-        ]
-    )
-    try:
-        stamp.write_text(tag, encoding="utf-8")
-    except OSError as error:
-        fatal(f"failed to write tag stamp: {error}")
-    return source_dir
-
-
 def compile_extension(
     galley_source: Path,
-    parser_source: str,
-    parser_type: str,
-    prefix: Path,
+    language_dir: Path,
     output_path: Path,
 ) -> None:
     include_dirs: list[str] = []
@@ -265,12 +221,11 @@ def compile_extension(
         if candidate not in include_dirs:
             include_dirs.append(candidate)
 
-    library_dir = prefix / "lib"
     arguments: list[str] = [compiler_executable(), "-O2", "-fPIC"]
     arguments += [f"-I{directory}" for directory in include_dirs]
     arguments += [
         "-I",
-        str(prefix / "include"),
+        str(galley_source / "bindings" / "c"),
         str(galley_source / "bindings" / "python" / "_galley.c"),
         "-o",
         str(output_path),
@@ -279,12 +234,19 @@ def compile_extension(
         arguments += ["-bundle", "-undefined", "dynamic_lookup"]
     else:
         arguments += ["-shared"]
+    if sys.platform == "darwin":
+        rpath = "@loader_path"
+    elif sys.platform == "win32":
+        rpath = None
+    else:
+        rpath = "$ORIGIN"
     arguments += [
-        f"-L{library_dir}",
-        f"-Wl,-rpath,{library_dir}",
+        f"-L{language_dir}",
         "-l",
         LIBRARY_NAME,
     ]
+    if rpath is not None:
+        arguments += [f"-Wl,-rpath,{rpath}"]
     if sys.platform not in ("darwin", "win32"):
         # _galley.c uses dlsym(RTLD_DEFAULT) to find
         # galley_install_python_dispatch when the Python shim is in use.
@@ -301,9 +263,8 @@ def main() -> None:
     if not (language_dir / "ll.grm").is_file():
         fatal(f"{language_dir} does not contain ll.grm")
 
-    # Resolve cache dir first so resolve_galley can use it for fetching.
-    cache_for_galley = cache_dir()
-    galley_source = resolve_galley(cache_for_galley)
+    # GALLEY_CHECKOUT is the single source of truth for the Galley checkout.
+    galley_source = resolve_galley()
     cli = galley_source / "zig-out" / "bin" / "galley"
     if not cli.exists():
         run(
@@ -323,13 +284,8 @@ def main() -> None:
 
     run([cli, "--emit-metadata", language_dir])
 
-    parser_source, parser_type = detect_parser(language_dir)
+    parser_source = find_generated_parser(language_dir)
 
-    prefix = (
-        cache_dir()
-        / "capi"
-        / hashlib.sha256(os.fsencode(str(language_dir))).hexdigest()[:16]
-    )
     # Python-native procedures take precedence over C procedures: if a
     # procedures.py exists, generate a Python dispatch shim and use it
     # instead of the C extern stub. When neither Python nor C implementations
@@ -379,11 +335,11 @@ def main() -> None:
         "--build-file",
         galley_source / "bindings" / "c" / "consumer" / "build.zig",
         f"-Dparser-source={language_dir / parser_source}",
-        f"-Dparser-type={parser_type}",
         f"-Dlib-name={LIBRARY_NAME}",
+        f"-Doutput={library_file_name()}",
         "-Doptimize=ReleaseFast",
         "--prefix",
-        prefix,
+        language_dir,
         "install",
     ]
     if procedures_zig_source is not None:
@@ -393,17 +349,11 @@ def main() -> None:
     if procedures_c_source is not None:
         consumer_arguments.insert(-1, f"-Dprocedures-c-source={procedures_c_source}")
     # config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
-    # build when omitted; only pass an explicit error-messages source when it
-    # exists.
-    error_messages_candidate = language_dir / f"{parser_type}_error_messages.zig"
-    if error_messages_candidate.is_file():
-        consumer_arguments.insert(
-            -1, f"-Derror-messages-zig-source={error_messages_candidate}"
-        )
+    # build from the parser location.
     run(consumer_arguments, cwd=galley_source)
 
     output_path = language_dir / f"galley{sysconfig.get_config_var('EXT_SUFFIX')}"
-    compile_extension(galley_source, parser_source, parser_type, prefix, output_path)
+    compile_extension(galley_source, language_dir, output_path)
     # Ship the PEP 484 stub alongside the extension so `ty`/`mypy`/`pyright`
     # resolve `import galley` (compiled extensions expose no Python source).
     stub_source = galley_source / "bindings" / "python" / "galley.pyi"

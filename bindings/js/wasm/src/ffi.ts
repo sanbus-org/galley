@@ -256,19 +256,6 @@ function isNode(): boolean {
 
 // --- library discovery (mirrors the Node adapter, `.wasm` names) -----------
 
-function defaultCacheDir(): string {
-  const home = os.homedir();
-  if (process.platform === "darwin") {
-    return path.join(home, "Library", "Caches", "galley-bindings", "js-wasm", "capi");
-  }
-  if (process.platform === "win32") {
-    const base = process.env.LOCALAPPDATA ?? os.tmpdir();
-    return path.join(base, "galley-bindings", "js-wasm", "capi");
-  }
-  const base = process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
-  return path.join(base, "galley-bindings", "js-wasm", "capi");
-}
-
 function wasmFileName(base = LIBRARY_BASE): string {
   return `lib${base}.wasm`;
 }
@@ -287,18 +274,14 @@ export function findLibrary(explicit?: string): string {
   if (process.env.GALLEY_LIBRARY_PATH && exists(process.env.GALLEY_LIBRARY_PATH)) {
     return path.resolve(process.env.GALLEY_LIBRARY_PATH);
   }
-  // 1) cwd / language-dir copies (build.mjs copies the module next to the grammar)
+  // 1) file next to the grammar (cwd when running from the language dir)
   const cwdCandidates = [
     path.join(process.cwd(), wasmFileName()),
     path.join(process.cwd(), wasmFileName(LIBRARY_BASE)),
   ];
   for (const candidate of cwdCandidates) if (exists(candidate)) return candidate;
 
-  // 2) cache dir (same content hash layout as the native adapters)
-  const cacheLib = path.join(defaultCacheDir(), "lib", wasmFileName());
-  if (exists(cacheLib)) return cacheLib;
-
-  // 3) sibling examples/js/wasm for development (from dist/, three levels up)
+  // 2) sibling examples/js/wasm for development (from dist/, three levels up)
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const devCandidates = [
@@ -310,8 +293,8 @@ export function findLibrary(explicit?: string): string {
     // ignore URL parsing errors in bundled contexts
   }
 
-  // fallback: let the loader error with the cache path
-  return cacheLib;
+  // fallback: let the loader error with the grammar-adjacent path
+  return path.join(process.cwd(), wasmFileName());
 }
 
 // --- minimal WASI stub ------------------------------------------------------

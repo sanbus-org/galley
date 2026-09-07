@@ -17,9 +17,9 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 # GALLEY_LIBRARY_PATH=/path/to/libgalley-java.dylib java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 ```
 
-Library discovery order: `SessionOptions.libraryPath` (explicit) → `GALLEY_LIBRARY_PATH` env → `<language-dir>/libgalley-java.*` → `~/Library/Caches/galley-bindings/java/capi/lib/libgalley-java.*` (macOS) or `~/.cache/galley-bindings/java/capi/lib/libgalley-java.*`.
+Library discovery order: `SessionOptions.libraryPath` (explicit) → `GALLEY_LIBRARY_PATH` env → `<language-dir>/libgalley-java.*` (the library lives next to the grammar).
 
-Environment overrides for the build tool: `ZIG_EXECUTABLE` (default `zig`), `GALLEY_CHECKOUT`, `GALLEY_REPOSITORY`, `GALLEY_TAG` (default `main`).
+Environment overrides for the build tool: `ZIG_EXECUTABLE` (default `zig`), `GALLEY_CHECKOUT` (required). For convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one — that cache is examples-only, not part of the bindings.
 
 ## Usage
 

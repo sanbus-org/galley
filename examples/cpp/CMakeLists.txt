@@ -47,13 +47,14 @@ else()
 endif()
 
 set(GALLEY_CLI        "${GALLEY_SOURCE_DIR}/zig-out/bin/galley")
-set(CAPI_PREFIX       "${CMAKE_BINARY_DIR}/galley-capi")
-set(GALLEY_INCLUDE_DIR "${CAPI_PREFIX}/include")
+set(GALLEY_INCLUDE_DIR "${GALLEY_SOURCE_DIR}/bindings/c")
 set(GENERATED_PARSER  "${CMAKE_CURRENT_SOURCE_DIR}/_ll-parser.zig")
 if(APPLE)
-    set(GALLEY_LIBRARY "${CAPI_PREFIX}/lib/libkeyvalue-c.dylib")
+    set(GALLEY_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/libkeyvalue-c.dylib")
+    set(GALLEY_LIB_FILENAME "libkeyvalue-c.dylib")
 else()
-    set(GALLEY_LIBRARY "${CAPI_PREFIX}/lib/libkeyvalue-c.so")
+    set(GALLEY_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/libkeyvalue-c.so")
+    set(GALLEY_LIB_FILENAME "libkeyvalue-c.so")
 endif()
 
 # 1. Build the Galley generator CLI.
@@ -77,21 +78,23 @@ add_custom_command(
 )
 
 # 3. Compile parser + runtime + C API into a shared library via Galley's
-#    generic consumer build file. All language-owned sources next to the
-#    parser (config.zig, procedures.zig, procedures.cpp) are inferred
-#    automatically — only the parser location and family are explicit.
+#    generic consumer build file, directly next to the grammar. All
+#    language-owned sources next to the parser (config.zig, procedures.zig,
+#    procedures.cpp) are inferred automatically — only the parser location
+#    and family are explicit. The header comes from the checkout
+#    (bindings/c/galley.h), not from the build output.
 #    Override with -Dconfig-zig-source / -Dprocedures-zig-source /
 #    -Dprocedures-c-source / -Derror-messages-zig-source for non-standard
 #    layouts.
 add_custom_command(
-    OUTPUT "${GALLEY_LIBRARY}" "${GALLEY_INCLUDE_DIR}/galley.h"
+    OUTPUT "${GALLEY_LIBRARY}"
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
             "-Dparser-source=${GENERATED_PARSER}"
-            "-Dparser-type=ll"
             "-Dlib-name=keyvalue-c"
+            "-Doutput=${GALLEY_LIB_FILENAME}"
             "-Doptimize=ReleaseFast"
-            --prefix "${CAPI_PREFIX}"
+            --prefix "${CMAKE_CURRENT_SOURCE_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
     DEPENDS galley_sources "${GENERATED_PARSER}"
@@ -99,13 +102,12 @@ add_custom_command(
 )
 add_custom_target(galley_c_api DEPENDS
     "${GALLEY_LIBRARY}"
-    "${GALLEY_INCLUDE_DIR}/galley.h"
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 add_executable(demo demo.cpp)
-set_target_properties(demo PROPERTIES BUILD_RPATH "${CAPI_PREFIX}/lib")
+set_target_properties(demo PROPERTIES BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(demo PRIVATE "${GALLEY_INCLUDE_DIR}")
 target_link_libraries(demo PRIVATE "${GALLEY_LIBRARY}")
 add_dependencies(demo galley_c_api)
@@ -114,11 +116,12 @@ add_dependencies(demo galley_c_api)
 # generation-time features off) compiled into a second library.
 set(BENCHMARK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/benchmark")
 set(BENCHMARK_PARSER "${BENCHMARK_DIR}/_ll-parser.zig")
-set(BENCHMARK_PREFIX "${CMAKE_BINARY_DIR}/galley-benchmark-capi")
 if(APPLE)
-    set(BENCHMARK_LIBRARY "${BENCHMARK_PREFIX}/lib/libbenchmark-cpp.dylib")
+    set(BENCHMARK_LIBRARY "${BENCHMARK_DIR}/libbenchmark-cpp.dylib")
+    set(BENCHMARK_LIB_FILENAME "libbenchmark-cpp.dylib")
 else()
-    set(BENCHMARK_LIBRARY "${BENCHMARK_PREFIX}/lib/libbenchmark-cpp.so")
+    set(BENCHMARK_LIBRARY "${BENCHMARK_DIR}/libbenchmark-cpp.so")
+    set(BENCHMARK_LIB_FILENAME "libbenchmark-cpp.so")
 endif()
 
 add_custom_command(
@@ -129,14 +132,14 @@ add_custom_command(
 )
 
 add_custom_command(
-    OUTPUT "${BENCHMARK_LIBRARY}" "${BENCHMARK_PREFIX}/include/galley.h"
+    OUTPUT "${BENCHMARK_LIBRARY}"
     COMMAND "${ZIG_EXECUTABLE}" build
             --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
             "-Dparser-source=${BENCHMARK_PARSER}"
-            "-Dparser-type=ll"
             "-Dlib-name=benchmark-cpp"
+            "-Doutput=${BENCHMARK_LIB_FILENAME}"
             "-Doptimize=ReleaseFast"
-            --prefix "${BENCHMARK_PREFIX}"
+            --prefix "${BENCHMARK_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
     DEPENDS galley_sources "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
@@ -144,12 +147,11 @@ add_custom_command(
 )
 add_custom_target(galley_benchmark_c_api DEPENDS
     "${BENCHMARK_LIBRARY}"
-    "${BENCHMARK_PREFIX}/include/galley.h"
 )
 
 add_executable(benchmark benchmark.cpp)
-set_target_properties(benchmark PROPERTIES BUILD_RPATH "${BENCHMARK_PREFIX}/lib")
-target_include_directories(benchmark PRIVATE "${BENCHMARK_PREFIX}/include")
+set_target_properties(benchmark PROPERTIES BUILD_RPATH "${BENCHMARK_DIR}")
+target_include_directories(benchmark PRIVATE "${GALLEY_INCLUDE_DIR}")
 target_link_libraries(benchmark PRIVATE "${BENCHMARK_LIBRARY}")
 target_compile_definitions(benchmark PRIVATE "GALLEY_SOURCE_DIR=\"${GALLEY_SOURCE_DIR}\"")
 add_dependencies(benchmark galley_benchmark_c_api)

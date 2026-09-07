@@ -34,9 +34,9 @@ GALLEY_CHECKOUT=/path/to/galley npx galley-js-wasm .
 npx tsx demo.ts
 ```
 
-The build generates the parser (`--emit-metadata`), compiles the reactor
-module through Galley's generic consumer build file (`-Dwasm`), and copies
-`libgalley-js-wasm.wasm` next to your grammar. Import the bindings
+The build generates the parser (`--emit-metadata`) and compiles the reactor
+module through Galley's generic consumer build file (`-Dwasm`) directly next
+to your grammar. Import the bindings
 from that directory:
 
 ```ts
