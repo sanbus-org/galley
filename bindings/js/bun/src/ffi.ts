@@ -13,7 +13,7 @@ import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { MissingArtifactError } from "galley-js-core";
+import { resolveArtifact } from "galley-js-core";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
@@ -151,18 +151,13 @@ function exists(candidate: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
-  if (!chosen) {
-    throw new MissingArtifactError(
-      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
-      BUILD_HINT,
-    );
-  }
-  const resolved = path.resolve(chosen);
-  if (!exists(resolved)) {
-    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
-  }
-  return resolved;
+  // The decision lives in core; this adapter passes its host access.
+  return resolveArtifact(explicit, {
+    getEnv: (name) => process.env[name],
+    resolvePath: (candidate) => path.resolve(candidate),
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
 }
 
 // --- loader ------------------------------------------------------------

@@ -27,7 +27,7 @@ import type {
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
-import { dispatchProcedure, MissingArtifactError } from "galley-js-core";
+import { dispatchProcedure, resolveArtifact } from "galley-js-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -274,18 +274,13 @@ function exists(localPath: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
-  if (!chosen) {
-    throw new MissingArtifactError(
-      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
-      BUILD_HINT,
-    );
-  }
-  const resolved = path.resolve(chosen);
-  if (!exists(resolved)) {
-    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
-  }
-  return resolved;
+  // The decision lives in core; this adapter passes its host access.
+  return resolveArtifact(explicit, {
+    getEnv: (name) => process.env[name],
+    resolvePath: (candidate) => path.resolve(candidate),
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
 }
 
 // --- minimal WASI stub ------------------------------------------------------
