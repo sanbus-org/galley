@@ -126,7 +126,7 @@ Galley-side build knowledge is required:
 
    ```sh
    zig build --build-file <galley>/bindings/c/consumer/build.zig \
-       "-Dparser-source=/path/to/language-dir/_ll-parser.zig" \
+       "-Dlanguage-dir=/path/to/language-dir" \
        "-Dlib-name=mylang" \
        "-Doutput=libmylang.so" \
        "-Doptimize=ReleaseFast" \
@@ -135,10 +135,10 @@ Galley-side build knowledge is required:
    #    read galley.h from <galley>/bindings/c, or pass -Dinstall-header)
    ```
 
-   Both parser families work identically through this ABI: pass the
-   `_lr-parser.zig` source for an LR grammar — the family is inferred from
-   the filename (`-Dparser-type` only for non-standard filenames).
-   One library embeds one parser.
+   Both parser families work identically through this ABI: the consumer
+   locates `_ll-parser.zig` vs `_lr-parser.zig` in the language dir and infers
+   the family from the filename (`-Dparser-source` plus `-Dparser-type` only
+   for non-standard filenames and layouts). One library embeds one parser.
 
 Generation-time options come from [`config.zig`](/configuration) in the
 language directory; CLI flags edit its constants in place.
@@ -149,10 +149,10 @@ when no explicit flag is given — `config.zig`, `procedures.zig`,
 template), and a `procedures.c` or `procedures.cpp` implementation when
 present. Explicit flags (`-Dconfig-zig-source`, `-Dprocedures-zig-source`,
 `-Dprocedures-c-source` / `-Dprocedures-object`,
-`-Derror-messages-zig-source`, `-Dparser-type`) override inference and exist only for
+`-Derror-messages-zig-source`, `-Dparser-source` / `-Dparser-type`) override inference and exist only for
 non-standard layouts where those files live elsewhere. The reference
-`examples/c` and `examples/cpp` builds rely entirely on inference and
-pass only `parser-source`.
+`examples/c` and `examples/cpp` builds pass only `parser-source` and rely
+on inference for the rest.
 
 ### What the examples' CMake does
 

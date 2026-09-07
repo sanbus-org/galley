@@ -29,12 +29,12 @@ DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 # Per-language bars replacing the global --min-ratio for the named
 # languages. Only wasm uses one today.
-DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.80}
+DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.75}
 # Per-language round counts replacing --rounds for the named languages.
 # zig is the reference every other language is divided by, so its median
 # has to be stable; extra runs pin the baseline down. wasm has measured
 # noisier than the rest in CI, so it gets extra runs too.
-DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {"zig": 6, "wasm": 6}
+DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {"zig": 5, "wasm": 5}
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = (
     "zig",

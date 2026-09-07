@@ -89,16 +89,6 @@ public final class GalleyBuild {
         return checkout.toAbsolutePath();
     }
 
-    private static String findGeneratedParser(Path languageDir) {
-        boolean hasLL = Files.exists(languageDir.resolve("_ll-parser.zig"));
-        boolean hasLR = Files.exists(languageDir.resolve("_lr-parser.zig"));
-        if (hasLL && !hasLR) return "_ll-parser.zig";
-        if (!hasLL && hasLR) return "_lr-parser.zig";
-        if (hasLL && hasLR) fatal("both _ll-parser.zig and _lr-parser.zig exist in " + languageDir + "; one library embeds one parser — split the language dirs");
-        fatal("generation produced no parser in " + languageDir);
-        return null;
-    }
-
     private static String libFileName(String base) {
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("mac")) return "lib" + base + ".dylib";
@@ -193,9 +183,9 @@ public final class GalleyBuild {
 
         run(Arrays.asList(cli.toString(), "--emit-metadata", languageDir.toString()), null);
 
-        // One library embeds one parser; locate the file generation produced.
-        // The family is inferred by the consumer build from the filename.
-        String parserSource = findGeneratedParser(languageDir);
+        // One library embeds one parser; the consumer build locates the file
+        // generation produced from -Dlanguage-dir and infers the family
+        // from the filename.
         List<String> procedureHooks = readProcedureHooks(languageDir);
 
         Path javaProceduresFile = findJavaProceduresFile(languageDir);
@@ -224,7 +214,7 @@ public final class GalleyBuild {
         List<String> consumerArgs = new ArrayList<>(Arrays.asList(
                 zigExecutable(), "build",
                 "--build-file", galleySource.resolve("bindings").resolve("c").resolve("consumer").resolve("build.zig").toString(),
-                "-Dparser-source=" + languageDir.resolve(parserSource).toString(),
+                "-Dlanguage-dir=" + languageDir.toString(),
                 "-Dlib-name=" + LIBRARY_NAME,
                 "-Doutput=" + libFileName(LIBRARY_NAME),
                 "-Doptimize=ReleaseFast",
