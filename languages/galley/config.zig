@@ -18,7 +18,7 @@ pub const ast = true;
 
 /// Enable grammar-annotated procedure hooks.
 ///
-/// true  - procedures attached with @procedures(...) annotations run at
+/// true  - procedures attached with @Name annotations run at
 ///         their annotated positions.
 /// false - procedure hooks are never invoked.
 pub const procedures = true;
@@ -42,7 +42,7 @@ pub const require_reduction_procedures = false;
 /// Enable syntax-error recovery.
 ///
 /// true  - recovery runs automatically, or through the grammar's
-///         explicit @recovery(...) points when the grammar declares any.
+///         explicit @!"..." points when the grammar declares any.
 /// false - parsing stops at the first syntax error.
 pub const error_recovery = true;
 

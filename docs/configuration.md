@@ -36,7 +36,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | Constant | Type | Meaning |
 | :--- | :--- | :--- |
 | `ast` | `bool` | Construct an abstract syntax tree and expose tree APIs. `false` skips AST construction entirely for maximum throughput; procedure hooks still run. |
-| `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@procedures(...)`). |
+| `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@Name`). |
 | `allow_no_ast_tree_procedures` | `bool` | In no-AST mode, treat standard tree-manipulation procedures as no-ops instead of failing to compile. |
 | `require_reduction_procedures` | `bool` | Require every visible production to declare `reduction_<Var>_<N>`. Missing hooks warn at generation and fail compilation with variable, index, and shape. |
 | `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
