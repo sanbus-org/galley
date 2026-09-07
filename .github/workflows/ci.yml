@@ -255,6 +255,12 @@ jobs:
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 
+      - name: Test bindings (java)
+        if: ${{ matrix.language == 'java' }}
+        env:
+          GALLEY_LIBRARY_PATH: ${{ github.workspace }}/examples/java/libgalley-java.so
+        run: mvn -B -f bindings/java/pom.xml test
+
   bindings-consistency:
     name: bindings-consistency
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
