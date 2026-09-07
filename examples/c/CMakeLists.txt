@@ -1,50 +1,33 @@
 cmake_minimum_required(VERSION 3.20)
 project(galley_c_example C)
 
-# Self-sufficient Galley consumer: fetching Galley, generating the parser
-# from this directory's ll.grm, and compiling it into a shared C-API library
-# all happen here automatically.
+# Galley C consumer example: generating the parser from this directory's
+# ll.grm and compiling it into a shared C-API library next to the grammar.
 #
 # Generation options live in config.zig next to ll.grm — edit it and
-# rebuild consumers to pick them up. Requires `zig` and `git` on PATH; nothing from any
-# parent directory is used. Benchmarking submodules of Galley are not needed
-# and are skipped; GIT_SHALLOW assumes GALLEY_TAG names a branch.
+# rebuild consumers to pick them up. Requires `zig` on PATH and
+# GALLEY_CHECKOUT pointing at a Galley working tree (for convenience,
+# GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh) fetches one — that
+# cache is examples-only, not part of the bindings); nothing from any
+# parent directory is used.
 #
-# Set GALLEY_CHECKOUT to a local Galley working tree to skip fetching (useful
-# when developing Galley itself).
-set(GALLEY_REPOSITORY "https://github.com/sanbus-org/galley.git"
-    CACHE STRING "Galley repository to fetch")
-set(GALLEY_TAG "main"
-    CACHE STRING "Galley revision to fetch")
-
+# Set GALLEY_CHECKOUT to a local Galley working tree (required).
 find_program(ZIG_EXECUTABLE NAMES zig REQUIRED)
 
 set(GALLEY_CHECKOUT "" CACHE PATH
-    "Existing Galley checkout to use instead of fetching one")
+    "Existing Galley checkout to use (required)")
 
-if(NOT GALLEY_CHECKOUT STREQUAL "" AND NOT EXISTS "${GALLEY_CHECKOUT}/build.zig")
+if(GALLEY_CHECKOUT STREQUAL "")
+    message(FATAL_ERROR
+        "GALLEY_CHECKOUT is not set; point it at a Galley checkout "
+        "(examples/scripts/fetch-galley.sh can fetch one).")
+endif()
+if(NOT EXISTS "${GALLEY_CHECKOUT}/build.zig")
     message(FATAL_ERROR
         "GALLEY_CHECKOUT='${GALLEY_CHECKOUT}' is not a Galley repository checkout "
         "(no build.zig). Point it at the repository root.")
 endif()
-
-if(GALLEY_CHECKOUT STREQUAL "")
-    include(ExternalProject)
-    ExternalProject_Add(galley_sources
-        GIT_REPOSITORY "${GALLEY_REPOSITORY}"
-        GIT_TAG "${GALLEY_TAG}"
-        GIT_SUBMODULES ""
-        GIT_SHALLOW TRUE
-        SOURCE_DIR "${CMAKE_BINARY_DIR}/galley-src"
-        CONFIGURE_COMMAND ""
-        BUILD_COMMAND ""
-        INSTALL_COMMAND ""
-    )
-    set(GALLEY_SOURCE_DIR "${CMAKE_BINARY_DIR}/galley-src")
-else()
-    add_custom_target(galley_sources)
-    set(GALLEY_SOURCE_DIR "${GALLEY_CHECKOUT}")
-endif()
+set(GALLEY_SOURCE_DIR "${GALLEY_CHECKOUT}")
 
 set(GALLEY_CLI        "${GALLEY_SOURCE_DIR}/zig-out/bin/galley")
 set(GALLEY_INCLUDE_DIR "${GALLEY_SOURCE_DIR}/bindings/c")
@@ -62,7 +45,6 @@ add_custom_command(
     OUTPUT "${GALLEY_CLI}"
     COMMAND "${ZIG_EXECUTABLE}" build -Doptimize=ReleaseFast install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS galley_sources
     VERBATIM
 )
 
@@ -97,7 +79,7 @@ add_custom_command(
             --prefix "${CMAKE_CURRENT_SOURCE_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS galley_sources "${GENERATED_PARSER}"
+    DEPENDS "${GENERATED_PARSER}"
     VERBATIM
 )
 add_custom_target(galley_c_api DEPENDS
@@ -143,7 +125,7 @@ add_custom_command(
             --prefix "${BENCHMARK_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS galley_sources "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
+    DEPENDS "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
     VERBATIM
 )
 add_custom_target(galley_benchmark_c_api DEPENDS

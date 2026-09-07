@@ -157,18 +157,18 @@ on inference for the rest.
 ### What the examples' CMake does
 
 Both examples wire steps 1–2 into CMake so a plain
-`cmake -S examples/c -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build` fetches Galley (into the build dir — examples-only convenience), builds
+`cmake -S examples/c -B build -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD" && cmake --build build` builds
 its CLI, generates the parser from the example's own `ll.grm`, compiles the
 library next to the grammar, builds `build/bin/demo` and `build/bin/benchmark`, and runs nothing else. Generation also
-re-runs automatically whenever `ll.grm` or `config.zig` changes.
+re-runs automatically whenever `ll.grm` or `config.zig` changes. Without
+`GALLEY_CHECKOUT` the configure step fails loudly (for convenience,
+`GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one).
 
 Useful variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `GALLEY_REPOSITORY` | Repository fetched when no checkout is given (examples-only) |
-| `GALLEY_TAG` | Revision to fetch (default `main`, examples-only) |
-| `GALLEY_CHECKOUT` | Existing Galley working tree; skips fetching |
+| `GALLEY_CHECKOUT` | Existing Galley working tree (required) |
 
 Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) and the
 grammar library (`libkeyvalue-c.*`, `libbenchmark-c.*`) live in

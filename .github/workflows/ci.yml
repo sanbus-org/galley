@@ -356,22 +356,15 @@ jobs:
           check_core bindings/js/bun/build.mjs
           check_core bindings/js/wasm/build.mjs
           check_core bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
-          for f in examples/c/CMakeLists.txt examples/cpp/CMakeLists.txt; do
-            for var in GALLEY_CHECKOUT GALLEY_REPOSITORY GALLEY_TAG ZIG_EXECUTABLE; do
-              if ! grep -q "$var" "$f"; then
-                echo "::error::$f missing $var handling (examples own the fetch)"
-                exit 1
-              fi
-            done
-            echo "Examples fetch contract present in $f"
-          done
+          check_core examples/c/CMakeLists.txt
+          check_core examples/cpp/CMakeLists.txt
           for var in GALLEY_REPOSITORY GALLEY_TAG; do
             if ! grep -q "$var" examples/scripts/fetch-galley.sh; then
               echo "::error::examples/scripts/fetch-galley.sh missing $var handling"
               exit 1
             fi
           done
-          echo "Galley checkout contract enforced: core requires checkout, examples own the fetch"
+          echo "Galley checkout contract enforced: checkout required everywhere, fetch lives in fetch-galley.sh only"
 
       - name: JavaScript packages share one lockstep version
         run: python3 scripts/check_js_versions.py
