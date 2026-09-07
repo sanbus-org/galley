@@ -142,6 +142,7 @@ public final class Session implements AutoCloseable {
 
     public int parse(byte[] input) {
         requireOpen();
+        Procedures.syncGatesFor(lib);
         if (input == null) input = new byte[0];
         long len = input.length;
         if (len == 0) {
@@ -173,6 +174,7 @@ public final class Session implements AutoCloseable {
 
     public int parse(ByteBuffer buffer) {
         requireOpen();
+        Procedures.syncGatesFor(lib);
         if (buffer == null) throw new IllegalArgumentException("buffer is null");
         int len = buffer.remaining();
         if (len == 0) {
@@ -254,6 +256,7 @@ public final class Session implements AutoCloseable {
 
     public int parseFile(String path) {
         requireOpen();
+        Procedures.syncGatesFor(lib);
         if (path == null) throw new IllegalArgumentException("path is null");
         Session prev = PARSING_SESSION.get();
         PARSING_SESSION.set(this);

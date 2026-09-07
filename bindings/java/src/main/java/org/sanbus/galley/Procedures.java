@@ -172,6 +172,24 @@ public final class Procedures {
         ensureDispatchFor(lib);
     }
 
+    /**
+     * Selective dispatch sync (the single gate all parse legs share):
+     * clears every native procedure gate, then enables exactly the
+     * registered names. Missing symbols are no-ops.
+     */
+    static void syncGatesFor(GalleyLibrary lib) {
+        if (lib == null) return;
+        lib.galley_java_procedure_clear();
+        if (TABLE.isEmpty()) return;
+        for (String name : TABLE.keySet()) {
+            byte[] bytes = name.getBytes(StandardCharsets.UTF_8);
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment seg = arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
+                lib.galley_java_procedure_enable(seg, bytes.length);
+            }
+        }
+    }
+
     static void registerSession(long ptrValue, Session session) {
         SESSION_MAP.put(ptrValue, session);
     }

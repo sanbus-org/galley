@@ -250,6 +250,8 @@ interface GalleyWasmExports {
   galley_procedure_context_line(args: number): number;
   galley_procedure_context_column(args: number): number;
   galley_procedure_report_semantic_error(args: number, message: number, messageLen: number): bigint;
+  galley_js_procedure_enable?(namePtr: number, nameLen: number): number;
+  galley_js_procedure_clear?(): void;
 }
 
 // --- instance cache (one module per grammar file) --------------------------
@@ -1463,6 +1465,21 @@ export class WasmPort implements FfiPort {
       );
     } finally {
       this.free(slot.ptr, Math.max(slot.len, 1));
+    }
+  }
+
+  syncProcedures(names: string[]): void {
+    if (typeof this.wasm.galley_js_procedure_clear !== "function") return;
+    if (typeof this.wasm.galley_js_procedure_enable !== "function") return;
+    this.wasm.galley_js_procedure_clear();
+    for (const name of names) {
+      const bytes = textEncoder.encode(name);
+      const slot = this.writeBytes(bytes);
+      try {
+        this.wasm.galley_js_procedure_enable(slot.ptr, slot.len);
+      } finally {
+        this.free(slot.ptr, Math.max(slot.len, 1));
+      }
     }
   }
 }

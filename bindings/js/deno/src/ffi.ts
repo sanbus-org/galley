@@ -133,6 +133,8 @@ interface GalleySymbols {
   galley_procedure_context_column(args: Deno.PointerValue): number;
   galley_procedure_report_semantic_error(args: Deno.PointerValue, message: FfiOut, messageLen: number): bigint;
   galley_install_js_dispatch(callback: Deno.PointerValue): void;
+  galley_js_procedure_enable?(name: FfiOut, nameLen: number | bigint): number;
+  galley_js_procedure_clear?(): void;
 }
 
 // --- library discovery -------------------------------------------------
@@ -282,8 +284,19 @@ const DISPATCH_SYMBOL = {
   galley_install_js_dispatch: { parameters: ["function"], result: "void" },
 } as const;
 
-function openNative(libPath: string, withDispatch: boolean) {
-  return Deno.dlopen(libPath, withDispatch ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL } : BASE_SYMBOLS);
+const SELECTIVE_SYMBOL = {
+  galley_js_procedure_enable: { parameters: ["buffer", "usize"], result: "i32" },
+  galley_js_procedure_clear: { parameters: [], result: "void" },
+} as const;
+
+function openNative(libPath: string, level: number) {
+  const symbols =
+    level >= 2
+      ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
+      : level >= 1
+        ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL }
+        : BASE_SYMBOLS;
+  return Deno.dlopen(libPath, symbols);
 }
 
 // --- read helpers ----------------------------------------------------------
@@ -329,6 +342,15 @@ export class DenoPort implements FfiPort {
     this.native = native;
     this.libraryPath = libraryPath;
     this.supportsDispatch = supportsDispatch;
+  }
+
+  syncProcedures(names: string[]): void {
+    if (typeof this.native.galley_js_procedure_clear !== "function") return;
+    if (typeof this.native.galley_js_procedure_enable !== "function") return;
+    this.native.galley_js_procedure_clear();
+    for (const name of names) {
+      this.native.galley_js_procedure_enable(textEncoder.encode(name), name.length);
+    }
   }
 
   // -- module-level queries --------------------------------------------
@@ -954,10 +976,14 @@ export function getDenoPort(explicitPath?: string): DenoPort {
   let native: GalleySymbols;
   let supportsDispatch = true;
   try {
-    native = openNative(libPath, true).symbols as unknown as GalleySymbols;
+    native = openNative(libPath, 2).symbols as unknown as GalleySymbols;
   } catch {
-    native = openNative(libPath, false).symbols as unknown as GalleySymbols;
-    supportsDispatch = false;
+    try {
+      native = openNative(libPath, 1).symbols as unknown as GalleySymbols;
+    } catch {
+      native = openNative(libPath, 0).symbols as unknown as GalleySymbols;
+      supportsDispatch = false;
+    }
   }
   const port = new DenoPort(native, libPath, supportsDispatch);
   portCache.set(libPath, port);

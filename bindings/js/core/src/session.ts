@@ -13,7 +13,7 @@ import { GalleyError } from "./errors.ts";
 import type { FfiPort, Handle, SessionCOptions, TreeSnapshot } from "./port.ts";
 import { decodeUtf8, encodeUtf8 } from "./text.ts";
 import { Node } from "./node.ts";
-import { setParsingSession } from "./procedures.ts";
+import { listProcedures, setParsingSession } from "./procedures.ts";
 
 export interface SessionOptions {
   maxErrors?: number; // default 10
@@ -217,6 +217,7 @@ export class Session {
   parse(input: string | Uint8Array): number {
     const handle = this.#requireHandle();
     const buf = typeof input === "string" ? encodeUtf8(input) : input;
+    this.#port.syncProcedures(listProcedures());
     const previous = setParsingSession(this);
     let status: number;
     try {
@@ -236,6 +237,7 @@ export class Session {
 
   parseFile(filePath: string): number {
     const handle = this.#requireHandle();
+    this.#port.syncProcedures(listProcedures());
     const previous = setParsingSession(this);
     let status: number;
     try {
