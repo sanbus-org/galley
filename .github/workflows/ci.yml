@@ -80,8 +80,8 @@ jobs:
             --test-timeout 30m \
             -Dtest-filter=case:${{ matrix.case }}
 
-  language-examples:
-    name: language-examples (${{ matrix.language }})
+  bindings:
+    name: bindings (${{ matrix.language }})
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     strategy:
       fail-fast: false
@@ -635,7 +635,7 @@ jobs:
     needs:
       - core
       - matrix
-      - language-examples
+      - bindings
       - bindings-consistency
       - example-benchmarks
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
@@ -644,17 +644,17 @@ jobs:
         env:
           CORE_RESULT: ${{ needs.core.result }}
           MATRIX_RESULT: ${{ needs.matrix.result }}
-          LANGUAGE_EXAMPLES_RESULT: ${{ needs.language-examples.result }}
+          BINDINGS_RESULT: ${{ needs.bindings.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
           EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "matrix: $MATRIX_RESULT"
-          echo "language-examples: $LANGUAGE_EXAMPLES_RESULT"
+          echo "bindings: $BINDINGS_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
           test "$CORE_RESULT" = success
           test "$MATRIX_RESULT" = success
-          test "$LANGUAGE_EXAMPLES_RESULT" = success
+          test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
           test "$EXAMPLE_BENCHMARKS_RESULT" = success
