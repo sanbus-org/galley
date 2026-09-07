@@ -9,6 +9,8 @@ import { Session, Walker } from "./session.js";
 import type { SessionOptions, WalkStep } from "./session.js";
 import { Node } from "./node.js";
 import { GalleyError, MissingArtifactError } from "./errors.js";
+import { resolveArtifact } from "./artifact.js";
+import type { ArtifactHost } from "./artifact.js";
 import type { Diagnostic } from "./diagnostic.js";
 import type { FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler } from "./port.js";
 import {
@@ -30,6 +32,7 @@ export {
   Node,
   GalleyError,
   MissingArtifactError,
+  resolveArtifact,
   ProcedureArguments,
   installProcedure,
   installProcedures,
@@ -42,5 +45,5 @@ export {
   decodeUtf8,
   byteLengthUtf8,
 };
-export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler, HookFn };
+export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler, HookFn, ArtifactHost };
 export * from "./constants.js";

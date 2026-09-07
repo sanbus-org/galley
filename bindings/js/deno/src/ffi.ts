@@ -11,7 +11,7 @@
  */
 
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { MissingArtifactError } from "galley-js-core";
+import { resolveArtifact } from "galley-js-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -148,17 +148,14 @@ function exists(filePath: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  const chosen = explicit || Deno.env.get("GALLEY_LIBRARY_PATH");
-  if (!chosen) {
-    throw new MissingArtifactError(
-      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
-      BUILD_HINT,
-    );
-  }
-  if (!exists(chosen)) {
-    throw new MissingArtifactError(`at ${chosen}`, BUILD_HINT);
-  }
-  return chosen;
+  // The decision lives in core; this adapter passes its host access.
+  // Deno reports the path it was given (no resolve step), as before.
+  return resolveArtifact(explicit, {
+    getEnv: (name) => Deno.env.get(name),
+    resolvePath: (candidate) => candidate,
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
 }
 
 // --- loader ------------------------------------------------------------

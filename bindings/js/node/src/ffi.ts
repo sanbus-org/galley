@@ -20,7 +20,7 @@ import type {
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
-import { MissingArtifactError } from "galley-js-core";
+import { resolveArtifact } from "galley-js-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -369,18 +369,13 @@ function exists(p: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  const chosen = explicit || process.env.GALLEY_LIBRARY_PATH;
-  if (!chosen) {
-    throw new MissingArtifactError(
-      "no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH",
-      BUILD_HINT,
-    );
-  }
-  const resolved = path.resolve(chosen);
-  if (!exists(resolved)) {
-    throw new MissingArtifactError(`at ${resolved}`, BUILD_HINT);
-  }
-  return resolved;
+  // The decision lives in core; this adapter passes its host access.
+  return resolveArtifact(explicit, {
+    getEnv: (name) => process.env[name],
+    resolvePath: (candidate) => path.resolve(candidate),
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
 }
 
 // --- loader ------------------------------------------------------------
