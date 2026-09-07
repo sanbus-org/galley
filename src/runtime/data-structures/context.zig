@@ -138,7 +138,15 @@ pub const RuntimeContext = struct {
             }}) catch {};
         } else if (std.mem.eql(u8, placeholder, "unexpected")) {
             switch (diagnostic) {
-                .syntax => |syntax| writer.writeAll(syntax.unexpected_token) catch {},
+                .syntax => |syntax| {
+                    // Synthetic terminals show their display name; every other
+                    // token keeps its existing raw rendering.
+                    if (string_utilities.tokenDisplayName(syntax.unexpected_token)) |name| {
+                        writer.writeAll(name) catch {};
+                    } else {
+                        writer.writeAll(syntax.unexpected_token) catch {};
+                    }
+                },
                 .semantic, .indentation => {},
             }
         } else if (std.mem.eql(u8, placeholder, "expected")) {
@@ -146,7 +154,11 @@ pub const RuntimeContext = struct {
                 .syntax => |syntax| {
                     for (syntax.expected_tokens, 0..) |token, index| {
                         if (index != 0) writer.writeAll(", ") catch {};
-                        writer.print("'{s}'", .{token}) catch {};
+                        if (string_utilities.tokenDisplayName(token)) |name| {
+                            writer.print("'{s}'", .{name}) catch {};
+                        } else {
+                            writer.print("'{s}'", .{token}) catch {};
+                        }
                     }
                 },
                 .semantic, .indentation => {},

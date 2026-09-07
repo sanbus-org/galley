@@ -274,7 +274,7 @@ pub fn parseSentinelBytes(io: std.Io, allocator: std.mem.Allocator, input: [:0]c
 fn writeExpectedTokens(writer: *std.Io.Writer, expected_tokens: []const []const u8) !void {
     for (expected_tokens, 0..) |expected_token, index| {
         if (index != 0) try writer.writeAll("', '");
-        try writer.print("{f}", .{string_utilities.fmtString(expected_token)});
+        try writer.print("{f}", .{string_utilities.fmtToken(expected_token)});
     }
 }
 
@@ -299,7 +299,7 @@ pub fn formatSyntaxRecovery(writer: *std.Io.Writer, recovery: SyntaxRecovery) !v
     try writeRecoveryTarget(writer, recovery.target);
     try writer.print(" resumed {s} \"{f}\".\n", .{
         @tagName(recovery.@"resume"),
-        string_utilities.fmtString(recovery.terminal),
+        string_utilities.fmtToken(recovery.terminal),
     });
 }
 
@@ -314,7 +314,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     , .{
                         syntax.line,
                         syntax.column,
-                        string_utilities.fmtString(syntax.unexpected_token),
+                        string_utilities.fmtToken(syntax.unexpected_token),
                     });
                     switch (syntax.context) {
                         .none, .state => {},
@@ -338,7 +338,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                         .{
                             syntax.line,
                             syntax.column,
-                            string_utilities.fmtString(syntax.unexpected_token),
+                            string_utilities.fmtToken(syntax.unexpected_token),
                         },
                     );
                     switch (syntax.context) {
@@ -770,6 +770,49 @@ pub const Session = struct {
         return session_result;
     }
 };
+
+test "synthetic terminals render display names in diagnostics" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+
+    try formatParseDiagnostic(&output.writer, .{ .syntax = .{
+        .line = 1,
+        .column = 10,
+        .unexpected_token = "\x00",
+        .expected_tokens = &.{ "\x01", "\x02", "{" },
+    } }, .plain);
+
+    const rendered = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "Unexpected token \"End of input\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "'Indent', 'Dedent', '{'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\\x") == null);
+}
+
+test "message override placeholders show synthetic display names" {
+    const io = std.testing.io;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .line = 1,
+        .column = 10,
+        .unexpected_token = "\x00",
+        .expected_tokens = &.{ "\x01", "{" },
+        .context = .{ .while_parsing = &.{"Value"} },
+    } };
+    const config_tables = .{
+        .Value = "saw {unexpected} want {expected}",
+    };
+
+    var runtime = data_structures.RuntimeContext{
+        .io = io,
+        .arena_allocator = arena_state.allocator(),
+    };
+    try std.testing.expectEqualStrings(
+        "saw End of input want 'Indent', '{'",
+        runtime.resolveMessageOverride(diagnostic, config_tables).?,
+    );
+}
 
 test "galley LL grammar error hook returns custom guidance" {
     var context: data_structures.Context = undefined;
