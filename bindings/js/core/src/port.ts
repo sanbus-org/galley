@@ -196,4 +196,10 @@ export interface FfiPort {
   procContextColumn(args: Handle): number;
   /** Running semantic-error total, or a negative status code. */
   procReportSemanticError(args: Handle, message: Uint8Array): number;
+  /**
+   * Enables exactly `names` in the native procedure gates before a parse
+   * (selective dispatch): the adapter clears all gates, then enables each
+   * name. Missing symbols (C-procedure or stale libraries) are no-ops.
+   */
+  syncProcedures(names: string[]): void;
 }

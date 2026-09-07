@@ -336,6 +336,9 @@ export interface GalleyFFI {
 
   // procedure dispatch (shared JS shim; see galley-js-core/build/shim.mjs)
   galley_install_js_dispatch: ((target: unknown) => void) | null;
+  // selective dispatch gates (null on C-procedure or stale libraries)
+  galley_js_procedure_enable: ((name: string, nameLen: number | bigint) => number | bigint) | null;
+  galley_js_procedure_clear: (() => void) | null;
 
   // procedure-hook state; tree queries use galley_node_* on the session
   galley_procedure_session: (args: bigint) => bigint;
@@ -597,6 +600,25 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
         return lib.func("void galley_install_js_dispatch(void *target)") as unknown as (
           target: unknown,
         ) => void;
+      } catch {
+        return null;
+      }
+    })(),
+
+    galley_js_procedure_enable: (() => {
+      try {
+        return lib.func("int galley_js_procedure_enable(str name, size_t name_len)") as unknown as (
+          name: string,
+          nameLen: number | bigint,
+        ) => number | bigint;
+      } catch {
+        return null;
+      }
+    })(),
+
+    galley_js_procedure_clear: (() => {
+      try {
+        return lib.func("void galley_js_procedure_clear()") as unknown as () => void;
       } catch {
         return null;
       }
@@ -1386,6 +1408,14 @@ export class NodePort implements FfiPort {
     return toNumber(
       this.ffi.galley_procedure_report_semantic_error(args as bigint, decodeParam(message), message.length),
     );
+  }
+
+  syncProcedures(names: string[]): void {
+    if (this.ffi.galley_js_procedure_clear === null || this.ffi.galley_js_procedure_enable === null) return;
+    this.ffi.galley_js_procedure_clear();
+    for (const name of names) {
+      this.ffi.galley_js_procedure_enable(name, name.length);
+    }
   }
 }
 

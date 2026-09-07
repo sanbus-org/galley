@@ -150,6 +150,62 @@ static void try_install_python_dispatch(void) {
 #endif
 }
 
+/* Selective dispatch gates (see galley_bindings/build.py shim): only
+ * enabled hooks cross into Python; unenabled slots return after one
+ * boolean check. Synced before every parse (the single gate all three
+ * parse legs share), so installs and clears take effect on the next
+ * parse with no per-install bookkeeping. Missing symbols (C procedures
+ * or stale libraries) are silent no-ops. */
+typedef int (*proc_enable_fn)(const char *, size_t);
+typedef void (*proc_clear_fn)(void);
+static proc_enable_fn py_procedure_enable = NULL;
+static proc_clear_fn py_procedure_clear = NULL;
+static int py_selective_probed = 0;
+
+static void probe_selective_dispatch(void) {
+    if (py_selective_probed)
+        return;
+    py_selective_probed = 1;
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+    dlerror();
+    py_procedure_enable = (proc_enable_fn)dlsym(RTLD_DEFAULT, "galley_python_procedure_enable");
+    if (dlerror() != NULL)
+        py_procedure_enable = NULL;
+    dlerror();
+    py_procedure_clear = (proc_clear_fn)dlsym(RTLD_DEFAULT, "galley_python_procedure_clear");
+    if (dlerror() != NULL)
+        py_procedure_clear = NULL;
+#endif
+}
+
+static void sync_procedure_gates(void) {
+    probe_selective_dispatch();
+    if (py_procedure_clear == NULL || py_procedure_enable == NULL)
+        return;
+    py_procedure_clear();
+    if (py_procedure_table == NULL)
+        return;
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    while (PyDict_Next(py_procedure_table, &pos, &key, &value)) {
+        Py_ssize_t name_len = 0;
+        const char *name = NULL;
+        if (PyUnicode_Check(key)) {
+            name = PyUnicode_AsUTF8AndSize(key, &name_len);
+            if (name == NULL) {
+                PyErr_Clear();
+                continue;
+            }
+        } else if (PyBytes_Check(key)) {
+            name = PyBytes_AS_STRING(key);
+            name_len = PyBytes_GET_SIZE(key);
+        } else {
+            continue;
+        }
+        py_procedure_enable(name, (size_t)name_len);
+    }
+}
+
 static int auto_register_python_procedures(void) {
     /* Attempt to import `procedures` if it is on sys.path (the language dir
      * is typically on PYTHONPATH). Hooks are `reduction_*`, `reduction`, and
@@ -599,6 +655,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
         length = view.len;
     }
     /* A zero-length input must not present a NULL pointer. */
+    sync_procedure_gates();
     PyObject *previous = push_parsing_session(self);
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
     pop_parsing_session(previous);
@@ -635,6 +692,7 @@ static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
                         "parse_sentinel expects str or bytes");
         return NULL;
     }
+    sync_procedure_gates();
     PyObject *previous = push_parsing_session(self);
     PyObject *result = status_to_parsed_with_session(
         galley_parse(session, length > 0 ? data : "", (size_t)length), session);
@@ -668,6 +726,7 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
         PyErr_SetString(PyExc_TypeError, "path must be str or bytes");
     }
     if (data != NULL) {
+        sync_procedure_gates();
         PyObject *previous = push_parsing_session(self);
         result = status_to_parsed_with_session(galley_parse_file(session, data), session);
         pop_parsing_session(previous);

@@ -136,6 +136,8 @@ interface GalleySymbols {
   galley_procedure_context_column(args: NativeHandle): number;
   galley_procedure_report_semantic_error(args: NativeHandle, message: number, messageLen: bigint): bigint;
   galley_install_js_dispatch(callback: NativeHandle): void;
+  galley_js_procedure_enable?(name: number, nameLen: bigint): number;
+  galley_js_procedure_clear?(): void;
 }
 
 // --- library discovery -------------------------------------------------
@@ -282,8 +284,18 @@ const DISPATCH_SYMBOL = {
   galley_install_js_dispatch: { args: [FFIType.function], returns: FFIType.void },
 } as const;
 
-function openNative(libPath: string, withDispatch: boolean): { symbols: GalleySymbols } {
-  const table = withDispatch ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL } : BASE_SYMBOLS;
+const SELECTIVE_SYMBOL = {
+  galley_js_procedure_enable: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
+  galley_js_procedure_clear: { args: [], returns: FFIType.void },
+} as const;
+
+function openNative(libPath: string, level: number): { symbols: GalleySymbols } {
+  const table =
+    level >= 2
+      ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
+      : level >= 1
+        ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL }
+        : BASE_SYMBOLS;
   return dlopen(libPath, table) as unknown as { symbols: GalleySymbols };
 }
 
@@ -323,6 +335,17 @@ export class BunPort implements FfiPort {
     this.native = native;
     this.libraryPath = libraryPath;
     this.supportsDispatch = supportsDispatch;
+  }
+
+  syncProcedures(names: string[]): void {
+    if (typeof this.native.galley_js_procedure_clear !== "function") return;
+    if (typeof this.native.galley_js_procedure_enable !== "function") return;
+    this.native.galley_js_procedure_clear();
+    const encoder = new TextEncoder();
+    for (const name of names) {
+      const bytes = encoder.encode(name);
+      this.native.galley_js_procedure_enable(ptr(bytes), BigInt(bytes.length));
+    }
   }
 
   // -- module-level queries --------------------------------------------
@@ -956,10 +979,14 @@ export function getBunPort(explicitPath?: string): BunPort {
   let native: GalleySymbols;
   let supportsDispatch = true;
   try {
-    native = openNative(libPath, true).symbols;
+    native = openNative(libPath, 2).symbols;
   } catch {
-    native = openNative(libPath, false).symbols;
-    supportsDispatch = false;
+    try {
+      native = openNative(libPath, 1).symbols;
+    } catch {
+      native = openNative(libPath, 0).symbols;
+      supportsDispatch = false;
+    }
   }
   const port = new BunPort(native, libPath, supportsDispatch);
   portCache.set(libPath, port);

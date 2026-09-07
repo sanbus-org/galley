@@ -133,6 +133,8 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_procedure_context_column;
     private final MethodHandle mh_galley_procedure_report_semantic_error;
     private final MethodHandle mh_galley_install_java_dispatch; // may be null if symbol missing
+    private final MethodHandle mh_galley_java_procedure_enable; // may be null (C procedures or stale libs)
+    private final MethodHandle mh_galley_java_procedure_clear; // may be null (C procedures or stale libs)
 
     // Upcall stub for Java dispatch
     private MemorySegment dispatchStub = MemorySegment.NULL;
@@ -247,6 +249,8 @@ public final class GalleyLibrary {
         this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_install_java_dispatch = downcallOptional("galley_install_java_dispatch", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+        this.mh_galley_java_procedure_enable = downcallOptional("galley_java_procedure_enable", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_java_procedure_clear = downcallOptional("galley_java_procedure_clear", FunctionDescriptor.ofVoid());
     }
 
     private MethodHandle downcall(String name, FunctionDescriptor descriptor) {
@@ -429,6 +433,16 @@ public final class GalleyLibrary {
     public void galley_install_java_dispatch(MemorySegment target) {
         if (mh_galley_install_java_dispatch == null) return;
         try { mh_galley_install_java_dispatch.invoke(target); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    public int galley_java_procedure_enable(MemorySegment name, long nameLen) {
+        if (mh_galley_java_procedure_enable == null) return 0;
+        try { return (int) mh_galley_java_procedure_enable.invoke(name, nameLen); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    public void galley_java_procedure_clear() {
+        if (mh_galley_java_procedure_clear == null) return;
+        try { mh_galley_java_procedure_clear.invoke(); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
     // Upcall stub management
