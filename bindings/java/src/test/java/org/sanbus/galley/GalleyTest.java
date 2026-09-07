@@ -348,6 +348,65 @@ public class GalleyTest {
             }
         }
 
+        @Test
+        void snapshotMatchesPerNodeAccessors() {
+            TreeSnapshot snap = session.snapshot();
+            long count = session.nodeCount();
+            assertEquals(count, snap.count());
+            assertTrue(count > 0);
+            assertEquals(count, snap.parent().length);
+            assertEquals(count, snap.firstChild().length);
+            assertEquals(count, snap.next().length);
+            assertEquals(count, snap.childCount().length);
+            assertEquals(count, snap.variable().length);
+            assertEquals(count, snap.spanStart().length);
+            assertEquals(count, snap.spanLen().length);
+            for (long address = 0; address < count; address++) {
+                int slot = (int) address;
+                Node parent = session.parent(address);
+                assertEquals(parent == null ? -1L : parent.getAddress(), snap.parent()[slot]);
+                Node first = session.firstChild(address);
+                assertEquals(first == null ? -1L : first.getAddress(), snap.firstChild()[slot]);
+                Node next = session.nextSibling(address);
+                assertEquals(next == null ? -1L : next.getAddress(), snap.next()[slot]);
+                assertEquals(session.childCount(address), snap.childCount()[slot]);
+                Integer variable = session.variableIndex(address);
+                assertEquals(variable == null ? -1L : variable.longValue(), snap.variable()[slot]);
+                long[] span = session.span(address);
+                assertNotNull(span);
+                assertEquals(span[0], snap.spanStart()[slot]);
+                assertEquals(span[1], snap.spanLen()[slot]);
+            }
+            // The snapshot alone drives the same preorder walk as the walker.
+            Node root = session.rootNode();
+            assertNotNull(root);
+            List<Long> preorder = new ArrayList<>();
+            List<Long> stack = new ArrayList<>();
+            stack.add(root.getAddress());
+            while (!stack.isEmpty()) {
+                long node = stack.remove(stack.size() - 1);
+                preorder.add(node);
+                long child = snap.firstChild()[(int) node];
+                List<Long> chain = new ArrayList<>();
+                while (child != -1L) {
+                    chain.add(child);
+                    child = snap.next()[(int) child];
+                }
+                assertEquals(chain.size(), snap.childCount()[(int) node]);
+                for (int k = chain.size() - 1; k >= 0; k--) stack.add(chain.get(k));
+            }
+            try (Walker walker = session.walk(root, false)) {
+                assertNotNull(walker);
+                List<Long> walked = new ArrayList<>();
+                for (Walker.WalkStep step : walker) walked.add(step.node.getAddress());
+                assertEquals(preorder, walked);
+            }
+            // Spans index lastInput.
+            assertArrayEquals(
+                    "alpha:12,beta:3".getBytes(StandardCharsets.UTF_8),
+                    session.lastInput());
+        }
+
         private void collectRecursive(Node node, int depth, List<long[]> out) {
             out.add(new long[]{node.getAddress(), depth});
             for (Node child : session.children(node)) collectRecursive(child, depth + 1, out);

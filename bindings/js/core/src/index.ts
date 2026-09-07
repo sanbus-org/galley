@@ -13,7 +13,7 @@ import { resolveArtifact, artifactFileName, wasmArtifactFileName } from "./artif
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { displayTokenName } from "./diagnostic.ts";
-import type { FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler } from "./port.ts";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler } from "./port.ts";
 import {
   installProcedure,
   installProcedures,
@@ -49,5 +49,5 @@ export {
   decodeUtf8,
   byteLengthUtf8,
 };
-export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler, HookFn, ArtifactHost };
+export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ArtifactHost };
 export * from "./constants.ts";

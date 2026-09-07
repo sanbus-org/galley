@@ -10,7 +10,7 @@
 import { INVALID_NODE } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError } from "./errors.ts";
-import type { FfiPort, Handle, SessionCOptions } from "./port.ts";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot } from "./port.ts";
 import { decodeUtf8, encodeUtf8 } from "./text.ts";
 import { Node } from "./node.ts";
 import { setParsingSession } from "./procedures.ts";
@@ -319,6 +319,15 @@ export class Session {
   parent(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
     return optNode(this, this.#port.parent(h, toNodeAddress(node)));
+  }
+
+  /**
+   * Flat bulk read of the most recent successful parse in a single FFI
+   * crossing: one array slot per node address. Walk `parent`/`firstChild`/
+   * `next` directly instead of one call per node.
+   */
+  snapshot(): TreeSnapshot {
+    return this.#port.treeSnapshot(this.#requireHandle());
   }
 
   /**

@@ -335,6 +335,69 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(depth, 0)
         self.assertFalse(is_error)
 
+    def test_snapshot_matches_per_node_accessors(self) -> None:
+        if not galley.has_ast():
+            self.skipTest("no AST build")
+        snap = self.session.snapshot()
+        count = self.session.node_count()
+        self.assertEqual(snap["count"], count)
+        self.assertGreater(count, 0)
+        for key in (
+            "parent",
+            "first_child",
+            "next",
+            "child_count",
+            "variable",
+            "span_start",
+            "span_len",
+        ):
+            self.assertEqual(len(snap[key]), count)
+        for address in range(count):
+            parent = self.session.parent(address)
+            self.assertEqual(
+                snap["parent"][address], None if parent is None else int(parent)
+            )
+            first = self.session.first_child(address)
+            self.assertEqual(
+                snap["first_child"][address], None if first is None else int(first)
+            )
+            nxt = self.session.next_sibling(address)
+            self.assertEqual(snap["next"][address], None if nxt is None else int(nxt))
+            self.assertEqual(
+                snap["child_count"][address], self.session.child_count(address)
+            )
+            self.assertEqual(
+                snap["variable"][address], self.session.variable_index(address)
+            )
+            self.assertEqual(
+                (snap["span_start"][address], snap["span_len"][address]),
+                self.session.span(address),
+            )
+        # The snapshot alone drives the same preorder walk as the walker.
+        root = self.session.root_node()
+        assert root is not None
+        preorder: list[int] = []
+        stack = [int(root)]
+        while stack:
+            node = stack.pop()
+            preorder.append(node)
+            child = snap["first_child"][node]
+            chain: list[int] = []
+            while child is not None:
+                chain.append(child)
+                child = snap["next"][child]
+            self.assertEqual(len(chain), snap["child_count"][node])
+            stack.extend(reversed(chain))
+        walked = [int(node) for node, _, _ in self.session.walk(root)]
+        self.assertEqual(preorder, walked)
+        # Spans index last_input.
+        data = self.session.last_input()
+        self.assertEqual(data, b"alpha:12,beta:3")
+        start = snap["span_start"][int(root)]
+        length = snap["span_len"][int(root)]
+        assert isinstance(start, int) and isinstance(length, int)
+        self.assertEqual(data[start : start + length], b"alpha:12,beta:3")
+
     def test_walk_skip_children_prunes_subtree(self) -> None:
         if not galley.has_ast():
             self.skipTest("no AST build")

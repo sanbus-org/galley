@@ -10,8 +10,8 @@
  * (library discovery).
  */
 
-import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { resolveArtifact, artifactFileName } from "galley-js-core";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "galley-js-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -55,6 +55,17 @@ interface GalleySymbols {
   galley_node_next_sibling(session: Deno.PointerValue, node: bigint): bigint;
   galley_node_prior_sibling(session: Deno.PointerValue, node: bigint): bigint;
   galley_node_parent(session: Deno.PointerValue, node: bigint): bigint;
+  galley_tree_snapshot(
+    session: Deno.PointerValue,
+    outParent: FfiOut,
+    outFirstChild: FfiOut,
+    outNext: FfiOut,
+    outChildCount: FfiOut,
+    outVariable: FfiOut,
+    outSpanStart: FfiOut,
+    outSpanLen: FfiOut,
+    capacity: bigint,
+  ): bigint;
   galley_walker_create(session: Deno.PointerValue, node: bigint, skipSemanticErrors: number): Deno.PointerValue;
   galley_walker_next(walker: Deno.PointerValue, outNode: FfiOut, outDepth: FfiOut, outFlag: FfiOut): number;
   galley_walker_skip_children(walker: Deno.PointerValue): void;
@@ -193,6 +204,10 @@ const BASE_SYMBOLS = {
   galley_node_next_sibling: { parameters: ["pointer", "u64"], result: "u64" },
   galley_node_prior_sibling: { parameters: ["pointer", "u64"], result: "u64" },
   galley_node_parent: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_tree_snapshot: {
+    parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
+    result: "i64",
+  },
   galley_walker_create: { parameters: ["pointer", "u64", "i32"], result: "pointer" },
   galley_walker_next: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i32" },
   galley_walker_skip_children: { parameters: ["pointer"], result: "void" },
@@ -471,6 +486,28 @@ export class DenoPort implements FfiPort {
 
   parent(handle: Handle, node: bigint): bigint {
     return this.native.galley_node_parent(handle as Deno.PointerValue, node);
+  }
+
+  treeSnapshot(handle: Handle): TreeSnapshot {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const count = this.nodeCount(handle);
+      const parent = new BigUint64Array(count);
+      const firstChild = new BigUint64Array(count);
+      const next = new BigUint64Array(count);
+      const childCount = new Uint32Array(count);
+      const variable = new BigInt64Array(count);
+      const spanStart = new BigUint64Array(count);
+      const spanLen = new BigUint64Array(count);
+      const total = this.native.galley_tree_snapshot(
+        handle as Deno.PointerValue, parent, firstChild, next, childCount,
+        variable, spanStart, spanLen, BigInt(count),
+      );
+      if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total));
+      if (total === BigInt(count)) {
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+      }
+    }
+    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
   }
 
   // -- walker ------------------------------------------------------------

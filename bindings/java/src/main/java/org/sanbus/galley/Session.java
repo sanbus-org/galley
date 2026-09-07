@@ -403,6 +403,58 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Flat bulk read of the most recent successful parse in a single call:
+     * one entry per node address. Missing links read as {@code -1}
+     * (matching {@link #INVALID_NODE} bits), missing variables as -1, and
+     * spans index {@link #lastInput()}. Walk {@code parent}/
+     * {@code firstChild}/{@code next} directly instead of one call per
+     * node.
+     */
+    public TreeSnapshot snapshot() {
+        requireOpen();
+        long count = lib.galley_node_count(handle);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment parent = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment firstChild = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment next = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment childCount = arena.allocate(ValueLayout.JAVA_INT, count);
+            MemorySegment variable = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment spanStart = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment spanLen = arena.allocate(ValueLayout.JAVA_LONG, count);
+            long total = lib.galley_tree_snapshot(handle, parent, firstChild, next,
+                    childCount, variable, spanStart, spanLen, count);
+            if (total < 0) throw errorFromStatus(total);
+            if (total != count) throw new IllegalStateException("node count changed during snapshot");
+            long[] parentArray = parent.toArray(ValueLayout.JAVA_LONG);
+            long[] firstChildArray = firstChild.toArray(ValueLayout.JAVA_LONG);
+            long[] nextArray = next.toArray(ValueLayout.JAVA_LONG);
+            int[] childCountArray = childCount.toArray(ValueLayout.JAVA_INT);
+            long[] variableArray = variable.toArray(ValueLayout.JAVA_LONG);
+            long[] spanStartArray = spanStart.toArray(ValueLayout.JAVA_LONG);
+            long[] spanLenArray = spanLen.toArray(ValueLayout.JAVA_LONG);
+            return new TreeSnapshot(count, parentArray, firstChildArray, nextArray,
+                    childCountArray, variableArray, spanStartArray, spanLenArray);
+        }
+    }
+
+    /**
+     * Retained input of the most recent parse: the buffer snapshot spans
+     * index. Empty before the first parse.
+     */
+    public byte[] lastInput() {
+        requireOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
+            checkStatus(lib.galley_last_input(handle, outData, outLen));
+            MemorySegment data = outData.get(ValueLayout.ADDRESS, 0);
+            long length = outLen.get(ValueLayout.JAVA_LONG, 0);
+            if (length == 0) return new byte[0];
+            return data.reinterpret(length).toArray(ValueLayout.JAVA_BYTE);
+        }
+    }
+
+    /**
      * Pre-order walker over the subtree rooted at {@code node}, with the
      * root at depth 0. Pass true to prune subtrees rooted at semantic-error
      * nodes. Returns null for invalid roots and builds without AST

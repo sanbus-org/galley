@@ -17,7 +17,7 @@ export { Session };
 export { findLibrary, init, initSync, seedDefault, NeedInitError };
 export { getWasmPort, wasmFileName } from "./ffi.ts";
 export type { InitOptions } from "./ffi.ts";
-export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
+export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)
 export function version(): string {
