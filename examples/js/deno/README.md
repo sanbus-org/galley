@@ -1,9 +1,9 @@
 # Galley JavaScript Example for Deno
 
-Requires `deno` 2, `zig`, and `git`.
+Requires `deno` 2 and `zig` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
-deno task build
+GALLEY_CHECKOUT=/path/to/galley deno task build
 deno task demo
 deno task benchmark
 ```

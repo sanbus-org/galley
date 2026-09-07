@@ -1,12 +1,12 @@
 # Galley Python example
 
-Requires `python3`, `zig`, and `git`.
+Requires `python3` and `zig` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
 pip install -e .
-python -m galley_bindings .
+GALLEY_CHECKOUT=/path/to/galley python -m galley_bindings .
 python demo.py
-python -m galley_bindings benchmark
+GALLEY_CHECKOUT=/path/to/galley python -m galley_bindings benchmark
 python benchmark.py
 ```
 

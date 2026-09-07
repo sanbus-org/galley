@@ -1,11 +1,13 @@
 # Galley JavaScript Example for Bun
 
-Requires `bun`, `zig`, and `git`.
+Requires `bun` and `zig` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
 bun install
-bunx galley-js-bun .
+(cd ../../bindings/js/bun && bun install && bun run build)
+GALLEY_CHECKOUT=/path/to/galley bunx galley-js-bun .
 bun demo.ts
+GALLEY_CHECKOUT=/path/to/galley bunx galley-js-bun benchmark
 bun benchmark.ts
 ```
 
