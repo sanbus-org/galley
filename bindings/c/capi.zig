@@ -268,6 +268,11 @@ fn statusForError(err: anyerror) i64 {
 
 fn finishParse(embedded: *Embedded, result: root.ParseResult) i64 {
     embedded.last_result = result;
+    const parsed: usize = @intCast(result.parsed_bytes);
+    // The owned buffer carries sentinel and zero padding past the input;
+    // expose exactly the parsed bytes so node spans and galley_last_input
+    // agree with the count parse reported.
+    embedded.last_input = embedded.last_input[0..@min(parsed, embedded.last_input.len)];
     return @intCast(result.parsed_bytes);
 }
 
@@ -403,6 +408,23 @@ export fn galley_node_text(
     const slice = embedded.nodeText(node) orelse return galley_error_internal;
     out_data.?.* = slice.ptr;
     out_len.?.* = slice.len;
+    return galley_ok;
+}
+
+/// Writes the retained input of the most recent parse into
+/// `out_data`/`out_len`: the buffer that snapshot spans and node texts
+/// index. Same lifetime as `galley_node_text`; empty before the first
+/// parse. During hooks it references the live input of that parse.
+export fn galley_last_input(
+    session_ptr: ?*GalleySession,
+    out_data: ?*[*]const u8,
+    out_len: ?*usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    const input = embedded.nodeInput();
+    out_data.?.* = input.ptr;
+    out_len.?.* = input.len;
     return galley_ok;
 }
 
@@ -1467,6 +1489,44 @@ export fn galley_node_variable_index(session_ptr: ?*GalleySession, address: Gall
     const node = embedded.nodeAt(address) orelse return -1;
     if (node.variable == root.data_structures.Node.invalid_variable) return -1;
     return @intCast(node.variable);
+}
+
+/// Bulk-reads the most recent successful parse into caller-owned flat
+/// arrays in a single crossing: address `i` fills slot `i` of each
+/// non-null out array. Returns the total node count (matching
+/// `galley_node_count`; 0 without AST construction). When `capacity` is
+/// smaller than the count only the `[0, capacity)` prefix is written.
+/// Null arrays skip that column; a null session reports
+/// `galley_error_null_argument`.
+export fn galley_tree_snapshot(
+    session_ptr: ?*GalleySession,
+    out_parent: ?[*]GalleyNodeAddress,
+    out_first_child: ?[*]GalleyNodeAddress,
+    out_next: ?[*]GalleyNodeAddress,
+    out_child_count: ?[*]u32,
+    out_variable: ?[*]i64,
+    out_span_start: ?[*]u64,
+    out_span_len: ?[*]u64,
+    capacity: u64,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (comptime !parser.is_ast_enabled) return 0;
+    const total: u64 = @intCast(embedded.session.node_allocator.counter);
+    const writable: usize = @intCast(@min(total, capacity));
+    const invalid = root.data_structures.Node.invalid_pointer;
+    const no_variable = root.data_structures.Node.invalid_variable;
+    var index: usize = 0;
+    while (index < writable) : (index += 1) {
+        const node = embedded.session.node_allocator.at(index);
+        if (out_parent) |parent| parent[index] = if (node.parent == invalid) galley_invalid_node else @intCast(node.parent);
+        if (out_first_child) |first| first[index] = if (node.first_child == invalid) galley_invalid_node else @intCast(node.first_child);
+        if (out_next) |next| next[index] = if (node.next == invalid) galley_invalid_node else @intCast(node.next);
+        if (out_child_count) |counts| counts[index] = node.children_count;
+        if (out_variable) |variables| variables[index] = if (node.variable == no_variable) -1 else @intCast(node.variable);
+        if (out_span_start) |starts| starts[index] = @intCast(node.text_start);
+        if (out_span_len) |lens| lens[index] = @intCast(node.text_length);
+    }
+    return @intCast(total);
 }
 
 /// Inserts `first_node` (and its chain) into the children of `parent` at

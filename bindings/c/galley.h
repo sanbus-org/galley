@@ -220,6 +220,31 @@ long long galley_node_symbol_name(GalleySession *session, GalleyNodeAddress node
  * galley_variable_name), or -1 when the node has no variable. */
 long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress node);
 
+/* Bulk read of the most recent successful parse in a single crossing.
+ * Writes up to capacity entries of each non-null out array, one entry per
+ * node address (address i fills slot i), and returns the total node count
+ * (the same value galley_node_count reports; 0 without AST construction).
+ * A null array skips that column. When capacity is smaller than the count,
+ * only the address prefix [0, capacity) is written; call again with larger
+ * buffers to get the whole tree. Returns galley_error_null_argument for a
+ * null session.
+ *
+ * Columns mirror the per-node accessors: out_parent holds the parent
+ * address (GALLEY_INVALID_NODE for the root), out_first_child the first
+ * child, out_next the next sibling, out_child_count the direct child
+ * count, out_variable the variable index (-1 when the node has none),
+ * out_span_start/out_span_len the source span. Together parent,
+ * first_child, and next describe the whole tree without further calls. */
+long long galley_tree_snapshot(GalleySession *session,
+                               GalleyNodeAddress *out_parent,
+                               GalleyNodeAddress *out_first_child,
+                               GalleyNodeAddress *out_next,
+                               unsigned int *out_child_count,
+                               long long *out_variable,
+                               unsigned long long *out_span_start,
+                               unsigned long long *out_span_len,
+                               unsigned long long capacity);
+
 /* Writes the source text matched by a node into *out_data / *out_len. The
  * pointer references the input of the most recent parse: keep that input
  * alive until the next parse (galley_parse_sentinel) or rely on the session,
@@ -227,6 +252,15 @@ long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress n
  * hooks) the pointer references the live input of that parse. */
 long long galley_node_text(GalleySession *session, GalleyNodeAddress node,
                            const char **out_data, size_t *out_len);
+
+/* Writes the retained input of the most recent parse into *out_data /
+ * *out_len: exactly the parsed bytes (no sentinel or padding) — the buffer
+ * that snapshot spans and node texts index. Same lifetime as
+ * galley_node_text. Empty (length 0) before the first parse.
+ * During an in-progress parse (procedure hooks) it references the live
+ * input of that parse. */
+long long galley_last_input(GalleySession *session,
+                            const char **out_data, size_t *out_len);
 
 /* Returns nonzero when the previous parse produced a diagnostic. */
 int galley_has_diagnostic(GalleySession *session);
