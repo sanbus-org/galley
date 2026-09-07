@@ -20,7 +20,7 @@ import type {
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
-import { resolveArtifact } from "galley-js-core";
+import { resolveArtifact, artifactFileName } from "galley-js-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -354,9 +354,7 @@ const BUILD_HINT =
   `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
 
 export function libFileName(base = "galley-js-node"): string {
-  if (process.platform === "darwin") return `lib${base}.dylib`;
-  if (process.platform === "win32") return `${base}.dll`;
-  return `lib${base}.so`;
+  return artifactFileName(base, process.platform);
 }
 
 function exists(p: string): boolean {
@@ -369,7 +367,6 @@ function exists(p: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  // The decision lives in core; this adapter passes its host access.
   return resolveArtifact(explicit, {
     getEnv: (name) => process.env[name],
     resolvePath: (candidate) => path.resolve(candidate),

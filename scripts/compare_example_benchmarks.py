@@ -153,7 +153,6 @@ def default_runners(root: Path) -> list[Runner]:
             [
                 "deno",
                 "run",
-                "--sloppy-imports",
                 "--allow-ffi",
                 "--allow-read",
                 "--allow-env",

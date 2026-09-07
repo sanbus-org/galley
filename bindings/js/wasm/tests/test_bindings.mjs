@@ -13,10 +13,11 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { wasmArtifactFileName } from "galley-js-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const exampleLib = "libgalley-js-wasm.wasm";
+const exampleLib = wasmArtifactFileName("galley-js-wasm");
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
 const libPath = ensureTestLibrary({
   buildCommand: ["node", path.join(__dirname, "..", "build.mjs")],

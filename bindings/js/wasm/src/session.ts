@@ -8,8 +8,8 @@
 
 import { Session as CoreSession } from "galley-js-core";
 import type { SessionOptions } from "galley-js-core";
-import { getWasmPort } from "./ffi.js";
-import { ensureDispatch } from "./dispatch.js";
+import { getWasmPort } from "./ffi.ts";
+import { ensureDispatch } from "./dispatch.ts";
 
 export type { SessionOptions };
 

@@ -5,14 +5,14 @@
  * binds these classes to its {@link FfiPort} and re-exports them.
  */
 
-import { Session, Walker } from "./session.js";
-import type { SessionOptions, WalkStep } from "./session.js";
-import { Node } from "./node.js";
-import { GalleyError, MissingArtifactError } from "./errors.js";
-import { resolveArtifact } from "./artifact.js";
-import type { ArtifactHost } from "./artifact.js";
-import type { Diagnostic } from "./diagnostic.js";
-import type { FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler } from "./port.js";
+import { Session, Walker } from "./session.ts";
+import type { SessionOptions, WalkStep } from "./session.ts";
+import { Node } from "./node.ts";
+import { GalleyError, MissingArtifactError } from "./errors.ts";
+import { resolveArtifact, artifactFileName, wasmArtifactFileName } from "./artifact.ts";
+import type { ArtifactHost } from "./artifact.ts";
+import type { Diagnostic } from "./diagnostic.ts";
+import type { FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler } from "./port.ts";
 import {
   installProcedure,
   installProcedures,
@@ -22,9 +22,9 @@ import {
   dispatchProcedure,
   setParsingSession,
   getParsingSession,
-} from "./procedures.js";
-import type { HookFn } from "./procedures.js";
-import { encodeUtf8, decodeUtf8, byteLengthUtf8 } from "./text.js";
+} from "./procedures.ts";
+import type { HookFn } from "./procedures.ts";
+import { encodeUtf8, decodeUtf8, byteLengthUtf8 } from "./text.ts";
 
 export {
   Session,
@@ -33,6 +33,8 @@ export {
   GalleyError,
   MissingArtifactError,
   resolveArtifact,
+  artifactFileName,
+  wasmArtifactFileName,
   ProcedureArguments,
   installProcedure,
   installProcedures,
@@ -46,4 +48,4 @@ export {
   byteLengthUtf8,
 };
 export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, WalkedStep, DispatchHandler, HookFn, ArtifactHost };
-export * from "./constants.js";
+export * from "./constants.ts";

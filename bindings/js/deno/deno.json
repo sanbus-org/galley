@@ -3,7 +3,7 @@
     "galley-js-core": "../core/src/index.ts"
   },
   "tasks": {
-    "check": "deno check --sloppy-imports src/index.ts",
-    "test": "deno check --sloppy-imports src/index.ts && deno run --sloppy-imports --no-check --allow-ffi --allow-read --allow-write --allow-run --allow-env tests/test_bindings.ts"
+    "check": "deno check src/index.ts",
+    "test": "deno check src/index.ts && deno run --no-check --allow-ffi --allow-read --allow-write --allow-run --allow-env tests/test_bindings.ts"
   }
 }

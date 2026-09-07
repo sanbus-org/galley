@@ -27,7 +27,7 @@ import type {
   SessionCOptions,
   WalkedStep,
 } from "galley-js-core";
-import { dispatchProcedure, resolveArtifact } from "galley-js-core";
+import { dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "galley-js-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -261,7 +261,7 @@ const BUILD_HINT =
   `or set GALLEY_LIBRARY_PATH=/path/to/${wasmFileName()}`;
 
 export function wasmFileName(base = LIBRARY_BASE): string {
-  return `lib${base}.wasm`;
+  return wasmArtifactFileName(base);
 }
 
 function exists(localPath: string): boolean {
@@ -274,7 +274,6 @@ function exists(localPath: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  // The decision lives in core; this adapter passes its host access.
   return resolveArtifact(explicit, {
     getEnv: (name) => process.env[name],
     resolvePath: (candidate) => path.resolve(candidate),

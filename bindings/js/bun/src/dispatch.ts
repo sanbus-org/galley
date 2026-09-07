@@ -15,7 +15,7 @@ import { JSCallback, FFIType, toArrayBuffer } from "bun:ffi";
 
 import { dispatchProcedure, installProcedures, listProcedures } from "galley-js-core";
 import type { FfiPort } from "galley-js-core";
-import type { BunPort } from "./ffi.js";
+import type { BunPort } from "./ffi.ts";
 
 const require = createRequire(import.meta.url);
 const textDecoder = new TextDecoder();

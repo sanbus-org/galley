@@ -6,14 +6,14 @@
  * `bindings/c/galley.h`.
  */
 
-import { getNodePort, findLibrary } from "./ffi.js";
-import { Session } from "./session.js";
+import { getNodePort, findLibrary } from "./ffi.ts";
+import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "galley-js-core";
 export { Session };
 export { findLibrary };
-export { getNodePort, libFileName } from "./ffi.js";
+export { getNodePort, libFileName } from "./ffi.ts";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)

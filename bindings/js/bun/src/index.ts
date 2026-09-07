@@ -6,14 +6,14 @@
  * `bindings/c/galley.h`.
  */
 
-import { getBunPort, findLibrary } from "./ffi.js";
-import { Session } from "./session.js";
+import { getBunPort, findLibrary } from "./ffi.ts";
+import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "galley-js-core";
 export { Session };
 export { findLibrary };
-export { getBunPort, libFileName } from "./ffi.js";
+export { getBunPort, libFileName } from "./ffi.ts";
 export type { SessionOptions, WalkStep, Diagnostic } from "galley-js-core";
 
 // Module-level queries (mirror galley.h)

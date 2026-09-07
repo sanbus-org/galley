@@ -11,7 +11,7 @@
  */
 
 import type { FfiPort, Handle, SessionCOptions, WalkedStep } from "galley-js-core";
-import { resolveArtifact } from "galley-js-core";
+import { resolveArtifact, artifactFileName } from "galley-js-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -133,9 +133,7 @@ const BUILD_HINT =
   `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
 
 export function libFileName(base = "galley-js-deno"): string {
-  if (Deno.build.os === "darwin") return `lib${base}.dylib`;
-  if (Deno.build.os === "windows") return `${base}.dll`;
-  return `lib${base}.so`;
+  return artifactFileName(base, Deno.build.os);
 }
 
 function exists(filePath: string): boolean {
@@ -148,7 +146,6 @@ function exists(filePath: string): boolean {
 }
 
 export function findLibrary(explicit?: string): string {
-  // The decision lives in core; this adapter passes its host access.
   // Deno reports the path it was given (no resolve step), as before.
   return resolveArtifact(explicit, {
     getEnv: (name) => Deno.env.get(name),

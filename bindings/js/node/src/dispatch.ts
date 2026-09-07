@@ -17,7 +17,7 @@ const koffi = require("koffi") as typeof import("koffi");
 
 import { dispatchProcedure, installProcedures, listProcedures } from "galley-js-core";
 import type { FfiPort } from "galley-js-core";
-import { copyStringBytes, type GalleyFFI } from "./ffi.js";
+import { copyStringBytes, type GalleyFFI } from "./ffi.ts";
 
 // Held to prevent GC of the koffi callback; installed per library path.
 let dispatchCallback: unknown = null;

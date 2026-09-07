@@ -1,4 +1,4 @@
-import type { Diagnostic } from "./diagnostic.js";
+import type { Diagnostic } from "./diagnostic.ts";
 
 /**
  * Failure reported by a Galley operation.

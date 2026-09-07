@@ -11,11 +11,11 @@
  * node accessors on the parsing session).
  */
 
-import { INVALID_NODE } from "./constants.js";
-import type { Handle, FfiPort } from "./port.js";
-import { encodeUtf8 } from "./text.js";
-import { Node } from "./node.js";
-import type { Session } from "./session.js";
+import { INVALID_NODE } from "./constants.ts";
+import type { Handle, FfiPort } from "./port.ts";
+import { encodeUtf8 } from "./text.ts";
+import { Node } from "./node.ts";
+import type { Session } from "./session.ts";
 
 export class ProcedureArguments {
   readonly #args: Handle;
