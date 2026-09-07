@@ -1,12 +1,12 @@
 # Galley TypeScript example
 
-Requires `node` ≥ 22.6, `zig`, and `git`.
+Requires `node` ≥ 22.6 and `zig` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
 npm install --install-links
-npx galley-js-node .
+GALLEY_CHECKOUT=/path/to/galley npx galley-js-node .
 npx tsx demo.ts
-npx galley-js-node benchmark
+GALLEY_CHECKOUT=/path/to/galley npx galley-js-node benchmark
 npx tsx benchmark.ts
 ```
 

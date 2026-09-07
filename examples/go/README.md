@@ -1,9 +1,9 @@
 # Galley Go example
 
-Requires `go`, `zig`, and `git`.
+Requires `go` and `zig` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
-go generate ./...
+GALLEY_CHECKOUT=/path/to/galley go generate ./...
 go build -o galley-go-example ./demo
 ./galley-go-example
 go build -o galley-go-benchmark ./benchmark
