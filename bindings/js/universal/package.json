@@ -11,7 +11,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": ["dist", "src", "build.mjs", "README.md"],
+  "bin": {
+    "galley": "./build.mjs"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "test -d ../core && npm --prefix ../core run build >/dev/null 2>&1; tsc -p tsconfig.json --noCheck --types \"\"",

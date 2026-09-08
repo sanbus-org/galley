@@ -357,10 +357,11 @@ jobs:
           check_core bindings/go/cmd/galley/main.go
           check_core bindings/rust/src/build_helper.rs
           check_core bindings/python/galley_bindings/build.py
-          check_core bindings/js/node/build.mjs
-          check_core bindings/js/deno/build.ts
-          check_core bindings/js/bun/build.mjs
-          check_core bindings/js/wasm/build.mjs
+          # The per-adapter builders are thin wrappers delegating to one
+          # shared gate, so the contract is policed there and at the single
+          # `galley build` entry — not once per wrapper.
+          check_core bindings/js/core/build/builder.mjs
+          check_core bindings/js/universal/build.mjs
           check_core bindings/java/src/main/java/org/sanbus/galley/build/GalleyBuild.java
           check_core examples/c/CMakeLists.txt
           check_core examples/cpp/CMakeLists.txt

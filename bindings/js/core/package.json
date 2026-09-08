@@ -12,6 +12,7 @@
       "default": "./dist/index.js"
     },
     "./build/shim.mjs": "./build/shim.mjs",
+    "./build/builder.mjs": "./build/builder.mjs",
     "./build/fixture.mjs": "./build/fixture.mjs"
   },
   "files": ["dist", "src", "build", "README.md"],
