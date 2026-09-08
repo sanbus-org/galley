@@ -164,7 +164,9 @@ jobs:
 
       - name: Test bindings (cargo)
         if: ${{ matrix.language == 'rust' }}
-        run: cargo test --release --manifest-path bindings/rust/Cargo.toml
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: cargo test --release --manifest-path bindings/rust/test-fixture/Cargo.toml
 
       - name: Build and run example (go)
         if: ${{ matrix.language == 'go' }}
@@ -178,11 +180,12 @@ jobs:
 
       - name: Test bindings (go)
         if: ${{ matrix.language == 'go' }}
-        working-directory: examples/go
+        working-directory: bindings/go
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
-          go test -count=1 ./...
+          go generate ./testfixture/
+          go test -count=1 ./testfixture/
       - name: Build and run example (python)
         if: ${{ matrix.language == 'python' }}
         working-directory: examples/python
@@ -192,7 +195,15 @@ jobs:
           pip install -e .
           python -m galley_bindings .
           python demo.py
-          PYTHONPATH="$PWD" python ../../bindings/python/tests/test_bindings.py
+
+      - name: Test bindings (python)
+        if: ${{ matrix.language == 'python' }}
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          pip install -e bindings/python
+          python -m galley_bindings bindings/python/test-fixture
+          PYTHONPATH="$GITHUB_WORKSPACE/bindings/python/test-fixture" python bindings/python/tests/test_bindings.py
 
       - name: Build and run example (typescript)
         if: ${{ matrix.language == 'typescript' }}
@@ -258,8 +269,12 @@ jobs:
       - name: Test bindings (java)
         if: ${{ matrix.language == 'java' }}
         env:
-          GALLEY_LIBRARY_PATH: ${{ github.workspace }}/examples/java/libgalley-java.so
-        run: mvn -B -f bindings/java/pom.xml test
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+          GALLEY_LIBRARY_PATH: ${{ github.workspace }}/bindings/java/test-fixture/libgalley-java.so
+        run: |
+          javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture
+          mvn -B -f bindings/java/pom.xml test
 
   bindings-consistency:
     name: bindings-consistency
@@ -329,6 +344,16 @@ jobs:
           done
           cmp -s languages/json/ll.grm examples/c/benchmark/ll.grm || {
             echo "::error::examples/*/benchmark/ll.grm must match languages/json/ll.grm"
+            exit 1
+          }
+          for f in bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
+            test -L "$f" || {
+              echo "::error::$f must be a symlink to bindings/test-fixture"
+              exit 1
+            }
+          done
+          cmp -s bindings/test-fixture/ll.grm bindings/go/testfixture/ll.grm || {
+            echo "::error::binding fixture grammars must match bindings/test-fixture"
             exit 1
           }
 

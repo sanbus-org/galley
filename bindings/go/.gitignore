@@ -1,0 +1,7 @@
+/testfixture/_ll-parser.zig
+/testfixture/_lr-parser.zig
+/testfixture/procedures.zig
+/testfixture/procedures_go.zig
+/testfixture/metadata.json
+/testfixture/galley/
+/testfixture/libgalley-go.*

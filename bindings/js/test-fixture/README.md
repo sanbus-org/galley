@@ -1,10 +1,12 @@
 # Shared JS binding test fixture
 
-Verbatim keyvalue grammar sources (`ll.grm`, `config.zig`,
-`procedures.zig`, `procedures.ts`) copied from `examples/js/node` when the
-binding suites were decoupled from the user-facing examples. One copy serves
-all five JS suites through `../core/build/fixture.mjs`, which copies these
-files to a temp workdir and builds them with each adapter's own builder.
+Host-side sources (`procedures.zig`, `procedures.ts`) copied from
+`examples/js/node` when the binding suites were decoupled from the
+user-facing examples. `ll.grm` and `config.zig` are symlinks to the one
+shared grammar in `bindings/test-fixture` that every binding suite
+parses. One copy serves all five JS suites through
+`../core/build/fixture.mjs`, which copies these files to a temp workdir
+and builds them with each adapter's own builder.
 
 Only file *presence* affects the build (`procedures.ts` selects the JS
 dispatch path; its type-only import is never resolved at build time).

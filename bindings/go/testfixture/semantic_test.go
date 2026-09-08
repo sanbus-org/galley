@@ -1,10 +1,10 @@
-package main
+package testfixture
 
 import (
 	"errors"
 	"testing"
 
-	galley "github.com/sanbus-org/galley/examples/go/demo/galley"
+	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
 )
 
 // The file hooks in procedures.go report values above 999 as semantic

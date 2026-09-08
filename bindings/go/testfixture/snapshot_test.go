@@ -1,10 +1,10 @@
-package main
+package testfixture
 
 import (
 	"bytes"
 	"testing"
 
-	galley "github.com/sanbus-org/galley/examples/go/demo/galley"
+	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
 )
 
 func wantLink(node galley.Node, ok bool) galley.Node {
