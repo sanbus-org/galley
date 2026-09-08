@@ -1178,7 +1178,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 162), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expectEqual(@as(usize, 183), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

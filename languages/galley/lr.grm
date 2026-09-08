@@ -1,30 +1,31 @@
+# Galley's own `.grm` syntax, LR engine: rule definitions, `|` alternatives,
+# symbols, quoted terminals, and `@` annotations. Left-recursive twin of
+# `ll.grm`: same language, list rules folded for shift-reduce generation.
+
 Start
 | Rules
 
 Rules
-| Rules NewLines Rule
-| Rule
+| Comment OptionalNewLineMany Rule RulesTail
 
-NewLines
-| NewLines new_line
-| NewLines "#" AnyContent new_line
-| new_line
+RulesTail
+| RulesTail NewLine
+| RulesTail Rule
+|
 
 Rule@!^"\n\n"
-| VariableSymbol AnnotationTail new_line RightHandSides
+| VariableSymbol AnnotationTail NewLine RightHandSides
 
 RightHandSides
 | RightHandSides RightHandSideLine
 | RightHandSideLine
 
 RightHandSideLine@!"\n"^
-| "|" AnnotationTail space NonEmptyRightHandSide new_line
-| "|" AnnotationTail new_line
-| "#" AnyContent new_line
+| "|" AnnotationTail RightHandSide NewLine
 
-NonEmptyRightHandSide
-| NonEmptyRightHandSide space Symbol@!^"\n" AnnotationTail
-| Symbol@!^"\n" AnnotationTail
+RightHandSide
+| space Symbol@!^"\n" AnnotationTail RightHandSide
+|
 
 Symbol
 | VariableSymbol
@@ -46,12 +47,11 @@ RawIndicator
 | character^"\u{22}"^"\n"^"\\"
 
 GenerativeTerminalSymbol
-| LowercaseId
 | LowercaseId GenerativeTerminalExceptions
 
 GenerativeTerminalExceptions
 | GenerativeTerminalExceptions "^" TerminalSymbol
-| "^" TerminalSymbol
+|
 
 AnnotationTail
 | "@" Annotation AnnotationTail
@@ -79,8 +79,7 @@ TerminalAndCursor
 SimpleStringContent
 | SimpleStringContent character^"\u{22}"
 | SimpleStringContent _Utf8Scalar
-| character^"\u{22}"
-| _Utf8Scalar
+|
 
 _Utf8Scalar
 | _Utf8TwoByte
@@ -110,23 +109,42 @@ AnyContent
 | character^"\n"
 | ControlCharacter
 
-Id
-| LowercaseId
-| UppercaseId
+IdTail
+| letter IdTail
+| digit IdTail
+| "_" IdTail
+|
 
 LowercaseId
-| lowercase_letter
-| LowercaseId letter
-| LowercaseId digit
-| LowercaseId "_"
+| lowercase_letter IdTail
 
 UppercaseId
-| uppercase_letter
-| UppercaseId letter
-| UppercaseId digit
-| UppercaseId "_"
+| uppercase_letter IdTail
 
 CamelCaseId
-| lowercase_letter
-| CamelCaseId letter
-| CamelCaseId digit
+| lowercase_letter CamelCaseIdTail
+
+CamelCaseIdTail
+| letter CamelCaseIdTail
+| digit CamelCaseIdTail
+|
+
+OptionalNewLineMany
+| OptionalNewLineMany NewLine
+|
+
+NewLine
+| new_line Comment
+
+BlockStart
+| block_start Comment
+
+BlockEnd
+| block_end Comment
+
+CommentLine
+| "#"@>^"\n" new_line
+
+Comment
+| Comment CommentLine
+|

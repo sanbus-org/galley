@@ -62,9 +62,9 @@ test "galley grammar recovers a damaged symbol before its newline" {
         try std.testing.expectEqual(@as(usize, 0), occurrence.rhs_index);
         try std.testing.expectEqual(@as(usize, 1), occurrence.symbol_index);
     } else {
-        try std.testing.expectEqualStrings("NonEmptyRightHandSide", occurrence.parent_variable);
-        try std.testing.expectEqual(@as(usize, 1), occurrence.rhs_index);
-        try std.testing.expectEqual(@as(usize, 0), occurrence.symbol_index);
+        try std.testing.expectEqualStrings("RightHandSide", occurrence.parent_variable);
+        try std.testing.expectEqual(@as(usize, 0), occurrence.rhs_index);
+        try std.testing.expectEqual(@as(usize, 1), occurrence.symbol_index);
     }
     try expectReachedEnd(&parsed.context, input);
 }

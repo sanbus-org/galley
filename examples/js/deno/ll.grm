@@ -1,3 +1,6 @@
+# Shared demo grammar for every bindings example: comma-separated key:value
+# pairs of small integers (alpha:12,beta:3). All examples parse it byte-identically.
+
 Document
 | PairList
 |

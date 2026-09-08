@@ -1,3 +1,7 @@
+# JSON with explicit recovery annotations, LL engine: same valid corpus as
+# minimal JSON, plus recovery points that preserve later values inside
+# damaged containers.
+
 Value
 |@!"}"^ "{" _OptionalBlank ObjectMembers _OptionalBlank
 |@!"]"^ "[" _OptionalBlank ArrayMembers _OptionalBlank

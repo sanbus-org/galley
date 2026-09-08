@@ -1,3 +1,6 @@
+# Full RFC 8259 JSON, LL engine: parses the same language as minimal JSON
+# but keeps extra non-terminals for a richer AST, trading throughput for shape.
+
 Start
 | Value
 
