@@ -1,0 +1,54 @@
+Value
+|@countObject "{" _OptionalBlank ObjectMembers _OptionalBlank
+|@countArray "[" _OptionalBlank ArrayMembers _OptionalBlank
+|@countNumber IntegerNumber FloatTail _OptionalBlank
+|@countString "\u{22}" _StringContent "\u{22}" _OptionalBlank
+|@countNull "null" _OptionalBlank
+|@countBoolean "true" _OptionalBlank
+|@countBoolean "false" _OptionalBlank
+
+ObjectMembers
+|@countKey "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _OptionalBlank Value ObjectMembersTail "}"
+| "}"
+
+ObjectMembersTail
+|@countKey "," _OptionalBlank "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _OptionalBlank Value ObjectMembersTail
+|
+
+ArrayMembers
+| Value ArrayMembersTail "]"
+| "]"
+
+ArrayMembersTail
+| "," _OptionalBlank Value ArrayMembersTail
+|
+
+_OptionalBlank
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+| block_start _OptionalBlankTail
+| block_end _OptionalBlankTail
+|
+
+_OptionalBlankTail
+| space _OptionalBlankTail
+| new_line _OptionalBlankTail
+| block_start _OptionalBlankTail
+| block_end _OptionalBlankTail
+|
+
+_StringContent
+| character^"\u{22}" _StringContent
+|
+
+IntegerNumber
+| digit _PositiveIntegerNumberTail
+| "-" digit _PositiveIntegerNumberTail
+
+_PositiveIntegerNumberTail
+| digit _PositiveIntegerNumberTail
+|
+
+FloatTail
+| "." digit _PositiveIntegerNumberTail
+|

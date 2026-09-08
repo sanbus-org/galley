@@ -4,9 +4,13 @@
   "description": "Documentation for the Galley parser generator",
   "type": "module",
   "scripts": {
+    "docs:wasm": "node scripts/build-checker-wasm.mjs",
     "docs:dev": "vitepress dev .",
-    "docs:build": "vitepress build .",
+    "docs:build": "node scripts/build-checker-wasm.mjs && vitepress build .",
     "docs:preview": "vitepress preview ."
+  },
+  "dependencies": {
+    "galley-js-wasm": "file:../bindings/js/wasm"
   },
   "devDependencies": {
     "vitepress": "^1.0.2"

@@ -14,6 +14,9 @@ hero:
     - theme: alt
       text: Grammar Guidelines
       link: /grammar_guidelines
+    - theme: brand
+      text: Try it live
+      link: /try-it
 
 features:
   - icon: 🚀
