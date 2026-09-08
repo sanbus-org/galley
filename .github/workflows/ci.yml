@@ -201,7 +201,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm install
-          npm --prefix ../../../bindings/js/node install
+          npm --prefix ../../../bindings/js install
           npx galley-js-node .
           npx tsx demo.ts
           node ../../../bindings/js/node/tests/test_bindings.mjs
@@ -223,7 +223,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           bun install
-          (cd ../../../bindings/js/bun && bun install && bun run build)
+          (cd ../../../bindings/js && rm -f package-lock.json bun.lock && bun install)
           bunx galley-js-bun .
           bun demo.ts
           bun ../../../bindings/js/bun/tests/test_bindings.mjs
@@ -235,7 +235,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm install
-          npm --prefix ../../../bindings/js/wasm install
+          npm --prefix ../../../bindings/js install
           npx galley-js-wasm .
           npx tsx demo.ts
           node ../../../bindings/js/wasm/tests/test_bindings.mjs
@@ -482,7 +482,7 @@ jobs:
           cd ../..
           cd examples/js/node
           npm install >/dev/null 2>&1
-          npm --prefix ../../../bindings/js/node install >/dev/null 2>&1
+          npm --prefix ../../../bindings/js install >/dev/null 2>&1
           GALLEY_CHECKOUT="$PWD/../../.." npx galley-js-node . >/dev/null
           npx tsx demo.ts >/tmp/out-js-node.txt 2>/tmp/err-js-node.txt
           cd ../../..
@@ -492,13 +492,13 @@ jobs:
           cd ../../..
           cd examples/js/bun
           bun install >/dev/null 2>&1
-          (cd ../../../bindings/js/bun && bun install >/dev/null 2>&1 && bun run build >/dev/null 2>&1)
+          (cd ../../../bindings/js && rm -f package-lock.json bun.lock && bun install >/dev/null 2>&1)
           GALLEY_CHECKOUT="$PWD/../../.." bunx galley-js-bun . >/dev/null
           bun demo.ts >/tmp/out-js-bun.txt 2>/tmp/err-js-bun.txt
           cd ../../..
           cd examples/js/wasm
           npm install >/dev/null 2>&1
-          npm --prefix ../../../bindings/js/wasm install >/dev/null 2>&1
+          npm --prefix ../../../bindings/js install >/dev/null 2>&1
           GALLEY_CHECKOUT="$PWD/../../.." npx galley-js-wasm . >/dev/null
           npx tsx demo.ts >/tmp/out-js-wasm.txt 2>/tmp/err-js-wasm.txt
           cd ../../..
@@ -615,17 +615,17 @@ jobs:
           python -m galley_bindings benchmark
           cd ../js/node
           npm install
-          npm --prefix ../../../bindings/js/node install
+          npm --prefix ../../../bindings/js install
           npx galley-js-node benchmark
           cd ../deno
           deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts benchmark
           cd ../bun
           bun install
-          (cd ../../../bindings/js/bun && bun install && bun run build)
+          (cd ../../../bindings/js && rm -f package-lock.json bun.lock && bun install)
           bunx galley-js-bun benchmark
           cd ../wasm
           npm install
-          npm --prefix ../../../bindings/js/wasm install
+          npm --prefix ../../../bindings/js install
           npx galley-js-wasm benchmark
           cd ../../zig
           zig build -Doptimize=ReleaseFast
