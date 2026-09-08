@@ -10,7 +10,8 @@ wasm next to its grammar and copied under `docs/public/try-it/` by
 - `json-ast/`: same grammar with AST on and procedures off.
   Snapshot-counting setup: one snapshot crossing plus a host walk
   (`snapshot-stats.js`). The page lets the user pick either setup.
-- `lisp/`, `lua/`: verbatim copies of `languages/lisp` and
-  `languages/lua` with lean validation configs (no AST, no procedures,
+- `lisp/`, `lua/`, `galley/`: verbatim copies of `languages/lisp`,
+  `languages/lua`, and `languages/galley` with lean validation configs
+  (no AST, no procedures,
   error recovery and position tracking on). If a stock grammar changes,
   re-copy its `ll.grm` here.

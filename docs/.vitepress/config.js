@@ -35,8 +35,8 @@ function galleyNodeStubsPlugin() {
 const socialLink = { icon: 'github', link: `https://github.com/${repository}` }
 
 export default defineConfig({
-  title: 'Galley Compiler',
-  description: 'Documentation for the Sanbus Galley parser generators and compiler.',
+  title: 'Galley',
+  description: 'Documentation for the Sanbus Galley parser generators.',
   base: '/',
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]
