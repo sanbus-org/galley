@@ -156,6 +156,15 @@ jobs:
           cmake --build build-${{ matrix.language }}
           ./build-${{ matrix.language }}/bin/demo
 
+      - name: Test bindings (c/cpp)
+        if: ${{ matrix.language == 'c' || matrix.language == 'cpp' }}
+        run: |
+          cmake -S bindings/c/test-fixture -B build-c-fixture \
+            -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$GITHUB_WORKSPACE"
+          if [ "${{ matrix.language }}" = cpp ]; then target=test_bindings_cpp; test=bindings-cpp; else target=test_bindings_c; test=bindings-c; fi
+          cmake --build build-c-fixture --target "$target"
+          ctest --test-dir build-c-fixture -R "^$test\$" --output-on-failure
+
       - name: Build and run example (cargo)
         if: ${{ matrix.language == 'rust' }}
         run: |
@@ -346,7 +355,7 @@ jobs:
             echo "::error::examples/*/benchmark/ll.grm must match languages/json/ll.grm"
             exit 1
           }
-          for f in bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
+          for f in bindings/c/test-fixture/ll.grm bindings/c/test-fixture/config.zig bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to bindings/test-fixture"
               exit 1

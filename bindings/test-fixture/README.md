@@ -5,6 +5,7 @@ The one keyvalue grammar (`ll.grm`) and generation options
 directory links these two files in and adds its own `procedures.*`
 (they are genuinely different files — one per host language):
 
+- `bindings/c/test-fixture/`
 - `bindings/go/testfixture/`
 - `bindings/python/test-fixture/`
 - `bindings/java/test-fixture/`
