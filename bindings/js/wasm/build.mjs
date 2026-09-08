@@ -10,8 +10,9 @@
  *
  * * `procedures.ts` / `procedures.js` — JS hooks
  *   (`export function reduction_<Var>(args)` / `export function hook_<name>(args)`),
- *   dispatched through a generated wasm shim: every hook forwards through
- *   the `galley_js_dispatch` host import (see `galley-js-core/build/shim.mjs`).
+ *   dispatched through a generated wasm shim: every hook forwards its
+ *   integer hook ID through the `galley_js_dispatch_id` host import
+ *   (see `galley-js-core/build/shim.mjs`).
  *   This is the wasm counterpart of the native JS dispatch shim.
  * * `procedures.c` / `procedures.cpp` — legacy C/C++ hooks compiled into the
  *   module, exactly like the C/C++ consumers.

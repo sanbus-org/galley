@@ -2,8 +2,8 @@
  * WebAssembly procedure-dispatch setup.
  *
  * Unlike the native adapters there is nothing to install: the wasm module
- * unconditionally imports `env.galley_js_dispatch`, which forwards every
- * parser hook to the core registry (unregistered names are no-ops there,
+ * unconditionally imports `env.galley_js_dispatch_id`, which forwards every
+ * parser hook ID to the core registry (unregistered names are no-ops there,
  * matching native semantics). This module only owns the `require()`-based
  * auto-scan of `procedures.*` in the language directory, mirroring the Node
  * adapter. Outside Node (browsers) the scan is skipped — register hooks

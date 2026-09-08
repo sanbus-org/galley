@@ -202,4 +202,12 @@ export interface FfiPort {
    * name. Missing symbols (C-procedure or stale libraries) are no-ops.
    */
   syncProcedures(names: string[]): void;
+  /**
+   * Hook names in integer-ID order for the ID dispatch path. Queried once
+   * from the library (`galley_js_procedure_count` /
+   * `galley_js_procedure_name_ptr` / `galley_js_procedure_name_len`) and
+   * cached; empty when the library predates the query exports (C-procedure
+   * or stale libraries use the name-carrying dispatch instead).
+   */
+  procedureNames(): string[];
 }
