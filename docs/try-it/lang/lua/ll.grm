@@ -1,0 +1,95 @@
+Start
+| Items
+
+Items
+| Item Items
+|
+
+Item
+| String
+| LongString
+| DashItem
+| "{" BraceItems "}"
+| "(" ParenItems ")"
+| "[" BracketAfter
+| character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+
+DashItem
+| "-" "-[[" _LongStringContent
+| "-" "-" _LineCommentTail
+| "-" character^"-"
+
+BraceItems
+| BraceItem BraceItems
+|
+
+BraceItem
+| String
+| LongString
+| DashItem
+| "{" BraceItems "}"
+| "(" ParenItems ")"
+| "[" BracketAfter
+| character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+
+ParenItems
+| ParenItem ParenItems
+|
+
+ParenItem
+| String
+| LongString
+| DashItem
+| "{" BraceItems "}"
+| "(" ParenItems ")"
+| "[" BracketAfter
+| character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+
+BracketAfter
+| "[" _LongStringContent
+| BracketItems "]"
+
+BracketItems
+| BracketItem BracketItems
+|
+
+BracketItem
+| String
+| LongString
+| DashItem
+| "{" BraceItems "}"
+| "(" ParenItems ")"
+| character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
+
+String
+| "\u{22}" _DoubleStringContent "\u{22}"
+| "'" _SingleStringContent "'"
+
+_DoubleStringContent
+| "\\" character _DoubleStringContent
+| character^"\u{22}"^"\\" _DoubleStringContent
+| new_line _DoubleStringContent
+|
+
+_SingleStringContent
+| "\\" character _SingleStringContent
+| character^"'"^"\\" _SingleStringContent
+| new_line _SingleStringContent
+|
+
+LongString
+| "[[" _LongStringContent
+
+_LongStringContent
+| "]" _LongStringAfterBracket
+| character^"]" _LongStringContent
+| new_line _LongStringContent
+
+_LongStringAfterBracket
+| "]"
+| character^"]" _LongStringContent
+| new_line _LongStringContent
+
+_LineCommentTail
+| new_line
+| character^"\n" _LineCommentTail

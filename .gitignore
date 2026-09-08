@@ -26,6 +26,7 @@ procedures_python.zig
 docs/node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+docs/public/try-it/*.wasm
 
 # Large sample fixtures fetched from release assets (scripts/fetch-large-samples.sh)
 languages/json/samples/code-02.json

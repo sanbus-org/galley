@@ -1,16 +1,50 @@
 import { defineConfig } from 'vitepress'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const repository = process.env.GITHUB_REPOSITORY || 'sanbus-org/galley'
+const configDir = path.dirname(fileURLToPath(import.meta.url))
+
+// The wasm adapter statically imports Node builtins its browser path never
+// calls. Rewrite those imports to throwing stubs, scoped to galley files
+// only so the rest of the site keeps its real Node builtins.
+const galleyNodeStubs = {
+  'node:module': path.resolve(configDir, 'stubs/node-module.js'),
+  'node:fs': path.resolve(configDir, 'stubs/node-fs.js'),
+  'node:path': path.resolve(configDir, 'stubs/node-path.js'),
+  'node:process': path.resolve(configDir, 'stubs/node-process.js')
+}
+
+function galleyNodeStubsPlugin() {
+  return {
+    name: 'galley-node-stubs',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      // Match both the symlinked (docs/node_modules/galley-js-*) and the
+      // real (bindings/js/*) paths; nothing else in the site is affected.
+      const fromGalley = importer &&
+        (importer.includes('galley-js-') || importer.includes('/bindings/js/'));
+      if (Object.hasOwn(galleyNodeStubs, source) && fromGalley) {
+        return galleyNodeStubs[source];
+      }
+      return null;
+    }
+  };
+}
 
 const socialLink = { icon: 'github', link: `https://github.com/${repository}` }
 
 export default defineConfig({
   title: 'Galley Compiler',
   description: 'Documentation for the Sanbus Galley parser generators and compiler.',
-  base: '/galley/',
+  base: '/',
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]
+  ],
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
+      { text: 'Try it', link: '/try-it' },
       { text: 'Documentation', link: '/getting_started' }
     ],
     sidebar: [
@@ -20,7 +54,8 @@ export default defineConfig({
           { text: 'Getting Started', link: '/getting_started' },
           { text: 'Using Galley as a Library', link: '/using-galley' },
           { text: 'Included Languages', link: '/languages' },
-          { text: 'Configuration & Flags', link: '/configuration' }
+          { text: 'Configuration & Flags', link: '/configuration' },
+          { text: 'Try it', link: '/try-it' }
         ]
       },
       {
@@ -64,6 +99,10 @@ export default defineConfig({
     ]
   },
   vite: {
+    plugins: [galleyNodeStubsPlugin()],
+    optimizeDeps: {
+      exclude: ['galley-js-wasm', 'galley-js-core']
+    },
     server: {
       fs: {
         allow: ['..']

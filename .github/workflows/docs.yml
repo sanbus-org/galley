@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'src/**'
+      - 'bindings/js/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -35,12 +37,28 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
       - name: Install dependencies
         working-directory: docs
         run: npm ci
 
+      - name: Install wasm bindings
+        working-directory: bindings/js/wasm
+        # No lockfile here by convention (every bindings/js/* package
+        # gitignores its own; only docs/ tracks one), so this is install,
+        # not ci. The package `prepare` script builds core + wasm dists.
+        run: npm install --no-audit --no-fund
+
       - name: Build site
         working-directory: docs
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
         run: npm run docs:build
 
       - name: Setup Pages
