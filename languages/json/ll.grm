@@ -1,3 +1,6 @@
+# Minimal JSON, LL engine: the throughput baseline. ASCII-only strings with
+# no Unicode validation or escape decoding, and no error recovery.
+
 Value
 | "{" _OptionalBlank ObjectMembers _OptionalBlank
 | "[" _OptionalBlank ArrayMembers _OptionalBlank

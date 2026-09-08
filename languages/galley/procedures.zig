@@ -143,7 +143,21 @@ fn normalizeList(comptime tail_name: ?[]const u8) type {
     };
 }
 
-pub const reduction_RulesTail_0 = flattenRightRecursiveTail;
+fn flattenTail(args: *ProcedureArguments) !void {
+    // One hook serves both engines: the LL tail is right-recursive, the LR
+    // tail left-recursive. A node only ever matches one direction, so the
+    // other check is a no-op.
+    if (args.node_address) |node_address| {
+        updateTextLength(args.context, node_address);
+        try standard_procedures.rightRecursiveReduction(args);
+        try standard_procedures.leftRecursiveReduction(args);
+    }
+}
+
+pub const reduction_RulesTail_0 = flattenTail;
+pub const reduction_RulesTail_1 = flattenTail;
+pub const reduction_RightHandSides_0 = flattenTail;
+pub const reduction_RightHandSide_0 = flattenTail;
 pub const reduction_RulesTailTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
 pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
@@ -158,6 +172,7 @@ pub const reduction_AnnotationTail = normalizeList(null).function;
 pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
 
 pub const reduction_Procedure_0 = standard_procedures.replaceWithChildren;
+pub const reduction_Comment = standard_procedures.dropSelf;
 pub const reduction_RecoveryPoint_0 = absorbLastChildNamed("TerminalAndCursor").function;
 pub const reduction_VerbatimMarker_0 = absorbLastChildNamed("TerminalAndCursor").function;
 pub const reduction_VerbatimMarker_1 = absorbLastChildNamed("TerminalAndCursor").function;

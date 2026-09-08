@@ -1,3 +1,6 @@
+# Indentation-sensitive schema language, LL engine: dash-led field rows
+# (name, type, optional default) grouped under headers by indentation.
+
 Start
 | Rules
 

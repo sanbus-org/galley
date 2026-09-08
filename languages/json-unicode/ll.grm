@@ -1,3 +1,6 @@
+# Unicode-complete JSON, LL engine: validates UTF-8 scalars and standard
+# escapes (including \uXXXX with surrogate pairs) on top of minimal JSON.
+
 Value
 | "{" _OptionalBlank ObjectMembers _OptionalBlank
 | "[" _OptionalBlank ArrayMembers _OptionalBlank
