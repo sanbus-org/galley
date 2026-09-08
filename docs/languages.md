@@ -86,7 +86,7 @@ A Lua grammar that demonstrates keyword-led statements, function declarations, r
 
 ### Grammar Parser (`languages/galley`)
 
-The self-hosting definition of Galley's own `.grm` syntax! This language defines the exact structure of rule definitions, alternatives (`|`), variable symbols, quoted literals, and `@` annotations used across the compiler.
+The self-hosting definition of Galley's own `.grm` syntax! This language defines the exact structure of rule definitions, alternatives (`|`), variable symbols, quoted literals, and `@` annotations used across Galley.
 
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
 

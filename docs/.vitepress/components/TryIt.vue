@@ -82,14 +82,14 @@
       <div v-else class="status" :class="checker.statusClass">{{ checker.status }}</div>
     </section>
     <p class="engines">
-      Throughput is fastest in Chrome; Firefox is close behind; Safari is
-      an order of magnitude slower.
+      Throughput depends on the browser's WebAssembly engine; measured on
+      your machine, your input, right now.
     </p>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from "vue";
+import { reactive, ref, onMounted, watch } from "vue";
 import * as jsonHooks from "../../try-it/lang/json/procedures.js";
 import { countSnapshot } from "../../try-it/lang/json-ast/snapshot-stats.js";
 
@@ -133,6 +133,17 @@ const checkers = reactive([
     title: "Lua",
     ext: ".lua",
     text: 'local name = "world"\nprint("hi " .. name)',
+    status: "loading parser…",
+    statusClass: "",
+    dragOver: false,
+    ready: false,
+    file: null,
+  },
+  {
+    id: "galley",
+    title: "Galley",
+    ext: ".grm",
+    text: "Greeting\n| \"hello\"\n",
     status: "loading parser…",
     statusClass: "",
     dragOver: false,
@@ -230,7 +241,10 @@ function currentInput(checker) {
   if (checker.file) {
     return { input: fileInputs[checker.id], label: `${checker.title}: ${checker.file.name}` };
   }
-  return { input: checker.text, label: checker.title };
+  // Typed text always gains one trailing newline: line-oriented grammars
+  // need it, and the rest treat it as whitespace. Uploaded files go
+  // through byte-exact.
+  return { input: `${checker.text}\n`, label: checker.title };
 }
 
 function runCheck(checker) {
@@ -258,6 +272,8 @@ function runCheck(checker) {
 }
 
 async function checkFile(checker, file) {
+  await ensureChecker(checker);
+  if (!checker.ready) return;
   checker.result = null;
   checker.statusClass = "";
   checker.status = `checking ${file.name}…`;
@@ -289,33 +305,51 @@ function pickFile(checker, event) {
 function dropFile(checker, event) {
   checker.dragOver = false;
   const file = event.dataTransfer.files?.[0];
-  if (file && checker.ready) checkFile(checker, file);
+  if (file) checkFile(checker, file);
+}
+
+// Each wasm module loads only when its tab is first selected, not when
+// the page opens. In-flight loads are tracked outside reactivity.
+const loading = new Set();
+
+async function ensureChecker(checker) {
+  if (checker.ready || loading.has(checker.id) || !galley) return;
+  loading.add(checker.id);
+  try {
+    const url = `${import.meta.env.BASE_URL}try-it/${checker.id}.wasm`;
+    await galley.init({ url, libraryPath: checker.id });
+    sessions[checker.id] = new galley.Session({ libraryPath: checker.id });
+    if (checker.id === "json") {
+      const snapshotUrl = `${import.meta.env.BASE_URL}try-it/json-ast.wasm`;
+      await galley.init({ url: snapshotUrl, libraryPath: "json-snapshot" });
+      sessions["json-snapshot"] = new galley.Session({ libraryPath: "json-snapshot" });
+    }
+    checker.ready = true;
+    runCheck(checker);
+  } catch (error) {
+    checker.statusClass = "bad";
+    checker.status = `failed to start: ${error.message ?? error}`;
+  } finally {
+    loading.delete(checker.id);
+  }
 }
 
 onMounted(async () => {
   try {
     galley = await import("galley-js-wasm");
     galley.installProcedures(jsonHooks);
-    for (const checker of checkers) {
-      const url = `${import.meta.env.BASE_URL}try-it/${checker.id}.wasm`;
-      await galley.init({ url, libraryPath: checker.id });
-      sessions[checker.id] = new galley.Session({ libraryPath: checker.id });
-      if (checker.id === "json") {
-        const snapshotUrl = `${import.meta.env.BASE_URL}try-it/json-ast.wasm`;
-        await galley.init({ url: snapshotUrl, libraryPath: "json-snapshot" });
-        sessions["json-snapshot"] = new galley.Session({ libraryPath: "json-snapshot" });
-      }
-      checker.ready = true;
-      runCheck(checker);
-    }
   } catch (error) {
     for (const checker of checkers) {
-      if (!checker.ready) {
-        checker.statusClass = "bad";
-        checker.status = `failed to start: ${error.message ?? error}`;
-      }
+      checker.statusClass = "bad";
+      checker.status = `failed to start: ${error.message ?? error}`;
     }
+    return;
   }
+  watch(active, (id) => {
+    const selected = checkers.find((checker) => checker.id === id);
+    if (selected) ensureChecker(selected);
+  });
+  await ensureChecker(checkers.find((checker) => checker.id === active.value));
 });
 </script>
 
@@ -323,7 +357,7 @@ onMounted(async () => {
 .try-it .tabs {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
 }
 .try-it .tab {
   padding: 0.4rem 1.1rem;
@@ -345,7 +379,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin: 0.75rem 0;
   font-size: 14px;
   color: var(--vp-c-text-2);
 }
@@ -418,6 +452,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .try-it textarea {
+  display: block;
   width: 100%;
   font-family: monospace;
   font-size: 14px;
