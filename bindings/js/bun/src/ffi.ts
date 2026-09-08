@@ -136,6 +136,10 @@ interface GalleySymbols {
   galley_procedure_context_column(args: NativeHandle): number;
   galley_procedure_report_semantic_error(args: NativeHandle, message: number, messageLen: bigint): bigint;
   galley_install_js_dispatch(callback: NativeHandle): void;
+  galley_install_js_dispatch_id?(callback: NativeHandle): void;
+  galley_js_procedure_count?(): number;
+  galley_js_procedure_name_ptr?(index: number): bigint;
+  galley_js_procedure_name_len?(index: number): bigint;
   galley_js_procedure_enable?(name: number, nameLen: bigint): number;
   galley_js_procedure_clear?(): void;
 }
@@ -284,6 +288,13 @@ const DISPATCH_SYMBOL = {
   galley_install_js_dispatch: { args: [FFIType.function], returns: FFIType.void },
 } as const;
 
+const ID_DISPATCH_SYMBOL = {
+  galley_install_js_dispatch_id: { args: [FFIType.function], returns: FFIType.void },
+  galley_js_procedure_count: { args: [], returns: FFIType.u32 },
+  galley_js_procedure_name_ptr: { args: [FFIType.u32], returns: FFIType.ptr },
+  galley_js_procedure_name_len: { args: [FFIType.u32], returns: FFIType.u64 },
+} as const;
+
 const SELECTIVE_SYMBOL = {
   galley_js_procedure_enable: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
   galley_js_procedure_clear: { args: [], returns: FFIType.void },
@@ -291,11 +302,13 @@ const SELECTIVE_SYMBOL = {
 
 function openNative(libPath: string, level: number): { symbols: GalleySymbols } {
   const table =
-    level >= 2
-      ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
-      : level >= 1
-        ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL }
-        : BASE_SYMBOLS;
+    level >= 3
+      ? { ...BASE_SYMBOLS, ...ID_DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
+      : level >= 2
+        ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
+        : level >= 1
+          ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL }
+          : BASE_SYMBOLS;
   return dlopen(libPath, table) as unknown as { symbols: GalleySymbols };
 }
 
@@ -346,6 +359,31 @@ export class BunPort implements FfiPort {
       const bytes = encoder.encode(name);
       this.native.galley_js_procedure_enable(ptr(bytes), BigInt(bytes.length));
     }
+    // Warm the ID table outside any parse so the hot path never queries.
+    this.procedureNames();
+  }
+
+  #procedureNameTable: string[] | null = null;
+
+  procedureNames(): string[] {
+    if (this.#procedureNameTable !== null) return this.#procedureNameTable;
+    const table: string[] = [];
+    if (
+      typeof this.native.galley_js_procedure_count === "function" &&
+      typeof this.native.galley_js_procedure_name_ptr === "function" &&
+      typeof this.native.galley_js_procedure_name_len === "function"
+    ) {
+      const decoder = new TextDecoder();
+      const n = this.native.galley_js_procedure_count();
+      for (let i = 0; i < n; i++) {
+        const ptrValue = this.native.galley_js_procedure_name_ptr(i);
+        if (ptrValue === 0n) break;
+        const len = this.native.galley_js_procedure_name_len(i);
+        table.push(decoder.decode(readBytes(ptrValue, len)));
+      }
+    }
+    this.#procedureNameTable = table;
+    return table;
   }
 
   // -- module-level queries --------------------------------------------
@@ -979,13 +1017,17 @@ export function getBunPort(explicitPath?: string): BunPort {
   let native: GalleySymbols;
   let supportsDispatch = true;
   try {
-    native = openNative(libPath, 2).symbols;
+    native = openNative(libPath, 3).symbols;
   } catch {
     try {
-      native = openNative(libPath, 1).symbols;
+      native = openNative(libPath, 2).symbols;
     } catch {
-      native = openNative(libPath, 0).symbols;
-      supportsDispatch = false;
+      try {
+        native = openNative(libPath, 1).symbols;
+      } catch {
+        native = openNative(libPath, 0).symbols;
+        supportsDispatch = false;
+      }
     }
   }
   const port = new BunPort(native, libPath, supportsDispatch);

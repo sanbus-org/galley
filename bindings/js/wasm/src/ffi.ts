@@ -6,8 +6,8 @@
  * Zero npm dependencies. The module is instantiated with a minimal
  * in-TS `wasi_snapshot_preview1` stub (real `random_get`/`clock_time_get`,
  * filesystem calls report unavailable — the parse path never touches the
- * filesystem) plus an `env.galley_js_dispatch` import that forwards
- * procedure hooks to the core registry. All memory copying and integer
+ * filesystem) plus an `env.galley_js_dispatch_id` import that forwards
+ * procedure-hook IDs to the core registry. All memory copying and integer
  * normalization live here; all session logic lives in `galley-js-core`.
  *
  * Initialization is async (`await init()`), except under Node where the
@@ -250,6 +250,9 @@ interface GalleyWasmExports {
   galley_procedure_context_line(args: number): number;
   galley_procedure_context_column(args: number): number;
   galley_procedure_report_semantic_error(args: number, message: number, messageLen: number): bigint;
+  galley_js_procedure_count?(): number;
+  galley_js_procedure_name_ptr?(index: number): number;
+  galley_js_procedure_name_len?(index: number): number;
   galley_js_procedure_enable?(namePtr: number, nameLen: number): number;
   galley_js_procedure_clear?(): void;
 }
@@ -397,6 +400,13 @@ function makeImports(pending: PendingInstance): WebAssembly.Imports {
       return pending.memory;
     }),
     env: {
+      // Current builds import the ID entry; older modules import the
+      // name-carrying one. Both are always provided so either links.
+      galley_js_dispatch_id: (id: number, argsPtr: number) => {
+        const port = pending.port;
+        if (port === null) return;
+        port.dispatchFromGuestById(id, argsPtr);
+      },
       galley_js_dispatch: (namePtr: number, nameLen: number, argsPtr: number) => {
         const port = pending.port;
         if (port === null) return;
@@ -556,6 +566,34 @@ export class WasmPort implements FfiPort {
       return;
     }
     dispatchProcedure(name, argsPtr, this);
+  }
+
+  /** Guest hook entry (current builds): integer hook ID, no strings cross. */
+  dispatchFromGuestById(id: number, argsPtr: number): void {
+    const name = this.procedureNames()[id];
+    if (name === undefined) return;
+    dispatchProcedure(name, argsPtr, this);
+  }
+
+  #procedureNameTable: string[] | null = null;
+
+  procedureNames(): string[] {
+    if (this.#procedureNameTable !== null) return this.#procedureNameTable;
+    const table: string[] = [];
+    if (
+      typeof this.wasm.galley_js_procedure_count === "function" &&
+      typeof this.wasm.galley_js_procedure_name_ptr === "function" &&
+      typeof this.wasm.galley_js_procedure_name_len === "function"
+    ) {
+      const n = this.wasm.galley_js_procedure_count();
+      for (let i = 0; i < n; i++) {
+        const ptrValue = this.wasm.galley_js_procedure_name_ptr(i);
+        if (ptrValue === 0) break;
+        table.push(textDecoder.decode(this.readBytes(ptrValue, this.wasm.galley_js_procedure_name_len(i))));
+      }
+    }
+    this.#procedureNameTable = table;
+    return table;
   }
 
   // -- memory -------------------------------------------------------------
@@ -1481,5 +1519,8 @@ export class WasmPort implements FfiPort {
         this.free(slot.ptr, Math.max(slot.len, 1));
       }
     }
+    // Warm the ID table outside any parse so the hot path never queries
+    // (querying would re-enter the guest mid-parse).
+    this.procedureNames();
   }
 }

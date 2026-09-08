@@ -335,7 +335,13 @@ export interface GalleyFFI {
   ) => bigint | number;
 
   // procedure dispatch (shared JS shim; see galley-js-core/build/shim.mjs)
+  // ID path (current builds); the name-carrying symbol is the fallback for
+  // libraries that predate integer hook IDs.
+  galley_install_js_dispatch_id: ((target: unknown) => void) | null;
   galley_install_js_dispatch: ((target: unknown) => void) | null;
+  galley_js_procedure_count: (() => number | bigint) | null;
+  galley_js_procedure_name_ptr: ((index: number) => bigint) | null;
+  galley_js_procedure_name_len: ((index: number) => number | bigint) | null;
   // selective dispatch gates (null on C-procedure or stale libraries)
   galley_js_procedure_enable: ((name: string, nameLen: number | bigint) => number | bigint) | null;
   galley_js_procedure_clear: (() => void) | null;
@@ -595,11 +601,49 @@ export function loadLibrary(explicitPath?: string): GalleyFFI {
       "int64_t galley_tree_remove_children_at(void *session, uint64_t parent, size_t index, size_t count, _Out_ uint64_t *out_head)",
     ),
 
+    galley_install_js_dispatch_id: (() => {
+      try {
+        return lib.func("void galley_install_js_dispatch_id(void *target)") as unknown as (
+          target: unknown,
+        ) => void;
+      } catch {
+        return null;
+      }
+    })(),
+
     galley_install_js_dispatch: (() => {
       try {
         return lib.func("void galley_install_js_dispatch(void *target)") as unknown as (
           target: unknown,
         ) => void;
+      } catch {
+        return null;
+      }
+    })(),
+
+    galley_js_procedure_count: (() => {
+      try {
+        return lib.func("uint32_t galley_js_procedure_count()") as unknown as () => number | bigint;
+      } catch {
+        return null;
+      }
+    })(),
+
+    galley_js_procedure_name_ptr: (() => {
+      try {
+        return lib.func("void *galley_js_procedure_name_ptr(uint32_t index)") as unknown as (
+          index: number,
+        ) => bigint;
+      } catch {
+        return null;
+      }
+    })(),
+
+    galley_js_procedure_name_len: (() => {
+      try {
+        return lib.func("size_t galley_js_procedure_name_len(uint32_t index)") as unknown as (
+          index: number,
+        ) => number | bigint;
       } catch {
         return null;
       }
@@ -1416,6 +1460,28 @@ export class NodePort implements FfiPort {
     for (const name of names) {
       this.ffi.galley_js_procedure_enable(name, name.length);
     }
+    // Warm the ID table outside any parse so the hot path never queries.
+    this.procedureNames();
+  }
+
+  #procedureNameTable: string[] | null = null;
+
+  procedureNames(): string[] {
+    if (this.#procedureNameTable !== null) return this.#procedureNameTable;
+    const table: string[] = [];
+    const count = this.ffi.galley_js_procedure_count;
+    const namePtr = this.ffi.galley_js_procedure_name_ptr;
+    const nameLen = this.ffi.galley_js_procedure_name_len;
+    if (count !== null && namePtr !== null && nameLen !== null) {
+      const n = toNumber(count());
+      for (let i = 0; i < n; i++) {
+        const ptr = namePtr(i);
+        if (ptr === 0n || ptr === null) break;
+        table.push(copyStringBytes(ptr as bigint, nameLen(i)));
+      }
+    }
+    this.#procedureNameTable = table;
+    return table;
   }
 }
 
