@@ -7,6 +7,14 @@
     ".": "./dist/index.js"
   },
   "files": ["dist", "src", "build.ts", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --noCheck --types \"\"",
+    "prepare": "tsc -p tsconfig.build.json --noCheck --types \"\"",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
   "dependencies": {
     "galley-js-core": "file:../core"
   }
