@@ -5,7 +5,7 @@
  * Runs the real loader (`bindings/js/universal/dist`) inside a `node:vm`
  * realm with no `process`, `Bun`, or `Deno` globals, so `detectRuntime()`
  * reports `"browser"`. Realm modules resolve through an explicit table:
- * `galley-js-core` and `galley-js-wasm` load from the checkout, Node
+ * `@sanbus/galley-core` and `@sanbus/galley-wasm` load from the checkout, Node
  * builtins resolve to throwing stubs the bytes path never calls, and
  * anything else (notably every native backend) throws loudly instead of
  * loading. The realm is pre-linked bottom-up so shared modules are fully
@@ -31,7 +31,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { TextDecoder, TextEncoder } from "node:util";
-import { wasmArtifactFileName } from "galley-js-core";
+import { wasmArtifactFileName } from "@sanbus/galley-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,12 +47,12 @@ const wasmBytes = new Uint8Array(fs.readFileSync(wasmModule));
 
 const UNIVERSAL_INDEX = pathToFileURL(path.join(universalDir, "dist", "index.js")).href;
 const WASM_INDEX = pathToFileURL(
-  path.join(universalDir, "node_modules", "galley-js-wasm", "dist", "index.js"),
+  path.join(universalDir, "node_modules", "@sanbus/galley-wasm", "dist", "index.js"),
 ).href;
 
 const BARE_MODULES = new Map([
-  ["galley-js-core", pathToFileURL(path.join(universalDir, "node_modules", "galley-js-core", "dist", "index.js")).href],
-  ["galley-js-wasm", WASM_INDEX],
+  ["@sanbus/galley-core", pathToFileURL(path.join(universalDir, "node_modules", "@sanbus/galley-core", "dist", "index.js")).href],
+  ["@sanbus/galley-wasm", WASM_INDEX],
 ]);
 
 const STUB_SOURCES = new Map([
@@ -133,7 +133,7 @@ async function loadRealm(warnings) {
   const staticEdges = new Map();
 
   function dynamicGate(specifier) {
-    if (specifier === "galley-js-wasm") return ensureEvaluated(WASM_INDEX);
+    if (specifier === "@sanbus/galley-wasm") return ensureEvaluated(WASM_INDEX);
     throw new Error(`browser proof: unexpected dynamic import ${specifier}`);
   }
 
@@ -188,7 +188,7 @@ async function loadRealm(warnings) {
     inProgress.delete(url);
   }
 
-  await preload(WASM_INDEX, "galley-js-wasm");
+  await preload(WASM_INDEX, "@sanbus/galley-wasm");
   await preload(UNIVERSAL_INDEX, UNIVERSAL_INDEX);
   const entry = new vm.SourceTextModule(ENTRY_SOURCE, {
     identifier: "browser-proof:entry",

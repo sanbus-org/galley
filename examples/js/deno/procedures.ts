@@ -6,7 +6,7 @@
  * grammar hooks arrive as `hook_<name>` — Key is annotated `@print`.
  */
 
-import type { Node, ProcedureArguments } from "galley-js-deno";
+import type { Node, ProcedureArguments } from "@sanbus/galley-deno";
 
 function textOf(node: Node): string {
   const bytes = node.text();

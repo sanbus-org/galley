@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { artifactFileName, wasmArtifactFileName } from "galley-js-core";
+import { artifactFileName, wasmArtifactFileName } from "@sanbus/galley-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,8 +32,8 @@ const wasmModule = ensureTestLibrary({
 
 const { init, backend, detectRuntime, Session, version } = await import("../dist/index.js");
 const { __resetLoader: resetLoader } = await import("../dist/loader.js");
-const { findLibrary: findNativeLibrary } = await import("galley-js-node");
-const { findLibrary: findWasmLibrary } = await import("galley-js-wasm");
+const { findLibrary: findNativeLibrary } = await import("@sanbus/galley-node");
+const { findLibrary: findWasmLibrary } = await import("@sanbus/galley-wasm");
 
 let passed = 0;
 let failed = 0;

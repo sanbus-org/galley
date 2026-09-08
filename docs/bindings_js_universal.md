@@ -1,7 +1,7 @@
 # Universal (npm)
 
 One package for Node, Bun, Deno, and browsers:
-[`@sanbus-org/galley`](https://github.com/sanbus-org/galley/tree/main/bindings/js/universal)
+[`@sanbus/galley`](https://github.com/sanbus-org/galley/tree/main/bindings/js/universal)
 binds the runtime-neutral
 [`bindings/js/core`](https://github.com/sanbus-org/galley/tree/main/bindings/js/core)
 (`Session`, `Node`, diagnostics, tree editing) to a native backend where
@@ -17,7 +17,7 @@ explains how to build an artifact. A `.wasm` `libraryPath` pins the wasm
 backend explicitly.
 
 ```ts
-import { Session, init, backend } from "@sanbus-org/galley";
+import { Session, init, backend } from "@sanbus/galley";
 
 await init();
 console.log(backend()); // "native" or "wasm"

@@ -1,6 +1,6 @@
 {
   "imports": {
-    "galley-js-deno": "../../../bindings/js/deno/src/index.ts"
+    "@sanbus/galley-deno": "../../../bindings/js/deno/src/index.ts"
   },
   "tasks": {
     "build": "deno run --allow-read --allow-write --allow-run --allow-env ../../../bindings/js/deno/build.ts .",

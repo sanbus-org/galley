@@ -12,7 +12,7 @@
  * Thin wrapper over the shared gate (`../core/build/builder.mjs`), which
  * documents the accepted grammar files and owns the build. For both legs
  * at once, use the single entry instead: `galley build <language-dir>`
- * from `@sanbus-org/galley`.
+ * from `@sanbus/galley`.
  */
 
 import { buildParserArtifact } from "../core/build/builder.mjs";

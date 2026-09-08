@@ -19,18 +19,18 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 JS_DIR = REPO_ROOT / "bindings" / "js"
 VERSION_FILE = JS_DIR / "VERSION"
 
 # Directory -> expected npm package name. Closed set on purpose.
 EXPECTED: dict[str, str] = {
-    "core": "galley-js-core",
-    "node": "galley-js-node",
-    "bun": "galley-js-bun",
-    "deno": "galley-js-deno",
-    "wasm": "galley-js-wasm",
-    "universal": "@sanbus-org/galley",
+    "core": "@sanbus/galley-core",
+    "node": "@sanbus/galley-node",
+    "bun": "@sanbus/galley-bun",
+    "deno": "@sanbus/galley-deno",
+    "wasm": "@sanbus/galley-wasm",
+    "universal": "@sanbus/galley",
 }
 
 

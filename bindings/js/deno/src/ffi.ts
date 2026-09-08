@@ -3,15 +3,15 @@
  * over `bindings/c/galley.h`, implementing the core `FfiPort`.
  *
  * Zero dependencies: no npm packages, no build step for the adapter itself.
- * The core (`galley-js-core`, resolved to its compiled `dist` via the
+ * The core (`@sanbus/galley-core`, resolved to its compiled `dist` via the
  * package `deno.json` import map) owns all session logic; memory copying
  * and integer normalization live here. Requires `--allow-ffi` (dlopen),
  * `--allow-read` (library discovery, `parseFile`), and `--allow-env`
  * (library discovery).
  */
 
-import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "galley-js-core";
-import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();

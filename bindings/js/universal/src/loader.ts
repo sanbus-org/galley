@@ -1,7 +1,7 @@
 /**
  * Universal loader for the Galley JavaScript bindings.
  *
- * Binds the runtime-neutral `galley-js-core` to one of four backends —
+ * Binds the runtime-neutral `@sanbus/galley-core` to one of four backends —
  * the Node, Bun, and Deno native adapters, or the WebAssembly adapter —
  * selected per runtime with native-first ordering:
  *
@@ -20,8 +20,8 @@
  */
 
 import { createRequire } from "node:module";
-import type { FfiPort } from "galley-js-core";
-import { MissingArtifactError } from "galley-js-core";
+import type { FfiPort } from "@sanbus/galley-core";
+import { MissingArtifactError } from "@sanbus/galley-core";
 
 export type Runtime = "node" | "bun" | "deno" | "browser";
 export type Backend = "native" | "wasm";
@@ -65,11 +65,11 @@ interface WasmAdapter {
 }
 
 const NATIVE_ADAPTERS: Record<NativeRuntime, { module: string; port: string }> = {
-  node: { module: "galley-js-node", port: "getNodePort" },
-  bun: { module: "galley-js-bun", port: "getBunPort" },
-  deno: { module: "galley-js-deno", port: "getDenoPort" },
+  node: { module: "@sanbus/galley-node", port: "getNodePort" },
+  bun: { module: "@sanbus/galley-bun", port: "getBunPort" },
+  deno: { module: "@sanbus/galley-deno", port: "getDenoPort" },
 };
-const WASM_MODULE = "galley-js-wasm";
+const WASM_MODULE = "@sanbus/galley-wasm";
 
 function isWasmPath(value: string | undefined): boolean {
   return !!value && value.toLowerCase().endsWith(".wasm");

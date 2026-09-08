@@ -37,7 +37,7 @@ grammar. Import the bindings
 from that directory:
 
 ```ts
-import { Session, version, hasAst } from "galley-js-bun";
+import { Session, version, hasAst } from "@sanbus/galley-bun";
 ```
 
 `ZIG_EXECUTABLE` selects zig. Bun runs TypeScript directly — the adapter

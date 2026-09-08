@@ -8,7 +8,7 @@
  * filesystem calls report unavailable — the parse path never touches the
  * filesystem) plus an `env.galley_js_dispatch_id` import that forwards
  * procedure-hook IDs to the core registry. All memory copying and integer
- * normalization live here; all session logic lives in `galley-js-core`.
+ * normalization live here; all session logic lives in `@sanbus/galley-core`.
  *
  * Initialization is async (`await init()`), except under Node where the
  * file can be read and instantiated synchronously — `Session` and the
@@ -27,8 +27,8 @@ import type {
   SessionCOptions,
   TreeSnapshot,
   WalkedStep,
-} from "galley-js-core";
-import { GalleyError, dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "galley-js-core";
+} from "@sanbus/galley-core";
+import { GalleyError, dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "@sanbus/galley-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -37,7 +37,7 @@ const WASI_BADF = 8;
 export class NeedInitError extends Error {
   constructor(libraryPath?: string) {
     super(
-      `galley-js-wasm: WebAssembly module${libraryPath ? ` for ${libraryPath}` : ""} is not initialized. ` +
+      `galley-wasm: WebAssembly module${libraryPath ? ` for ${libraryPath}` : ""} is not initialized. ` +
         `Call "await init()" (or "await init({ url })" / "init({ bytes })" in browsers) first.`,
     );
     this.name = "NeedInitError";
@@ -347,7 +347,7 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
       }
     },
     proc_exit: (code: number) => {
-      throw new Error(`galley-js-wasm: guest called proc_exit(${code})`);
+      throw new Error(`galley-wasm: guest called proc_exit(${code})`);
     },
     // No preopened directories: BADF ends the preopen scan (NOSYS aborts libc init).
     fd_prestat_get: () => WASI_BADF,
@@ -396,7 +396,7 @@ interface PendingInstance {
 function makeImports(pending: PendingInstance): WebAssembly.Imports {
   return {
     wasi_snapshot_preview1: makeWasiStub(() => {
-      if (pending.memory === null) throw new Error("galley-js-wasm: memory unavailable");
+      if (pending.memory === null) throw new Error("galley-wasm: memory unavailable");
       return pending.memory;
     }),
     env: {
@@ -463,7 +463,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   }
   if (options.url !== undefined) {
     const response = await fetch(options.url);
-    if (!response.ok) throw new Error(`galley-js-wasm: failed to fetch ${options.url}: ${response.status}`);
+    if (!response.ok) throw new Error(`galley-wasm: failed to fetch ${options.url}: ${response.status}`);
     const wasmPath = options.libraryPath ?? seededDefault ?? String(options.url);
     instantiate(new Uint8Array(await response.arrayBuffer()), wasmPath);
     if (options.libraryPath === undefined) seededDefault = wasmPath;
@@ -608,7 +608,7 @@ export class WasmPort implements FfiPort {
 
   private malloc(len: number): number {
     const ptr = this.wasm.galley_js_malloc(len);
-    if (ptr === 0) throw new Error("galley-js-wasm: out of memory");
+    if (ptr === 0) throw new Error("galley-wasm: out of memory");
     return ptr;
   }
 

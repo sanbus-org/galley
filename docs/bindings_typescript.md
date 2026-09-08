@@ -21,7 +21,7 @@ checkout:
 ```json
 {
   "dependencies": {
-    "galley-js-node": "file:../../../bindings/js/node"
+    "@sanbus/galley-node": "file:../../../bindings/js/node"
   }
 }
 ```
@@ -45,7 +45,7 @@ A plain `npm install` links the bindings without their dependencies, so a
 contributor must also run `npm install` inside `bindings/js/node`. With
 `--install-links` the package is copied with its whole subtree and the
 example works with no second install. Copies go stale: after changing
-binding sources, delete `node_modules/galley-js-node` and install again —
+binding sources, delete `node_modules/@sanbus/galley-node` and install again —
 reinstalling over it skips re-copying an unchanged version.
 
 The command generates the parser (`--emit-metadata`), builds the shared
@@ -56,7 +56,7 @@ files next to your grammar (`procedures.ts` for native TypeScript hooks,
 next to your grammar. Import the bindings from that directory:
 
 ```ts
-import { Session, version, hasAst } from "galley-js-node";
+import { Session, version, hasAst } from "@sanbus/galley-node";
 ```
 
 `ZIG_EXECUTABLE` selects zig. The TypeScript package targets Node 18+.
@@ -107,7 +107,7 @@ and Rust's `procedures.rs`:
 
 ```ts
 // procedures.ts
-import type { ProcedureArguments } from "galley-js-node";
+import type { ProcedureArguments } from "@sanbus/galley-node";
 
 export function reduction_Pair(args: ProcedureArguments): void {
   const node = args.currentNode();
@@ -138,7 +138,7 @@ with that and takes precedence:
 
 ```ts
 import * as procedures from "./procedures.js";
-import { Session, installProcedures } from "galley-js-node";
+import { Session, installProcedures } from "@sanbus/galley-node";
 
 // explicit registration, e.g. for hooks living elsewhere:
 installProcedures(procedures);
@@ -154,7 +154,7 @@ Python's `procedures_python.zig` and Go's `procedures_go.zig`. Unregistered hook
 are silent no-ops. You can also manage hooks at runtime:
 
 ```ts
-import { installProcedure, installProcedures, clearProcedures, listProcedures } from "galley-js-node";
+import { installProcedure, installProcedures, clearProcedures, listProcedures } from "@sanbus/galley-node";
 installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
 listProcedures(); // ["reduction_Pair", ...]
 clearProcedures();
@@ -212,7 +212,7 @@ built-in generic renderer. LR grammars use `lr_error_messages.zig`.
 ## Sessions
 
 ```ts
-import { Session, GalleyError } from "galley-js-node";
+import { Session, GalleyError } from "@sanbus/galley-node";
 
 using session = new Session({ maxErrors: 10, recoveryWindow: 500 });
 try {

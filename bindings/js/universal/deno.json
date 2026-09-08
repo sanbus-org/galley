@@ -1,10 +1,10 @@
 {
   "imports": {
-    "galley-js-core": "../core/src/index.ts",
-    "galley-js-node": "../node/src/index.ts",
-    "galley-js-bun": "../bun/src/index.ts",
-    "galley-js-deno": "../deno/src/index.ts",
-    "galley-js-wasm": "../wasm/src/index.ts"
+    "@sanbus/galley-core": "../core/src/index.ts",
+    "@sanbus/galley-node": "../node/src/index.ts",
+    "@sanbus/galley-bun": "../bun/src/index.ts",
+    "@sanbus/galley-deno": "../deno/src/index.ts",
+    "@sanbus/galley-wasm": "../wasm/src/index.ts"
   },
   "tasks": {
     "check": "deno check src/index.ts",

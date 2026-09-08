@@ -1,7 +1,7 @@
 {
-  "name": "galley-js-wasm",
+  "name": "@sanbus/galley-wasm",
   "version": "0.0.1",
-  "description": "Galley JavaScript bindings over WebAssembly (galley-js-core over a WASI reactor module built from bindings/c/galley.h)",
+  "description": "Galley JavaScript bindings over WebAssembly (@sanbus/galley-core over a WASI reactor module built from bindings/c/galley.h)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +24,7 @@
   },
   "keywords": ["galley", "parser", "javascript", "typescript", "wasm", "wasi"],
   "dependencies": {
-    "galley-js-core": "file:../core"
+    "@sanbus/galley-core": "file:../core"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -5,7 +5,7 @@
  * This is the single FFI boundary for the Node runtime (mirroring
  * `bindings/python/_galley.c` and `bindings/go/assets/wrapper.go.tmpl`).
  * Library discovery, memory copying, and integer normalization live here;
- * all session logic lives in `galley-js-core`. No caller touches koffi
+ * all session logic lives in `@sanbus/galley-core`. No caller touches koffi
  * directly outside this module and `dispatch.ts`.
  */
 
@@ -20,8 +20,8 @@ import type {
   SessionCOptions,
   TreeSnapshot,
   WalkedStep,
-} from "galley-js-core";
-import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
+} from "@sanbus/galley-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const koffi = require("koffi") as typeof import("koffi");
@@ -334,7 +334,7 @@ export interface GalleyFFI {
     outHead: unknown[],
   ) => bigint | number;
 
-  // procedure dispatch (shared JS shim; see galley-js-core/build/shim.mjs)
+  // procedure dispatch (shared JS shim; see @sanbus/galley-core/build/shim.mjs)
   // ID path (current builds); the name-carrying symbol is the fallback for
   // libraries that predate integer hook IDs.
   galley_install_js_dispatch_id: ((target: unknown) => void) | null;

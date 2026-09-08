@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "galley-js-node": "file:../../../bindings/js/node"
+    "@sanbus/galley-node": "file:../../../bindings/js/node"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

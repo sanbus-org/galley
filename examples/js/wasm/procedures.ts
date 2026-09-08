@@ -6,7 +6,7 @@
  * grammar hooks arrive as `hook_<name>` — Key is annotated `@print`.
  */
 
-import type { Node, ProcedureArguments } from "galley-js-wasm";
+import type { Node, ProcedureArguments } from "@sanbus/galley-wasm";
 
 function textOf(node: Node): string {
   const bytes = node.text();

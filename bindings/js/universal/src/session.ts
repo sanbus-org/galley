@@ -5,8 +5,8 @@
  * elsewhere `await init()` must complete first.
  */
 
-import { Session as CoreSession } from "galley-js-core";
-import type { SessionOptions } from "galley-js-core";
+import { Session as CoreSession } from "@sanbus/galley-core";
+import type { SessionOptions } from "@sanbus/galley-core";
 import { ensureSync, type InitOptions } from "./loader.ts";
 
 export type UniversalSessionOptions = SessionOptions & InitOptions;

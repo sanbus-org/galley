@@ -1,6 +1,6 @@
 # Universal Galley JavaScript Bindings
 
-`galley-js-core` over native libraries (Node, Bun, Deno) with WebAssembly
+`@sanbus/galley-core` over native libraries (Node, Bun, Deno) with WebAssembly
 fallback, selected per runtime. No native dependencies beyond the built
 parser artifacts.
 

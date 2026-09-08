@@ -1,7 +1,7 @@
 /**
  * Universal Galley JavaScript bindings — public surface.
  *
- * One package for Node, Bun, Deno, and browsers over `galley-js-core`,
+ * One package for Node, Bun, Deno, and browsers over `@sanbus/galley-core`,
  * with native-first backend selection and WebAssembly fallback. Call
  * `await init()` once, then use the synchronous `Session` API; under Node
  * and Bun the backend also resolves synchronously on first use.
@@ -11,7 +11,7 @@ import { ensureSync } from "./loader.ts";
 import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
-export * from "galley-js-core";
+export * from "@sanbus/galley-core";
 export { Session };
 export {
   init,
@@ -23,7 +23,7 @@ export {
   type Backend,
 } from "./loader.ts";
 export type { UniversalSessionOptions } from "./session.ts";
-export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "galley-js-core";
+export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
 
 // Module-level queries (mirror galley.h)
 export function version(): string {

@@ -6,15 +6,15 @@
  * Usage:
  *   npx galley-js-node <language-dir>
  *
- * Thin wrapper over the shared gate (`galley-js-core/build/builder.mjs`),
+ * Thin wrapper over the shared gate (`@sanbus/galley-core/build/builder.mjs`),
  * which documents the accepted grammar files and owns the build. For both
  * legs at once, use the single entry instead: `galley build <language-dir>`
- * from `@sanbus-org/galley`.
+ * from `@sanbus/galley`.
  */
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildParserArtifact } from "galley-js-core/build/builder.mjs";
+import { buildParserArtifact } from "@sanbus/galley-core/build/builder.mjs";
 
 const LIBRARY_NAME = "galley-js-node";
 

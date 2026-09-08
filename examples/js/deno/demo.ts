@@ -14,7 +14,7 @@ import {
   KIND_INDENTATION,
   installProcedures,
   libFileName,
-} from "galley-js-deno";
+} from "@sanbus/galley-deno";
 import * as procedures from "./procedures.ts";
 
 // The one parser file this demo runs: exact path, no searching.
@@ -32,7 +32,7 @@ const BROKEN_SAMPLE = "alpha:";
 const MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
 const SAMPLE_PATH = "/tmp/galley-js-deno-example.json";
 
-function printTree(node: import("galley-js-deno").Node, depth: number): void {
+function printTree(node: import("@sanbus/galley-deno").Node, depth: number): void {
   const name = node.symbolName();
   const text = node.text();
   if (name === null || text === null) {
@@ -76,7 +76,7 @@ async function main(): Promise<number> {
         console.log(`parsed ${parsed} bytes`);
         return 0;
       } catch (err: unknown) {
-        const galleyErr = err as import("galley-js-deno").GalleyError;
+        const galleyErr = err as import("@sanbus/galley-deno").GalleyError;
         const diag = galleyErr.diagnostic ?? session.diagnostic();
         const line = diag?.line ?? 0;
         const col = diag?.column ?? 0;

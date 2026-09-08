@@ -6,16 +6,16 @@
  * Usage:
  *   npx galley-js-bun <language-dir>
  *
- * Thin wrapper over the shared gate (`galley-js-core/build/builder.mjs`),
+ * Thin wrapper over the shared gate (`@sanbus/galley-core/build/builder.mjs`),
  * which documents the accepted grammar files and owns the build. For both
  * legs at once, use the single entry instead: `galley build <language-dir>`
- * from `@sanbus-org/galley`.
+ * from `@sanbus/galley`.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildParserArtifact } from "galley-js-core/build/builder.mjs";
+import { buildParserArtifact } from "@sanbus/galley-core/build/builder.mjs";
 
 const LIBRARY_NAME = "galley-js-bun";
 
@@ -32,13 +32,13 @@ async function main() {
     languageDirectory,
     libraryName: LIBRARY_NAME,
     bindingsDirectory,
-    dependencyName: "galley-js-core",
+    dependencyName: "@sanbus/galley-core",
     installCommand: "bun install",
   });
 
   // Bun snapshots `file:` dependencies into node_modules at install time,
   // so a consumer's copy can predate the build outputs (dist/ and the
-  // nested galley-js-core, materialized above, after install) and fail
+  // nested @sanbus/galley-core, materialized above, after install) and fail
   // resolution with "Cannot find package". Refresh every snapshot copy
   // reachable from this build: the language dir's own and the invoking
   // directory's (the benchmark flow builds benchmark/ while resolving
@@ -55,7 +55,7 @@ async function main() {
 }
 
 function refreshSnapshot(rootDirectory, bindingsDirectory) {
-  const snapshotDirectory = path.join(rootDirectory, "node_modules", "galley-js-bun");
+  const snapshotDirectory = path.join(rootDirectory, "node_modules", "@sanbus/galley-bun");
   const snapshotPackage = path.join(snapshotDirectory, "package.json");
   if (!fs.existsSync(snapshotPackage)) return;
   // Only touch our own snapshot copy, never an unrelated registry install.
@@ -70,12 +70,12 @@ function refreshSnapshot(rootDirectory, bindingsDirectory) {
   fs.rmSync(snapshotDist, { recursive: true, force: true });
   fs.cpSync(path.join(bindingsDirectory, "dist"), snapshotDist, { recursive: true });
   console.log(`galley-bindings: refreshed ${snapshotDist}`);
-  const snapshotCore = path.join(snapshotDirectory, "node_modules", "galley-js-core");
+  const snapshotCore = path.join(snapshotDirectory, "node_modules", "@sanbus/galley-core");
   fs.rmSync(snapshotCore, { recursive: true, force: true });
   fs.mkdirSync(path.join(snapshotDirectory, "node_modules"), { recursive: true });
   // Dereference: the source entry is usually a symlink into the checkout,
   // which would dangle from inside the snapshot.
-  fs.cpSync(path.join(bindingsDirectory, "node_modules", "galley-js-core"), snapshotCore, {
+  fs.cpSync(path.join(bindingsDirectory, "node_modules", "@sanbus/galley-core"), snapshotCore, {
     recursive: true,
     dereference: true,
   });

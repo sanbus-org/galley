@@ -3,8 +3,8 @@
  * Shared parser-artifact builder for the Galley JavaScript bindings.
  *
  * Single gate behind every JavaScript build entry: `galley build` in the
- * universal package, plus `galley-js-node`, `galley-js-bun`,
- * `galley-js-wasm`, and the Deno `build.ts`. Callers pass targeting
+ * universal package, plus `@sanbus/galley-node`, `@sanbus/galley-bun`,
+ * `@sanbus/galley-wasm`, and the Deno `build.ts`. Callers pass targeting
  * information (library name, wasm or native, platform, install layout);
  * the gate owns everything else — checkout resolution, CLI bootstrap,
  * parser generation, procedure-shim selection, and the consumer `zig
@@ -53,9 +53,9 @@ import { emitJsProcedureShim, emitJsProcedureShimWasm } from "./shim.mjs";
  * Canonical shared native build: one library serves the Node, Bun, and
  * Deno adapters (the dispatch symbols are identical across them).
  */
-export const NATIVE_LIBRARY_BASE = "galley-js-node";
+export const NATIVE_LIBRARY_BASE = "@sanbus/galley-node";
 /** Canonical wasm build for the wasm adapter and the universal fallback leg. */
-export const WASM_LIBRARY_BASE = "galley-js-wasm";
+export const WASM_LIBRARY_BASE = "@sanbus/galley-wasm";
 
 const WASM_TARGET = "wasm32-wasi";
 const NATIVE_SHIM_FILE = "procedures_js.zig";
@@ -126,7 +126,7 @@ async function loadArtifactNames() {
     cachedArtifactNames = await import("../dist/artifact.js");
     return cachedArtifactNames;
   } catch (error) {
-    fatal(`cannot load galley-js-core dist (${error.message}); run npm run build in ${CORE_DIRECTORY} first`);
+    fatal(`cannot load @sanbus/galley-core dist (${error.message}); run npm run build in ${CORE_DIRECTORY} first`);
   }
 }
 
@@ -149,7 +149,7 @@ function findJsProceduresFile(languageDirectory) {
  * spellings map through the shared mapping). Returns the built path.
  *
  * `artifactFileName` / `wasmArtifactFileName` are the shared mapping from
- * `galley-js-core`. Node-family wrappers omit them and the gate loads the
+ * `@sanbus/galley-core`. Node-family wrappers omit them and the gate loads the
  * built dist (their preflight guarantees it exists); the Deno wrapper
  * passes them from core sources, which Deno consumes directly without
  * ever building dist.
