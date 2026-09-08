@@ -14,14 +14,15 @@ javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>
 
 # Then use from Java:
-# GALLEY_LIBRARY_PATH=/path/to/libgalley-java.dylib java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
+# GALLEY_LIBRARY_PATH=/path/to/libgalley-java.so java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 ```
 
 ## Tests
 
 ```sh
-# From repo root, after building the example library above:
-GALLEY_LIBRARY_PATH=/path/to/libgalley-java.dylib mvn -B -f bindings/java/pom.xml test
+# From repo root, after building the fixture library above
+# (library suffix is platform-specific: .so on Linux, .dylib on macOS):
+GALLEY_LIBRARY_PATH=bindings/java/test-fixture/libgalley-java.so mvn -B -f bindings/java/pom.xml test
 ```
 
 Library resolution: `SessionOptions.libraryPath` (explicit) → `GALLEY_LIBRARY_PATH` env → `galley.library.path` system property, or a loud error naming the exact path. Nothing is searched.

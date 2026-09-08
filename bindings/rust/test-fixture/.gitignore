@@ -1,0 +1,6 @@
+/_ll-parser.zig
+/_lr-parser.zig
+/procedures.zig
+/metadata.json
+/libgalley-rust.*
+/target

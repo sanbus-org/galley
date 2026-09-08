@@ -1,3 +1,11 @@
 *.egg-info/
 dist/
 build/
+/test-fixture/_ll-parser.zig
+/test-fixture/_lr-parser.zig
+/test-fixture/procedures.zig
+/test-fixture/procedures_python.zig
+/test-fixture/metadata.json
+/test-fixture/galley.*.so
+/test-fixture/galley.pyi
+/test-fixture/libgalley-python.*

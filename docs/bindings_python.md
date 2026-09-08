@@ -243,10 +243,12 @@ def reduction_Number(args: galley.ProcedureArguments) -> None:
 
 ## Tests
 
-The bindings ship a behavioral suite that runs against any built module:
+The bindings ship a behavioral suite that runs against the binding's own
+test fixture (built on demand, never examples/):
 
 ```sh
-PYTHONPATH=examples/python python3 bindings/python/tests/test_bindings.py
+GALLEY_CHECKOUT=$PWD python -m galley_bindings bindings/python/test-fixture
+PYTHONPATH=bindings/python/test-fixture python3 bindings/python/tests/test_bindings.py
 ```
 
 ## Related Pages

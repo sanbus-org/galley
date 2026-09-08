@@ -1,9 +1,9 @@
-package main
+package testfixture
 
 import (
 	"testing"
 
-	galley "github.com/sanbus-org/galley/examples/go/demo/galley"
+	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
 )
 
 func walkSession(t *testing.T, input string) (*galley.Session, galley.Node) {

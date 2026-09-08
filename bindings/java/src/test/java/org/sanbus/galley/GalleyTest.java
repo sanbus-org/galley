@@ -15,8 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Behavioral tests for the Galley Java bindings.
  * Mirrors bindings/python/tests/test_bindings.py and bindings/js/node/tests/test_bindings.mjs.
  *
- * Requires the shared library built for examples/java:
- *   java -jar bindings/java/target/galley-bindings-0.1.0.jar examples/java
+ * Requires the shared library built for the binding's own test fixture
+ * (built on demand, never examples/):
+ *   GALLEY_CHECKOUT=<checkout> java -cp bindings/java/out \
+ *     org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture
  * Point it at the file with GALLEY_LIBRARY_PATH (or -Dgalley.library.path);
  * a missing file is a loud error, never a search.
  */

@@ -1,10 +1,10 @@
 """Behavioral tests for the Galley Python bindings.
 
 The suite imports the built extension module as `galley`; point PYTHONPATH
-at a language directory produced by `python -m galley_bindings` (the example
-works out of the box):
+at the binding's own test fixture (built on demand, never examples/):
 
-    PYTHONPATH=examples/python python3 bindings/python/tests/test_bindings.py
+    GALLEY_CHECKOUT=$PWD python -m galley_bindings bindings/python/test-fixture
+    PYTHONPATH=bindings/python/test-fixture python3 bindings/python/tests/test_bindings.py
 """
 
 from __future__ import annotations
