@@ -1,7 +1,7 @@
 /**
  * Galley JavaScript bindings over WebAssembly — public surface.
  *
- * Binds the runtime-neutral `galley-js-core` to the wasm port. Mirrors the
+ * Binds the runtime-neutral `@sanbus/galley-core` to the wasm port. Mirrors the
  * layout of the Node adapter and the C header `bindings/c/galley.h`.
  *
  * Initialization: `await init()` (required in browsers; optional under Node
@@ -12,12 +12,12 @@ import { getWasmPort, findLibrary, init, initSync, seedDefault, NeedInitError } 
 import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
-export * from "galley-js-core";
+export * from "@sanbus/galley-core";
 export { Session };
 export { findLibrary, init, initSync, seedDefault, NeedInitError };
 export { getWasmPort, wasmFileName } from "./ffi.ts";
 export type { InitOptions } from "./ffi.ts";
-export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "galley-js-core";
+export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
 
 // Module-level queries (mirror galley.h)
 export function version(): string {

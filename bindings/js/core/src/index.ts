@@ -1,7 +1,7 @@
 /**
  * Galley JavaScript core — runtime-neutral public surface.
  *
- * Each adapter package (`galley-js-node`, `galley-js-bun`, `galley-js-deno`)
+ * Each adapter package (`@sanbus/galley-node`, `@sanbus/galley-bun`, `@sanbus/galley-deno`)
  * binds these classes to its {@link FfiPort} and re-exports them.
  */
 

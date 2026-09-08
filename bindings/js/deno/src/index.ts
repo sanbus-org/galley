@@ -1,7 +1,7 @@
 /**
  * Galley JavaScript bindings for Deno — public surface.
  *
- * Binds the runtime-neutral `galley-js-core` to the `Deno.dlopen` port.
+ * Binds the runtime-neutral `@sanbus/galley-core` to the `Deno.dlopen` port.
  * Mirrors the layout of `bindings/python/galley.pyi` and the C header
  * `bindings/c/galley.h`. Requires `--allow-ffi --allow-read --allow-env`.
  */
@@ -10,11 +10,11 @@ import { getDenoPort, findLibrary } from "./ffi.ts";
 import { Session } from "./session.ts";
 
 // Core surface (Session base is shadowed by the adapter subclass below).
-export * from "galley-js-core";
+export * from "@sanbus/galley-core";
 export { Session };
 export { findLibrary };
 export { getDenoPort, libFileName } from "./ffi.ts";
-import type { SessionOptions as SessionOptionsType, WalkStep as WalkStepType, Diagnostic as DiagnosticType } from "galley-js-core";
+import type { SessionOptions as SessionOptionsType, WalkStep as WalkStepType, Diagnostic as DiagnosticType } from "@sanbus/galley-core";
 export type { SessionOptionsType as SessionOptions, WalkStepType as WalkStep, DiagnosticType as Diagnostic };
 
 // Module-level queries (mirror galley.h)

@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { wasmArtifactFileName } from "galley-js-core";
+import { wasmArtifactFileName } from "@sanbus/galley-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

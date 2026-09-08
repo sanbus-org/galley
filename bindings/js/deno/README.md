@@ -1,6 +1,6 @@
 # JavaScript Bindings for Deno
 
-`galley-js-core` over `Deno.dlopen` and `bindings/c/galley.h`. Zero
+`@sanbus/galley-core` over `Deno.dlopen` and `bindings/c/galley.h`. Zero
 dependencies; the adapter is plain TypeScript run directly by Deno.
 
 See `docs/bindings_js_deno.md` and `examples/js/deno` for the consumer flow.

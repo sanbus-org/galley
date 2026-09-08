@@ -6,8 +6,8 @@
  * wired at instantiation.
  */
 
-import { Session as CoreSession } from "galley-js-core";
-import type { SessionOptions } from "galley-js-core";
+import { Session as CoreSession } from "@sanbus/galley-core";
+import type { SessionOptions } from "@sanbus/galley-core";
 import { getWasmPort } from "./ffi.ts";
 import { ensureDispatch } from "./dispatch.ts";
 

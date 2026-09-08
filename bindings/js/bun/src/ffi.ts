@@ -3,7 +3,7 @@
  * `bindings/c/galley.h`, implementing the core `FfiPort`.
  *
  * Zero npm dependencies: `bun:ffi` is built into the runtime. The core
- * (`galley-js-core`) owns all session logic; memory copying and integer
+ * (`@sanbus/galley-core`) owns all session logic; memory copying and integer
  * normalization live here. Library discovery mirrors the Node adapter.
  */
 
@@ -12,8 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "galley-js-core";
-import { GalleyError, resolveArtifact, artifactFileName } from "galley-js-core";
+import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
+import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;

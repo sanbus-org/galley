@@ -7,13 +7,13 @@
  * matching native semantics). This module only owns the `require()`-based
  * auto-scan of `procedures.*` in the language directory, mirroring the Node
  * adapter. Outside Node (browsers) the scan is skipped — register hooks
- * explicitly with `installProcedures` from `galley-js-core`.
+ * explicitly with `installProcedures` from `@sanbus/galley-core`.
  */
 
 import { createRequire } from "node:module";
 import * as path from "node:path";
 
-import { installProcedures, listProcedures } from "galley-js-core";
+import { installProcedures, listProcedures } from "@sanbus/galley-core";
 
 let autoAttempted = false;
 

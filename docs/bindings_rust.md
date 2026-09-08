@@ -131,10 +131,10 @@ Add the bindings crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-galley-bindings = { path = "../../bindings/rust" }
+sanbus-galley = { path = "../../bindings/rust" }
 
 [build-dependencies]
-galley-bindings = { path = "../../bindings/rust" }
+sanbus-galley = { path = "../../bindings/rust" }
 ```
 
 Then call `generate_and_link` from your `build.rs`:

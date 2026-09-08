@@ -36,7 +36,7 @@ grammar. Import the bindings
 via the example's import map:
 
 ```ts
-import { Session, version, hasAst } from "galley-js-deno";
+import { Session, version, hasAst } from "@sanbus/galley-deno";
 ```
 
 `ZIG_EXECUTABLE` selects zig. Deno runs the adapter's TypeScript sources
@@ -53,7 +53,7 @@ shim). One difference: Deno has no synchronous module load, so there is no
 `require()`-based auto-discovery — register explicitly:
 
 ```ts
-import { installProcedures } from "galley-js-deno";
+import { installProcedures } from "@sanbus/galley-deno";
 import * as procedures from "./procedures.ts";
 
 installProcedures(procedures);

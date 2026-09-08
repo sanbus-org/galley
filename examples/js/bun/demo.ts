@@ -13,7 +13,7 @@ import {
   KIND_SYNTAX,
   KIND_INDENTATION,
   libFileName,
-} from "galley-js-bun";
+} from "@sanbus/galley-bun";
 
 // The one parser file this demo runs: exact path, no searching.
 const LIBRARY_PATH = path.join(
@@ -26,7 +26,7 @@ const BROKEN_SAMPLE = "alpha:";
 const MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
 const SAMPLE_PATH = "/tmp/galley-js-bun-example.json";
 
-function printTree(node: import("galley-js-bun").Node, depth: number): void {
+function printTree(node: import("@sanbus/galley-bun").Node, depth: number): void {
   const name = node.symbolName();
   const text = node.text();
   if (name === null || text === null) {
@@ -70,7 +70,7 @@ async function main(): Promise<number> {
         console.log(`parsed ${parsed} bytes`);
         return 0;
       } catch (err: unknown) {
-        const galleyErr = err as import("galley-js-bun").GalleyError;
+        const galleyErr = err as import("@sanbus/galley-bun").GalleyError;
         const diag = galleyErr.diagnostic ?? session.diagnostic();
         const line = diag?.line ?? 0;
         const col = diag?.column ?? 0;

@@ -1,4 +1,4 @@
-# galley-js-core
+# @sanbus/galley-core
 
 Runtime-neutral core for the Galley JavaScript bindings. Pure TypeScript:
 no `node:`, `bun:`, or `Deno` imports (enforced by `"types": []` in

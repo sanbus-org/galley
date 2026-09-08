@@ -6,8 +6,8 @@
  * built for C procedures.
  */
 
-import { Session as CoreSession } from "galley-js-core";
-import type { SessionOptions } from "galley-js-core";
+import { Session as CoreSession } from "@sanbus/galley-core";
+import type { SessionOptions } from "@sanbus/galley-core";
 import { getBunPort } from "./ffi.ts";
 import { ensureDispatchFor } from "./dispatch.ts";
 

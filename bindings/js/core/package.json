@@ -1,5 +1,5 @@
 {
-  "name": "galley-js-core",
+  "name": "@sanbus/galley-core",
   "version": "0.0.1",
   "description": "Runtime-neutral core for the Galley JavaScript bindings (Node, Bun, Deno). Pure TypeScript: no node:, bun:, or Deno imports. Each runtime ships a thin adapter implementing FfiPort.",
   "type": "module",

@@ -20,10 +20,10 @@ function galleyNodeStubsPlugin() {
     name: 'galley-node-stubs',
     enforce: 'pre',
     resolveId(source, importer) {
-      // Match both the symlinked (docs/node_modules/galley-js-*) and the
+      // Match both the symlinked (docs/node_modules/@sanbus/galley-*) and the
       // real (bindings/js/*) paths; nothing else in the site is affected.
       const fromGalley = importer &&
-        (importer.includes('galley-js-') || importer.includes('/bindings/js/'));
+        (importer.includes('@sanbus/galley-') || importer.includes('/bindings/js/'));
       if (Object.hasOwn(galleyNodeStubs, source) && fromGalley) {
         return galleyNodeStubs[source];
       }
@@ -101,7 +101,7 @@ export default defineConfig({
   vite: {
     plugins: [galleyNodeStubsPlugin()],
     optimizeDeps: {
-      exclude: ['galley-js-wasm', 'galley-js-core']
+      exclude: ['@sanbus/galley-wasm', '@sanbus/galley-core']
     },
     server: {
       fs: {

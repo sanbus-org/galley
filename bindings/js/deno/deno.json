@@ -1,6 +1,6 @@
 {
   "imports": {
-    "galley-js-core": "../core/src/index.ts"
+    "@sanbus/galley-core": "../core/src/index.ts"
   },
   "tasks": {
     "check": "deno check src/index.ts",

@@ -1,7 +1,7 @@
 {
-  "name": "galley-js-node",
+  "name": "@sanbus/galley-node",
   "version": "0.0.1",
-  "description": "Galley JavaScript bindings for Node (galley-js-core over koffi FFI and bindings/c/galley.h)",
+  "description": "Galley JavaScript bindings for Node (@sanbus/galley-core over koffi FFI and bindings/c/galley.h)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +24,7 @@
   },
   "keywords": ["galley", "parser", "javascript", "typescript", "ffi", "node"],
   "dependencies": {
-    "galley-js-core": "file:../core",
+    "@sanbus/galley-core": "file:../core",
     "koffi": "^3.1.6"
   },
   "devDependencies": {

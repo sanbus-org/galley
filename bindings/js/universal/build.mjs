@@ -8,8 +8,8 @@
  * Builds both artifacts next to the grammar by default: the canonical
  * shared native library (serves the Node, Bun, and Deno adapters) and the
  * wasm module (serves browsers and the universal fallback leg). The
- * per-adapter builders (`galley-js-node`, `galley-js-bun`,
- * `galley-js-wasm`, the Deno `build.ts`) remain as thin wrappers over the
+ * per-adapter builders (`@sanbus/galley-node`, `@sanbus/galley-bun`,
+ * `@sanbus/galley-wasm`, the Deno `build.ts`) remain as thin wrappers over the
  * same shared gate for single-leg builds.
  *
  * Environment: `ZIG_EXECUTABLE` (default `zig`) and `GALLEY_CHECKOUT`
@@ -24,7 +24,7 @@ import {
   NATIVE_LIBRARY_BASE,
   WASM_LIBRARY_BASE,
   buildParserArtifact,
-} from "galley-js-core/build/builder.mjs";
+} from "@sanbus/galley-core/build/builder.mjs";
 
 function fatal(message) {
   console.error(`galley-bindings: ${message}`);
@@ -51,7 +51,7 @@ async function main() {
       languageDirectory,
       libraryName: NATIVE_LIBRARY_BASE,
       bindingsDirectory,
-      dependencyName: "galley-js-core",
+      dependencyName: "@sanbus/galley-core",
     });
   }
   if (!nativeOnly) {
@@ -61,7 +61,7 @@ async function main() {
       wasm: true,
       posixOnly: false,
       bindingsDirectory,
-      dependencyName: "galley-js-core",
+      dependencyName: "@sanbus/galley-core",
     });
   }
 }

@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - v*
   pull_request:
     branches:
       - main
@@ -408,7 +410,7 @@ jobs:
           echo "Galley checkout contract enforced: checkout required everywhere, fetch lives in fetch-galley.sh only"
 
       - name: JavaScript packages share one lockstep version
-        run: python3 scripts/check_js_versions.py
+        run: python3 scripts/js/check_js_versions.py
 
       - name: Generated parser artifacts are identical across bindings
         run: |
@@ -670,6 +672,81 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: python3 scripts/compare_example_benchmarks.py
 
+  universal:
+    name: universal
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Install and build JavaScript bindings
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
+          npm --prefix bindings/js/universal install --no-audit --no-fund
+
+      - name: Test universal loader
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          npm --prefix bindings/js/universal test
+          bun bindings/js/universal/tests/test_loader_bun.mjs
+          (cd bindings/js/universal && deno task test)
+          node --experimental-vm-modules bindings/js/universal/tests/test_loader_browser.mjs
+
+  publish:
+    name: publish
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(cat bindings/js/VERSION)"
+
+      - name: Install and build JavaScript bindings
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
+          npm --prefix bindings/js/universal install --no-audit --no-fund
+
+      - name: Publish JavaScript packages
+        run: ./scripts/js/publish_js.sh
+
   test:
     name: test
     if: ${{ always() }}
@@ -679,6 +756,7 @@ jobs:
       - bindings
       - bindings-consistency
       - example-benchmarks
+      - universal
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
@@ -688,14 +766,17 @@ jobs:
           BINDINGS_RESULT: ${{ needs.bindings.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
           EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
+          UNIVERSAL_RESULT: ${{ needs.universal.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "matrix: $MATRIX_RESULT"
           echo "bindings: $BINDINGS_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
+          echo "universal: $UNIVERSAL_RESULT"
           test "$CORE_RESULT" = success
           test "$MATRIX_RESULT" = success
           test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
           test "$EXAMPLE_BENCHMARKS_RESULT" = success
+          test "$UNIVERSAL_RESULT" = success

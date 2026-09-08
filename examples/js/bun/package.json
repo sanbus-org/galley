@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "galley-js-bun": "file:../../../bindings/js/bun"
+    "@sanbus/galley-bun": "file:../../../bindings/js/bun"
   },
   "scripts": {
     "build": "bunx tsc -p tsconfig.json",

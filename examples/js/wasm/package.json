@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "galley-js-wasm": "file:../../../bindings/js/wasm"
+    "@sanbus/galley-wasm": "file:../../../bindings/js/wasm"
   },
   "scripts": {
     "build": "npx tsc -p tsconfig.json",

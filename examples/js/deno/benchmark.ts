@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Session, libFileName } from "galley-js-deno";
+import { Session, libFileName } from "@sanbus/galley-deno";
 
 const LOGICAL_INPUT = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS = 10;
