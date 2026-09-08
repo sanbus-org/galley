@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepare": "test -d ../core && npm --prefix ../core run build >/dev/null 2>&1; tsc -p tsconfig.json --noCheck --types \"\"",
+    "prepare": "tsc -p tsconfig.json --noCheck --types \"\"",
     "prepublishOnly": "npm run build",
     "test": "node tests/test_bindings.mjs"
   },

@@ -1,0 +1,14 @@
+{
+  "name": "galley-js",
+  "private": true,
+  "description": "npm workspace root for the npm-built Galley adapters: one install links core, node, bun, and wasm, built core-first by dependency order. The deno adapter is source-only and the universal package installs standalone, so neither is a member (workspace membership flips Deno into npm-linking mode).",
+  "workspaces": [
+    "core",
+    "node",
+    "bun",
+    "wasm"
+  ],
+  "scripts": {
+    "build": "npm run build -w galley-js-core && npm run build -w galley-js-node -w galley-js-bun -w galley-js-wasm"
+  }
+}
