@@ -29,6 +29,23 @@ Sessions accept the same options per instance; `new Session()` with no
 options uses the initialized backend (or resolves synchronously under
 Node and Bun).
 
+## Build
+
+One entry builds both artifacts next to the grammar — the shared native
+library (serves Node, Bun, and Deno) and the wasm module (serves browsers
+and the fallback leg):
+
+```sh
+npx galley build <language-dir>              # both legs
+npx galley build <language-dir> --native-only
+npx galley build <language-dir> --wasm-only
+```
+
+Requires `zig` (`ZIG_EXECUTABLE` overrides) and `GALLEY_CHECKOUT` pointing
+at a Galley working tree. The per-adapter builders (`npx galley-js-node`,
+`npx galley-js-bun`, `npx galley-js-wasm`, the Deno `build.ts`) remain as
+thin wrappers over the same shared gate for single-leg builds.
+
 ## Related Pages
 
 - [TypeScript](/bindings_typescript) — the Node backend over the same core

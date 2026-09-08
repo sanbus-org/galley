@@ -119,7 +119,7 @@ let warnedWasm = false;
 function compileGuidance(): Error {
   return new Error(
     "galley: no parser artifact found (tried native library, then WebAssembly).\n" +
-      "Build one first: npx galley-js-node <language-dir> or npx galley-js-wasm <language-dir>\n" +
+      "Build one first: npx galley build <language-dir>\n" +
       "or set GALLEY_LIBRARY_PATH to the built artifact.",
   );
 }
