@@ -469,7 +469,7 @@ long long galley_recorded_context_name(GalleySession *session, unsigned long lon
                                        const char **out_data, size_t *out_len);
 
 /* Recovery information attached to a recorded diagnostic. */
-long long galley_recorded_recovery_kind(GalleySession *session, unsigned long long diag_index);
+long long galley_recorded_diagnostic_recovery_kind(GalleySession *session, unsigned long long diag_index);
 long long galley_recorded_recovery_terminal(GalleySession *session, unsigned long long diag_index,
                                             const char **out_data, size_t *out_len);
 long long galley_recorded_recovery_resume(GalleySession *session, unsigned long long diag_index,

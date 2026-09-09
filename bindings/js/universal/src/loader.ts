@@ -5,7 +5,7 @@
  * the Node, Bun, and Deno native adapters, or the WebAssembly adapter —
  * selected per runtime with native-first ordering:
  *
- * - Node: koffi native → wasm → compile error.
+ * - Node: NAPI addon → wasm → compile error.
  * - Bun: `bun:ffi` native → wasm → compile error.
  * - Deno: `Deno.dlopen` native → wasm → compile error.
  * - Browser: wasm only.

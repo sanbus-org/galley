@@ -1,7 +1,7 @@
 /**
  * Neutral FFI port: the single seam between the runtime-neutral core
  * (`session.ts`, `node.ts`, `procedures.ts`) and each runtime adapter
- * (Node/koffi, Bun/`bun:ffi`, Deno/`Deno.dlopen`).
+ * (Node/addon, Bun/`bun:ffi`, Deno/`Deno.dlopen`).
  *
  * The port mirrors `bindings/c/galley.h`, but with structured returns
  * instead of C out-parameters: adapters own all memory copying (bytes are
