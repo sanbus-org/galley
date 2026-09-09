@@ -39,8 +39,8 @@ jobs:
             -Dtest-filter=suite:runtime \
             -Dtest-filter=suite:galley-parity
 
-  matrix:
-    name: matrix (${{ matrix.case }})
+  parser-cases:
+    name: parser-cases (${{ matrix.case }})
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     strategy:
       fail-fast: false
@@ -226,7 +226,14 @@ jobs:
           npm --prefix ../../../bindings/js install
           npx galley-js-node .
           npx tsx demo.ts
-          node ../../../bindings/js/node/tests/test_bindings.mjs
+
+      - name: Test bindings (typescript)
+        if: ${{ matrix.language == 'typescript' }}
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          node bindings/js/node/tests/test_bindings.mjs
 
       - name: Build and run example (deno)
         if: ${{ matrix.language == 'deno' }}
@@ -236,6 +243,13 @@ jobs:
         run: |
           deno task build
           deno task demo
+
+      - name: Test bindings (deno)
+        if: ${{ matrix.language == 'deno' }}
+        working-directory: bindings/js/deno
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
           deno task test
 
       - name: Build and run example (bun)
@@ -248,7 +262,14 @@ jobs:
           (cd ../../../bindings/js && rm -f package-lock.json bun.lock && bun install)
           bunx galley-js-bun .
           bun demo.ts
-          bun ../../../bindings/js/bun/tests/test_bindings.mjs
+
+      - name: Test bindings (bun)
+        if: ${{ matrix.language == 'bun' }}
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          (cd bindings/js && rm -f package-lock.json bun.lock && bun install)
+          bun bindings/js/bun/tests/test_bindings.mjs
 
       - name: Build and run example (wasm)
         if: ${{ matrix.language == 'wasm' }}
@@ -260,7 +281,14 @@ jobs:
           npm --prefix ../../../bindings/js install
           npx galley-js-wasm .
           npx tsx demo.ts
-          node ../../../bindings/js/wasm/tests/test_bindings.mjs
+
+      - name: Test bindings (wasm)
+        if: ${{ matrix.language == 'wasm' }}
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          node bindings/js/wasm/tests/test_bindings.mjs
 
       - name: Build and run example (zig)
         if: ${{ matrix.language == 'zig' }}
@@ -752,7 +780,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - core
-      - matrix
+      - parser-cases
       - bindings
       - bindings-consistency
       - example-benchmarks
@@ -762,20 +790,20 @@ jobs:
       - name: Verify CI results
         env:
           CORE_RESULT: ${{ needs.core.result }}
-          MATRIX_RESULT: ${{ needs.matrix.result }}
+          PARSER_CASES_RESULT: ${{ needs.parser-cases.result }}
           BINDINGS_RESULT: ${{ needs.bindings.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
           EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
           UNIVERSAL_RESULT: ${{ needs.universal.result }}
         run: |
           echo "core: $CORE_RESULT"
-          echo "matrix: $MATRIX_RESULT"
+          echo "parser-cases: $PARSER_CASES_RESULT"
           echo "bindings: $BINDINGS_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
           echo "universal: $UNIVERSAL_RESULT"
           test "$CORE_RESULT" = success
-          test "$MATRIX_RESULT" = success
+          test "$PARSER_CASES_RESULT" = success
           test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
           test "$EXAMPLE_BENCHMARKS_RESULT" = success
