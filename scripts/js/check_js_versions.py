@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Lockstep version gate for the JavaScript packages.
+"""JavaScript package-name and file:-dependency gate.
 
-Single source of truth: bindings/js/VERSION. Every bindings/js/*/package.json
-must carry exactly that version, and internal `file:` dependencies may only
-reference sibling packages inside the set. A new package directory with a
-package.json fails loudly until it is added to EXPECTED below.
+Version fields are owned by scripts/check_versions.py. This script polices
+npm names, the closed set of bindings/js/*/package.json, and that internal
+`file:` dependencies stay inside that set. A new package directory with a
+package.json fails until it is added to EXPECTED.
 
-To release a new version: edit bindings/js/VERSION once, run this script,
-fix every mismatch it reports. Never bump individual package.json files.
-
-Run: python3 scripts/check_js_versions.py (also wired into the
+Run: python3 scripts/js/check_js_versions.py (also wired into the
 bindings-consistency CI job).
 """
 
@@ -21,7 +18,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 JS_DIR = REPO_ROOT / "bindings" / "js"
-VERSION_FILE = JS_DIR / "VERSION"
 
 # Directory -> expected npm package name. Closed set on purpose.
 EXPECTED: dict[str, str] = {
@@ -33,16 +29,16 @@ EXPECTED: dict[str, str] = {
     "universal": "@sanbus/galley",
 }
 
-
-def fail(message: str) -> None:
-    print(f"check_js_versions: {message}", file=sys.stderr)
-    raise SystemExit(1)
+# Example manifests (repo-relative) -> expected name. Version fields on
+# these files are gated by scripts/check_versions.py (they must omit one).
+EXAMPLES: dict[str, str] = {
+    "examples/js/node/package.json": "galley-js-node-example",
+    "examples/js/bun/package.json": "galley-js-bun-example",
+    "examples/js/wasm/package.json": "galley-js-wasm-example",
+}
 
 
 def main() -> None:
-    expected_version = VERSION_FILE.read_text().strip()
-    if not expected_version:
-        fail(f"{VERSION_FILE} is empty")
     errors: list[str] = []
     for directory, name in sorted(EXPECTED.items()):
         manifest = JS_DIR / directory / "package.json"
@@ -52,10 +48,6 @@ def main() -> None:
         data = json.loads(manifest.read_text())
         if data.get("name") != name:
             errors.append(f"{manifest}: name {data.get('name')!r} != {name!r}")
-        if data.get("version") != expected_version:
-            errors.append(
-                f"{manifest}: version {data.get('version')!r} != VERSION {expected_version!r}"
-            )
         for scope in ("dependencies", "devDependencies", "optionalDependencies"):
             for dep, spec in (data.get(scope) or {}).items():
                 if isinstance(spec, str) and spec.startswith("file:"):
@@ -75,13 +67,19 @@ def main() -> None:
     found = {path.parent.name for path in JS_DIR.glob("*/package.json")}
     for extra in sorted(found - set(EXPECTED)):
         errors.append(f"bindings/js/{extra}/package.json is outside the lockstep set")
+    for relative, name in sorted(EXAMPLES.items()):
+        manifest = REPO_ROOT / relative
+        if not manifest.is_file():
+            errors.append(f"missing {manifest}")
+            continue
+        data = json.loads(manifest.read_text())
+        if data.get("name") != name:
+            errors.append(f"{manifest}: name {data.get('name')!r} != {name!r}")
     if errors:
         for error in errors:
             print(f"check_js_versions: {error}", file=sys.stderr)
         raise SystemExit(1)
-    print(
-        f"JavaScript packages share lockstep version {expected_version} ({len(EXPECTED)} packages)"
-    )
+    print(f"JavaScript package names match the closed set ({len(EXPECTED)} packages)")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-use galley_bindings::{DiagnosticKind, Error, Session};
+use galley::{DiagnosticKind, Error, Session};
 
 #[test]
 fn out_of_range_values_fail_with_semantic_error() {

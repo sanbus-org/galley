@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "galley-bindings"
-version = "0.1.0"
+name = "galley"
+version = "0.0.0"
 
 [[package]]
 name = "galley-bindings-test-fixture"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
- "galley-bindings",
+ "galley",
 ]

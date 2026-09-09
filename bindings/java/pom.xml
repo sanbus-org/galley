@@ -4,10 +4,35 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.sanbus</groupId>
-  <artifactId>galley-bindings</artifactId>
-  <version>0.1.0</version>
+  <groupId>com.sassanh.sanbus</groupId>
+  <artifactId>galley</artifactId>
+  <version>0.0.0</version>
   <packaging>jar</packaging>
+
+  <name>Galley Java bindings</name>
+  <description>Java bindings for Galley-generated parsers</description>
+  <url>https://github.com/sanbus-org/galley</url>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>sassanh</id>
+      <name>Sassan Haradji</name>
+      <url>https://github.com/sassanh</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:git://github.com/sanbus-org/galley.git</connection>
+    <developerConnection>scm:git:ssh://github.com/sanbus-org/galley.git</developerConnection>
+    <url>https://github.com/sanbus-org/galley</url>
+  </scm>
 
   <properties>
     <maven.compiler.release>22</maven.compiler.release>
@@ -45,4 +70,69 @@
       </plugin>
     </plugins>
   </build>
+
+  <!-- Central publishing. Inert unless -P central is passed, so normal
+       builds and the binding suite never touch it. One-time setup: claim
+       the com.sassanh.sanbus namespace on central.sonatype.com, create a
+       user token, and store OSSRH_USERNAME/OSSRH_TOKEN plus a GPG_PRIVATE_KEY
+       (armored secret key) and GPG_PASSPHRASE as CI secrets. -->
+  <profiles>
+    <profile>
+      <id>central</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.2</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.7.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

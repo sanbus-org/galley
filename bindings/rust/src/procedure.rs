@@ -1,8 +1,14 @@
-//! Opaque `ProcedureArguments` handle for Rust procedure hooks.
-//!
-//! Hook crates include this file with `#[path]` (they cannot depend on
-//! `galley_bindings` without a build cycle). Tree queries call
-//! `galley_node_*` on the session from `galley_procedure_session`.
+// Opaque `ProcedureArguments` handle for Rust procedure hooks.
+//
+// This is the single source of truth for hook-shim types. Hook crates never
+// reference this file by path: `build_helper::generate_and_link` embeds it
+// (via `include_str!`) and materializes it into the consumer build's
+// `OUT_DIR`, which the hooks file opens with
+// `include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"))`.
+// (Plain `//` comments: this file is `include!`d inside a module, where
+// inner `//!` docs are illegal.)
+// Tree queries call `galley_node_*` on the session from
+// `galley_procedure_session`.
 
 use std::ffi::{c_char, c_void};
 

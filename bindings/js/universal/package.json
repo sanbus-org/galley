@@ -1,6 +1,6 @@
 {
   "name": "@sanbus/galley",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Universal Galley JavaScript bindings: one package for Node, Bun, Deno, and browsers over @sanbus/galley-core, with native-first backend selection and WebAssembly fallback",
   "type": "module",
   "main": "./dist/index.js",

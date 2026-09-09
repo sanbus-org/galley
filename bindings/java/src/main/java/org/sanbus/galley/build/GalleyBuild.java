@@ -8,7 +8,7 @@ import java.util.*;
 /**
  * Builds a Galley parser and its shared library for a Java consumer.
  *
- * Usage: java -jar galley-bindings.jar &lt;language-dir&gt;
+ * Usage: java -jar galley.jar &lt;language-dir&gt;
  *
  * The language dir must contain ll.grm and may contain config.zig,
  * procedures.java (Java hooks dispatched through generated shim),
