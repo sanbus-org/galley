@@ -30,6 +30,19 @@ features:
     details: Emits clean Zig parser source. Consume it with addParserModule in the application's build.zig.
 ---
 
+## Try it live
+
+Four live parsers in your browser — parsing runs locally in WebAssembly,
+nothing is uploaded. Type below or drop in a file.
+
+<ClientOnly>
+  <TryIt />
+</ClientOnly>
+
+<script setup>
+import TryIt from './.vitepress/components/TryIt.vue'
+</script>
+
 <style>
 @media (min-width: 640px) {
   .VPHero .text {
