@@ -1,12 +1,12 @@
 [package]
 name = "galley-bindings-test-fixture"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 description = "Test-only package exercising the Galley Rust bindings against their own fixture grammar"
 license = "MIT"
 
 [dependencies]
-galley-bindings = { path = ".." }
+galley = { path = ".." }
 
 [build-dependencies]
-galley-bindings = { path = ".." }
+galley = { path = ".." }

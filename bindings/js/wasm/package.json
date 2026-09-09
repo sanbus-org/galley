@@ -1,6 +1,6 @@
 {
   "name": "@sanbus/galley-wasm",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Galley JavaScript bindings over WebAssembly (@sanbus/galley-core over a WASI reactor module built from bindings/c/galley.h)",
   "type": "module",
   "main": "./dist/index.js",

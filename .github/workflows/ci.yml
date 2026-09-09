@@ -440,6 +440,9 @@ jobs:
       - name: JavaScript packages share one lockstep version
         run: python3 scripts/js/check_js_versions.py
 
+      - name: Manifest versions are the 0.0.0 sentinel
+        run: python3 scripts/check_versions.py
+
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
@@ -764,7 +767,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches the single Galley version
-        run: test "${GITHUB_REF_NAME#v}" = "$(cat bindings/js/VERSION)"
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
 
       - name: Install and build JavaScript bindings
         run: |
@@ -774,6 +777,107 @@ jobs:
 
       - name: Publish JavaScript packages
         run: ./scripts/js/publish_js.sh
+
+  publish-rust:
+    name: publish-rust
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: actions-rust-lang/rustup@v1
+        with:
+          toolchain: stable
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
+
+      - name: Publish Rust crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./scripts/rust/publish_rust.sh
+
+  publish-python:
+    name: publish-python
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
+
+      - name: Publish Python package
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install build twine
+          ./scripts/python/publish_python.sh
+
+  publish-java:
+    name: publish-java
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 22
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
+
+      - name: Publish Java artifact
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: ./scripts/java/publish_java.sh
+
+  publish-go:
+    name: publish-go
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
+
+      - name: Push Go module tag
+        run: ./scripts/go/publish_go.sh
 
   test:
     name: test

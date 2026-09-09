@@ -1,9 +1,12 @@
 [package]
-name = "galley-bindings"
-version = "0.1.0"
+name = "galley"
+version = "0.0.0"
 edition = "2021"
 description = "Rust bindings for Galley-generated parsers"
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/sanbus-org/galley"
+homepage = "https://github.com/sanbus-org/galley"
 
 [lib]
-name = "galley_bindings"
+name = "galley"

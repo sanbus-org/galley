@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "galley-bindings"
-version = "0.1.0"
+name = "galley"
+version = "0.0.0"

@@ -1,14 +1,14 @@
-use galley_bindings::Session;
+use galley::Session;
 
 fn hand_rolled(
     session: &Session,
-    root: galley_bindings::NodeHandle,
-) -> Vec<(galley_bindings::NodeHandle, u32)> {
+    root: galley::NodeHandle,
+) -> Vec<(galley::NodeHandle, u32)> {
     fn recurse(
         session: &Session,
-        node: galley_bindings::NodeHandle,
+        node: galley::NodeHandle,
         depth: u32,
-        out: &mut Vec<(galley_bindings::NodeHandle, u32)>,
+        out: &mut Vec<(galley::NodeHandle, u32)>,
     ) {
         out.push((node, depth));
         let mut child = session.first_child(node);
@@ -27,7 +27,7 @@ fn walk_matches_hand_rolled_recursion() {
     let mut session = Session::new().expect("session");
     session.parse(b"alpha:12,beta:3").expect("clean parse");
     let root = session.root_node().expect("root");
-    let walked: Vec<(galley_bindings::NodeHandle, u32)> = session
+    let walked: Vec<(galley::NodeHandle, u32)> = session
         .walk(root, false)
         .expect("walker")
         .map(|step| (step.node, step.depth))
@@ -53,6 +53,6 @@ fn walk_skip_children_prunes_subtree() {
     walker.skip_children();
     assert!(walker.next().is_none());
     assert!(session
-        .walk(galley_bindings::NodeHandle::INVALID, false)
+        .walk(galley::NodeHandle::INVALID, false)
         .is_none());
 }

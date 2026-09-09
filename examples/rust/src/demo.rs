@@ -2,7 +2,7 @@
 //! mirroring examples/c, examples/cpp, and examples/go byte-for-byte in
 //! output.
 
-use galley_bindings::{NodeHandle, Session};
+use galley::{NodeHandle, Session};
 
 const VALID_SAMPLE: &str = "alpha:12,beta:3";
 const BROKEN_SAMPLE: &str = "alpha:";
@@ -30,9 +30,9 @@ fn print_tree(session: &Session, node: NodeHandle, depth: usize) {
 }
 
 fn main() {
-    println!("galley version: {}", galley_bindings::version());
+    println!("galley version: {}", galley::version());
     let mut session = {
-        let options = galley_bindings::SessionOptions {
+        let options = galley::SessionOptions {
             message_overrides: vec![(
                 "Number".to_string(),
                 "expected a number after ':' (digits only) at line {line}".to_string(),
@@ -74,7 +74,7 @@ fn main() {
         }
     };
     println!("parsed {parsed} bytes, {} AST nodes", session.node_count());
-    if !galley_bindings::has_ast() {
+    if !galley::has_ast() {
         println!("AST construction disabled; skipping tree walk");
     } else {
         let root = match session.root_node() {
@@ -126,8 +126,8 @@ fn main() {
     println!("recorded diagnostics: {}", diagnostics.len());
     for (index, d) in diagnostics.iter().enumerate() {
         let kind_name = match d.kind {
-            galley_bindings::DiagnosticKind::Syntax => "syntax",
-            galley_bindings::DiagnosticKind::Indentation => "indentation",
+            galley::DiagnosticKind::Syntax => "syntax",
+            galley::DiagnosticKind::Indentation => "indentation",
             _ => "none",
         };
         let unexpected = String::from_utf8_lossy(&d.unexpected_token);
@@ -155,7 +155,7 @@ fn main() {
     println!("file parse: {parsed} bytes, ended at {end_line}:{end_column}");
 
     /* Tree editing: detach the root's children, then reattach them. */
-    if galley_bindings::has_ast() {
+    if galley::has_ast() {
         let root = match session.root_node() {
             Some(root) => root,
             None => {

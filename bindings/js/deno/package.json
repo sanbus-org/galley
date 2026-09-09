@@ -1,6 +1,6 @@
 {
   "name": "@sanbus/galley-deno",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Galley JavaScript bindings for Deno (@sanbus/galley-core over Deno.dlopen and bindings/c/galley.h)",
   "type": "module",
   "exports": {

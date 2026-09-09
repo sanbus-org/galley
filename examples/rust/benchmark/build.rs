@@ -1,3 +1,3 @@
 fn main() {
-    galley_bindings::build_helper::generate_and_link(".");
+    galley::build_helper::generate_and_link(".");
 }

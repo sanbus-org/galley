@@ -1,6 +1,6 @@
 {
   "name": "@sanbus/galley-bun",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Galley JavaScript bindings for Bun (@sanbus/galley-core over bun:ffi and bindings/c/galley.h)",
   "type": "module",
   "main": "./dist/index.js",

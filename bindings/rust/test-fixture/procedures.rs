@@ -6,8 +6,9 @@
 
 use std::io::Write;
 
-#[path = "../src/procedure.rs"]
-mod procedure;
+mod procedure {
+    include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"));
+}
 use procedure::{NodeHandle, ProcedureArguments};
 
 fn write_stderr(message: &str) {

@@ -19,8 +19,9 @@ library. Hooks are ordinary Rust: no C anywhere on the consumer side.
 
 ```rust
 /* procedures.rs */
-#[path = "../../bindings/rust/src/procedure.rs"]
-mod procedure;
+mod procedure {
+    include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"));
+}
 use procedure::ProcedureArguments;
 
 #[no_mangle]
@@ -112,7 +113,7 @@ the innermost in-progress variable name (for example `"Number"`), or
 against the failing diagnostic:
 
 ```rust
-let options = galley_bindings::SessionOptions {
+let options = galley::SessionOptions {
     message_overrides: vec![(
         "Number".into(),
         "expected a number after ':' (digits only) at line {line}".into(),
@@ -131,17 +132,17 @@ Add the bindings crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sanbus-galley = { path = "../../bindings/rust" }
+galley = { path = "../../bindings/rust" }
 
 [build-dependencies]
-sanbus-galley = { path = "../../bindings/rust" }
+galley = { path = "../../bindings/rust" }
 ```
 
 Then call `generate_and_link` from your `build.rs`:
 
 ```rust
 fn main() {
-    galley_bindings::build_helper::generate_and_link("language-dir");
+    galley::build_helper::generate_and_link("language-dir");
 }
 ```
 
@@ -161,7 +162,7 @@ changes.
 ## Usage
 
 ```rust
-use galley_bindings::{Session, NodeHandle};
+use galley::{Session, NodeHandle};
 
 let mut session = Session::new().expect("session");
 
@@ -199,7 +200,7 @@ session.tree_append_children(root, head.unwrap()).unwrap();
 ## Session Options
 
 ```rust
-use galley_bindings::SessionOptions;
+use galley::SessionOptions;
 
 let opts = SessionOptions {
     max_errors: 20,

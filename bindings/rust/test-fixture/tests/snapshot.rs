@@ -1,5 +1,5 @@
 //! Snapshot parity: `Session::snapshot` matches the per-node accessors.
-use galley_bindings::{NodeHandle, Session};
+use galley::{NodeHandle, Session};
 
 fn opt_addr(node: Option<NodeHandle>) -> u64 {
     node.map(|n| n.index()).unwrap_or(NodeHandle::INVALID.index())

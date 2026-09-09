@@ -2,7 +2,7 @@
 //! no error recovery. Parses languages/json/samples/code-02.json 10 times
 //! on one session and reports bytes/s.
 
-use galley_bindings::Session;
+use galley::Session;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 

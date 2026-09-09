@@ -19,18 +19,15 @@
 #   ./scripts/publish_js.sh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../bindings/js" && pwd)"
-VERSION="$(tr -d ' \t\n' <"$ROOT/VERSION")"
-test -n "$VERSION" || {
-	echo "publish_js: bindings/js/VERSION is empty" >&2
-	exit 1
-}
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+JS_DIR="$ROOT/bindings/js"
+VERSION="$(python3 "$ROOT/scripts/product_version.py")"
 
 # Directory order is dependency order: core first, universal last.
 PACKAGES="core node bun deno wasm universal"
 
 for dir in $PACKAGES; do
-	manifest="$ROOT/$dir/package.json"
+	manifest="$JS_DIR/$dir/package.json"
 	name="$(node -p "require('$manifest').name")"
 	if npm view "$name@$VERSION" version >/dev/null 2>&1; then
 		echo "publish_js: skip $name@$VERSION (already on the registry)"
@@ -40,12 +37,12 @@ for dir in $PACKAGES; do
 	trap 'rm -rf "$work"' EXIT
 	# Copy everything the manifest's `files` whitelist can pack, never
 	# node_modules (snapshots of siblings must not leak into tarballs).
-	tar --exclude='./node_modules' --exclude='./*.tgz' -cf - -C "$ROOT/$dir" . | tar -xf - -C "$work"
+	tar --exclude='./node_modules' --exclude='./*.tgz' -cf - -C "$JS_DIR/$dir" . | tar -xf - -C "$work"
 	node -e "
     const fs = require('fs');
     const manifest = '$work/package.json';
     const data = JSON.parse(fs.readFileSync(manifest, 'utf8'));
-    // bindings/js/VERSION is the single source of truth for the version too,
+    // The root VERSION file is the single source of truth for the version too,
     // not just the skip check above.
     data.version = '$VERSION';
     for (const scope of ['dependencies', 'devDependencies', 'optionalDependencies']) {
@@ -57,6 +54,11 @@ for dir in $PACKAGES; do
     }
     fs.writeFileSync(manifest, JSON.stringify(data, null, 2) + '\n');
   "
+	pinned="$(node -p "require('$work/package.json').version")"
+	test "$pinned" = "$VERSION" || {
+		echo "publish_js: version pin failed ($pinned != $VERSION)" >&2
+		exit 1
+	}
 	echo "publish_js: publishing $name@$VERSION"
 	# --ignore-scripts: dist/ is already built by CI; the temp copy has no
 	# node_modules for prepare/prepublishOnly's tsc to resolve.

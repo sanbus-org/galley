@@ -6,7 +6,7 @@
 //! ```no_run
 //! // build.rs
 //! fn main() {
-//!     galley_bindings::build_helper::generate_and_link("language-dir");
+//!     galley::build_helper::generate_and_link("language-dir");
 //! }
 //! ```
 //!
@@ -21,6 +21,24 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The hook-shim source (`src/procedure.rs`) every consumer `procedures.rs`
+/// includes. Single source of truth: `generate_and_link` materializes this
+/// exact text into the consumer build's `OUT_DIR`, so hook types always
+/// match the `galley` crate version in use and no checkout paths leak into
+/// consumer sources.
+const PROCEDURE_RS: &str = include_str!("procedure.rs");
+
+/// File name (under the consumer build's `OUT_DIR`) that
+/// [`generate_and_link`] writes [`PROCEDURE_RS`] to. Consumer
+/// `procedures.rs` files open it with:
+///
+/// ```ignore
+/// mod procedure {
+///     include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"));
+/// }
+/// ```
+pub const PROCEDURE_TYPES_FILE: &str = "galley_procedure_types.rs";
 
 /// Resolved locations produced (or reused) by this helper.
 pub struct GalleyLayout {
@@ -99,12 +117,6 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         "cargo:rerun-if-changed={}",
         galley_source
             .join("bindings/c/consumer/build.zig")
-            .display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        galley_source
-            .join("bindings/rust/src/procedure.rs")
             .display()
     );
 
@@ -245,8 +257,14 @@ fn zig_executable() -> String {
 /// library. `panic=abort` keeps unwinding from ever crossing the parser's
 /// call frames: hooks are `extern "C"` functions, and a panic inside one
 /// aborts the process rather than unwinding through generated Zig code.
+///
+/// Before compiling, materializes [`PROCEDURE_RS`] as
+/// [`PROCEDURE_TYPES_FILE`] in `out_dir`, which the hooks file opens with
+/// `include!(concat!(env!("OUT_DIR"), ...))`.
 fn compile_procedures_archive(source: &Path, out_dir: &Path) -> PathBuf {
     let archive = out_dir.join("libgalley_procedures.a");
+    std::fs::write(out_dir.join(PROCEDURE_TYPES_FILE), PROCEDURE_RS)
+        .expect("write procedure types file");
     run_or_panic({
         let mut c = Command::new(env("RUSTC").unwrap_or_else(|| "rustc".into()));
         c.arg("--edition=2021")
