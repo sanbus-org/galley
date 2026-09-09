@@ -1,7 +1,7 @@
 /**
  * Galley JavaScript bindings for Node — public surface.
  *
- * Binds the runtime-neutral `@sanbus/galley-core` to the koffi port. Mirrors the
+ * Binds the runtime-neutral `@sanbus/galley-core` to the addon port. Mirrors the
  * layout of `bindings/python/galley.pyi` and the C header
  * `bindings/c/galley.h`.
  */

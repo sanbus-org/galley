@@ -1,7 +1,7 @@
 # TypeScript
 
 Galley-generated parsers can be consumed from TypeScript / Node.js through a
-`koffi`-based FFI layer over the same shared library as the C API
+per-grammar NAPI addon over the same shared library as the C API
 ([`bindings/c/galley.h`](https://github.com/sanbus-org/galley/blob/main/bindings/c/galley.h)).
 The package in
 [`bindings/js/node`](https://github.com/sanbus-org/galley/tree/main/bindings/js/node)
@@ -53,7 +53,8 @@ library through Galley's generic consumer build file, detects optional hook
 files next to your grammar (`procedures.ts` for native TypeScript hooks,
 `procedures.c` for legacy C hooks, `procedures.zig`,
 `ll_error_messages.zig`), and builds `libgalley-js-node.{dylib,so}` directly
-next to your grammar. Import the bindings from that directory:
+next to your grammar, plus the `galley-js-node.node` NAPI addon that loads
+it (`libraryPath` stays on the shared library). Import the bindings from that directory:
 
 ```ts
 import { Session, version, hasAst } from "@sanbus/galley-node";
@@ -75,7 +76,7 @@ Pass the built file with `libraryPath`, or name it once with
 
 The FFI boundary is the only overhead over the C API:
 
-- Every method is a direct `koffi` call; no JSON or subprocess marshalling.
+- Every method is a direct addon call; no JSON or subprocess marshalling.
 - Node handles are `Node` objects that wrap a stable address in the
   library's non-relocating storage and keep a strong reference to their
   owning `Session`; plain `bigint` addresses are also accepted wherever a

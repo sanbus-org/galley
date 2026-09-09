@@ -1,5 +1,5 @@
 /**
- * Node `Session`: the core session bound to the koffi port.
+ * Node `Session`: the core session bound to the addon port.
  *
  * Installs the host-procedure dispatch for the session's library (mirrors
  * Python's import-time shim setup); the installer is a no-op for libraries

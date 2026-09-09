@@ -6,7 +6,7 @@ no `node:`, `bun:`, or `Deno` imports (enforced by `"types": []` in
 lib). Each runtime ships a thin adapter package implementing `FfiPort`
 (`src/port.ts`) over the same `bindings/c/galley.h` shared library:
 
-- `bindings/js/node` — Node via koffi
+- `bindings/js/node` — Node via a per-grammar NAPI addon
 - `bindings/js/bun` — Bun via `bun:ffi`
 - `bindings/js/deno` — Deno via `Deno.dlopen`
 
