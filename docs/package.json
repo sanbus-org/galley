@@ -10,7 +10,7 @@
     "docs:preview": "vitepress preview ."
   },
   "dependencies": {
-    "@sanbus/galley-wasm": "file:../bindings/js/wasm"
+    "@sanbus/galley": "file:../bindings/js/universal"
   },
   "devDependencies": {
     "vitepress": "^1.0.2"

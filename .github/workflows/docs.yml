@@ -48,12 +48,17 @@ jobs:
         working-directory: docs
         run: npm ci
 
-      - name: Install wasm bindings
-        working-directory: bindings/js/wasm
+      - name: Install JS bindings
         # No lockfile here by convention (every bindings/js/* package
         # gitignores its own; only docs/ tracks one), so this is install,
-        # not ci. The package `prepare` script builds core + wasm dists.
-        run: npm install --no-audit --no-fund
+        # not ci. Mirrors the universal job in ci.yml: the workspace
+        # install links core/node/bun/wasm (so bindings/js/wasm/build.mjs
+        # resolves its imports by path), then the universal install builds
+        # the dist the docs bundle.
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
+          npm --prefix bindings/js/universal install --no-audit --no-fund
 
       - name: Build site
         working-directory: docs

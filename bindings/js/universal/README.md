@@ -9,6 +9,6 @@ Node and Bun the backend also resolves synchronously on first use. When no
 native library is found the WebAssembly backend serves instead (with a
 one-time performance notice), otherwise `init()` explains how to build one.
 
-See `docs/bindings_js_universal.md` for the consumer flow.
+See `docs/bindings_javascript.md` for the consumer flow.
 
 One module embeds one parser; sessions are not thread-safe.

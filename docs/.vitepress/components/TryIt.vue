@@ -336,7 +336,7 @@ async function ensureChecker(checker) {
 
 onMounted(async () => {
   try {
-    galley = await import("@sanbus/galley-wasm");
+    galley = await import("@sanbus/galley/browser");
     galley.installProcedures(jsonHooks);
   } catch (error) {
     for (const checker of checkers) {
