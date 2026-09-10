@@ -18,9 +18,6 @@
  * `malloc` may grow memory and detach old views.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import process from "node:process";
 import type {
   FfiPort,
   Handle,
@@ -262,11 +259,37 @@ interface GalleyWasmExports {
 const ports = new Map<string, WasmPort>();
 let seededDefault: string | null = null;
 
+interface ProcessGlobal {
+  versions?: { node?: string };
+  stdout?: { write(text: string): void };
+  stderr?: { write(text: string): void };
+}
+
+function nodeProcess(): ProcessGlobal | undefined {
+  return (globalThis as { process?: ProcessGlobal }).process;
+}
+
 function isNode(): boolean {
-  return (
-    typeof process !== "undefined" &&
-    typeof (process as unknown as { versions?: { node?: string } }).versions?.node === "string"
-  );
+  return typeof nodeProcess()?.versions?.node === "string";
+}
+
+/**
+ * Host file access. The Node entry (`index.ts`) seeds the real
+ * filesystem; the browser entry leaves it unset, where every leg that
+ * needs files already throws `NeedInitError` first.
+ */
+export interface FileIo {
+  existsSync(localPath: string): boolean;
+  readFile(localPath: string): Uint8Array;
+  resolvePath(candidate: string): string;
+  getenv(name: string): string | undefined;
+}
+
+let fileIo: FileIo | null = null;
+
+/** Node entry wires the real filesystem; browsers never call this. */
+export function seedFileIo(io: FileIo): void {
+  fileIo = io;
 }
 
 // --- library discovery -----------
@@ -282,8 +305,7 @@ export function wasmFileName(base = LIBRARY_BASE): string {
 
 function exists(localPath: string): boolean {
   try {
-    fs.accessSync(localPath);
-    return true;
+    return fileIo?.existsSync(localPath) ?? false;
   } catch {
     return false;
   }
@@ -291,8 +313,8 @@ function exists(localPath: string): boolean {
 
 export function findLibrary(explicit?: string): string {
   return resolveArtifact(explicit, {
-    getEnv: (name) => process.env[name],
-    resolvePath: (candidate) => path.resolve(candidate),
+    getEnv: (name) => fileIo?.getenv(name),
+    resolvePath: (candidate) => fileIo?.resolvePath(candidate) ?? candidate,
     existsSync: exists,
     buildHint: BUILD_HINT,
   });
@@ -333,8 +355,9 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
         }
         if (fd === 1 || fd === 2) {
           const text = chunks.map((c) => new TextDecoder().decode(c)).join("");
-          if (isNode()) {
-            (fd === 1 ? process.stdout : process.stderr).write(text);
+          const hostProcess = nodeProcess();
+          if (isNode() && hostProcess?.stdout && hostProcess?.stderr) {
+            (fd === 1 ? hostProcess.stdout : hostProcess.stderr).write(text);
           } else {
             console.log(text);
           }
@@ -449,7 +472,8 @@ function loadBytesSync(options: InitOptions): { bytes: Uint8Array<ArrayBuffer>; 
   if (!isNode()) throw new NeedInitError(options.libraryPath);
   // findLibrary throws MissingArtifactError naming the exact place.
   const wasmPath = options.libraryPath ?? seededDefault ?? findLibrary();
-  return { bytes: Uint8Array.from(new Uint8Array(fs.readFileSync(wasmPath))), wasmPath };
+  if (!fileIo) throw new Error("galley-wasm: file access is unavailable in this build");
+  return { bytes: Uint8Array.from(fileIo.readFile(wasmPath)), wasmPath };
 }
 
 /** Async entry point; the only way to initialize in browsers. */
@@ -516,6 +540,69 @@ export function getWasmPort(libraryPath?: string): WasmPort {
   if (!port) throw new NeedInitError(libraryPath);
   return port;
 }
+
+// --- module-level queries (mirror galley.h) ---------------------------------
+
+export function version(): string {
+  return getWasmPort().version();
+}
+
+export function parserType(): number {
+  return getWasmPort().parserType();
+}
+
+export function errorRecoveryMode(): number {
+  return getWasmPort().errorRecoveryMode();
+}
+
+export function hasAst(): boolean {
+  return getWasmPort().hasAst();
+}
+
+export function hasProcedures(): boolean {
+  return getWasmPort().hasProcedures();
+}
+
+export function allowsNoAstTreeProcedures(): boolean {
+  return getWasmPort().allowsNoAstTreeProcedures();
+}
+
+export function sourceRetentionEnabled(): boolean {
+  return getWasmPort().sourceRetentionEnabled();
+}
+
+export function hasPositionTracking(): boolean {
+  return getWasmPort().hasPositionTracking();
+}
+
+export function hasInputStreaming(): boolean {
+  return getWasmPort().hasInputStreaming();
+}
+
+export function usesVerbatim(): boolean {
+  return getWasmPort().usesVerbatim();
+}
+
+export function stackOverflowRecoveryAvailable(): boolean {
+  return getWasmPort().stackOverflowRecoveryAvailable();
+}
+
+export function symbolCount(): number {
+  return getWasmPort().symbolCount();
+}
+
+export function variableCount(): number {
+  return getWasmPort().variableCount();
+}
+
+export function statusString(status: number): string | null {
+  return getWasmPort().statusString(status);
+}
+
+// Preserve original Python naming aliases for docs parity
+export const has_ast = hasAst;
+export const has_procedures = hasProcedures;
+export const has_position_tracking = hasPositionTracking;
 
 // --- helpers ----------------------------------------------------------------
 
@@ -763,9 +850,11 @@ export class WasmPort implements FfiPort {
 
   parseFile(handle: Handle, filePath: string): number {
     // No guest filesystem: the host reads the file, then parses bytes.
+    // Without file IO (browsers) every file read is unavailable.
+    if (!fileIo) return -11;
     let data: Uint8Array;
     try {
-      data = new Uint8Array(fs.readFileSync(filePath));
+      data = new Uint8Array(fileIo.readFile(filePath));
     } catch {
       return -11;
     }
