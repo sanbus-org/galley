@@ -703,8 +703,8 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: python3 scripts/compare_example_benchmarks.py
 
-  universal:
-    name: universal
+  javascript:
+    name: javascript
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Checkout repository
@@ -738,7 +738,7 @@ jobs:
           npm run build --prefix bindings/js
           npm --prefix bindings/js/universal install --no-audit --no-fund
 
-      - name: Test universal loader
+      - name: Test JavaScript loader
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
@@ -746,6 +746,101 @@ jobs:
           bun bindings/js/universal/tests/test_loader_bun.mjs
           (cd bindings/js/universal && deno task test)
           node --experimental-vm-modules bindings/js/universal/tests/test_loader_browser.mjs
+
+      - name: Test bundler matrix
+        env:
+          GALLEY_CHECKOUT: ${{ github.workspace }}
+        run: |
+          MATRIX=/tmp/bundler-matrix
+          rm -rf "$MATRIX"
+          mkdir -p "$MATRIX/grammar"
+          cp bindings/js/test-fixture/ll.grm "$MATRIX/grammar/ll.grm"
+          node bindings/js/wasm/build.mjs "$MATRIX/grammar"
+          cp bindings/js/universal/tests/bundler/* "$MATRIX/"
+          cat > "$MATRIX/package.json" <<EOF
+          {
+            "name": "galley-bundler-matrix",
+            "type": "module",
+            "private": true,
+            "dependencies": {
+              "@sanbus/galley": "file:${{ github.workspace }}/bindings/js/universal",
+              "@sanbus/galley-node": "file:${{ github.workspace }}/bindings/js/node",
+              "@sanbus/galley-wasm": "file:${{ github.workspace }}/bindings/js/wasm"
+            },
+            "devDependencies": {
+              "vite": "7.3.6",
+              "webpack": "5.110.3",
+              "webpack-cli": "6.0.1"
+            }
+          }
+          EOF
+          (cd "$MATRIX" && npm install --no-audit --no-fund)
+          node bindings/js/node/build.mjs "$MATRIX/grammar"
+          node "$MATRIX/serve.mjs" "$MATRIX/grammar/libgalley-js-wasm.wasm" 8123 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          # Every branch below must be an `if`: under `bash -e` a failed
+          # `! grep` never exits (negation suppresses -e) and the function
+          # would return only its last line, going green on a leak.
+          check_node_bundle() {
+            local bundle="$1" status=0
+            if ! grep -q 'tried native library' "$bundle"; then
+              echo "loader missing in $bundle (default import resolved to the browser entry?)"
+              status=1
+            fi
+            return "$status"
+          }
+          check_browser_bundle() {
+            local bundle="$1" status=0
+            if ! grep -q 'using the WebAssembly backend' "$bundle"; then
+              echo "browser notice missing in $bundle"
+              status=1
+            fi
+            if grep -q 'tried native library' "$bundle"; then
+              echo "loader leaked into $bundle"
+              status=1
+            fi
+            if grep -q '"node:' "$bundle"; then
+              echo "node: specifier in $bundle"
+              status=1
+            fi
+            if grep -q "'node:" "$bundle"; then
+              echo "node: specifier in $bundle"
+              status=1
+            fi
+            return "$status"
+          }
+          # Default entry targets node (it needs node: builtins and must
+          # resolve the `import` condition to the loader, not the `browser`
+          # condition to the wasm entry). The browser entry targets web.
+          (cd "$MATRIX" && ./node_modules/.bin/vite build --ssr app-default.mjs --outDir dist-vite-default)
+          mv "$MATRIX/dist-vite-default/app-default.js" "$MATRIX/dist-vite-default/app.bundle.js"
+          (cd "$MATRIX" && MATRIX_ENTRY=app-subpath.mjs MATRIX_OUT=dist-vite-subpath ./node_modules/.bin/vite build)
+          (cd "$MATRIX" && MATRIX_ENTRY=./app-default.mjs MATRIX_OUT=dist-webpack-default MATRIX_TARGET=node ./node_modules/.bin/webpack --config webpack.config.js)
+          (cd "$MATRIX" && MATRIX_ENTRY=./app-subpath.mjs MATRIX_OUT=dist-webpack-subpath ./node_modules/.bin/webpack --config webpack.config.js)
+          check_node_bundle "$MATRIX/dist-vite-default/app.bundle.js" || exit 1
+          check_browser_bundle "$MATRIX/dist-vite-subpath/app.bundle.js" || exit 1
+          check_node_bundle "$MATRIX/dist-webpack-default/app.bundle.cjs" || exit 1
+          check_browser_bundle "$MATRIX/dist-webpack-subpath/app.bundle.js" || exit 1
+          # Assignment prefixes never glob-expand, so resolve the artifact
+          # into an array first (linux builds `.so`, macOS `.dylib`).
+          NATIVE_LIB=( "$MATRIX"/grammar/libgalley-js-node.* )
+          node_output=$(GALLEY_LIBRARY_PATH="${NATIVE_LIB[0]}" node "$MATRIX/dist-vite-default/app.bundle.js") || exit 1
+          echo "$node_output"
+          if echo "$node_output" | grep -q 'WebAssembly'; then
+            echo "vite node bundle fell back to wasm instead of serving native"
+            exit 1
+          fi
+          if ! echo "$node_output" | grep -q 'parsed 15 bytes'; then
+            echo "vite node bundle did not parse"
+            exit 1
+          fi
+          node "$MATRIX/dist-vite-subpath/app.bundle.js" || exit 1
+          node "$MATRIX/dist-webpack-subpath/app.bundle.js" || exit 1
+          # No runtime leg for the webpack node bundle: webpack replaces the
+          # loader's expression require/import legs with stubs that always
+          # throw, so adapters cannot load from it. The vite SSR cell above
+          # covers the node runtime path end to end.
 
   publish:
     name: publish
@@ -888,7 +983,7 @@ jobs:
       - bindings
       - bindings-consistency
       - example-benchmarks
-      - universal
+      - javascript
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
@@ -898,17 +993,17 @@ jobs:
           BINDINGS_RESULT: ${{ needs.bindings.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
           EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
-          UNIVERSAL_RESULT: ${{ needs.universal.result }}
+          JAVASCRIPT_RESULT: ${{ needs.javascript.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "parser-cases: $PARSER_CASES_RESULT"
           echo "bindings: $BINDINGS_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
-          echo "universal: $UNIVERSAL_RESULT"
+          echo "javascript: $JAVASCRIPT_RESULT"
           test "$CORE_RESULT" = success
           test "$PARSER_CASES_RESULT" = success
           test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
           test "$EXAMPLE_BENCHMARKS_RESULT" = success
-          test "$UNIVERSAL_RESULT" = success
+          test "$JAVASCRIPT_RESULT" = success
