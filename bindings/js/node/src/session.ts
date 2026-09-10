@@ -1,9 +1,7 @@
 /**
  * Node `Session`: the core session bound to the addon port.
  *
- * Installs the host-procedure dispatch for the session's library (mirrors
- * Python's import-time shim setup); the installer is a no-op for libraries
- * built for C procedures.
+ * Installs the host-procedure dispatch for the session's library.
  */
 
 import { Session as CoreSession } from "@sanbus/galley-core";
@@ -21,7 +19,7 @@ export class Session extends CoreSession {
     try {
       ensureDispatchFor(port.ffi, port);
     } catch {
-      // installer missing (C build) — ignore.
+      // Missing installer — stays no-op.
     }
     super(port, options);
   }

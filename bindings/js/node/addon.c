@@ -1,7 +1,6 @@
 /*
  * Node NAPI addon wrapping bindings/c/galley.h: the single FFI boundary for
- * the Node runtime (mirroring bindings/python/_galley.c). TypeScript still
- * implements FfiPort; it requires this addon instead of koffi.
+ * the Node runtime. TypeScript implements FfiPort through this addon.
  *
  * Loading: `load(parserPath)` dlopens nothing itself for required symbols
  * (this object links the parser library, like any C consumer); it opens a
@@ -15,7 +14,7 @@
  * libraries nests parses; a frame stack carries each parse's function and
  * receiver while one handle scope covers the outermost parse. A pending
  * JS exception after a hook is cleared so a throwing hook never aborts the
- * parse (matching the historical koffi behavior the suite pins).
+ * parse.
  */
 
 #define NAPI_VERSION 8
@@ -196,8 +195,7 @@ typedef struct Lib {
   napi_ref name_callback;
   napi_ref dispatch_ref;
   // Every bound name, verified against the probe handle at load so a
-  // header/binary skew fails here naming the symbol, never as a jump
-  // through a null binding later.
+  // header/binary skew fails here naming the symbol.
   const char *bound_names[192];
   int bound_count;
 } Lib;

@@ -2589,8 +2589,7 @@ static PyObject *Node_richcompare(PyObject *a, PyObject *b, int op)
     int equal = (na->address == nb->address) && (na->session_obj == nb->session_obj);
     if (na->session_obj != nb->session_obj) {
         // Different sessions are never equal even if address coincides; the
-        // address space is per-session. Keep inequality for cross-session
-        // comparisons without leaking.
+        // address space is per-session.
         equal = 0;
     }
     int result = 0;
@@ -2609,8 +2608,7 @@ static PyObject *Node_richcompare(PyObject *a, PyObject *b, int op)
 
 static Py_hash_t Node_hash(NodeObject *self)
 {
-    // Use address as hash; mix in session pointer low bits to avoid
-    // cross-session collisions when Nodes are used as dict keys.
+    // Use address as hash.
     Py_hash_t h = (Py_hash_t)self->address;
     if (h == -1)
         h = -2;

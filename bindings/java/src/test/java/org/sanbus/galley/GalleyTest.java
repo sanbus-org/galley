@@ -67,7 +67,7 @@ public class GalleyTest {
             // expected
         } catch (Exception e) {
             // other reflection failure also ok if it indicates no default ctor
-            assertTrue(e instanceof NoSuchMethodException || e.getCause() instanceof NoSuchMethodException || true);
+            assertTrue(e instanceof NoSuchMethodException || e.getCause() instanceof NoSuchMethodException);
         }
     }
 

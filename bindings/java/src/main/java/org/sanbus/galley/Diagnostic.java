@@ -110,7 +110,7 @@ public final class Diagnostic {
     public RecoveryProduction getRecoveryProduction() { return recoveryProduction; }
     public RecoveryOccurrence getRecoveryOccurrence() { return recoveryOccurrence; }
 
-    // Convenience aliases matching Python's attribute names for direct port
+    // Python-doc attribute names; not unused duplicates of the getters.
     public String message() { return message; }
     public String messageAnsi() { return messageAnsi; }
     public byte[] unexpectedToken() { return unexpectedToken; }

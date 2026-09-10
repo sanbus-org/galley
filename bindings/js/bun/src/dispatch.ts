@@ -58,8 +58,7 @@ function tryAutoRegister(libPath: string): void {
     return false;
   };
 
-  // One place: the directory holding the loaded library. Anything found
-  // there belongs to this grammar; nothing else is even looked at.
+  // One place: the directory holding the loaded library.
   const baseDirectory = path.dirname(libPath);
   const extensions = ["", ".js", ".ts"];
   for (const extension of extensions) {
@@ -69,7 +68,7 @@ function tryAutoRegister(libPath: string): void {
 
 export function ensureDispatchFor(port: BunPort & FfiPort): void {
   if (!port.supportsDispatch) {
-    // Library was built for C procedures (no shim); installs will be no-ops.
+    // No dispatch — installs stay no-ops.
     return;
   }
   tryAutoRegister(port.libraryPath);
@@ -87,8 +86,7 @@ export function ensureDispatchFor(port: BunPort & FfiPort): void {
 
 function installIdDispatch(port: BunPort & FfiPort): void {
   if (dispatchIdCallback === null) {
-    // Integer hook IDs: no string copy or decode on the hot path. The table
-    // is fixed per library build; unknown IDs are silent no-ops.
+    // Integer hook IDs; unknown IDs are silent no-ops.
     const table = port.procedureNames();
     const cb = new JSCallback(
       (id: number, argsPtr: number) => {
@@ -108,15 +106,13 @@ function installIdDispatch(port: BunPort & FfiPort): void {
       dispatchIdPointer as number,
     );
   } catch {
-    // Installer resolution is lazy on some runtimes; a missing installer
-    // means a C-procedures library — installs stay no-ops.
+    // Missing installer — stays no-op.
   }
 }
 
 function installNameDispatch(port: BunPort & FfiPort): void {
   if (dispatchCallback === null) {
-    // Signature mirrors Zig: fn([*]const u8, usize, ?*anyopaque) callconv(.c) void.
-    // Note: usize arrives as bigint in callbacks.
+    // Callback takes (namePtr, nameLen, argsPtr); nameLen arrives as bigint.
     const cb = new JSCallback(
       (namePtr: number, nameLen: bigint, argsPtr: number) => {
         if (!namePtr) return;
@@ -140,7 +136,6 @@ function installNameDispatch(port: BunPort & FfiPort): void {
   try {
     port.native.galley_install_js_dispatch(dispatchPointer as number);
   } catch {
-    // Installer resolution is lazy on some runtimes; a missing installer
-    // means a C-procedures library — installs stay no-ops.
+    // Missing installer — stays no-op.
   }
 }

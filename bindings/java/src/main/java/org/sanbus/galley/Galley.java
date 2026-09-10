@@ -61,7 +61,7 @@ public final class Galley {
 
     public static String statusString(long status) { return lib(null).galley_status_string(status); }
 
-    // Legacy snake_case aliases for parity with Python docs
+    // Snake_case aliases for Python-doc parity; not unused duplicates.
     public static boolean has_ast() { return hasAst(); }
     public static boolean has_procedures() { return hasProcedures(); }
     public static boolean has_position_tracking() { return hasPositionTracking(); }

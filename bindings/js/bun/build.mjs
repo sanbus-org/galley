@@ -42,8 +42,8 @@ async function main() {
   // resolution with "Cannot find package". Refresh every snapshot copy
   // reachable from this build: the language dir's own and the invoking
   // directory's (the benchmark flow builds benchmark/ while resolving
-  // through the parent example dir). The npm-based adapters symlink
-  // `file:` dirs and never need this. This stays in the wrapper: it is a
+  // through the parent example dir). npm-based adapters symlink `file:`
+  // dirs and never need this; it stays in the wrapper because it is a
   // Bun install-layout quirk, not build semantics.
   const refreshed = new Set();
   for (const rootDirectory of [languageDirectory, process.cwd()]) {

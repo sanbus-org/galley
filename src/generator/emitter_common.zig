@@ -390,7 +390,7 @@ fn emitMinimizedCondition(writer: *std.Io.Writer, onSetMask: MintermMask, uses_e
     }
 
     if (!found) {
-        // Fallback: emit naive disjunction (should never happen).
+        // Fallback: emit naive disjunction.
         var first = true;
         for (0..16) |m| {
             if ((onSetMask >> @intCast(m)) & 1 == 0) continue;
@@ -402,7 +402,6 @@ fn emitMinimizedCondition(writer: *std.Io.Writer, onSetMask: MintermMask, uses_e
         return;
     }
 
-    // Collect selected cubes.
     var cover: [81]Cube = undefined;
     var coverCount: usize = 0;
     for (0..primeCount) |pi| {

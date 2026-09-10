@@ -106,9 +106,7 @@ interface GalleySymbols {
   galley_recorded_expected_token(session: NativeHandle, diagIndex: bigint, tokenIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_context_count(session: NativeHandle, diagIndex: bigint): bigint;
   galley_recorded_context_name(session: NativeHandle, diagIndex: bigint, ctxIndex: bigint, outData: number, outLen: number): bigint;
-  // NB: the implementation exports galley_recorded_diagnostic_recovery_kind
-  // (the header's shorter name is stale); bun has no symbol remapping, so
-  // the table and this interface use the true name.
+  // Use the true symbol name.
   galley_recorded_diagnostic_recovery_kind(session: NativeHandle, diagIndex: bigint): bigint;
   galley_recorded_recovery_terminal(session: NativeHandle, diagIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_recovery_resume(session: NativeHandle, diagIndex: bigint, out: number): bigint;
@@ -146,7 +144,6 @@ interface GalleySymbols {
 
 // --- library discovery -------------------------------------------------
 // One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
-// Anything else is a loud error, never a search.
 
 const BUILD_HINT =
   `Build it first: bunx galley-js-bun <language-dir>\n` +
@@ -359,7 +356,6 @@ export class BunPort implements FfiPort {
       const bytes = encoder.encode(name);
       this.native.galley_js_procedure_enable(ptr(bytes), BigInt(bytes.length));
     }
-    // Warm the ID table outside any parse so the hot path never queries.
     this.procedureNames();
   }
 
@@ -1013,7 +1009,7 @@ export function getBunPort(explicitPath?: string): BunPort {
   const libPath = findLibrary(explicitPath);
   const cached = portCache.get(libPath);
   if (cached) return cached;
-  // Libraries built for C procedures lack the JS dispatch symbol.
+  // Fall back to fewer symbols when dispatch is unavailable.
   let native: GalleySymbols;
   let supportsDispatch = true;
   try {

@@ -7,8 +7,6 @@ import (
 	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
 )
 
-// The file hooks in procedures.go report values above 999 as semantic
-// errors; demo inputs stay below that bound so demo output is unchanged.
 func TestSemanticErrorsAggregateAndFail(t *testing.T) {
 	session, err := galley.New()
 	if err != nil {

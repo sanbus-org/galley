@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Behavioral tests for the Galley TypeScript bindings.
- * Mirrors `bindings/python/tests/test_bindings.py`.
  *
  * Run:
  *   node bindings/js/node/tests/test_bindings.mjs
@@ -18,7 +17,7 @@ import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-node", process.platform);
-// Self-built shared fixture (bindings/js/test-fixture); never examples/.
+// Self-built shared fixture (bindings/js/test-fixture).
 const libPath = ensureTestLibrary({
   buildCommand: ["node", path.join(__dirname, "..", "build.mjs")],
   libFileName: exampleLib,
@@ -61,7 +60,6 @@ const {
   listProcedures,
 } = await import("../dist/index.js");
 
-// Helper to create session with library path
 function newSession(opts = {}) {
   if (libPath) return new Session({ libraryPath: libPath, ...opts });
   return new Session(opts);

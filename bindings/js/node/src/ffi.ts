@@ -3,11 +3,9 @@
  * per-grammar NAPI addon (`bindings/js/node/addon.c`, compiled next to the
  * grammar by `galley-js-node`), implementing the core `FfiPort`.
  *
- * This is the single FFI boundary for the Node runtime (mirroring
- * `bindings/python/_galley.c`). Library discovery, memory copying, and
- * integer normalization live here; all session logic lives in
- * `@sanbus/galley-core`. No caller touches the addon directly outside this
- * module and `dispatch.ts`.
+ * This is the single FFI boundary for the Node runtime. Library discovery, memory copying, and integer normalization live here;
+ * all session logic lives in `@sanbus/galley-core`. No caller touches the
+ * addon directly outside this module and `dispatch.ts`.
  */
 
 import { Buffer } from "node:buffer";
@@ -489,7 +487,6 @@ export class NodePort implements FfiPort {
 
   treeSnapshot(handle: Handle): TreeSnapshot {
     // No await between sizing and filling, so the count cannot change.
-    // Retry once on mismatch for safety against future async hooks.
     for (let attempt = 0; attempt < 2; attempt++) {
       const count = this.nodeCount(handle);
       const parent = new BigUint64Array(count);

@@ -19,7 +19,7 @@ export class Session extends CoreSession {
     try {
       ensureDispatch(options.libraryPath ?? port.libraryPath);
     } catch {
-      // auto-scan is best-effort; explicit installProcedures always works.
+      // Missing installer — stays no-op.
     }
     super(port, options);
   }

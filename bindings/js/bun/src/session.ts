@@ -19,7 +19,7 @@ export class Session extends CoreSession {
     try {
       ensureDispatchFor(port);
     } catch {
-      // installer missing (C build) — ignore.
+      // Missing installer — stays no-op.
     }
     super(port, options);
   }
