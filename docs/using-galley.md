@@ -184,7 +184,7 @@ binding docs).
 To consume the generated parser from another language instead of Zig, see
 the language bindings: [C and C++](/bindings_c),
 [Rust](/bindings_rust), [Go](/bindings_go),
-[Python](/bindings_python), and [TypeScript](/bindings_typescript).
+[Python](/bindings_python), and [JavaScript](/bindings_javascript).
 The same language-directory flow applies; Galley ships a generic consumer
 build file that compiles the generated parser into a shared library with a C
 header. Those consumers live under `examples/` except `examples/zig`, which

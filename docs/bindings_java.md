@@ -281,6 +281,6 @@ session.variableNameAt(0);
 - [Rust](/bindings_rust) — bindings over the same shared library
 - [Go](/bindings_go) — cgo bindings over the same shared library
 - [Python](/bindings_python) — Python bindings over the same shared library
-- [TypeScript](/bindings_typescript) — FFI bindings over the same shared library
+- [JavaScript](/bindings_javascript) — FFI bindings over the same shared library
 - [Configuration](/configuration) — the config.zig contract
 - [Grammar Guidelines](/grammar_guidelines)

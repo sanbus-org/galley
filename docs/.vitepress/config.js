@@ -1,36 +1,6 @@
 import { defineConfig } from 'vitepress'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const repository = process.env.GITHUB_REPOSITORY || 'sanbus-org/galley'
-const configDir = path.dirname(fileURLToPath(import.meta.url))
-
-// The wasm adapter statically imports Node builtins its browser path never
-// calls. Rewrite those imports to throwing stubs, scoped to galley files
-// only so the rest of the site keeps its real Node builtins.
-const galleyNodeStubs = {
-  'node:module': path.resolve(configDir, 'stubs/node-module.js'),
-  'node:fs': path.resolve(configDir, 'stubs/node-fs.js'),
-  'node:path': path.resolve(configDir, 'stubs/node-path.js'),
-  'node:process': path.resolve(configDir, 'stubs/node-process.js')
-}
-
-function galleyNodeStubsPlugin() {
-  return {
-    name: 'galley-node-stubs',
-    enforce: 'pre',
-    resolveId(source, importer) {
-      // Match both the symlinked (docs/node_modules/@sanbus/galley-*) and the
-      // real (bindings/js/*) paths; nothing else in the site is affected.
-      const fromGalley = importer &&
-        (importer.includes('@sanbus/galley-') || importer.includes('/bindings/js/'));
-      if (Object.hasOwn(galleyNodeStubs, source) && fromGalley) {
-        return galleyNodeStubs[source];
-      }
-      return null;
-    }
-  };
-}
 
 const socialLink = { icon: 'github', link: `https://github.com/${repository}` }
 
@@ -74,11 +44,7 @@ export default defineConfig({
           { text: 'Rust', link: '/bindings_rust' },
           { text: 'Go', link: '/bindings_go' },
           { text: 'Python', link: '/bindings_python' },
-          { text: 'TypeScript', link: '/bindings_typescript' },
-          { text: 'Deno', link: '/bindings_js_deno' },
-          { text: 'Bun', link: '/bindings_js_bun' },
-          { text: 'WebAssembly', link: '/bindings_js_wasm' },
-          { text: 'Universal (npm)', link: '/bindings_js_universal' },
+          { text: 'JavaScript', link: '/bindings_javascript' },
           { text: 'Java', link: '/bindings_java' }
         ]
       },
@@ -99,9 +65,8 @@ export default defineConfig({
     ]
   },
   vite: {
-    plugins: [galleyNodeStubsPlugin()],
     optimizeDeps: {
-      exclude: ['@sanbus/galley-wasm', '@sanbus/galley-core']
+      exclude: ['@sanbus/galley', '@sanbus/galley-core']
     },
     server: {
       fs: {

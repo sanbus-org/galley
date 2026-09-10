@@ -11,7 +11,7 @@ npx tsx benchmark.ts
 ```
 
 `--install-links` copies the bindings with their dependencies (see
-[TypeScript bindings](../../docs/bindings_typescript.md)). Contributors
+[JavaScript bindings](../../docs/bindings_javascript.md)). Contributors
 editing binding sources use plain `npm install` plus `npm install` inside
 `bindings/js/wasm` instead.
 
