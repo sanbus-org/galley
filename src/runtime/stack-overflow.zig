@@ -107,6 +107,43 @@ const Posix = if (is_supported) struct {
         @cInclude("unistd.h");
     });
 
+    // One name for the handler union on every libc: macOS calls it
+    // `__sigaction_u`, glibc `__sigaction_handler`, musl `__sa_handler`.
+    // The members match except for macOS's `__` prefix, handled below.
+    const handler_union_field = if (@hasField(c.struct_sigaction, "__sigaction_u"))
+        "__sigaction_u"
+    else if (@hasField(c.struct_sigaction, "__sigaction_handler"))
+        "__sigaction_handler"
+    else
+        "__sa_handler";
+
+    fn writeSigactionHandler(action: *c.struct_sigaction, handler: SignalHandler) void {
+        const slots = &@field(action.*, handler_union_field);
+        if (comptime @hasField(@TypeOf(slots.*), "sa_sigaction")) {
+            slots.sa_sigaction = handler;
+        } else {
+            slots.__sa_sigaction = handler;
+        }
+    }
+
+    fn readSigactionHandler(action: *const c.struct_sigaction) ?SignalHandler {
+        const slots = &@field(action.*, handler_union_field);
+        if (comptime @hasField(@TypeOf(slots.*), "sa_sigaction")) {
+            return slots.sa_sigaction;
+        } else {
+            return slots.__sa_sigaction;
+        }
+    }
+
+    fn readSimpleHandler(action: *const c.struct_sigaction) ?SimpleSignalHandler {
+        const slots = &@field(action.*, handler_union_field);
+        if (comptime @hasField(@TypeOf(slots.*), "sa_handler")) {
+            return slots.sa_handler;
+        } else {
+            return slots.__sa_handler;
+        }
+    }
+
     const SignalHandler = *const fn (c_int, [*c]c.siginfo_t, ?*anyopaque) callconv(.c) void;
     const SimpleSignalHandler = *const fn (c_int) callconv(.c) void;
     const guard_slack = @max(std.heap.page_size_max, 64 * 1024);
@@ -188,8 +225,10 @@ const Posix = if (is_supported) struct {
             var replacement = std.mem.zeroes(c.stack_t);
             replacement.ss_sp = memory.ptr;
             replacement.ss_size = memory.len;
+            // musl types SS_AUTODISARM as an unsigned bit that does not fit
+            // c_int; bit-cast to keep the pattern on every libc.
             replacement.ss_flags = if (comptime @hasDecl(c, "SS_AUTODISARM"))
-                c.SS_AUTODISARM
+                @as(@TypeOf(replacement.ss_flags), @bitCast(c.SS_AUTODISARM))
             else
                 0;
             if (c.sigaltstack(&replacement, null) != 0) return error.SignalStackSetupFailed;
@@ -474,19 +513,12 @@ const Posix = if (is_supported) struct {
     }
 
     fn setSiginfoHandler(action: *c.struct_sigaction, handler: SignalHandler) void {
-        if (comptime builtin.target.os.tag == .macos) {
-            action.__sigaction_u.__sa_sigaction = handler;
-        } else {
-            action.__sigaction_handler.sa_sigaction = handler;
-        }
+        writeSigactionHandler(action, handler);
     }
 
     fn actionUsesOurHandler(action: *const c.struct_sigaction) bool {
         if ((action.sa_flags & c.SA_SIGINFO) == 0) return false;
-        const handler = if (comptime builtin.target.os.tag == .macos)
-            action.__sigaction_u.__sa_sigaction
-        else
-            action.__sigaction_handler.sa_sigaction;
+        const handler = readSigactionHandler(action);
         return handler != null and @intFromPtr(handler.?) == @intFromPtr(&signalHandler);
     }
 
@@ -497,10 +529,7 @@ const Posix = if (is_supported) struct {
         ucontext: ?*anyopaque,
     ) void {
         if ((action.sa_flags & c.SA_SIGINFO) != 0) {
-            const handler: ?SignalHandler = if (comptime builtin.target.os.tag == .macos)
-                action.__sigaction_u.__sa_sigaction
-            else
-                action.__sigaction_handler.sa_sigaction;
+            const handler: ?SignalHandler = readSigactionHandler(&action);
             if (handler) |function| {
                 const address = @intFromPtr(function);
                 if (address == 1) return; // SIG_IGN
@@ -513,10 +542,7 @@ const Posix = if (is_supported) struct {
             return;
         }
 
-        const handler: ?SimpleSignalHandler = if (comptime builtin.target.os.tag == .macos)
-            action.__sigaction_u.__sa_handler
-        else
-            action.__sigaction_handler.sa_handler;
+        const handler: ?SimpleSignalHandler = readSimpleHandler(&action);
         if (handler) |function| {
             const address = @intFromPtr(function);
             if (address == 1) return; // SIG_IGN

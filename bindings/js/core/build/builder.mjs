@@ -35,9 +35,13 @@
  * through the generic consumer build directly next to the grammar, so the
  * adapters can name it through an explicit path or `GALLEY_LIBRARY_PATH`.
  *
- * Environment: `ZIG_EXECUTABLE` (default `zig`) and `GALLEY_CHECKOUT`
- * (required): an existing Galley working tree holding `build.zig`. To
- * fetch a checkout for convenience, use
+ * Environment: `ZIG_EXECUTABLE` (default `zig`); `GALLEY_CHECKOUT` names
+ * an existing Galley working tree holding `build.zig` and is required for
+ * compiling the generated parser (consumer build, `capi.zig`,
+ * `addParserModule`). Generating the parser needs no checkout: the CLI
+ * resolves from `GALLEY_CLI`, else the platform package matching this
+ * machine (`optionalDependencies` of `@sanbus/galley`), else a checkout
+ * bootstrap. To fetch a checkout for convenience, use
  * `examples/scripts/fetch-galley.sh` — that cache is an examples-only
  * convenience, not part of the bindings.
  */
@@ -85,16 +89,74 @@ function zigExecutable() {
   return process.env.ZIG_EXECUTABLE ?? "zig";
 }
 
+/** Prebuilt generator CLI per platform: npm package holding the binary. */
+const GENERATOR_CLI_PLATFORMS = {
+  "darwin:arm64": { package: "@sanbus/galley-cli-darwin-arm64", file: "bin/galley" },
+  "darwin:x64": { package: "@sanbus/galley-cli-darwin-x64", file: "bin/galley" },
+  "linux:x64": { package: "@sanbus/galley-cli-linux-x64", file: "bin/galley" },
+  "linux:arm64": { package: "@sanbus/galley-cli-linux-arm64", file: "bin/galley" },
+  "win32:x64": { package: "@sanbus/galley-cli-win32-x64", file: "bin/galley.exe" },
+  "win32:arm64": { package: "@sanbus/galley-cli-win32-arm64", file: "bin/galley.exe" },
+};
+
 /** The checkout `GALLEY_CHECKOUT` names, or a loud error. No guessing. */
 export function resolveGalleyCheckout() {
   const checkout = process.env.GALLEY_CHECKOUT;
   if (!checkout) {
-    fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout (examples/scripts/fetch-galley.sh can fetch one)");
+    fatal(
+      "compiling the generated parser needs GALLEY_CHECKOUT at a Galley checkout " +
+        "(generation already ran; examples/scripts/fetch-galley.sh can fetch one)",
+    );
   }
   if (!fs.existsSync(path.join(checkout, "build.zig"))) {
     fatal(`GALLEY_CHECKOUT=${checkout} is not a Galley repository checkout (no build.zig)`);
   }
   return path.resolve(checkout);
+}
+
+/**
+ * The generator CLI to run, without building anything. Explicit
+ * `GALLEY_CLI` wins; then the installed platform package (present exactly
+ * when npm installed this machine's `optionalDependencies`); then a
+ * checkout bootstrap, which needs `GALLEY_CHECKOUT` and zig. Anything
+ * else is a loud error naming every leg. Pass `bindingsDirectory: null`
+ * to skip the installed-package leg (the Deno wrapper runs from source
+ * with no install step).
+ */
+export function resolveGeneratorCli({ bindingsDirectory = null } = {}) {
+  const explicit = process.env.GALLEY_CLI;
+  if (explicit) {
+    if (!fs.existsSync(explicit)) fatal(`GALLEY_CLI=${explicit} does not exist`);
+    return path.resolve(explicit);
+  }
+  const key = `${process.platform}:${process.arch}`;
+  const target = GENERATOR_CLI_PLATFORMS[key];
+  if (target && bindingsDirectory !== null) {
+    try {
+      const base = path.join(path.resolve(bindingsDirectory), "package.json");
+      const resolved = createRequire(base).resolve(`${target.package}/${target.file}`);
+      if (fs.existsSync(resolved)) return resolved;
+    } catch {
+      // Not installed: fall through to the checkout bootstrap below.
+    }
+  }
+  const checkout = process.env.GALLEY_CHECKOUT;
+  if (checkout && fs.existsSync(path.join(checkout, "build.zig"))) {
+    const binary = `galley${process.platform === "win32" ? ".exe" : ""}`;
+    const cli = path.join(path.resolve(checkout), "zig-out", "bin", binary);
+    if (!fs.existsSync(cli)) {
+      run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: path.resolve(checkout) });
+    }
+    return cli;
+  }
+  const installed = target
+    ? `npm install ${target.package} (or the owning @sanbus/galley with optional dependencies)`
+    : `no prebuilt CLI exists for ${key} (shipped: ${Object.keys(GENERATOR_CLI_PLATFORMS).join(", ")})`;
+  fatal(
+    `no generator CLI found (tried GALLEY_CLI, then the installed platform package, then a checkout bootstrap).\n` +
+      `To generate with no toolchain: ${installed}.\n` +
+      `To bootstrap from source: set GALLEY_CHECKOUT at a Galley checkout with zig installed.`,
+  );
 }
 
 /**
@@ -197,17 +259,11 @@ export async function buildParserArtifact({
   const languageDir = path.resolve(languageDirectory);
   if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
 
-  const galleySource = resolveGalleyCheckout();
-  const cli = path.join(galleySource, "zig-out", "bin", "galley");
-  if (!fs.existsSync(cli)) {
-    run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: galleySource });
-  }
+  const cli = resolveGeneratorCli({ bindingsDirectory });
 
   const help = capture(cli, ["--help"]);
   if (!help.includes("--emit-metadata")) {
-    fatal(
-      `the Galley at ${galleySource} is too old for the bindings workflow (no --emit-metadata support); update the checkout`,
-    );
+    fatal(`the generator CLI at ${cli} is too old for the bindings workflow (no --emit-metadata support); update it`);
   }
 
   run(cli, ["--emit-metadata", languageDir]);
@@ -246,6 +302,9 @@ export async function buildParserArtifact({
     proceduresZigSource = shimPath;
   }
 
+  // Compiling still needs a checkout (consumer build, capi.zig,
+  // addParserModule); generation above deliberately does not.
+  const galleySource = resolveGalleyCheckout();
   const consumerArguments = [
     "build",
     "--build-file",

@@ -12,10 +12,13 @@
  * `@sanbus/galley-wasm`, the Deno `build.ts`) remain as thin wrappers over the
  * same shared gate for single-leg builds.
  *
- * Environment: `ZIG_EXECUTABLE` (default `zig`) and `GALLEY_CHECKOUT`
- * (required): an existing Galley working tree holding `build.zig`. To
- * fetch a checkout for convenience, use
- * `examples/scripts/fetch-galley.sh` (examples-only, not core).
+ * Environment: `ZIG_EXECUTABLE` (default `zig`); `GALLEY_CLI` names an
+ * explicit generator binary. Generating the parser needs no checkout
+ * (prebuilt CLI from the installed platform package, else `GALLEY_CLI`,
+ * else a `GALLEY_CHECKOUT` bootstrap); compiling it still needs `zig`
+ * and `GALLEY_CHECKOUT` holding `build.zig`. To fetch a checkout for
+ * convenience, use `examples/scripts/fetch-galley.sh` (examples-only,
+ * not core).
  */
 
 import * as path from "node:path";

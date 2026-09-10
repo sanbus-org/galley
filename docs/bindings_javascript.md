@@ -52,10 +52,16 @@ npx galley build <language-dir> --native-only
 npx galley build <language-dir> --wasm-only
 ```
 
-Requires `zig` (`ZIG_EXECUTABLE` overrides) and `GALLEY_CHECKOUT` pointing
-at a Galley working tree. The per-adapter builders (`npx galley-js-node`,
-`npx galley-js-bun`, `npx galley-js-wasm`, the Deno `build.ts`) remain as
-thin wrappers over the same shared gate for single-leg builds.
+Requires `zig` (`ZIG_EXECUTABLE` overrides) to compile, and
+`GALLEY_CHECKOUT` pointing at a Galley working tree for the compile step.
+Generating the parser needs neither: `galley build` runs a prebuilt
+generator CLI that rides along as a platform `optionalDependencies`
+package (`@sanbus/galley-cli-<os>-<arch>`, same lockstep version), and
+only falls back to a `GALLEY_CHECKOUT` bootstrap when that package is
+absent. `GALLEY_CLI` names an explicit generator binary. The per-adapter
+builders (`npx galley-js-node`, `npx galley-js-bun`, `npx galley-js-wasm`,
+the Deno `build.ts`) remain as thin wrappers over the same shared gate
+for single-leg builds.
 
 The command generates the parser (`--emit-metadata`), builds the artifact
 through Galley's generic consumer build file, and detects optional hook

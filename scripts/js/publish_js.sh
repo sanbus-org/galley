@@ -23,8 +23,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JS_DIR="$ROOT/bindings/js"
 VERSION="$(python3 "$ROOT/scripts/product_version.py")"
 
-# Directory order is dependency order: core first, universal last.
-PACKAGES="core node bun deno wasm universal"
+# Directory order is dependency order: core first, universal last,
+# prebuilt CLI packages after everything that could resolve them.
+PACKAGES="core node bun deno wasm universal cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64 cli-win32-x64 cli-win32-arm64"
 
 for dir in $PACKAGES; do
 	manifest="$JS_DIR/$dir/package.json"
@@ -38,6 +39,17 @@ for dir in $PACKAGES; do
 	# Copy everything the manifest's `files` whitelist can pack, never
 	# node_modules (snapshots of siblings must not leak into tarballs).
 	tar --exclude='./node_modules' --exclude='./*.tgz' -cf - -C "$JS_DIR/$dir" . | tar -xf - -C "$work"
+	case "$dir" in
+	cli-*)
+		# Platform packages ship one prebuilt binary, laid out by
+		# build_compiler_binaries.sh under $CLI_ARTIFACTS/<dir>/bin/.
+		# The repo never tracks binaries, so publish fails without them.
+		: "${CLI_ARTIFACTS:?publish_js: set CLI_ARTIFACTS at built compiler binaries (scripts/js/build_compiler_binaries.sh)}"
+		mkdir -p "$work/bin"
+		cp "$CLI_ARTIFACTS/$dir"/bin/galley* "$work/bin/"
+		chmod +x "$work"/bin/galley*
+		;;
+	esac
 	node -e "
     const fs = require('fs');
     const manifest = '$work/package.json';

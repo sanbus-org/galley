@@ -391,6 +391,10 @@ pub fn addGalleyCli(
         .name = "galley",
         .root_module = generator_cli_mod,
     });
+    // The CLI formats timestamps through time.h. The runtime module links
+    // libc on Linux/macOS only, so link it here for every target; without
+    // this the Windows build has no libc headers to translate.
+    generator_cli_exe.root_module.link_libc = true;
     const install_generator_cli = b.addInstallArtifact(generator_cli_exe, .{});
 
     if (options.install_default) {

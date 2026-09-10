@@ -38,6 +38,14 @@
     "@sanbus/galley-deno": "file:../deno",
     "@sanbus/galley-wasm": "file:../wasm"
   },
+  "optionalDependencies": {
+    "@sanbus/galley-cli-darwin-arm64": "file:../cli-darwin-arm64",
+    "@sanbus/galley-cli-darwin-x64": "file:../cli-darwin-x64",
+    "@sanbus/galley-cli-linux-x64": "file:../cli-linux-x64",
+    "@sanbus/galley-cli-linux-arm64": "file:../cli-linux-arm64",
+    "@sanbus/galley-cli-win32-x64": "file:../cli-win32-x64",
+    "@sanbus/galley-cli-win32-arm64": "file:../cli-win32-arm64"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^7.0.2"

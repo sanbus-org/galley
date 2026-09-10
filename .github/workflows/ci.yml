@@ -842,6 +842,83 @@ jobs:
           # throw, so adapters cannot load from it. The vite SSR cell above
           # covers the node runtime path end to end.
 
+  compiler-cli:
+    name: compiler-cli
+    runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Build every compiler target
+        run: ./scripts/js/build_compiler_binaries.sh "${{ github.workspace }}" /tmp/galley-cli
+
+      - name: Check architectures and health
+        run: |
+          expect_arch() {
+            if ! file "$1" | grep -E -q "$2"; then
+              echo "$1 is not $2:"; file "$1"
+              exit 1
+            fi
+          }
+          expect_arch /tmp/galley-cli/cli-darwin-arm64/bin/galley "[Aa][Rr][Mm]64"
+          expect_arch /tmp/galley-cli/cli-darwin-x64/bin/galley "x86_64|x86-64"
+          expect_arch /tmp/galley-cli/cli-linux-x64/bin/galley "x86-64"
+          expect_arch /tmp/galley-cli/cli-linux-arm64/bin/galley "aarch64"
+          expect_arch /tmp/galley-cli/cli-win32-x64/bin/galley.exe "PE32|x86-64"
+          expect_arch /tmp/galley-cli/cli-win32-arm64/bin/galley.exe "Aarch64|aarch64"
+          # Minimal healthcheck, not the suite: the binary matching this
+          # runner must start and answer. Foreign targets cannot execute
+          # here; their turn comes from matching runners.
+          if ! /tmp/galley-cli/cli-linux-x64/bin/galley --help 2>&1 | grep -q 'usage:'; then
+            echo "linux-x64 CLI failed its healthcheck"
+            exit 1
+          fi
+
+      - name: Install and build JavaScript bindings
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
+          npm --prefix bindings/js/universal install --no-audit --no-fund
+
+      - name: Prove generation with no checkout
+        run: |
+          rm -rf /tmp/cli-proof && mkdir -p /tmp/cli-proof/grammar
+          cp bindings/js/test-fixture/ll.grm /tmp/cli-proof/grammar/ll.grm
+          (cd "${{ github.workspace }}" && zig build -Doptimize=ReleaseFast galley)
+          ./zig-out/bin/galley --emit-metadata /tmp/cli-proof/grammar
+          # file: optionalDependencies install as symlinks, so the platform
+          # package resolves to this repo dir; stage the binary there.
+          mkdir -p bindings/js/cli-linux-x64/bin
+          cp /tmp/galley-cli/cli-linux-x64/bin/galley bindings/js/cli-linux-x64/bin/galley
+          rm -rf /tmp/cli-proof/nocheckout && mkdir -p /tmp/cli-proof/nocheckout
+          cp bindings/js/test-fixture/ll.grm /tmp/cli-proof/nocheckout/ll.grm
+          # The real bin, not the resolver directly: generation must use the
+          # platform package, then compiling must fail loudly naming the
+          # checkout it still needs.
+          if env -u GALLEY_CHECKOUT node bindings/js/universal/build.mjs build /tmp/cli-proof/nocheckout --wasm-only 2>/tmp/cli-proof/stderr.txt; then
+            echo "galley build without a checkout unexpectedly compiled"
+            exit 1
+          fi
+          grep -q 'GALLEY_CHECKOUT' /tmp/cli-proof/stderr.txt || exit 1
+          for generated in _ll-parser.zig _lr-parser.zig metadata.json; do
+            if [ -f /tmp/cli-proof/grammar/$generated ]; then
+              cmp /tmp/cli-proof/grammar/$generated /tmp/cli-proof/nocheckout/$generated || exit 1
+            fi
+          done
+          rm -rf bindings/js/cli-linux-x64/bin
+
   publish:
     name: publish
     if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
@@ -870,7 +947,19 @@ jobs:
           npm run build --prefix bindings/js
           npm --prefix bindings/js/universal install --no-audit --no-fund
 
+      - name: Install Zig
+        run: |
+          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
+          curl -L "$URL" -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+
+      - name: Build every compiler target
+        run: ./scripts/js/build_compiler_binaries.sh "${{ github.workspace }}" "${{ runner.temp }}/galley-cli"
+
       - name: Publish JavaScript packages
+        env:
+          CLI_ARTIFACTS: ${{ runner.temp }}/galley-cli
         run: ./scripts/js/publish_js.sh
 
   publish-rust:
@@ -984,6 +1073,7 @@ jobs:
       - bindings-consistency
       - example-benchmarks
       - javascript
+      - compiler-cli
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Verify CI results
@@ -994,6 +1084,7 @@ jobs:
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
           EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
           JAVASCRIPT_RESULT: ${{ needs.javascript.result }}
+          COMPILER_CLI_RESULT: ${{ needs.compiler-cli.result }}
         run: |
           echo "core: $CORE_RESULT"
           echo "parser-cases: $PARSER_CASES_RESULT"
@@ -1001,9 +1092,11 @@ jobs:
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
           echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
           echo "javascript: $JAVASCRIPT_RESULT"
+          echo "compiler-cli: $COMPILER_CLI_RESULT"
           test "$CORE_RESULT" = success
           test "$PARSER_CASES_RESULT" = success
           test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
           test "$EXAMPLE_BENCHMARKS_RESULT" = success
           test "$JAVASCRIPT_RESULT" = success
+          test "$COMPILER_CLI_RESULT" = success

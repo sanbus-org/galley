@@ -27,6 +27,12 @@ EXPECTED: dict[str, str] = {
     "deno": "@sanbus/galley-deno",
     "wasm": "@sanbus/galley-wasm",
     "universal": "@sanbus/galley",
+    "cli-darwin-arm64": "@sanbus/galley-cli-darwin-arm64",
+    "cli-darwin-x64": "@sanbus/galley-cli-darwin-x64",
+    "cli-linux-x64": "@sanbus/galley-cli-linux-x64",
+    "cli-linux-arm64": "@sanbus/galley-cli-linux-arm64",
+    "cli-win32-x64": "@sanbus/galley-cli-win32-x64",
+    "cli-win32-arm64": "@sanbus/galley-cli-win32-arm64",
 }
 
 # Example manifests (repo-relative) -> expected name. Version fields on
