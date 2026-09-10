@@ -269,9 +269,8 @@ function isNode(): boolean {
   );
 }
 
-// --- library discovery (mirrors the Node adapter, `.wasm` names) -----------
+// --- library discovery -----------
 // One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
-// Anything else is a loud error, never a search.
 
 const BUILD_HINT =
   `Build it first: npx galley-js-wasm <language-dir>\n` +
@@ -471,7 +470,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   }
   if (!isNode()) throw new NeedInitError(options.libraryPath);
   const { bytes, wasmPath } = loadBytesSync(options);
-  // Asynchronous compile for streaming-friendly startup; semantics match initSync.
+  // Asynchronous compile for streaming-friendly startup.
   const pending: PendingInstance = { port: null, memory: null };
   const instance = await WebAssembly.instantiate(
     await WebAssembly.compile(bytes),
@@ -764,7 +763,6 @@ export class WasmPort implements FfiPort {
 
   parseFile(handle: Handle, filePath: string): number {
     // No guest filesystem: the host reads the file, then parses bytes.
-    // Mirrors the native `galley_error_io` (-11) contract on read failure.
     let data: Uint8Array;
     try {
       data = new Uint8Array(fs.readFileSync(filePath));

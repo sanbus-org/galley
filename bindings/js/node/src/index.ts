@@ -72,8 +72,6 @@ export function variableCount(): number {
 export function statusString(status: number): string | null {
   return getNodePort().statusString(status);
 }
-
-// Preserve original Python naming aliases for docs parity
 export const has_ast = hasAst;
 export const has_procedures = hasProcedures;
 export const has_position_tracking = hasPositionTracking;

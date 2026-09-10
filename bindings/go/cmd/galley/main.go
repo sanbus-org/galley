@@ -116,8 +116,7 @@ func main() {
 	}
 
 	// Parser generation relies on flags introduced alongside the bindings
-	// workflow; refuse with guidance when the resolved Galley predates them
-	// instead of failing deep inside generation.
+	// workflow; refuse with guidance when the resolved Galley predates them.
 	help, err := exec.Command(cli, "--help").Output()
 	if err != nil {
 		fatal("failed to probe %s: %v", cli, err)

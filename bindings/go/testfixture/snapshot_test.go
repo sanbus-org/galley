@@ -66,7 +66,6 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 			t.Fatalf("node %d: span mismatch", address)
 		}
 	}
-	// The snapshot alone drives the same preorder walk as the walker.
 	var preorder []galley.Node
 	stack := []galley.Node{root}
 	for len(stack) > 0 {

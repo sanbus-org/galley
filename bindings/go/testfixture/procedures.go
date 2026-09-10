@@ -1,8 +1,4 @@
 // Procedure hooks for the keyvalue grammar.
-//
-// Shows ProcedureArguments in action: the current node, its text, children,
-// and source position, plus DropIfEmpty on empty tails. Author-defined
-// grammar hooks arrive as hook_<name> — Key is annotated @print.
 package testfixture
 
 import (

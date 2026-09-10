@@ -18,7 +18,7 @@ import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-bun", process.platform);
-// Self-built shared fixture (bindings/js/test-fixture); never examples/.
+// Self-built shared fixture (bindings/js/test-fixture).
 const libPath = ensureTestLibrary({
   buildCommand: ["bun", path.join(__dirname, "..", "build.mjs")],
   libFileName: exampleLib,

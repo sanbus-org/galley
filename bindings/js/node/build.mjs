@@ -13,7 +13,7 @@
  *
  * Environment: `ZIG_EXECUTABLE` (default `zig`), same as the gate. The
  * addon compiles with `zig cc` against the running Node's headers; a
- * missing compiler or headers is a loud error, never a fallback.
+ * missing compiler or headers is a loud error.
  */
 
 import { spawnSync } from "node:child_process";
@@ -31,7 +31,7 @@ function fatal(message) {
 }
 
 // Directory holding node_api.h for the running Node (shipped with every
-// Node distribution next to the executable). No search elsewhere.
+// Node distribution next to the executable).
 function nodeIncludeDirectory() {
   const candidate = path.resolve(path.dirname(process.execPath), "..", "include", "node");
   try {
@@ -46,9 +46,7 @@ function compileAddon(languageDirectory) {
   if (process.platform === "win32") {
     fatal("the Node addon is not supported on Windows; use WSL or another adapter");
   }
-  // C inputs come from the checkout, never from this package's install
-  // location: installs are copies that may predate them (and packed
-  // installs omit sources entirely). The gate already requires
+  // C inputs come from the checkout. The gate already requires
   // GALLEY_CHECKOUT, so it is set by the time this runs.
   const checkout = process.env.GALLEY_CHECKOUT;
   if (!checkout) fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout");
@@ -89,12 +87,11 @@ function compileAddon(languageDirectory) {
     linkArguments.push("-undefined", "dynamic_lookup");
     linkArguments.push("-Wl,-rpath,@loader_path");
   } else {
-    // Position-independent code plus libdl: the addon probes optional
-    // shim symbols with dlopen/dlsym (mirroring the Python extension).
+    // Position-independent code plus libdl for shim probing.
     linkArguments.push("-fPIC", "-ldl", "-Wl,-rpath,$ORIGIN");
   }
   // The addon links the grammar's parser library so a missing or stale
-  // library fails here, next to the grammar, not at require() time.
+  // library fails here, next to the grammar.
   const result = spawnSync(zig, ["cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
   if (result.status !== 0) {
     fatal(`zig cc failed for ${ADDON_NAME}:\n${result.stderr || result.stdout || "unknown error"}`);

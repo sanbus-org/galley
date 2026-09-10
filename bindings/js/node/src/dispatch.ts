@@ -53,8 +53,7 @@ function tryAutoRegister(foreignInterface: GalleyFFI): void {
     return false;
   };
 
-  // One place: the directory holding the loaded library. Anything found
-  // there belongs to this grammar; nothing else is even looked at.
+  // One place: the directory holding the loaded library.
   const baseDirectory = path.dirname(foreignInterface.libPath);
   const extensions = ["", ".js", ".ts"];
   for (const extension of extensions) {
@@ -63,14 +62,13 @@ function tryAutoRegister(foreignInterface: GalleyFFI): void {
 }
 
 export function ensureDispatchFor(foreignInterface: GalleyFFI, port: FfiPort): void {
-  // Option B: auto — if no explicit hooks yet, try to auto-discover procedures.* in language dir
   tryAutoRegister(foreignInterface);
   const useIds =
     foreignInterface.api.install_id_dispatch !== null &&
     typeof port.procedureNames === "function" &&
     port.procedureNames().length > 0;
   if (!useIds && foreignInterface.api.install_name_dispatch === null) {
-    // Library was built for C procedures (no shim); installs will be no-ops.
+    // No dispatch — installs stay no-ops.
     return;
   }
   if (installedFor.has(foreignInterface.libPath)) return;
@@ -84,8 +82,7 @@ export function ensureDispatchFor(foreignInterface: GalleyFFI, port: FfiPort): v
 
 function installIdDispatch(foreignInterface: GalleyFFI, port: FfiPort): void {
   if (dispatchIdCallback === null) {
-    // Integer hook IDs: no string copy or decode on the hot path. The table
-    // is fixed per library build; unknown IDs are silent no-ops.
+    // Integer hook IDs; unknown IDs are silent no-ops.
     const table = port.procedureNames();
     dispatchIdCallback = (id: number, args: bigint) => {
       const name = table[id];
