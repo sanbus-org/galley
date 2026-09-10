@@ -7,8 +7,17 @@
  * and Bun the backend also resolves synchronously on first use.
  */
 
-import { ensureSync } from "./loader.ts";
+import { createRequire } from "node:module";
+import { ensureSync, seedEngineLegs } from "./loader.ts";
 import { Session } from "./session.ts";
+
+// Default entry owns adapter acquisition: synchronous `require` plus
+// dynamic `import`, both scoped to runtimes that have them. The browser
+// entry (`browser.ts`) seeds nothing and never imports `loader.ts`.
+seedEngineLegs({
+  requireModule: (specifier) => createRequire(import.meta.url)(specifier) as Record<string, unknown>,
+  importModule: async (specifier) => (await import(specifier)) as Record<string, unknown>,
+});
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "@sanbus/galley-core";
