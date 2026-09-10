@@ -31,6 +31,7 @@ const wasmModule = ensureTestLibrary({
 });
 
 const { init, backend, detectRuntime, Session, version } = await import("../dist/index.js");
+const browserEntry = await import("../dist/browser.js");
 const { __resetLoader: resetLoader } = await import("../dist/loader.js");
 const { findLibrary: findNativeLibrary } = await import("@sanbus/galley-node");
 const { findLibrary: findWasmLibrary } = await import("@sanbus/galley-wasm");
@@ -178,6 +179,68 @@ await test("default discovery honors GALLEY_LIBRARY_PATH", async () => {
   } finally {
     if (previous === undefined) delete process.env.GALLEY_LIBRARY_PATH;
     else process.env.GALLEY_LIBRARY_PATH = previous;
+  }
+});
+
+/** Transitive local `.js` closure of a dist entry (bare specifiers excluded,
+ * except the pinned `@sanbus/galley-wasm/browser` subpath edge). */
+function transitiveLocalJs(root) {
+  const wasmBrowser = path.join(repoRoot, "bindings", "js", "wasm", "dist", "browser.js");
+  const seen = new Set();
+  const visit = (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const text = fs.readFileSync(file, "utf-8");
+    for (const match of text.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) {
+      const specifier = match[1];
+      if (specifier === "@sanbus/galley-wasm/browser") visit(wasmBrowser);
+      else if (specifier.startsWith(".")) visit(path.resolve(path.dirname(file), specifier));
+    }
+  };
+  visit(root);
+  return seen;
+}
+
+await test("browser entry parses from bytes with notice", async () => {
+  browserEntry.__resetLoader();
+  const bytes = new Uint8Array(fs.readFileSync(wasmModule));
+  const { result, lines } = await silenceWarnAsync(() => browserEntry.init({ wasmBytes: bytes }));
+  await result;
+  assert.equal(browserEntry.backend(), "wasm");
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /WebAssembly/);
+  const session = new browserEntry.Session();
+  try {
+    assert.equal(session.parse("alpha:12,beta:3"), 15);
+  } finally {
+    session.close();
+  }
+});
+
+await test("browser entries have no node: specifiers", () => {
+  const roots = [
+    path.join(__dirname, "..", "dist", "browser.js"),
+    path.join(repoRoot, "bindings", "js", "wasm", "dist", "browser.js"),
+    path.join(repoRoot, "bindings", "js", "core", "dist", "index.js"),
+  ];
+  // The cross-package edge must stay an explicit subpath: a bare
+  // "@sanbus/galley-wasm" would only resolve to the browser file when the
+  // bundler also applies that package's browser condition.
+  const universalBrowser = fs.readFileSync(roots[0], "utf-8");
+  assert.ok(
+    universalBrowser.includes('"@sanbus/galley-wasm/browser"'),
+    "universal browser entry must import the explicit wasm browser subpath",
+  );
+  for (const root of roots) {
+    for (const file of transitiveLocalJs(root)) {
+      const text = fs.readFileSync(file, "utf-8");
+      for (const match of text.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) {
+        assert.ok(
+          !match[1].startsWith("node:"),
+          `${file} references ${match[1]} (unresolvable in browser graphs)`,
+        );
+      }
+    }
   }
 });
 
