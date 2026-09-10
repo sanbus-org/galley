@@ -217,6 +217,25 @@ await test("browser entry parses from bytes with notice", async () => {
   }
 });
 
+await test("loader resolves adapters only through seeded legs", () => {
+  const text = fs.readFileSync(path.join(__dirname, "..", "dist", "loader.js"), "utf-8");
+  for (const match of text.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) {
+    assert.ok(
+      !match[1].startsWith("node:") &&
+        !match[1].startsWith("@sanbus/galley-node") &&
+        !match[1].startsWith("@sanbus/galley-bun") &&
+        !match[1].startsWith("@sanbus/galley-deno") &&
+        !match[1].startsWith("@sanbus/galley-wasm"),
+      `loader.js statically resolves ${match[1]} (must arrive via seedEngineLegs)`,
+    );
+  }
+  assert.ok(text.includes("seedEngineLegs"), "loader.js must expose seedEngineLegs");
+  assert.ok(
+    !/import\s*\(/.test(text),
+    "loader.js must contain no dynamic import (adapters arrive only via seedEngineLegs)",
+  );
+});
+
 await test("browser entries have no node: specifiers", () => {
   const roots = [
     path.join(__dirname, "..", "dist", "browser.js"),

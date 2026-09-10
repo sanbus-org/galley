@@ -10,16 +10,16 @@
  * - Deno: `Deno.dlopen` native → wasm → compile error.
  * - Browser: wasm only.
  *
- * Adapters are imported dynamically by specifier string (never resolved
- * statically), so bundlers only ever see the backends that are actually
- * imported, and a backend missing from `node_modules` degrades to
- * "unavailable" instead of failing the load. Each adapter resolves exactly
- * one named artifact or throws `MissingArtifactError`; the loader catches
- * exactly that class to try the next engine. A present-but-broken library
- * throws anything else and fails loudly instead of silently falling back.
+ * Adapter acquisition is injected (`seedEngineLegs`): the loader names
+ * backend specifiers but never imports them, so no backend — present or
+ * absent — can fail this module's load. A backend missing from
+ * `node_modules` degrades to "unavailable" instead of failing the load.
+ * Each adapter resolves exactly one named artifact or throws
+ * `MissingArtifactError`; the loader catches exactly that class to try
+ * the next engine. A present-but-broken library throws anything else and
+ * fails loudly instead of silently falling back.
  */
 
-import { createRequire } from "node:module";
 import type { FfiPort } from "@sanbus/galley-core";
 import { MissingArtifactError } from "@sanbus/galley-core";
 
@@ -71,40 +71,67 @@ const NATIVE_ADAPTERS: Record<NativeRuntime, { module: string; port: string }> =
 };
 const WASM_MODULE = "@sanbus/galley-wasm";
 
+/**
+ * Adapter acquisition, injected by the entry point. The loader names
+ * backend specifiers but never imports them: static or dynamic imports
+ * here would pull the native adapters into every graph that loads this
+ * module (bundlers follow bare specifiers because they are installed
+ * dependencies), which is exactly what the browser entry must avoid.
+ * The default entry (`index.ts`) seeds the Node implementations; the
+ * browser entry seeds nothing and never imports this module.
+ * Without seeded legs the loader resolves nothing and `init()` fails
+ * with the compile guidance — there is no unseeded fallback import.
+ */
+export interface EngineLegs {
+  /** Synchronous `require`, or absent where none exists (browsers). */
+  requireModule?: (specifier: string) => Record<string, unknown>;
+  /** Dynamic `import`, or absent where backends resolve another way. */
+  importModule?: (specifier: string) => Promise<Record<string, unknown>>;
+}
+
+let legs: EngineLegs = {};
+
+/** Entry points wire adapter acquisition; the loader only names backends. */
+export function seedEngineLegs(seeded: EngineLegs): void {
+  legs = { ...legs, ...seeded };
+}
+
 function isWasmPath(value: string | undefined): boolean {
   return !!value && value.toLowerCase().endsWith(".wasm");
 }
 
 async function loadNativeAdapter(runtime: NativeRuntime): Promise<NativeAdapter | null> {
+  if (!legs.importModule) return null;
   const { module: specifier, port } = NATIVE_ADAPTERS[runtime];
-  let loaded: Record<string, unknown>;
+  let loaded: Record<string, unknown> | null;
   try {
-    // Specifier is a string on purpose: bundlers must not statically
-    // resolve backends that may be absent, and tsc must not require
-    // their type declarations to exist yet.
-    loaded = (await import(specifier)) as Record<string, unknown>;
+    loaded = await legs.importModule(specifier);
   } catch {
     return null;
   }
+  if (!loaded) return null;
   const getPort = loaded[port];
   if (typeof getPort !== "function") return null;
   return { getPort: getPort as NativeAdapter["getPort"] };
 }
 
 async function loadWasmAdapter(): Promise<WasmAdapter | null> {
+  if (!legs.importModule) return null;
+  let loaded: Record<string, unknown> | null;
   try {
-    const loaded = (await import(WASM_MODULE)) as Record<string, unknown>;
-    if (
-      typeof loaded["init"] !== "function" ||
-      typeof loaded["getWasmPort"] !== "function" ||
-      typeof loaded["NeedInitError"] !== "function"
-    ) {
-      return null;
-    }
-    return loaded as unknown as WasmAdapter;
+    loaded = await legs.importModule(WASM_MODULE);
   } catch {
     return null;
   }
+  if (
+    !loaded ||
+    typeof loaded["init"] !== "function" ||
+    typeof loaded["getWasmPort"] !== "function" ||
+    typeof loaded["NeedInitError"] !== "function"
+  ) {
+    return null;
+  }
+  return loaded as unknown as WasmAdapter;
 }
 
 /** A resolved backend: the port plus which leg of the chain served it. */
@@ -210,7 +237,7 @@ export function backend(): Backend | null {
 }
 
 /**
- * Synchronous resolution for Node and Bun (dynamic `import()` is async,
+ * Synchronous resolution for Node and Bun (dynamic import is async,
  * so other runtimes must `await init()` first). Used by the `Session`
  * constructor and module-level queries.
  */
@@ -242,11 +269,12 @@ export function ensureSync(options: InitOptions = {}): FfiPort {
 }
 
 function requireAdapterModule(specifier: string): Record<string, unknown> | null {
+  // Synchronous require: this branch runs under Node and Bun only, through
+  // the leg the entry point seeded. Falls back to null when the package
+  // is absent (or no leg was seeded).
+  if (!legs.requireModule) return null;
   try {
-    // Synchronous require: this branch runs under Node and Bun only.
-    // Falls back to null when the package is absent.
-    const require = createRequire(import.meta.url);
-    return require(specifier) as Record<string, unknown>;
+    return legs.requireModule(specifier);
   } catch {
     return null;
   }
