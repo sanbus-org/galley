@@ -408,9 +408,10 @@ fn printRunSeparator(init: std.process.Init) void {
 fn runTimestamp(init: std.process.Init, buffer: []u8) []const u8 {
     const now = std.Io.Timestamp.now(init.io, .real);
     var seconds: ctime.time_t = @intCast(@divTrunc(now.nanoseconds, std.time.ns_per_s));
-    var local: ctime.tm = undefined;
-    if (ctime.localtime_r(&seconds, &local) != null) {
-        const len = ctime.strftime(buffer.ptr, buffer.len, "%H:%M:%S", &local);
+    // Plain localtime, not the reentrant variant: the CLI is
+    // single-threaded, and localtime_r does not link on Windows.
+    if (ctime.localtime(&seconds)) |local| {
+        const len = ctime.strftime(buffer.ptr, buffer.len, "%H:%M:%S", local);
         if (len > 0 and len < buffer.len) return buffer[0..len];
     }
     return "??:??:??";

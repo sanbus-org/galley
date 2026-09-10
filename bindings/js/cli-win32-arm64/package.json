@@ -1,0 +1,14 @@
+{
+  "name": "@sanbus/galley-cli-win32-arm64",
+  "version": "0.0.0",
+  "description": "Prebuilt Galley parser-generator CLI (win32 arm64). Generation needs no toolchain; compiling the generated parser still needs zig.",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin"
+  ]
+}
