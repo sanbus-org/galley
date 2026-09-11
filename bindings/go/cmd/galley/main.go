@@ -15,27 +15,43 @@
 // it would park the build inside the generator's watch loop and never
 // compile.
 //
+// No checkout is needed: released modules download the version-pinned
+// generator CLI and compile kit from GitHub releases into the user cache
+// on first use (progress and destination shown, checksums verified, exact
+// version only). Contributors running from a checkout fall back to
+// GALLEY_CHECKOUT pointing at one.
+//
 // The language dir must contain ll.grm (generation options live in config.zig)
 // and may contain procedures.go (procedure hook implementations in Go,
 // called through generated registration slots) and ll_error_messages.zig
 // (custom syntax-error message hooks), mirroring the C, C++, Rust, Python,
 // and TypeScript consumers.
 //
-// Environment overrides: GALLEY_CHECKOUT (required: existing Galley working
-// tree), ZIG_EXECUTABLE (default zig). To fetch a checkout for convenience,
-// use examples/scripts/fetch-galley.sh — that cache is an examples-only
-// convenience, not part of the bindings.
+// Environment overrides: GALLEY_CLI (explicit generator binary),
+// GALLEY_CHECKOUT (contributor fallback: existing Galley working tree),
+// ZIG_EXECUTABLE (default zig), GALLEY_ARTIFACT_MIRROR (release download
+// root override, announced when used), GALLEY_ARTIFACT_VERSION (artifact
+// version pin override, announced when used). To fetch a checkout for
+// convenience, use examples/scripts/fetch-galley.sh — that cache is an
+// examples-only convenience, not part of the bindings.
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"go/format"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	galleybindings "github.com/sanbus-org/galley/bindings/go"
@@ -106,18 +122,358 @@ func mustAbsolute(path string) string {
 	return absolute
 }
 
-// resolveGalley returns the Galley checkout from GALLEY_CHECKOUT, which is
-// required. Fetching a checkout into the system cache is an examples-only
-// convenience (examples/scripts/fetch-galley.sh), not part of the bindings.
-func resolveGalley() string {
-	if checkout := env("GALLEY_CHECKOUT"); checkout != "" {
-		if _, err := os.Stat(filepath.Join(checkout, "build.zig")); err != nil {
-			fatal("GALLEY_CHECKOUT=%s is not a Galley repository checkout (no build.zig)", checkout)
-		}
-		return checkout
+// resolveCheckout returns GALLEY_CHECKOUT when it names an existing
+// Galley working tree, else "". Fetching a checkout into the system cache
+// is an examples-only convenience (examples/scripts/fetch-galley.sh), not
+// part of the bindings.
+func resolveCheckout() string {
+	checkout := env("GALLEY_CHECKOUT")
+	if checkout == "" {
+		return ""
 	}
-	fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout (examples/scripts/fetch-galley.sh can fetch one)")
-	return ""
+	if _, err := os.Stat(filepath.Join(checkout, "build.zig")); err != nil {
+		fatal("GALLEY_CHECKOUT=%s is not a Galley repository checkout (no build.zig)", checkout)
+	}
+	return checkout
+}
+
+// resolveGeneratorCli names the generator binary without building
+// anything. Explicit GALLEY_CLI wins; then an explicit GALLEY_CHECKOUT
+// bootstrap; then a version-pinned download into the user cache (release
+// builds only — first use shows progress and the destination). Anything
+// else fails loudly naming every leg.
+func resolveGeneratorCli() string {
+	if explicit := env("GALLEY_CLI"); explicit != "" {
+		if _, err := os.Stat(explicit); err != nil {
+			fatal("GALLEY_CLI=%s does not exist", explicit)
+		}
+		return explicit
+	}
+	if checkout := resolveCheckout(); checkout != "" {
+		cli := filepath.Join(checkout, "zig-out", "bin", "galley")
+		if _, err := os.Stat(cli); err != nil {
+			build := exec.Command(zigExecutable(), "build", "-Doptimize=ReleaseFast", "install")
+			build.Dir = checkout
+			run(build)
+		}
+		return cli
+	}
+	tag := moduleReleaseTag()
+	if tag == "" {
+		fatal("no generator CLI found (tried GALLEY_CLI, then a GALLEY_CHECKOUT bootstrap). " +
+			"To generate with no toolchain, use a released galley module (its exact version downloads the CLI on first use). " +
+			"To bootstrap from source, set GALLEY_CHECKOUT at a Galley checkout with zig installed " +
+			"(examples/scripts/fetch-galley.sh can fetch one).")
+	}
+	asset, err := generatorAssetName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		fatal("%v (tried GALLEY_CLI, then a GALLEY_CHECKOUT bootstrap, then a version-pinned download of %s)", err, tag)
+	}
+	return ensureArtifact(tag, asset)
+}
+
+// resolveCompileInputs locates the consumer build file and the source
+// root its `@import("galley")` resolves against. An explicit
+// GALLEY_CHECKOUT wins; then the version-pinned kit in the user cache
+// (release builds only). Both legs run the same consumer build with the
+// same flags; only the inputs differ. Anything else fails loudly.
+func resolveCompileInputs() (buildFile, sourceRoot string) {
+	if checkout := resolveCheckout(); checkout != "" {
+		return filepath.Join(checkout, "bindings", "c", "consumer", "build.zig"), checkout
+	}
+	tag := moduleReleaseTag()
+	if tag == "" {
+		fatal("need compile inputs (tried GALLEY_CHECKOUT). " +
+			"To compile with no checkout, use a released galley module (its exact version downloads the kit on first use). " +
+			"To build from source, set GALLEY_CHECKOUT at a Galley checkout " +
+			"(examples/scripts/fetch-galley.sh can fetch one).")
+	}
+	kitDir := ensureKit(tag)
+	return filepath.Join(kitDir, "build.zig"), filepath.Join(kitDir, "sources")
+}
+
+// artifactBaseURL is the release download root. GALLEY_ARTIFACT_MIRROR
+// overrides it (test and air-gap escape hatch); the override is explicit
+// and announced once when first used.
+var cachedArtifactBaseURL = ""
+
+func artifactBaseURL() string {
+	if cachedArtifactBaseURL != "" {
+		return cachedArtifactBaseURL
+	}
+	if mirror := env("GALLEY_ARTIFACT_MIRROR"); mirror != "" {
+		fmt.Fprintf(os.Stderr, "galley-bindings: using artifact mirror %s\n", mirror)
+		cachedArtifactBaseURL = strings.TrimSuffix(mirror, "/")
+	} else {
+		cachedArtifactBaseURL = "https://github.com/sanbus-org/galley/releases/download"
+	}
+	return cachedArtifactBaseURL
+}
+
+// releaseTagForVersion maps a module version to its product release tag,
+// or "" when the version is not a clean release (checkout builds report
+// "(devel)", contributor snapshots report pseudo-versions). Only clean
+// releases download artifacts: the exact version is the skew stamp, and
+// anything else resolves through GALLEY_CHECKOUT or fails loudly.
+func releaseTagForVersion(version string) string {
+	matched, _ := regexp.MatchString(`^v[0-9]+\.[0-9]+\.[0-9]+$`, version)
+	if !matched {
+		return ""
+	}
+	return version
+}
+
+// moduleReleaseTag is the running module's release tag, or "" in
+// contributor mode. GALLEY_ARTIFACT_VERSION pins it explicitly (test and
+// air-gap escape hatch); the pin is announced once, and skew from it is
+// the user's responsibility.
+var cachedModuleReleaseTag = ""
+var moduleReleaseTagResolved = false
+
+func moduleReleaseTag() string {
+	if !moduleReleaseTagResolved {
+		moduleReleaseTagResolved = true
+		if pinned := env("GALLEY_ARTIFACT_VERSION"); pinned != "" {
+			fmt.Fprintf(os.Stderr, "galley-bindings: GALLEY_ARTIFACT_VERSION pins artifacts at %s (module reports %s)\n", pinned, moduleVersion())
+			cachedModuleReleaseTag = pinned
+		} else {
+			cachedModuleReleaseTag = releaseTagForVersion(moduleVersion())
+		}
+	}
+	return cachedModuleReleaseTag
+}
+
+func moduleVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "(devel)"
+}
+
+// generatorAssetName is the release asset holding the generator CLI for a
+// platform. riscv64 is deliberately skipped (no portable static target);
+// 32-bit and BSD platforms fail loudly through the error.
+func generatorAssetName(goos, goarch string) (string, error) {
+	switch goos + "/" + goarch {
+	case "darwin/arm64":
+		return "galley-darwin-arm64", nil
+	case "darwin/amd64":
+		return "galley-darwin-x64", nil
+	case "linux/amd64":
+		return "galley-linux-x64", nil
+	case "linux/arm64":
+		return "galley-linux-arm64", nil
+	case "windows/amd64":
+		return "galley-win32-x64.exe", nil
+	case "windows/arm64":
+		return "galley-win32-arm64.exe", nil
+	}
+	return "", fmt.Errorf("no prebuilt generator exists for %s:%s", goos, goarch)
+}
+
+const kitAssetName = "compile-kit.tar.gz"
+const sumsAssetName = "sha256sums.txt"
+
+// artifactCacheDir is where version-pinned downloads live. The version is
+// part of the path, so two releases never share bytes.
+func artifactCacheDir(tag string) string {
+	cache, err := os.UserCacheDir()
+	if err != nil || cache == "" {
+		fatal("cannot locate the user cache directory: %v (set GALLEY_CLI and GALLEY_CHECKOUT to bypass downloads)", err)
+	}
+	return filepath.Join(cache, "galley", tag)
+}
+
+func artifactURL(tag, asset string) string {
+	return artifactBaseURL() + "/" + tag + "/" + asset
+}
+
+func parseSums(text string) map[string]string {
+	sums := map[string]string{}
+	for _, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		// sha256sum marks binary-mode reads with a leading "*".
+		sums[strings.TrimPrefix(fields[1], "*")] = fields[0]
+	}
+	return sums
+}
+
+func fetchURL(url string) *http.Response {
+	response, err := http.Get(url)
+	if err != nil {
+		fatal("failed to download %s: %v", url, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		fatal("failed to download %s: HTTP %s (is %s released with artifacts?)", url, response.Status, artifactBaseURL())
+	}
+	return response
+}
+
+// downloadFile streams url to a unique temp file beside dest, showing a
+// progress line on stderr, and renames it into place. Callers verify
+// checksums after; concurrent first runs both download and the last
+// rename wins, which is safe because verified bytes are identical.
+func downloadFile(url, dest string) {
+	fmt.Fprintf(os.Stderr, "galley-bindings: downloading %s\n  saving to %s\n", url, dest)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		fatal("cannot create %s: %v", filepath.Dir(dest), err)
+	}
+	body := fetchURL(url)
+	defer body.Body.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".download-*")
+	if err != nil {
+		fatal("cannot stage download beside %s: %v", dest, err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	total := body.ContentLength
+	var done int64
+	chunk := make([]byte, 1<<20)
+	for {
+		n, err := body.Body.Read(chunk)
+		if n > 0 {
+			done += int64(n)
+			if _, werr := tmp.Write(chunk[:n]); werr != nil {
+				tmp.Close()
+				fatal("failed to write %s: %v", tmpName, werr)
+			}
+			if total > 0 {
+				fmt.Fprintf(os.Stderr, "\r  %d/%d bytes (%d%%)", done, total, done*100/total)
+			} else {
+				fmt.Fprintf(os.Stderr, "\r  %d bytes", done)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			tmp.Close()
+			fatal("failed to download %s: %v", url, err)
+		}
+	}
+	tmp.Close()
+	fmt.Fprintf(os.Stderr, "\nsaved %s (%d bytes)\n", dest, done)
+	if err := os.Rename(tmpName, dest); err != nil {
+		fatal("cannot move %s into place: %v", tmpName, err)
+	}
+	if !strings.HasSuffix(dest, ".exe") {
+		os.Chmod(dest, 0o755)
+	}
+}
+
+func verifyChecksum(path, sumsText string) {
+	want, ok := parseSums(sumsText)[filepath.Base(path)]
+	if !ok {
+		fatal("no checksum for %s in %s; refusing to use it", filepath.Base(path), sumsAssetName)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fatal("cannot read %s: %v", path, err)
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != want {
+		os.Remove(path)
+		fatal("checksum mismatch for %s (deleted); refusing to use it", path)
+	}
+}
+
+// ensureArtifact returns the version-pinned file for asset, downloading it
+// on first use. Every use (cached or fresh) is checksum-verified against
+// the release's sums, so the cache is tamper-evident; warm hits read the
+// cached sums and need no network.
+func ensureArtifact(tag, asset string) string {
+	dir := artifactCacheDir(tag)
+	dest := filepath.Join(dir, asset)
+	sumsDest := filepath.Join(dir, sumsAssetName)
+	if _, err := os.Stat(dest); err == nil {
+		sums, err := os.ReadFile(sumsDest)
+		if err != nil {
+			fatal("cached %s has no checksums; delete %s and retry", dest, dir)
+		}
+		verifyChecksum(dest, string(sums))
+		return dest
+	}
+	sumsResponse := fetchURL(artifactURL(tag, sumsAssetName))
+	sumsText, err := io.ReadAll(sumsResponse.Body)
+	sumsResponse.Body.Close()
+	if err != nil {
+		fatal("failed to read %s: %v", sumsAssetName, err)
+	}
+	downloadFile(artifactURL(tag, asset), dest)
+	if err := os.WriteFile(sumsDest, sumsText, 0o644); err != nil {
+		fatal("cannot cache %s: %v", sumsAssetName, err)
+	}
+	verifyChecksum(dest, string(sumsText))
+	return dest
+}
+
+// ensureKit unpacks the version-pinned compile kit on first use and
+// returns its directory (holding build.zig over sources/, exactly like
+// the other bindings' kit leg).
+func ensureKit(tag string) string {
+	dir := artifactCacheDir(tag)
+	kitDir := filepath.Join(dir, "compile-kit")
+	if _, err := os.Stat(filepath.Join(kitDir, "build.zig")); err == nil {
+		return kitDir
+	}
+	archive := ensureArtifact(tag, kitAssetName)
+	fmt.Fprintf(os.Stderr, "galley-bindings: unpacking %s\n  to %s\n", archive, kitDir)
+	file, err := os.Open(archive)
+	if err != nil {
+		fatal("cannot open %s: %v", archive, err)
+	}
+	defer file.Close()
+	uncompressed, err := gzip.NewReader(file)
+	if err != nil {
+		fatal("cannot decompress %s: %v", archive, err)
+	}
+	defer uncompressed.Close()
+	staging, err := os.MkdirTemp(dir, ".kit-*")
+	if err != nil {
+		fatal("cannot stage kit unpacking in %s: %v", dir, err)
+	}
+	defer os.RemoveAll(staging)
+	reader := tar.NewReader(uncompressed)
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fatal("cannot unpack %s: %v", archive, err)
+		}
+		target := filepath.Join(staging, filepath.FromSlash(header.Name))
+		if !strings.HasPrefix(target, staging+string(os.PathSeparator)) {
+			fatal("refusing to unpack %s outside the kit directory", header.Name)
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				fatal("cannot unpack %s: %v", archive, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				fatal("cannot unpack %s: %v", archive, err)
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err != nil {
+				fatal("cannot unpack %s: %v", archive, err)
+			}
+			if _, err := io.Copy(out, reader); err != nil {
+				out.Close()
+				fatal("cannot unpack %s: %v", archive, err)
+			}
+			out.Close()
+		}
+	}
+	if err := os.Rename(filepath.Join(staging, "compile-kit"), kitDir); err != nil {
+		fatal("cannot move unpacked kit into place: %v", err)
+	}
+	return kitDir
 }
 
 func libraryFileName() string {
@@ -167,23 +523,23 @@ func main() {
 		}
 	}
 
-	galleySource := resolveGalley()
-	cli := filepath.Join(galleySource, "zig-out", "bin", "galley")
-	if _, err := os.Stat(cli); err != nil {
-		build := exec.Command(zigExecutable(), "build", "-Doptimize=ReleaseFast", "install")
-		build.Dir = galleySource
-		run(build)
-	}
+	// The gate owns all build semantics: generation resolves through
+	// the generator CLI, compiling through the compile inputs. Both
+	// consumer-build legs run the same build with the same flags; only
+	// the inputs differ.
+	cli := resolveGeneratorCli()
+	buildFile, sourceRoot := resolveCompileInputs()
 
 	// Parser generation relies on flags introduced alongside the bindings
-	// workflow; refuse with guidance when the resolved Galley predates them.
+	// workflow; refuse with guidance when the resolved generator predates
+	// them instead of failing deep inside generation.
 	help, err := exec.Command(cli, "--help").Output()
 	if err != nil {
 		fatal("failed to probe %s: %v", cli, err)
 	}
 	if !strings.Contains(string(help), "--emit-metadata") {
-		fatal("the Galley at %s is too old for the bindings workflow (no --emit-metadata support); "+
-			"point GALLEY_CHECKOUT at a current Galley checkout", galleySource)
+		fatal("the generator at %s is too old for the bindings workflow (no --emit-metadata support); "+
+			"update the galley module", cli)
 	}
 
 	generateArgs := append(append([]string{}, generatorFlags...), "--emit-metadata", languageDir)
@@ -231,14 +587,14 @@ func main() {
 	procedureZigSource := mustAbsolute(shimPath)
 
 	consumerBuild := exec.Command(zigExecutable(), "build",
-		"--build-file", filepath.Join(galleySource, "bindings", "c", "consumer", "build.zig"),
+		"--build-file", buildFile,
 		"-Dlanguage-dir="+languageAbsolute,
 		"-Dlib-name="+libName,
 		"-Doutput="+libraryFileName(),
 		"-Doptimize=ReleaseFast",
 		"--prefix", languageAbsolute,
 		"install")
-	consumerBuild.Dir = galleySource
+	consumerBuild.Dir = languageAbsolute
 	if procedureZigSource != "" {
 		consumerBuild.Args = append(consumerBuild.Args,
 			"-Dprocedures-zig-source="+procedureZigSource)
@@ -248,7 +604,7 @@ func main() {
 	// are needed for standard layouts.
 	run(consumerBuild)
 
-	emitBridge(languageAbsolute, galleySource)
+	emitBridge(languageAbsolute, sourceRoot)
 	fmt.Println("galley-bindings: generated galley package; import it and build as usual")
 }
 

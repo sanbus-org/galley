@@ -232,6 +232,49 @@ jobs:
         run: |
           go generate ./testfixture/
           go test -count=1 ./testfixture/
+          go test -count=1 ./cmd/galley/
+
+      - name: Prove download-leg generate and compile (go)
+        if: ${{ matrix.language == 'go' }}
+        working-directory: bindings/go
+        run: |
+          # Checkout leg on a scratch copy warms zig-out/bin/galley and
+          # gives the byte-identical baseline.
+          rm -rf /tmp/go-dl /tmp/go-mirror && mkdir -p /tmp/go-dl /tmp/go-mirror/v0.0.0-dlproof /tmp/go-mirror/stage
+          cp testfixture/ll.grm testfixture/config.zig testfixture/procedures.go /tmp/go-dl/
+          GALLEY_CHECKOUT="$GITHUB_WORKSPACE" go run ./cmd/galley gen /tmp/go-dl >/dev/null
+          # The mirror serves the real host binary plus a real kit, exactly
+          # as the release job stages them.
+          cp "$GITHUB_WORKSPACE/zig-out/bin/galley" /tmp/go-mirror/v0.0.0-dlproof/galley-linux-x64
+          "$GITHUB_WORKSPACE/scripts/js/assemble_compile_kit.sh" /tmp/go-mirror/stage/compile-kit
+          tar -czf /tmp/go-mirror/v0.0.0-dlproof/compile-kit.tar.gz -C /tmp/go-mirror/stage compile-kit
+          (cd /tmp/go-mirror/v0.0.0-dlproof && sha256sum galley-linux-x64 compile-kit.tar.gz > sha256sums.txt)
+          python3 -m http.server 8931 --directory /tmp/go-mirror >/tmp/go-mirror/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for attempt in $(seq 1 50); do
+            curl -sf http://127.0.0.1:8931/v0.0.0-dlproof/sha256sums.txt >/dev/null && break
+            sleep 0.2
+          done
+          # The real gate, not the resolver directly: with no checkout the
+          # exact-version download must generate and compile, byte-identical
+          # to the checkout leg.
+          rm -rf "$HOME/.cache/galley/v0.0.0-dlproof"
+          env -u GALLEY_CHECKOUT GALLEY_ARTIFACT_MIRROR=http://127.0.0.1:8931 GALLEY_ARTIFACT_VERSION=v0.0.0-dlproof \
+            go run ./cmd/galley gen /tmp/go-dl
+          ls /tmp/go-dl/libgalley-go.*
+          for generated in _ll-parser.zig metadata.json procedures.zig; do
+            cmp testfixture/$generated /tmp/go-dl/$generated || exit 1
+          done
+          # Determinism: a tampered cache entry must fail loudly, offline.
+          printf 'x' >> "$HOME/.cache/galley/v0.0.0-dlproof/galley-linux-x64"
+          if env -u GALLEY_CHECKOUT GALLEY_ARTIFACT_MIRROR=http://127.0.0.1:8931 GALLEY_ARTIFACT_VERSION=v0.0.0-dlproof \
+            go run ./cmd/galley gen /tmp/go-dl 2>/tmp/go-dl/stderr.txt; then
+            echo "go build with tampered cache unexpectedly succeeded"
+            exit 1
+          fi
+          grep -q 'checksum mismatch' /tmp/go-dl/stderr.txt || exit 1
+          rm -rf "$HOME/.cache/galley/v0.0.0-dlproof" /tmp/go-dl /tmp/go-mirror
       - name: Build and run example (python)
         if: ${{ matrix.language == 'python' }}
         working-directory: examples/python
@@ -471,9 +514,17 @@ jobs:
                 exit 1
               fi
             done
-            for banned in GALLEY_REPOSITORY GALLEY_TAG galley-src galley-tag UserCacheDir cacheDir Library/Caches XDG_CACHE_HOME; do
-              if grep -q "$banned" "$file"; then
-                echo "::error::$file mentions $banned (fetching and per-grammar cache are examples-only, not core)"
+            banned="GALLEY_REPOSITORY GALLEY_TAG galley-src galley-tag"
+            # The Go binding downloads version-pinned release artifacts
+            # into the user cache by design (exact version only,
+            # checksums verified, destination shown): cache machinery is
+            # banned everywhere else, allowed only there.
+            if [ "$file" != bindings/go/cmd/galley/main.go ]; then
+              banned="$banned UserCacheDir cacheDir Library/Caches XDG_CACHE_HOME"
+            fi
+            for ban in $banned; do
+              if grep -q "$ban" "$file"; then
+                echo "::error::$file mentions $ban (fetching and per-grammar cache are examples-only, not core)"
                 exit 1
               fi
             done
@@ -1177,6 +1228,55 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: ./scripts/java/publish_java.sh
+
+  release-assets:
+    name: release-assets
+    if: ${{ github.server_url == 'https://github.com' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs:
+      - test
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Verify tag matches the single Galley version
+        run: test "${GITHUB_REF_NAME#v}" = "$(python3 scripts/product_version.py)"
+
+      - name: Download compiler binaries
+        # Shared galley generator CLIs; the Go binding downloads the
+        # version-pinned binary plus the compile kit from this release.
+        uses: actions/download-artifact@v4
+        with:
+          name: galley-cli
+          path: ${{ runner.temp }}/galley-cli
+
+      - name: Assemble release assets
+        run: |
+          rm -rf "${{ runner.temp }}/assets" "${{ runner.temp }}/kit" && mkdir -p "${{ runner.temp }}/assets" "${{ runner.temp }}/kit"
+          cli="${{ runner.temp }}/galley-cli"
+          cp "$cli/cli-darwin-arm64/bin/galley" "${{ runner.temp }}/assets/galley-darwin-arm64"
+          cp "$cli/cli-darwin-x64/bin/galley" "${{ runner.temp }}/assets/galley-darwin-x64"
+          cp "$cli/cli-linux-x64/bin/galley" "${{ runner.temp }}/assets/galley-linux-x64"
+          cp "$cli/cli-linux-arm64/bin/galley" "${{ runner.temp }}/assets/galley-linux-arm64"
+          cp "$cli/cli-win32-x64/bin/galley.exe" "${{ runner.temp }}/assets/galley-win32-x64.exe"
+          cp "$cli/cli-win32-arm64/bin/galley.exe" "${{ runner.temp }}/assets/galley-win32-arm64.exe"
+          ./scripts/js/assemble_compile_kit.sh "${{ runner.temp }}/kit/compile-kit"
+          tar -czf "${{ runner.temp }}/assets/compile-kit.tar.gz" -C "${{ runner.temp }}/kit" compile-kit
+          (cd "${{ runner.temp }}/assets" && sha256sum galley-* compile-kit.tar.gz > sha256sums.txt)
+          ls "${{ runner.temp }}/assets"
+
+      - name: Create release with artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release-assets: skip ${GITHUB_REF_NAME} (already released)"
+          else
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "Generator CLIs plus the compile kit for version-pinned binding downloads." "${{ runner.temp }}"/assets/*
+          fi
 
   publish-go:
     name: publish-go
