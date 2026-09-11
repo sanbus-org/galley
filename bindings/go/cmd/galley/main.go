@@ -4,7 +4,16 @@
 //
 // Usage:
 //
-//	go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen <language-dir>
+//	galley gen <language-dir> [generator flags...]
+//
+// Generator flags forward verbatim to the generator ahead of
+// --emit-metadata: this tool forwards every flag it does not own and the
+// binary owns its surface (unknown flags die there with `unknown
+// argument`), so new generator flags work with no wrapper changes. Only
+// --parser-type's value-shape is known here (--parser-type lr and
+// --parser-type=lr both forward). --watch is refused loudly: forwarding
+// it would park the build inside the generator's watch loop and never
+// compile.
 //
 // The language dir must contain ll.grm (generation options live in config.zig)
 // and may contain procedures.go (procedure hook implementations in Go,
@@ -37,6 +46,29 @@ var wrapperTemplate = galleybindings.WrapperTemplate
 const (
 	libName = "galley-go"
 )
+
+// parserTypeFromFlags returns the --parser-type selection inside forwarded
+// generator flags, if any. Last wins on both spellings (--parser-type lr,
+// --parser-type=lr), mirroring the binary. Anything else (including a bad
+// value) is the generator's to reject — this only answers "must ll.grm
+// exist?". --parser-type is the one piece of generator surface this tool
+// knows: its value-shape is needed to find the grammar file. Every other
+// flag forwards untouched and the binary owns it.
+func parserTypeFromFlags(flags []string) string {
+	parserType := ""
+	for i := 0; i < len(flags); i++ {
+		flag := flags[i]
+		if flag == "--parser-type" {
+			i++
+			if i < len(flags) {
+				parserType = flags[i]
+			}
+		} else if value, ok := strings.CutPrefix(flag, "--parser-type="); ok {
+			parserType = value
+		}
+	}
+	return parserType
+}
 
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "galley-bindings: "+format+"\n", args...)
@@ -99,12 +131,40 @@ func libraryFileName() string {
 }
 
 func main() {
-	if len(os.Args) != 3 || os.Args[1] != "gen" {
-		fatal("usage: galley gen <language-dir>")
+	const usage = "usage: galley gen <language-dir> [generator flags...]"
+	if len(os.Args) < 3 || os.Args[1] != "gen" {
+		fatal("%s", usage)
 	}
 	languageDir := os.Args[2]
-	if _, err := os.Stat(filepath.Join(languageDir, "ll.grm")); err != nil {
-		fatal("%s does not contain ll.grm", languageDir)
+	var generatorFlags []string
+	for i := 3; i < len(os.Args); i++ {
+		flag := os.Args[i]
+		if flag == "-h" || flag == "--help" {
+			fmt.Println(usage)
+			os.Exit(0)
+		}
+		if flag == "--watch" {
+			fatal("--watch needs its own entry (not yet implemented); this build runs the generator once")
+		}
+		if flag == "--parser-type" {
+			i++
+			if i >= len(os.Args) {
+				fatal("--parser-type needs ll or lr; %s", usage)
+			}
+			generatorFlags = append(generatorFlags, flag, os.Args[i])
+		} else if strings.HasPrefix(flag, "-") {
+			generatorFlags = append(generatorFlags, flag)
+		} else {
+			fatal("unexpected positional argument %s; %s", flag, usage)
+		}
+	}
+	// Single-parser generation needs only its own grammar: --parser-type
+	// lr runs against lr.grm alone. Anything else (including a bad value)
+	// is the generator's to reject.
+	if parserTypeFromFlags(generatorFlags) != "lr" {
+		if _, err := os.Stat(filepath.Join(languageDir, "ll.grm")); err != nil {
+			fatal("%s does not contain ll.grm", languageDir)
+		}
 	}
 
 	galleySource := resolveGalley()
@@ -126,7 +186,8 @@ func main() {
 			"point GALLEY_CHECKOUT at a current Galley checkout", galleySource)
 	}
 
-	generate := exec.Command(cli, "--emit-metadata", languageDir)
+	generateArgs := append(append([]string{}, generatorFlags...), "--emit-metadata", languageDir)
+	generate := exec.Command(cli, generateArgs...)
 	run(generate)
 
 	// One library embeds one parser; the consumer build locates the file

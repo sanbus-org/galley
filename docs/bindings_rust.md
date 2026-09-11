@@ -158,7 +158,10 @@ that link your binary against it.
 Generation-time options come from
 [`config.zig`](/configuration) in the language directory — edit it and
 rebuild; the build script re-runs when either `ll.grm` or `config.zig`
-changes.
+changes. Only the parser-type selection travels as a build-script option
+(it is not file-config): `Options::new` generates every parser type,
+`.parser_type(ParserType::Ll)` or `.parser_type(ParserType::Lr)` generates
+one.
 
 ## Usage
 

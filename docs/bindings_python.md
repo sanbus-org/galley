@@ -31,8 +31,12 @@ containing `ll.grm` and `config.zig`):
 
 ```sh
 pip install -e .
-python -m galley_bindings <language-dir>
+python -m galley_bindings <language-dir> [generator flags...]
 ```
+
+Generator flags forward verbatim to the generator ahead of
+`--emit-metadata`: every flag the tool does not own goes to the generator,
+which owns its surface (documented in [Configuration](/configuration)).
 
 The command generates the parser (`--emit-metadata`), builds the shared
 library through Galley's generic consumer build file, detects optional hook

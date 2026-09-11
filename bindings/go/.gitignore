@@ -5,3 +5,4 @@
 /testfixture/metadata.json
 /testfixture/galley/
 /testfixture/libgalley-go.*
+/galley
