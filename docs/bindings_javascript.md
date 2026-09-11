@@ -52,8 +52,10 @@ npx galley build <language-dir> --native-only
 npx galley build <language-dir> --wasm-only
 ```
 
-Requires `zig` (`ZIG_EXECUTABLE` overrides) to compile, and
-`GALLEY_CHECKOUT` pointing at a Galley working tree for the compile step.
+Requires `zig` 0.16.0 to compile (`ZIG_EXECUTABLE` names an explicit
+binary, else `zig` on `PATH`, else `uvx` provisioning the pinned ziglang —
+neither installed is a loud error naming both install pages). No checkout:
+the compile inputs ride inside `@sanbus/galley-core` (`compile-kit/`).
 Generating the parser needs neither: `galley build` runs a prebuilt
 generator CLI that rides along as a platform `optionalDependencies`
 package (`@sanbus/galley-cli-<os>-<arch>`, same lockstep version), and
@@ -307,8 +309,10 @@ npx galley-js-node <language-dir>
 import { Session, version, hasAst } from "@sanbus/galley-node";
 ```
 
-`ZIG_EXECUTABLE` selects zig. `GALLEY_CHECKOUT` (required) points at a
-Galley working tree — for convenience,
+`ZIG_EXECUTABLE` selects zig (else `zig` on `PATH`, else `uvx`
+provisioning zig 0.16.0). No checkout needed: contributors running from
+the Galley repository without an assembled kit fall back to
+`GALLEY_CHECKOUT` pointing at the checkout — for convenience,
 `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into
 the system cache, but that cache is examples-only, not part of the
 bindings. The suite mirrors the universal behavior claim for claim:
@@ -329,8 +333,8 @@ to every other example.
 
 ```sh
 cd examples/js/bun
-GALLEY_CHECKOUT=/path/to/galley bun install
-GALLEY_CHECKOUT=/path/to/galley bunx galley-js-bun .
+bun install
+bunx galley-js-bun .
 bun demo.ts
 ```
 
@@ -364,7 +368,7 @@ to every other example.
 
 ```sh
 cd examples/js/deno
-GALLEY_CHECKOUT=/path/to/galley deno task build
+deno task build
 deno task demo
 ```
 
@@ -409,8 +413,8 @@ to every other example.
 
 ```sh
 cd examples/js/wasm
-GALLEY_CHECKOUT=/path/to/galley npm install
-GALLEY_CHECKOUT=/path/to/galley npx galley-js-wasm .
+npm install
+npx galley-js-wasm .
 npx tsx demo.ts
 ```
 

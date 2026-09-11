@@ -35,15 +35,18 @@
  * through the generic consumer build directly next to the grammar, so the
  * adapters can name it through an explicit path or `GALLEY_LIBRARY_PATH`.
  *
- * Environment: `ZIG_EXECUTABLE` (default `zig`); `GALLEY_CHECKOUT` names
- * an existing Galley working tree holding `build.zig` and is required for
- * compiling the generated parser (consumer build, `capi.zig`,
- * `addParserModule`). Generating the parser needs no checkout: the CLI
- * resolves from `GALLEY_CLI`, else the platform package matching this
- * machine (`optionalDependencies` of `@sanbus/galley`), else a checkout
- * bootstrap. To fetch a checkout for convenience, use
- * `examples/scripts/fetch-galley.sh` — that cache is an examples-only
- * convenience, not part of the bindings.
+ * Environment: `ZIG_EXECUTABLE` names an explicit zig; else `zig` on
+ * `PATH`; else `uvx` provisioning the pinned ziglang (0.16.0). Neither
+ * installed is a loud error naming both install pages. Compiling the
+ * generated parser needs no checkout: the published core package carries
+ * `compile-kit/` (the consumer build plus every source it reads), while
+ * contributors running from a checkout without an assembled kit fall back
+ * to `GALLEY_CHECKOUT` (must hold `build.zig`). Generating the parser
+ * needs no checkout either: the CLI resolves from `GALLEY_CLI`, else the
+ * platform package matching this machine (`optionalDependencies` of
+ * `@sanbus/galley`), else a checkout bootstrap. To fetch a checkout for
+ * convenience, use `examples/scripts/fetch-galley.sh` — that cache is an
+ * examples-only convenience, not part of the bindings.
  */
 
 import { spawnSync } from "node:child_process";
@@ -85,8 +88,73 @@ function capture(command, argumentList) {
   return result.stdout ?? "";
 }
 
-function zigExecutable() {
-  return process.env.ZIG_EXECUTABLE ?? "zig";
+const COMPILE_KIT_DIRECTORY = path.join(CORE_DIRECTORY, "compile-kit");
+
+let cachedZigCommand = null;
+
+function probe(command, argumentList) {
+  const result = spawnSync(command, argumentList, { stdio: "pipe", encoding: "utf-8" });
+  return !result.error && result.status === 0;
+}
+
+/**
+ * The zig command prefix. Explicit `ZIG_EXECUTABLE` wins; else `zig` on
+ * `PATH`; else `uvx` provisioning the pinned ziglang. Anything else names
+ * both installs loudly: zig 0.16.0 on PATH, or uvx so this tool provisions
+ * zig itself.
+ */
+function zigCommand() {
+  if (cachedZigCommand) return cachedZigCommand;
+  const explicit = process.env.ZIG_EXECUTABLE;
+  if (explicit) return (cachedZigCommand = [explicit]);
+  if (probe("zig", ["version"])) return (cachedZigCommand = ["zig"]);
+  if (probe("uvx", ["--version"])) {
+    console.error("galley-bindings: no zig on PATH; provisioning zig 0.16.0 via uvx");
+    return (cachedZigCommand = ["uvx", "--from", "ziglang==0.16.0", "python-zig"]);
+  }
+  fatal(
+    "need zig to compile the generated parser: install zig 0.16.0 and put it on PATH " +
+      "(https://ziglang.org/learn/getting-started/) " +
+      "or install uvx (https://docs.astral.sh/uv/getting-started/installation/) " +
+      "and this tool provisions zig 0.16.0 itself via `uvx --from ziglang==0.16.0 python-zig`.",
+  );
+}
+
+function runZig(argumentList, options = {}) {
+  const [command, ...prefix] = zigCommand();
+  run(command, [...prefix, ...argumentList], options);
+}
+
+/**
+ * Where the consumer build and its sources live. The published core
+ * package carries `compile-kit/` (no checkout needed); contributors
+ * running from a checkout without an assembled kit fall back to
+ * `GALLEY_CHECKOUT` holding `build.zig`. Anything else is a loud error.
+ * Both legs run the same consumer build with the same flags; only the
+ * source root differs.
+ */
+function resolveCompileInputs() {
+  const kitBuildFile = path.join(COMPILE_KIT_DIRECTORY, "build.zig");
+  if (fs.existsSync(kitBuildFile)) {
+    return {
+      buildFile: kitBuildFile,
+      galleySources: path.join(COMPILE_KIT_DIRECTORY, "sources"),
+    };
+  }
+  const checkout = process.env.GALLEY_CHECKOUT;
+  if (checkout && fs.existsSync(path.join(checkout, "build.zig"))) {
+    const root = path.resolve(checkout);
+    return {
+      buildFile: path.join(root, "bindings/c/consumer/build.zig"),
+      galleySources: root,
+    };
+  }
+  fatal(
+    "need compile inputs: the installed @sanbus/galley-core has no compile-kit/ " +
+      "(reinstall it) or, when running from a Galley checkout, set GALLEY_CHECKOUT " +
+      "at the checkout (must contain build.zig) or assemble the kit with " +
+      "scripts/js/assemble_compile_kit.sh.",
+  );
 }
 
 /** Prebuilt generator CLI per platform: npm package holding the binary. */
@@ -98,21 +166,6 @@ const GENERATOR_CLI_PLATFORMS = {
   "win32:x64": { package: "@sanbus/galley-cli-win32-x64", file: "bin/galley.exe" },
   "win32:arm64": { package: "@sanbus/galley-cli-win32-arm64", file: "bin/galley.exe" },
 };
-
-/** The checkout `GALLEY_CHECKOUT` names, or a loud error. No guessing. */
-export function resolveGalleyCheckout() {
-  const checkout = process.env.GALLEY_CHECKOUT;
-  if (!checkout) {
-    fatal(
-      "compiling the generated parser needs GALLEY_CHECKOUT at a Galley checkout " +
-        "(generation already ran; examples/scripts/fetch-galley.sh can fetch one)",
-    );
-  }
-  if (!fs.existsSync(path.join(checkout, "build.zig"))) {
-    fatal(`GALLEY_CHECKOUT=${checkout} is not a Galley repository checkout (no build.zig)`);
-  }
-  return path.resolve(checkout);
-}
 
 /**
  * The generator CLI to run, without building anything. Explicit
@@ -145,7 +198,7 @@ export function resolveGeneratorCli({ bindingsDirectory = null } = {}) {
     const binary = `galley${process.platform === "win32" ? ".exe" : ""}`;
     const cli = path.join(path.resolve(checkout), "zig-out", "bin", binary);
     if (!fs.existsSync(cli)) {
-      run(zigExecutable(), ["build", "-Doptimize=ReleaseFast", "install"], { cwd: path.resolve(checkout) });
+      runZig(["build", "-Doptimize=ReleaseFast", "install"], { cwd: path.resolve(checkout) });
     }
     return cli;
   }
@@ -220,19 +273,17 @@ function nodeIncludeDirectory() {
 /**
  * Compile the Node NAPI addon (`addon.c`) against the language directory's
  * native library. Only the Node adapter needs this; Bun (`bun:ffi`) and
- * Deno (`Deno.dlopen`) load the shared library directly. The C inputs
- * live in the checkout, so this always needs `GALLEY_CHECKOUT`, even when
- * generation used the prebuilt CLI.
+ * Deno (`Deno.dlopen`) load the shared library directly. The C inputs come
+ * from the compile inputs (kit or checkout leg), so generation may have
+ * used the prebuilt CLI.
  */
 export function compileNodeAddon({ languageDirectory, libraryName }) {
   if (process.platform === "win32") {
     fatal("the Node addon is not supported on Windows; use WSL or another adapter");
   }
-  // C inputs come from the checkout. Generation may have used the prebuilt
-  // CLI, but the addon sources ship only here.
-  const checkout = resolveGalleyCheckout();
-  const addonSource = path.join(checkout, "bindings", "js", "node", "addon.c");
-  const headerDirectory = path.join(checkout, "bindings", "c");
+  const { galleySources } = resolveCompileInputs();
+  const addonSource = path.join(galleySources, "bindings", "js", "node", "addon.c");
+  const headerDirectory = path.join(galleySources, "bindings", "c");
   const directory = path.resolve(languageDirectory);
   const addonOutput = path.join(directory, `${libraryName}.node`);
   // The gate may skip a fresh parser library; the addon still needs to
@@ -272,7 +323,8 @@ export function compileNodeAddon({ languageDirectory, libraryName }) {
   }
   // The addon links the grammar's parser library so a missing or stale
   // library fails here, next to the grammar.
-  const result = spawnSync(zigExecutable(), ["cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
+  const [zig, ...zigPrefix] = zigCommand();
+  const result = spawnSync(zig, [...zigPrefix, "cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
   if (result.status !== 0) {
     fatal(`zig cc failed for ${libraryName}.node:\n${result.stderr || result.stdout || "unknown error"}`);
   }
@@ -381,13 +433,13 @@ export async function buildParserArtifact({
     proceduresZigSource = shimPath;
   }
 
-  // Compiling still needs a checkout (consumer build, capi.zig,
-  // addParserModule); generation above deliberately does not.
-  const galleySource = resolveGalleyCheckout();
+  // Compiling needs the kit (or a checkout leg); generation above
+  // deliberately needs neither.
+  const { buildFile } = resolveCompileInputs();
   const consumerArguments = [
     "build",
     "--build-file",
-    path.join(galleySource, "bindings/c/consumer/build.zig"),
+    buildFile,
     `-Dlanguage-dir=${languageDir}`,
     `-Dlib-name=${libraryName}`,
     ...(wasm ? [`-Dtarget=${WASM_TARGET}`, "-Dwasm"] : []),
@@ -405,7 +457,7 @@ export async function buildParserArtifact({
   }
   // `config.zig` and `{ll,lr}_error_messages.zig` are inferred by the
   // consumer build from the parser location.
-  run(zigExecutable(), consumerArguments, { cwd: galleySource });
+  runZig(consumerArguments, { cwd: languageDir });
 
   const destination = path.join(languageDir, outputFileName);
   if (!fs.existsSync(destination)) fatal(`expected library not found at ${destination}`);

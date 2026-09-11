@@ -10,6 +10,9 @@ docgen_tmp/
 
 # Local/generated artifacts
 
+# Assembled on demand, never tracked (publish builds it into the tarball).
+bindings/js/core/compile-kit/
+
 __pycache__/
 *.py[cod]
 parse.log
