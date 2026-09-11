@@ -53,6 +53,21 @@ trap 'rm -rf "$work"' EXIT
 # Copy the package without build leftovers or the binding suite; snapshots
 # must not leak into the distributions.
 tar --exclude='./build' --exclude='./*.egg-info' --exclude='./__pycache__' --exclude='./tests' --exclude='./test-fixture' -cf - -C "$PACKAGE_DIR" . | tar -xf - -C "$work"
+# Consumers generate and compile with no checkout: ship the compile kit
+# (assembled fresh from this checkout; the repo never tracks it) and the
+# generator CLI for every platform, laid out under generator/ by
+# build_compiler_binaries.sh under $CLI_ARTIFACTS/<dir>/bin/. One wheel
+# carries all six binaries (~25MB uncompressed); pip cannot select
+# per-platform data the way npm's optionalDependencies do, and platform
+# wheels would only move the split without changing the gate, which
+# already selects by platform at runtime.
+"$ROOT/scripts/js/assemble_compile_kit.sh" "$work/galley_bindings/compile-kit"
+: "${CLI_ARTIFACTS:?publish_python: set CLI_ARTIFACTS at built compiler binaries (scripts/js/build_compiler_binaries.sh)}"
+for cli_dir in cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64 cli-win32-x64 cli-win32-arm64; do
+	mkdir -p "$work/galley_bindings/generator/$cli_dir/bin"
+	cp "$CLI_ARTIFACTS/$cli_dir"/bin/galley* "$work/galley_bindings/generator/$cli_dir/bin/"
+	chmod +x "$work"/galley_bindings/generator/"$cli_dir"/bin/galley*
+done
 # The root VERSION file is the single source of truth for the version too,
 # not just the skip check above.
 python3 - "$work/pyproject.toml" "$python_version" <<'EOF'

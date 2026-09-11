@@ -20,17 +20,22 @@ mirroring the C, C++, Rust, and Go consumers:
 * `ll_error_messages.zig` / `lr_error_messages.zig` — custom syntax-error
   message hooks.
 
-The tool drives two commands from Galley's own checkout — generation and
-the consumer shared-library build — then compiles the extension module in
-bindings/python/_galley.c against the built library, leaving
-galley<ext-suffix> next to your grammar ready to import.
+The tool drives generation and the consumer shared-library build, then
+compiles the extension module in the shipped `_galley.c` against the built
+library, leaving galley<ext-suffix> next to your grammar ready to import.
+
+No checkout is needed: the published package carries the generator CLI
+for every platform and the compile inputs (`compile-kit/`). Contributors
+running from a Galley checkout without an assembled kit fall back to
+`GALLEY_CHECKOUT` pointing at the checkout.
 
 The grammar library (libgalley-python.*) is built directly next to the
 grammar.
 
 Environment overrides: ZIG_EXECUTABLE (default zig), CC (default taken
-from the running interpreter's build), GALLEY_CHECKOUT (required: existing
-Galley working tree). To fetch a checkout for convenience, use
+from the running interpreter's build), GALLEY_CLI (explicit generator
+binary), GALLEY_CHECKOUT (contributor fallback: existing Galley working
+tree). To fetch a checkout for convenience, use
 examples/scripts/fetch-galley.sh, which clones into the system cache —
 that cache is an examples-only convenience, not part of the bindings.
 """
@@ -39,6 +44,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shlex
 import subprocess
 import sys
@@ -48,6 +54,10 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 LIBRARY_NAME = "galley-python"
+
+PACKAGE_DIRECTORY = Path(__file__).resolve().parent
+COMPILE_KIT_DIRECTORY = PACKAGE_DIRECTORY / "compile-kit"
+GENERATOR_DIRECTORY = PACKAGE_DIRECTORY / "generator"
 
 
 def fatal(message: str) -> NoReturn:
@@ -93,22 +103,105 @@ def library_file_name() -> str:
     return f"lib{LIBRARY_NAME}.so"
 
 
-def resolve_galley() -> Path:
-    # GALLEY_CHECKOUT is required. Fetching a checkout into the system
-    # cache is an examples-only convenience
+def resolve_galley() -> Path | None:
+    # GALLEY_CHECKOUT is the contributor fallback: an existing Galley
+    # working tree, or None when absent or invalid. Fetching a checkout
+    # into the system cache is an examples-only convenience
     # (examples/scripts/fetch-galley.sh), not part of the bindings.
     checkout_env = os.environ.get("GALLEY_CHECKOUT")
     if not checkout_env:
-        fatal(
-            "GALLEY_CHECKOUT is not set; point it at a Galley checkout "
-            "(examples/scripts/fetch-galley.sh can fetch one)"
-        )
+        return None
     checkout = Path(checkout_env)
     if not (checkout / "build.zig").is_file():
-        fatal(
-            f"GALLEY_CHECKOUT={checkout} is not a Galley repository checkout (no build.zig)"
-        )
+        return None
     return checkout
+
+
+def resolve_compile_inputs() -> tuple[Path, Path]:
+    """Where the consumer build and its sources live.
+
+    Returns (build_file, source_root). The published package carries
+    compile-kit/ (no checkout needed); contributors running from a
+    checkout without an assembled kit fall back to GALLEY_CHECKOUT
+    holding build.zig. Anything else is a loud error. Both legs run the
+    same consumer build with the same flags; only the inputs differ.
+    """
+    kit_build_file = COMPILE_KIT_DIRECTORY / "build.zig"
+    if kit_build_file.is_file():
+        return kit_build_file, COMPILE_KIT_DIRECTORY / "sources"
+    checkout = resolve_galley()
+    if checkout is not None:
+        return checkout / "bindings" / "c" / "consumer" / "build.zig", checkout
+    fatal(
+        "need compile inputs: the installed galley-bindings has no compile-kit/ "
+        "(reinstall it) or, when running from a Galley checkout, set GALLEY_CHECKOUT "
+        "at the checkout (must contain build.zig) or assemble the kit with "
+        "scripts/js/assemble_compile_kit.sh."
+    )
+
+
+# Prebuilt generator CLI per platform: directory under generator/ holding
+# the binary. riscv64 is deliberately skipped (no portable static target);
+# 32-bit and BSD platforms fail loudly through the error below.
+GENERATOR_CLI_PLATFORMS = {
+    ("darwin", "arm64"): "cli-darwin-arm64/bin/galley",
+    ("darwin", "x64"): "cli-darwin-x64/bin/galley",
+    ("linux", "x64"): "cli-linux-x64/bin/galley",
+    ("linux", "arm64"): "cli-linux-arm64/bin/galley",
+    ("win32", "x64"): "cli-win32-x64/bin/galley.exe",
+    ("win32", "arm64"): "cli-win32-arm64/bin/galley.exe",
+}
+
+
+def platform_key() -> tuple[str, str]:
+    machine = platform.machine().lower()
+    arch = {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64"}.get(machine, machine)
+    return sys.platform, arch
+
+
+def resolve_generator_cli() -> Path:
+    """The generator CLI to run, without building anything.
+
+    Explicit GALLEY_CLI wins; then the shipped platform binary (present
+    exactly when the package was installed with its generator data);
+    then a checkout bootstrap, which needs GALLEY_CHECKOUT and zig.
+    Anything else is a loud error naming every leg.
+    """
+    explicit = os.environ.get("GALLEY_CLI")
+    if explicit:
+        if not Path(explicit).is_file():
+            fatal(f"GALLEY_CLI={explicit} does not exist")
+        return Path(explicit).resolve()
+    key = platform_key()
+    target = GENERATOR_CLI_PLATFORMS.get(key)
+    if target is not None:
+        shipped = GENERATOR_DIRECTORY / target
+        if shipped.is_file():
+            return shipped
+    checkout_env = os.environ.get("GALLEY_CHECKOUT")
+    if checkout_env and (Path(checkout_env) / "build.zig").is_file():
+        checkout = Path(checkout_env).resolve()
+        binary = "galley.exe" if sys.platform == "win32" else "galley"
+        cli = checkout / "zig-out" / "bin" / binary
+        if not cli.exists():
+            run(
+                [zig_executable(), "build", "-Doptimize=ReleaseFast", "install"],
+                cwd=checkout,
+            )
+        return cli
+    shipped_names = sorted(
+        {name.split("/")[0] for name in GENERATOR_CLI_PLATFORMS.values()}
+    )
+    installed = (
+        f"reinstall galley-bindings with its generator data ({target})"
+        if target is not None
+        else f"no prebuilt generator exists for {key[0]}:{key[1]} (shipped: {', '.join(shipped_names)})"
+    )
+    fatal(
+        "no generator CLI found (tried GALLEY_CLI, then the shipped platform "
+        f"binary, then a checkout bootstrap).\nTo generate with no toolchain: {installed}.\n"
+        "To bootstrap from source: set GALLEY_CHECKOUT at a Galley checkout with zig installed."
+    )
 
 
 def find_python_procedures_file(language_dir: Path) -> Path | None:
@@ -205,7 +298,7 @@ def emit_python_procedure_shim(hooks: list[str], output_path: Path) -> None:
 
 
 def compile_extension(
-    galley_source: Path,
+    source_root: Path,
     language_dir: Path,
     output_path: Path,
 ) -> None:
@@ -219,8 +312,8 @@ def compile_extension(
     arguments += [f"-I{directory}" for directory in include_dirs]
     arguments += [
         "-I",
-        str(galley_source / "bindings" / "c"),
-        str(galley_source / "bindings" / "python" / "_galley.c"),
+        str(source_root / "bindings" / "c"),
+        str(source_root / "bindings" / "python" / "_galley.c"),
         "-o",
         str(output_path),
     ]
@@ -257,23 +350,21 @@ def main() -> None:
     if not (language_dir / "ll.grm").is_file():
         fatal(f"{language_dir} does not contain ll.grm")
 
-    # GALLEY_CHECKOUT is the single source of truth for the Galley checkout.
-    galley_source = resolve_galley()
-    cli = galley_source / "zig-out" / "bin" / "galley"
-    if not cli.exists():
-        run(
-            [zig_executable(), "build", "-Doptimize=ReleaseFast", "install"],
-            cwd=galley_source,
-        )
+    # The gate owns all build semantics: generation resolves through
+    # resolve_generator_cli, compiling through resolve_compile_inputs.
+    # Both consumer-build legs run the same build with the same flags;
+    # only the source root differs (kit for consumers, checkout for
+    # contributors).
+    cli = resolve_generator_cli()
 
     # Parser generation relies on flags introduced alongside the bindings
-    # workflow; refuse with guidance when the resolved Galley predates them
-    # instead of failing deep inside generation.
+    # workflow; refuse with guidance when the resolved generator predates
+    # them instead of failing deep inside generation.
     help_text = capture([cli, "--help"])
     if "--emit-metadata" not in help_text:
         fatal(
-            f"the Galley at {galley_source} is too old for the bindings "
-            "workflow (no --emit-metadata support); update the checkout"
+            f"the generator at {cli} is too old for the bindings "
+            "workflow (no --emit-metadata support); update galley-bindings"
         )
 
     run([cli, "--emit-metadata", language_dir])
@@ -324,11 +415,12 @@ def main() -> None:
             emit_python_procedure_shim(procedure_hooks, shim_path)
             procedures_zig_source = str(shim_path)
 
+    build_file, source_root = resolve_compile_inputs()
     consumer_arguments: list[str | Path] = [
         zig_executable(),
         "build",
         "--build-file",
-        galley_source / "bindings" / "c" / "consumer" / "build.zig",
+        build_file,
         f"-Dlanguage-dir={language_dir}",
         f"-Dlib-name={LIBRARY_NAME}",
         f"-Doutput={library_file_name()}",
@@ -345,13 +437,13 @@ def main() -> None:
         consumer_arguments.insert(-1, f"-Dprocedures-c-source={procedures_c_source}")
     # config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
     # build from the parser location.
-    run(consumer_arguments, cwd=galley_source)
+    run(consumer_arguments, cwd=language_dir)
 
     output_path = language_dir / f"galley{sysconfig.get_config_var('EXT_SUFFIX')}"
-    compile_extension(galley_source, language_dir, output_path)
+    compile_extension(source_root, language_dir, output_path)
     # Ship the PEP 484 stub alongside the extension so `ty`/`mypy`/`pyright`
     # resolve `import galley` (compiled extensions expose no Python source).
-    stub_source = galley_source / "bindings" / "python" / "galley.pyi"
+    stub_source = source_root / "bindings" / "python" / "galley.pyi"
     stub_target = language_dir / "galley.pyi"
     if stub_source.is_file():
         stub_target.write_bytes(stub_source.read_bytes())
