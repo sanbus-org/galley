@@ -22,7 +22,8 @@ fn main() {
 }
 ```
 
-Requires `GALLEY_CHECKOUT` (a Galley working tree) and Zig at build time.
+Requires the `galley` crate and Zig at build time (no checkout needed:
+the crate ships the generator and compile inputs).
 Full guide: [Rust bindings](https://github.com/sanbus-org/galley/blob/main/docs/bindings_rust.md).
 
 License: MIT © 2026 Sassan Haradji

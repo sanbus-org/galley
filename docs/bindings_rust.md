@@ -146,10 +146,11 @@ fn main() {
 }
 ```
 
-The helper requires `GALLEY_CHECKOUT` (a Galley working tree) — for
-convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches
-one into the system cache, but that cache is examples-only, not part of the
-bindings. It builds the generator CLI, generates the parser from your
+No checkout is needed: the published crate carries the generator CLI for
+every platform and the compile inputs, so only the crate plus zig are
+required — for convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches
+one into the system cache for contributors, but that cache is examples-only, not part of the
+bindings. It generates the parser from your
 grammar's `ll.grm`, compiles the C-API shared library directly next to the
 grammar, and emits the cargo directives
 that link your binary against it.

@@ -36,6 +36,20 @@ trap 'rm -rf "$work"' EXIT
 # Copy the crate without the build tree or the separate test-fixture
 # package; snapshots must not leak in.
 tar --exclude='./target' --exclude='./test-fixture' -cf - -C "$CRATE_DIR" . | tar -xf - -C "$work"
+# Consumers generate and compile with no checkout: ship the compile kit
+# (assembled fresh from this checkout; the repo never tracks it) and the
+# generator CLI for every platform, laid out under generator/ by
+# build_compiler_binaries.sh under $CLI_ARTIFACTS/<dir>/bin/. One crate
+# carries all six binaries; the gate already selects by platform at
+# build time, so splitting into platform crates later changes packaging
+# only.
+"$ROOT/scripts/js/assemble_compile_kit.sh" "$work/compile-kit"
+: "${CLI_ARTIFACTS:?publish_rust: set CLI_ARTIFACTS at built compiler binaries (scripts/js/build_compiler_binaries.sh)}"
+for cli_dir in cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64 cli-win32-x64 cli-win32-arm64; do
+	mkdir -p "$work/generator/$cli_dir/bin"
+	cp "$CLI_ARTIFACTS/$cli_dir"/bin/galley* "$work/generator/$cli_dir/bin/"
+	chmod +x "$work"/generator/"$cli_dir"/bin/galley*
+done
 # The root VERSION file is the single source of truth for the version too,
 # not just the skip check above.
 python3 - "$work/Cargo.toml" "$VERSION" <<'EOF'
