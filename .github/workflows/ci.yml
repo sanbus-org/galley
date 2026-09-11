@@ -179,6 +179,41 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: cargo test --release --manifest-path bindings/rust/test-fixture/Cargo.toml
 
+      - name: Prove no-checkout generate and compile (cargo)
+        if: ${{ matrix.language == 'rust' }}
+        run: |
+          # The kit ships compile inputs in the crate; assemble it the way
+          # publish does (the repo never tracks it). The host generator
+          # binary stands in for the staged platform package (linux-x64 on
+          # this runner).
+          ./scripts/js/assemble_compile_kit.sh bindings/rust/compile-kit
+          zig build -Doptimize=ReleaseFast galley
+          mkdir -p bindings/rust/generator/cli-linux-x64/bin
+          cp zig-out/bin/galley bindings/rust/generator/cli-linux-x64/bin/galley
+          rm -rf /tmp/rs-proof && mkdir -p /tmp/rs-proof
+          cp bindings/rust/test-fixture/Cargo.toml bindings/rust/test-fixture/build.rs bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/rust/test-fixture/procedures.rs /tmp/rs-proof/
+          cp -r bindings/rust/test-fixture/tests /tmp/rs-proof/
+          sed -i "s|path = \"..\"|path = \"$GITHUB_WORKSPACE/bindings/rust\"|" /tmp/rs-proof/Cargo.toml
+          # The real gate, not the resolver directly: generation must use
+          # the shipped binary, and compiling must succeed with no checkout.
+          env -u GALLEY_CHECKOUT cargo test --release --manifest-path /tmp/rs-proof/Cargo.toml
+          ls /tmp/rs-proof/libgalley-rust.*
+          for generated in _ll-parser.zig metadata.json procedures.zig; do
+            cmp bindings/rust/test-fixture/$generated /tmp/rs-proof/$generated || exit 1
+          done
+          # Determinism: with the kit hidden, generation (via the shipped
+          # binary) succeeds but the build must fail loudly naming what it
+          # needs instead of guessing.
+          mv bindings/rust/compile-kit /tmp/rs-proof/kit-hidden
+          touch /tmp/rs-proof/ll.grm
+          if env -u GALLEY_CHECKOUT GALLEY_CLI="$PWD/bindings/rust/generator/cli-linux-x64/bin/galley" cargo test --release --manifest-path /tmp/rs-proof/Cargo.toml --no-run 2>/tmp/rs-proof/stderr.txt; then
+            echo "cargo build without compile inputs unexpectedly succeeded"
+            exit 1
+          fi
+          grep -q 'compile-kit' /tmp/rs-proof/stderr.txt || exit 1
+          mv /tmp/rs-proof/kit-hidden bindings/rust/compile-kit
+          rm -rf bindings/rust/compile-kit bindings/rust/generator
+
       - name: Build and run example (go)
         if: ${{ matrix.language == 'go' }}
         working-directory: examples/go

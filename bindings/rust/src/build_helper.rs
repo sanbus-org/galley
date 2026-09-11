@@ -10,8 +10,14 @@
 //! }
 //! ```
 //!
-//! The helper requires `GALLEY_CHECKOUT` (an existing Galley working tree),
-//! builds the generator CLI, generates the parser, compiles the C-API shared
+//! No checkout is needed: the published crate carries the generator CLI
+//! for every platform and the compile inputs (`compile-kit/`).
+//! Contributors running from a Galley checkout without an assembled kit
+//! fall back to `GALLEY_CHECKOUT` pointing at the checkout — for
+//! convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)`
+//! fetches one into the system cache, but that cache is examples-only,
+//! not part of the bindings.
+//! The helper generates the parser, compiles the C-API shared
 //! library directly next to the grammar, and emits the cargo directives that
 //! link your binary against it.
 //! Hooks are written in Rust: when the language directory contains a
@@ -42,13 +48,18 @@ pub const PROCEDURE_TYPES_FILE: &str = "galley_procedure_types.rs";
 
 /// Resolved locations produced (or reused) by this helper.
 pub struct GalleyLayout {
-    /// The Galley checkout used (`GALLEY_CHECKOUT`).
+    /// The Galley source root used (kit sources or `GALLEY_CHECKOUT`).
     pub source_dir: PathBuf,
     /// Shared library file next to the grammar (`lib<name>.dylib` / `.so`).
     pub library: PathBuf,
-    /// Header directory in the checkout (`<galley>/bindings/c`).
+    /// C header directory (`<source root>/bindings/c`).
     pub include_dir: PathBuf,
 }
+
+/// Directory of the `galley` crate itself. Cargo sets this at compile
+/// time, so shipped data (kit, generator) resolves with no environment
+/// guessing and no checkout paths leaking into consumers.
+const GALLEY_PACKAGE_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
@@ -63,21 +74,105 @@ fn run_or_panic(mut command: Command) {
     }
 }
 
-fn resolve_galley() -> PathBuf {
-    if let Some(checkout) = env("GALLEY_CHECKOUT") {
-        let checkout = PathBuf::from(checkout);
-        assert!(
-            checkout.join("build.zig").exists(),
-            "GALLEY_CHECKOUT={} is not a Galley repository checkout (no build.zig)",
-            checkout.display()
-        );
-        println!("cargo:rerun-if-env-changed=GALLEY_CHECKOUT");
-        return checkout;
+fn resolve_galley() -> Option<PathBuf> {
+    let checkout = env("GALLEY_CHECKOUT")?;
+    let checkout = PathBuf::from(checkout);
+    if !checkout.join("build.zig").exists() {
+        return None;
+    }
+    println!("cargo:rerun-if-env-changed=GALLEY_CHECKOUT");
+    Some(checkout)
+}
+
+/// Where the consumer build and its sources live: the consumer build
+/// file plus the source root its `@import("galley")` resolves against.
+/// The published crate carries `compile-kit/` (no checkout needed);
+/// contributors running from a checkout without an assembled kit fall
+/// back to `GALLEY_CHECKOUT` holding `build.zig`. Anything else panics
+/// loudly. Both legs run the same consumer build with the same flags;
+/// only the inputs differ.
+fn resolve_compile_inputs() -> (PathBuf, PathBuf) {
+    let kit = PathBuf::from(GALLEY_PACKAGE_DIR).join("compile-kit");
+    if kit.join("build.zig").exists() {
+        return (kit.join("build.zig"), kit.join("sources"));
+    }
+    if let Some(checkout) = resolve_galley() {
+        return (checkout.join("bindings/c/consumer/build.zig"), checkout);
     }
     panic!(
-        "GALLEY_CHECKOUT is not set; point it at a Galley checkout \
-         (examples/scripts/fetch-galley.sh can fetch one — that cache is an \
-         examples-only convenience, not part of the bindings)"
+        "need compile inputs: the installed galley crate has no compile-kit/ \
+         (reinstall it) or, when running from a Galley checkout, set GALLEY_CHECKOUT \
+         at the checkout (must contain build.zig) or assemble the kit with \
+         scripts/js/assemble_compile_kit.sh"
+    );
+}
+
+/// Prebuilt generator CLI per platform: directory under `generator/`
+/// holding the binary. riscv64 is deliberately skipped (no portable static
+/// target); 32-bit and BSD platforms fail loudly through the error below.
+fn generator_cli_relative() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("cli-darwin-arm64/bin/galley"),
+        ("macos", "x86_64") => Some("cli-darwin-x64/bin/galley"),
+        ("linux", "x86_64") => Some("cli-linux-x64/bin/galley"),
+        ("linux", "aarch64") => Some("cli-linux-arm64/bin/galley"),
+        ("windows", "x86_64") => Some("cli-win32-x64/bin/galley.exe"),
+        ("windows", "aarch64") => Some("cli-win32-arm64/bin/galley.exe"),
+        _ => None,
+    }
+}
+
+/// The generator CLI to run, without building anything. Explicit
+/// `GALLEY_CLI` wins; then the shipped platform binary (present exactly
+/// when the crate was installed with its generator data); then a checkout
+/// bootstrap, which needs `GALLEY_CHECKOUT` and zig. Anything else panics
+/// loudly naming every leg.
+fn resolve_generator_cli() -> PathBuf {
+    if let Some(explicit) = env("GALLEY_CLI") {
+        let explicit = PathBuf::from(explicit);
+        assert!(
+            explicit.is_file(),
+            "GALLEY_CLI={} does not exist",
+            explicit.display()
+        );
+        println!("cargo:rerun-if-env-changed=GALLEY_CLI");
+        return explicit;
+    }
+    if let Some(relative) = generator_cli_relative() {
+        let shipped = PathBuf::from(GALLEY_PACKAGE_DIR)
+            .join("generator")
+            .join(relative);
+        if shipped.is_file() {
+            return shipped;
+        }
+    }
+    if let Some(checkout) = resolve_galley() {
+        let cli = checkout.join("zig-out/bin/galley");
+        if !cli.exists() {
+            run_or_panic({
+                let mut c = Command::new(zig_executable());
+                c.arg("build")
+                    .arg("-Doptimize=ReleaseFast")
+                    .arg("install")
+                    .current_dir(&checkout);
+                c
+            });
+        }
+        return cli;
+    }
+    panic!(
+        "no generator CLI found (tried GALLEY_CLI, then the shipped platform binary, \
+         then a checkout bootstrap). To generate with no toolchain, reinstall the galley \
+         crate with its generator data{}. To bootstrap from source, set GALLEY_CHECKOUT \
+         at a Galley checkout with zig installed.",
+        generator_cli_relative().map_or(
+            format!(
+                " (no prebuilt generator exists for {}:{})",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ),
+            |relative| format!(" ({relative})")
+        )
     );
 }
 
@@ -104,37 +199,25 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     );
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
-    let galley_source = resolve_galley();
+    // The gate owns all build semantics: generation resolves through the
+    // generator CLI, compiling through the compile inputs. Both
+    // consumer-build legs run the same build with the same flags; only
+    // the inputs differ.
+    let cli = resolve_generator_cli();
+    let (build_file, source_root) = resolve_compile_inputs();
     println!(
         "cargo:rerun-if-changed={}",
-        galley_source.join("bindings/c/capi.zig").display()
+        source_root.join("bindings/c/capi.zig").display()
     );
     println!(
         "cargo:rerun-if-changed={}",
-        galley_source.join("bindings/c/galley.h").display()
+        source_root.join("bindings/c/galley.h").display()
     );
-    println!(
-        "cargo:rerun-if-changed={}",
-        galley_source
-            .join("bindings/c/consumer/build.zig")
-            .display()
-    );
-
-    let cli = galley_source.join("zig-out/bin/galley");
-    if !cli.exists() {
-        run_or_panic({
-            let mut c = Command::new(zig_executable());
-            c.arg("build")
-                .arg("-Doptimize=ReleaseFast")
-                .arg("install")
-                .current_dir(&galley_source);
-            c
-        });
-    }
+    println!("cargo:rerun-if-changed={}", build_file.display());
 
     // Parser generation relies on CLI flags introduced alongside the
     // bindings workflow (--emit-metadata). Refuse with guidance when the
-    // resolved Galley predates them instead of failing deep inside
+    // resolved generator predates them instead of failing deep inside
     // generation.
     let help = Command::new(&cli)
         .arg("--help")
@@ -142,9 +225,9 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         .unwrap_or_else(|e| panic!("failed to spawn {}: {e}", cli.display()));
     if !String::from_utf8_lossy(&help.stdout).contains("--emit-metadata") {
         panic!(
-            "the Galley at {} is too old for the bindings workflow (no --emit-metadata support); \
-             point GALLEY_CHECKOUT at a current Galley checkout",
-            galley_source.display()
+            "the generator at {} is too old for the bindings workflow (no --emit-metadata support); \
+             update the galley crate",
+            cli.display()
         );
     }
 
@@ -200,7 +283,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
         let mut c = Command::new(zig_executable());
         c.arg("build")
             .arg("--build-file")
-            .arg(galley_source.join("bindings/c/consumer/build.zig"))
+            .arg(&build_file)
             .arg(format!("-Dlanguage-dir={}", language_absolute.display()))
             .arg("-Dlib-name=galley-rust")
             .arg(format!("-Doutput={library_file}"))
@@ -208,7 +291,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
             .arg("--prefix")
             .arg(&language_absolute)
             .arg("install")
-            .current_dir(&galley_source);
+            .current_dir(&language_absolute);
         if procedures_zig.exists() {
             println!("cargo:rerun-if-changed={}", procedures_zig.display());
         }
@@ -227,7 +310,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     });
 
     let library = language_absolute.join(library_file);
-    let include_dir = galley_source.join("bindings/c");
+    let include_dir = source_root.join("bindings/c");
 
     println!(
         "cargo:rustc-link-search=native={}",
@@ -242,7 +325,7 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     );
 
     GalleyLayout {
-        source_dir: galley_source,
+        source_dir: source_root,
         library,
         include_dir,
     }
