@@ -57,9 +57,9 @@ import { emitJsProcedureShim, emitJsProcedureShimWasm } from "./shim.mjs";
  * Canonical shared native build: one library serves the Node, Bun, and
  * Deno adapters (the dispatch symbols are identical across them).
  */
-export const NATIVE_LIBRARY_BASE = "@sanbus/galley-node";
+export const NATIVE_LIBRARY_BASE = "galley-js-node";
 /** Canonical wasm build for the wasm adapter and the universal fallback leg. */
-export const WASM_LIBRARY_BASE = "@sanbus/galley-wasm";
+export const WASM_LIBRARY_BASE = "galley-js-wasm";
 
 const WASM_TARGET = "wasm32-wasi";
 const NATIVE_SHIM_FILE = "procedures_js.zig";
@@ -204,6 +204,82 @@ function findJsProceduresFile(languageDirectory) {
 }
 
 /**
+ * Directory holding node_api.h for the running Node (shipped with every
+ * Node distribution next to the executable).
+ */
+function nodeIncludeDirectory() {
+  const candidate = path.resolve(path.dirname(process.execPath), "..", "include", "node");
+  try {
+    fs.accessSync(path.join(candidate, "node_api.h"));
+    return candidate;
+  } catch {
+    fatal(`node_api.h not found under ${candidate}; reinstall Node with headers`);
+  }
+}
+
+/**
+ * Compile the Node NAPI addon (`addon.c`) against the language directory's
+ * native library. Only the Node adapter needs this; Bun (`bun:ffi`) and
+ * Deno (`Deno.dlopen`) load the shared library directly. The C inputs
+ * live in the checkout, so this always needs `GALLEY_CHECKOUT`, even when
+ * generation used the prebuilt CLI.
+ */
+export function compileNodeAddon({ languageDirectory, libraryName }) {
+  if (process.platform === "win32") {
+    fatal("the Node addon is not supported on Windows; use WSL or another adapter");
+  }
+  // C inputs come from the checkout. Generation may have used the prebuilt
+  // CLI, but the addon sources ship only here.
+  const checkout = resolveGalleyCheckout();
+  const addonSource = path.join(checkout, "bindings", "js", "node", "addon.c");
+  const headerDirectory = path.join(checkout, "bindings", "c");
+  const directory = path.resolve(languageDirectory);
+  const addonOutput = path.join(directory, `${libraryName}.node`);
+  // The gate may skip a fresh parser library; the addon still needs to
+  // exist and postdate both its source and the library it links.
+  try {
+    const addonTime = fs.statSync(addonOutput).mtimeMs;
+    const sourceTime = fs.statSync(addonSource).mtimeMs;
+    let libraryTime = 0;
+    for (const entry of fs.readdirSync(directory)) {
+      if (entry === `${libraryName}.node`) continue;
+      if (entry.startsWith(`lib${libraryName}.`)) {
+        libraryTime = Math.max(libraryTime, fs.statSync(path.join(directory, entry)).mtimeMs);
+      }
+    }
+    if (addonTime >= sourceTime && addonTime >= libraryTime && libraryTime > 0) return;
+  } catch {
+    // Missing addon, source, or library: compile (or fail loud below).
+  }
+  const linkArguments = [
+    "-shared",
+    "-O2",
+    `-I${nodeIncludeDirectory()}`,
+    `-I${headerDirectory}`,
+    addonSource,
+    "-o",
+    addonOutput,
+    `-L${directory}`,
+    `-l${libraryName}`,
+  ];
+  if (process.platform === "darwin") {
+    // Node-API symbols resolve when Node loads the addon.
+    linkArguments.push("-undefined", "dynamic_lookup");
+    linkArguments.push("-Wl,-rpath,@loader_path");
+  } else {
+    // Position-independent code plus libdl for shim probing.
+    linkArguments.push("-fPIC", "-ldl", "-Wl,-rpath,$ORIGIN");
+  }
+  // The addon links the grammar's parser library so a missing or stale
+  // library fails here, next to the grammar.
+  const result = spawnSync(zigExecutable(), ["cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
+  if (result.status !== 0) {
+    fatal(`zig cc failed for ${libraryName}.node:\n${result.stderr || result.stdout || "unknown error"}`);
+  }
+  console.error(`galley-bindings: built ${addonOutput}; import from ${directory}`);
+}
+
+/**
  * Build one parser artifact next to the grammar. `wasm` selects the WASI
  * reactor module (wasm shim, `-Dwasm` target); otherwise a native shared
  * library (native shim). `platform` names the host for the native filename
@@ -225,6 +301,8 @@ function findJsProceduresFile(languageDirectory) {
  * @param {string|null} [options.dependencyName]
  * @param {string} [options.installCommand]
  * @param {boolean} [options.posixOnly]
+ * @param {boolean} [options.addon] compile the Node NAPI addon after the
+ *   native library (Node only; Bun and Deno load the library directly)
  * @param {Function|null} [options.artifactFileName]
  * @param {Function|null} [options.wasmArtifactFileName]
  * @returns {Promise<string>}
@@ -238,6 +316,7 @@ export async function buildParserArtifact({
   dependencyName = null,
   installCommand = "npm install",
   posixOnly = true,
+  addon = false,
   artifactFileName = null,
   wasmArtifactFileName = null,
 }) {
@@ -331,5 +410,9 @@ export async function buildParserArtifact({
   const destination = path.join(languageDir, outputFileName);
   if (!fs.existsSync(destination)) fatal(`expected library not found at ${destination}`);
   console.log(`galley-bindings: built ${destination}; import from ${languageDir} (or set GALLEY_LIBRARY_PATH)`);
+  if (addon) {
+    if (wasm) fatal("the Node addon serves the native leg only; do not combine addon with wasm");
+    compileNodeAddon({ languageDirectory: languageDir, libraryName });
+  }
   return destination;
 }

@@ -14,6 +14,7 @@ import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
 import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
+import { ensureDispatchFor } from "./dispatch.ts";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
@@ -1027,6 +1028,13 @@ export function getBunPort(explicitPath?: string): BunPort {
     }
   }
   const port = new BunPort(native, libPath, supportsDispatch);
+  // Dispatch rides with the port, not the Session: every consumer of the
+  // port (adapter or universal loader) gets working procedure hooks.
+  try {
+    ensureDispatchFor(port);
+  } catch {
+    // Missing installer — stays no-op.
+  }
   portCache.set(libPath, port);
   return port;
 }

@@ -1,0 +1,16 @@
+{
+  "name": "galley-js-universal-example",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@sanbus/galley": "file:../../../bindings/js/universal"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^7.0.2"
+  }
+}
