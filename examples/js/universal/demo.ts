@@ -5,7 +5,6 @@
  */
 
 import * as fs from "node:fs";
-import { Buffer } from "node:buffer";
 import * as path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -40,6 +39,10 @@ const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";
 const MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
 const SAMPLE_PATH = "/tmp/galley-js-universal-example.json";
+
+// Shared with procedures.ts: TextDecoder is global on every runtime and
+// decodes identically to Buffer (verified incl. multibyte).
+const utf8 = new TextDecoder();
 
 function printTree(node: import("@sanbus/galley").Node, depth: number): void {
   const name = node.symbolName();
@@ -142,7 +145,7 @@ async function main(): Promise<number> {
     let expected = "expected one of: ";
     diagnostic.expectedTokens.forEach((tok, idx) => {
       if (idx !== 0) expected += ", ";
-      expected += `'${Buffer.from(tok).toString("utf-8")}'`;
+      expected += `'${utf8.decode(tok)}'`;
     });
     console.log(expected);
 
@@ -168,7 +171,7 @@ async function main(): Promise<number> {
             ? "indentation"
             : "none";
       const unexpected = diag.unexpectedToken
-        ? Buffer.from(diag.unexpectedToken).toString("utf-8")
+        ? utf8.decode(diag.unexpectedToken)
         : "";
       console.log(`  [${idx}] ${kindName} at ${diag.line}:${diag.column} near '${unexpected}'`);
     });

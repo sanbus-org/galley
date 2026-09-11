@@ -103,8 +103,8 @@ The FFI boundary is the only overhead over the C API:
   `Node` is expected, and `Number(node)` / `BigInt(node)` recovers the
   address. Iteration and indexing are zero-copy (`for (const child of node)`, `node.at(0)`, `node.length`).
 - Text accessors (`text`, `symbolNameBytes`, diagnostic tokens) return
-  `Uint8Array` copies with no UTF-8 decoding; decode on demand via
-  `Buffer.from(bytes).toString("utf-8")`.
+  `Uint8Array` copies with no UTF-8 decoding; decode on demand
+  (`new TextDecoder().decode(bytes)` — global on every runtime).
 - `parse()` and `parseSentinel()` accept `string`, `Buffer`, or `Uint8Array`.
   Bytes are passed by pointer and length with no UTF-16 transcode; a
   `string` is encoded to UTF-8 once per call. The session still copies
@@ -130,12 +130,23 @@ and Rust's `procedures.rs`:
 // procedures.ts
 import type { ProcedureArguments } from "@sanbus/galley";
 
+// Hook bodies stay runtime-neutral: TextDecoder and a probed stderr sink
+// exist on Node, Bun, Deno, and browsers alike.
+const utf8 = new TextDecoder();
+const stderr = (globalThis as { process?: { stderr?: unknown } }).process?.stderr as
+  | { write(chunk: string): void }
+  | undefined;
+function emit(line: string): void {
+  if (stderr) stderr.write(`${line}\n`);
+  else console.error(line);
+}
+
 export function reduction_Pair(args: ProcedureArguments): void {
   const node = args.currentNode();
   if (node === null) return;
   const [line, column] = node.lineColumn() ?? [0, 0];
-  const text = Buffer.from(node.text() ?? []).toString("utf-8");
-  process.stderr.write(`Pair ${text} (${node.length} children) at ${line}:${column}\n`);
+  const text = utf8.decode(node.text() ?? []);
+  emit(`Pair ${text} (${node.length} children) at ${line}:${column}`);
 }
 
 export function reduction_KeyTail(args: ProcedureArguments): void {
@@ -146,8 +157,8 @@ export function hook_print(args: ProcedureArguments): void {
   const node = args.currentNode();
   if (node === null) return;
   const [line, column] = node.lineColumn() ?? [0, 0];
-  const text = Buffer.from(node.text() ?? []).toString("utf-8");
-  process.stderr.write(`@print "${text}" at ${line}:${column}\n`);
+  const text = utf8.decode(node.text() ?? []);
+  emit(`@print "${text}" at ${line}:${column}`);
 }
 ```
 
