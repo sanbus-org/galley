@@ -40,10 +40,15 @@ Generator flags forward verbatim to the generator ahead of
 `--emit-metadata`: every flag `gen` does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
-`gen` requires `GALLEY_CHECKOUT` (a Galley working tree);
-`ZIG_EXECUTABLE` selects zig. For convenience,
-`GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the
-system cache, but that cache is examples-only, not part of the bindings.
+`gen` needs no checkout: released modules download the version-pinned
+generator CLI and compile kit from GitHub releases into the user cache on
+first use (progress and destination shown, checksums verified, exact
+version only — a tampered or missing artifact is a loud error, never a
+silent fallback). Contributors running from a checkout fall back to
+`GALLEY_CHECKOUT` (a Galley working tree); `ZIG_EXECUTABLE` selects zig.
+For convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)`
+fetches one into the system cache, but that cache is examples-only, not
+part of the bindings.
 It generates the parser, builds the shared library directly next to the
 grammar, detects optional hook files next
 to your grammar (`procedures.go`, `ll_error_messages.zig`), and emits
