@@ -8,10 +8,27 @@
 
 import type { Node, ProcedureArguments } from "@sanbus/galley";
 
+// Runtime-neutral host primitives: TextDecoder and console/process exist
+// in Node, Bun, Deno, and browsers alike, so these hook bodies run
+// unmodified on every runtime with byte-identical output.
+const utf8 = new TextDecoder();
+
+// One stderr sink resolved at import: process.stderr on Node, Bun, and
+// Deno (all expose the global), console.error in browsers. Single-arg
+// console.error appends its own newline, so bytes match on every runtime.
+const emit: (line: string) => void = (() => {
+  const stderr = (globalThis as { process?: { stderr?: { write?: unknown } } }).process?.stderr;
+  if (stderr && typeof stderr.write === "function") {
+    const write = stderr.write as (this: unknown, chunk: string) => void;
+    return (line: string) => write.call(stderr, `${line}\n`);
+  }
+  return (line: string) => console.error(line);
+})();
+
 function textOf(node: Node): string {
   const bytes = node.text();
   if (bytes === null) return "";
-  return Buffer.from(bytes).toString("utf-8");
+  return utf8.decode(bytes);
 }
 
 function posOf(node: Node): [number, number] {
@@ -40,10 +57,6 @@ function countPairs(node: Node): [number, number] {
     total += childSum;
   }
   return [count, total];
-}
-
-function emit(line: string): void {
-  process.stderr.write(`${line}\n`);
 }
 
 export function reduction(_args: ProcedureArguments): void {}

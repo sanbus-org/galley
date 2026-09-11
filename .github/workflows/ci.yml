@@ -880,6 +880,19 @@ jobs:
           diff /tmp/out-universal-wasm.txt /tmp/out-universal-wasm-deno.txt
           diff /tmp/err-universal-wasm.txt /tmp/err-universal-wasm-bun.txt
           diff /tmp/err-universal-wasm.txt /tmp/err-universal-wasm-deno.txt
+          # Browser demo in real headless Chromium (headless shell):
+          # typecheck, bundle, serve over HTTP with python, drive the
+          # page and assert its console rows in order. No system-deps
+          # step until a runner proves otherwise. Every branch below is
+          # an `if`: under `bash -e` a failed `! grep` never exits.
+          npm run build
+          ./node_modules/.bin/vite build
+          cp index.html libgalley-js-wasm.wasm dist-browser/
+          ./node_modules/.bin/playwright install --only-shell chromium
+          python3 -m http.server 8123 -d dist-browser &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          node run-browser.mjs http://127.0.0.1:8123/index.html
 
   compiler-cli:
     name: compiler-cli

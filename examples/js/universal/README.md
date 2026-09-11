@@ -34,3 +34,27 @@ One demo runs on every runtime: `await init()` resolves the native
 library on Node, Bun, and Deno, and the same code parses through the
 wasm fallback wherever native is absent. Build, run, and benchmark
 conventions: see [examples/README.md](../../README.md).
+
+`demo-browser.ts` runs the same grammar and the same procedures as
+`demo.ts` through the wasm-only browser entry (`@sanbus/galley/browser`,
+`init({ url })`), with the same output rows except the file-parse ones
+(`fs` exists only on the runtime side). Bundle with
+vite and serve the bundle beside the wasm module and its page:
+
+```sh
+./node_modules/.bin/vite build
+cp index.html libgalley-js-wasm.wasm dist-browser/
+python3 -m http.server 8123 -d dist-browser &
+```
+
+Open `http://127.0.0.1:8123/` in a browser (the demo resolves the wasm
+module beside the page) and read its console output. Automation drives
+the same page in headless Chromium and asserts the console rows:
+
+```sh
+./node_modules/.bin/playwright install --only-shell chromium
+node run-browser.mjs http://127.0.0.1:8123/index.html
+```
+
+The demo logs to the console. (CI runs the same flow headless and
+asserts the console rows in order.)
