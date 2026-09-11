@@ -40,6 +40,12 @@ for dir in $PACKAGES; do
 	# node_modules (snapshots of siblings must not leak into tarballs).
 	tar --exclude='./node_modules' --exclude='./*.tgz' -cf - -C "$JS_DIR/$dir" . | tar -xf - -C "$work"
 	case "$dir" in
+	core)
+		# Consumers compile with no checkout: ship the consumer build plus
+		# every source it reads, assembled fresh from this checkout (the
+		# repo never tracks the kit).
+		"$ROOT/scripts/js/assemble_compile_kit.sh" "$work/compile-kit"
+		;;
 	cli-*)
 		# Platform packages ship one prebuilt binary, laid out by
 		# build_compiler_binaries.sh under $CLI_ARTIFACTS/<dir>/bin/.

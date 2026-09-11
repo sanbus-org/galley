@@ -15,7 +15,7 @@
     "./build/builder.mjs": "./build/builder.mjs",
     "./build/fixture.mjs": "./build/fixture.mjs"
   },
-  "files": ["dist", "src", "build", "README.md"],
+  "files": ["dist", "src", "build", "compile-kit", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build"

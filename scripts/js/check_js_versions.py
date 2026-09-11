@@ -55,6 +55,10 @@ def main() -> None:
         data = json.loads(manifest.read_text())
         if data.get("name") != name:
             errors.append(f"{manifest}: name {data.get('name')!r} != {name!r}")
+        if directory == "core" and "compile-kit" not in (data.get("files") or []):
+            errors.append(
+                f"{manifest}: files must include compile-kit (consumers compile with no checkout)"
+            )
         for scope in ("dependencies", "devDependencies", "optionalDependencies"):
             for dep, spec in (data.get(scope) or {}).items():
                 if isinstance(spec, str) and spec.startswith("file:"):
