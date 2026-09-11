@@ -19,6 +19,7 @@
 /libgalley.dylib
 /libgalley.so
 /dist
+/dist-browser
 /node_modules
 /package-lock.json
 /procedures_wasm.zig

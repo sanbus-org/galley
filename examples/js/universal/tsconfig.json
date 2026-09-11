@@ -20,6 +20,7 @@
   },
   "include": [
     "demo.ts",
+    "demo-browser.ts",
     "benchmark.ts",
     "procedures.ts"
   ],
