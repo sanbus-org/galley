@@ -307,7 +307,7 @@ indentation details, and the full structured recovery information — or
 over a per-grammar NAPI addon (`bindings/js/node/addon.c`, raw `node_api.h`,
 compiled by the builder with `zig cc`); TypeScript keeps the neutral
 `FfiPort` over the addon. Requires Node 18+. A complete consumer lives in
-[`examples/js/node`](https://github.com/sanbus-org/galley/tree/main/examples/js/node),
+[`examples/js`](https://github.com/sanbus-org/galley/tree/main/examples/js),
 built and executed by CI on every push, byte-for-byte identical in output
 to the C, C++, Rust, Go, and Python examples.
 
@@ -329,7 +329,8 @@ the system cache, but that cache is examples-only, not part of the
 bindings. The suite mirrors the universal behavior claim for claim:
 
 ```sh
-node ../../../bindings/js/node/tests/test_bindings.mjs
+cd examples/js
+node ../../bindings/js/node/tests/test_bindings.mjs
 ```
 
 ### Bun
@@ -338,15 +339,14 @@ node ../../../bindings/js/node/tests/test_bindings.mjs
 over zero-dependency `bun:ffi`, with no native dependencies beyond the
 built parser library. Requires Bun 1. No extra permissions: unlike Deno,
 `bun:ffi` needs no capability flags. A complete consumer lives in
-[`examples/js/bun`](https://github.com/sanbus-org/galley/tree/main/examples/js/bun),
+[`examples/js`](https://github.com/sanbus-org/galley/tree/main/examples/js),
 built and executed by CI on every push, byte-for-byte identical in output
 to every other example.
 
 ```sh
-cd examples/js/bun
+cd examples/js
 bun install
 bunx galley-js-bun .
-bun demo.ts
 ```
 
 ```ts
@@ -361,9 +361,9 @@ shared library loads at first `Session` — no explicit registration
 needed. The suite mirrors the Node suite behavior by behavior:
 
 ```sh
-cd examples/js/bun
+cd examples/js
 bun install
-bun ../../../bindings/js/bun/tests/test_bindings.mjs
+bun ../../bindings/js/bun/tests/test_bindings.mjs
 ```
 
 ### Deno
@@ -373,14 +373,13 @@ over zero-dependency `Deno.dlopen`, with no subprocess or code-generation
 at runtime. Requires Deno 2. Three permissions: `--allow-ffi` (loading
 the library), `--allow-read` (library discovery, `parseFile`),
 `--allow-env` (library discovery). A complete consumer lives in
-[`examples/js/deno`](https://github.com/sanbus-org/galley/tree/main/examples/js/deno),
+[`examples/js`](https://github.com/sanbus-org/galley/tree/main/examples/js),
 built and executed by CI on every push, byte-for-byte identical in output
 to every other example.
 
 ```sh
-cd examples/js/deno
+cd examples/js
 deno task build
-deno task demo
 ```
 
 ```ts
@@ -418,15 +417,14 @@ No extra permissions and no WASI runtime: the adapter embeds a minimal
 `wasi_snapshot_preview1` stub (real entropy and clocks; filesystem calls
 report unavailable — the file is read by the host and parsed from
 memory). It runs anywhere WebAssembly runs. A complete consumer lives in
-[`examples/js/wasm`](https://github.com/sanbus-org/galley/tree/main/examples/js/wasm),
+[`examples/js`](https://github.com/sanbus-org/galley/tree/main/examples/js),
 built and executed by CI on every push, byte-for-byte identical in output
 to every other example.
 
 ```sh
-cd examples/js/wasm
+cd examples/js
 npm install
 npx galley-js-wasm .
-npx tsx demo.ts
 ```
 
 ```ts
@@ -443,9 +441,9 @@ Under Node `procedures.*` next to the shared library loads via
 behavior by behavior:
 
 ```sh
-cd examples/js/wasm
+cd examples/js
 npm install
-node ../../../bindings/js/wasm/tests/test_bindings.mjs
+node ../../bindings/js/wasm/tests/test_bindings.mjs
 ```
 
 ### Browsers (wasm only)

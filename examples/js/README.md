@@ -10,8 +10,8 @@ npx tsx demo.ts
 bun demo.ts
 deno task demo
 GALLEY_CHECKOUT=/path/to/galley npx galley build benchmark
-npx tsx benchmark.ts
-bun benchmark.ts
+npx tsx benchmark.ts ../../languages/json/samples/code-02.json
+bun benchmark.ts ../../languages/json/samples/code-02.json
 deno task benchmark
 ```
 
@@ -33,7 +33,7 @@ editing binding sources use plain `npm install` plus `npm install` inside
 One demo runs on every runtime: `await init()` resolves the native
 library on Node, Bun, and Deno, and the same code parses through the
 wasm fallback wherever native is absent. Build, run, and benchmark
-conventions: see [examples/README.md](../../README.md).
+conventions: see [examples/README.md](../README.md).
 
 `demo-browser.ts` runs the same grammar and the same procedures as
 `demo.ts` through the wasm-only browser entry (`@sanbus/galley/browser`,
