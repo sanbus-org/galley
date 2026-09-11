@@ -11,7 +11,8 @@
  * build` invocation. No caller builds consumer arguments or picks shim
  * emitters directly.
  *
- * The language directory must contain `ll.grm` and may contain
+ * The language directory must contain `ll.grm` (or `lr.grm` under
+ * `--parser-type lr`) and may contain
  * `config.zig`, procedures, and `ll_error_messages.zig`, mirroring the
  * other bindings:
  *
@@ -63,6 +64,29 @@ import { emitJsProcedureShim, emitJsProcedureShimWasm } from "./shim.mjs";
 export const NATIVE_LIBRARY_BASE = "galley-js-node";
 /** Canonical wasm build for the wasm adapter and the universal fallback leg. */
 export const WASM_LIBRARY_BASE = "galley-js-wasm";
+
+/**
+ * The `--parser-type` selection inside forwarded generator flags, if any.
+ * Last wins on both spellings (`--parser-type lr`, `--parser-type=lr`),
+ * mirroring the binary. Anything else (including a bad value) is the
+ * generator's to reject — this only answers "must ll.grm exist?".
+ * `--parser-type` is the one piece of generator surface the gate knows:
+ * its value-shape is needed to find the grammar file. Every other flag
+ * forwards untouched and the binary owns it.
+ */
+function parserTypeFromFlags(generatorFlags) {
+  let parserType = null;
+  for (let index = 0; index < generatorFlags.length; index++) {
+    const flag = generatorFlags[index];
+    if (flag === "--parser-type") {
+      parserType = generatorFlags[index + 1] ?? null;
+      index++;
+    } else if (flag.startsWith("--parser-type=")) {
+      parserType = flag.slice("--parser-type=".length);
+    }
+  }
+  return parserType;
+}
 
 const WASM_TARGET = "wasm32-wasi";
 const NATIVE_SHIM_FILE = "procedures_js.zig";
@@ -357,6 +381,11 @@ export function compileNodeAddon({ languageDirectory, libraryName }) {
  *   native library (Node only; Bun and Deno load the library directly)
  * @param {Function|null} [options.artifactFileName]
  * @param {Function|null} [options.wasmArtifactFileName]
+ * @param {string[]} [options.generatorFlags] extra generator CLI flags
+ *   forwarded verbatim ahead of `--emit-metadata`. The wrappers forward
+ *   every flag they don't own; the binary owns its surface (unknown flags
+ *   die there with `unknown argument`). Only `--parser-type`'s
+ *   value-shape is known here, to find the grammar file.
  * @returns {Promise<string>}
  */
 export async function buildParserArtifact({
@@ -371,6 +400,7 @@ export async function buildParserArtifact({
   addon = false,
   artifactFileName = null,
   wasmArtifactFileName = null,
+  generatorFlags = [],
 }) {
   if (!languageDirectory) fatal("no language directory given");
   if (!libraryName) fatal("no library name given");
@@ -388,7 +418,11 @@ export async function buildParserArtifact({
   const outputFileName = wasm ? names.wasmArtifactFileName(libraryName) : names.artifactFileName(libraryName, platform);
 
   const languageDir = path.resolve(languageDirectory);
-  if (!fs.existsSync(path.join(languageDir, "ll.grm"))) fatal(`${languageDir} does not contain ll.grm`);
+  // Single-parser generation needs only its own grammar: `--parser-type lr`
+  // runs against lr.grm alone. Anything else (including a bad value) is
+  // the generator's to reject.
+  if (parserTypeFromFlags(generatorFlags) !== "lr" && !fs.existsSync(path.join(languageDir, "ll.grm")))
+    fatal(`${languageDir} does not contain ll.grm`);
 
   const cli = resolveGeneratorCli({ bindingsDirectory });
 
@@ -397,7 +431,7 @@ export async function buildParserArtifact({
     fatal(`the generator CLI at ${cli} is too old for the bindings workflow (no --emit-metadata support); update it`);
   }
 
-  run(cli, ["--emit-metadata", languageDir]);
+  run(cli, [...generatorFlags, "--emit-metadata", languageDir]);
 
   // One library embeds one parser; the consumer build locates the file
   // generation produced from `-Dlanguage-dir` and infers the family from

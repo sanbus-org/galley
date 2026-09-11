@@ -2,7 +2,16 @@
 
 Usage:
 
-    python -m galley_bindings <language-dir>
+    python -m galley_bindings <language-dir> [generator flags...]
+
+Generator flags forward verbatim to the generator ahead of
+`--emit-metadata`: this tool forwards every flag it does not own and the
+binary owns its surface (unknown flags die there with `unknown
+argument`), so new generator flags work with no wrapper changes. Only
+`--parser-type`'s value-shape is known here (`--parser-type lr` and
+`--parser-type=lr` both forward). `--watch` is refused loudly: forwarding
+it would park the build inside the generator's watch loop and never
+compile.
 
 The language dir must contain ll.grm and config.zig (generation options)
 and may contain procedure hook implementations and custom message hooks,
@@ -204,6 +213,26 @@ def resolve_generator_cli() -> Path:
     )
 
 
+def parser_type_from_flags(generator_flags: list[str]) -> str | None:
+    # The --parser-type selection inside forwarded generator flags, if any.
+    # Last wins on both spellings (--parser-type lr, --parser-type=lr),
+    # mirroring the binary. Anything else (including a bad value) is the
+    # generator's to reject — this only answers "must ll.grm exist?".
+    parser_type: str | None = None
+    index = 0
+    while index < len(generator_flags):
+        flag = generator_flags[index]
+        if flag == "--parser-type":
+            index += 1
+            parser_type = (
+                generator_flags[index] if index < len(generator_flags) else None
+            )
+        elif flag.startswith("--parser-type="):
+            parser_type = flag.split("=", 1)[1]
+        index += 1
+    return parser_type
+
+
 def find_python_procedures_file(language_dir: Path) -> Path | None:
     candidate = language_dir / "procedures.py"
     if candidate.is_file():
@@ -342,12 +371,41 @@ def compile_extension(
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        fatal("usage: python -m galley_bindings <language-dir>")
+    usage = "usage: python -m galley_bindings <language-dir> [generator flags...]"
+    if len(sys.argv) < 2:
+        fatal(usage)
     if os.name == "nt":
         fatal("the python bindings target POSIX platforms")
     language_dir = Path(sys.argv[1]).resolve()
-    if not (language_dir / "ll.grm").is_file():
+    generator_flags: list[str] = []
+    index = 2
+    while index < len(sys.argv):
+        flag = sys.argv[index]
+        if flag in ("-h", "--help"):
+            print(usage)
+            raise SystemExit(0)
+        if flag == "--watch":
+            fatal(
+                "--watch needs its own entry (not yet implemented); "
+                "this build runs the generator once"
+            )
+        if flag == "--parser-type":
+            index += 1
+            if index >= len(sys.argv):
+                fatal(f"--parser-type needs ll or lr; {usage}")
+            generator_flags += [flag, sys.argv[index]]
+        elif flag.startswith("-"):
+            generator_flags.append(flag)
+        else:
+            fatal(f"unexpected positional argument {flag}; {usage}")
+        index += 1
+    # Single-parser generation needs only its own grammar:
+    # --parser-type lr runs against lr.grm alone. Anything else
+    # (including a bad value) is the generator's to reject.
+    if (
+        parser_type_from_flags(generator_flags) != "lr"
+        and not (language_dir / "ll.grm").is_file()
+    ):
         fatal(f"{language_dir} does not contain ll.grm")
 
     # The gate owns all build semantics: generation resolves through
@@ -367,7 +425,7 @@ def main() -> None:
             "workflow (no --emit-metadata support); update galley-bindings"
         )
 
-    run([cli, "--emit-metadata", language_dir])
+    run([cli, *generator_flags, "--emit-metadata", language_dir])
 
     # One library embeds one parser; the consumer build locates the file
     # generation produced from -Dlanguage-dir and infers the family from

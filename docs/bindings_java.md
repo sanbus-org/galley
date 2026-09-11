@@ -29,8 +29,12 @@ Then generate and build the shared library for your language directory (a
 directory containing `ll.grm` and `config.zig`):
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>
+java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir> [generator flags...]
 ```
+
+Generator flags forward verbatim to the generator ahead of
+`--emit-metadata`: every flag the tool does not own goes to the generator,
+which owns its surface (documented in [Configuration](/configuration)).
 
 The tool requires `GALLEY_CHECKOUT` (a Galley working tree);
 `ZIG_EXECUTABLE` selects zig. For convenience,

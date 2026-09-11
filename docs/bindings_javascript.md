@@ -52,6 +52,11 @@ npx galley build <language-dir> --native-only
 npx galley build <language-dir> --wasm-only
 ```
 
+Generator flags forward verbatim ahead of `--emit-metadata`: every flag
+`galley build` does not own goes to the generator, which owns its surface
+(documented in [Configuration](/configuration)). Anything else is a
+usage error.
+
 Requires `zig` 0.16.0 to compile (`ZIG_EXECUTABLE` names an explicit
 binary, else `zig` on `PATH`, else `uvx` provisioning the pinned ziglang —
 neither installed is a loud error naming both install pages). No checkout:

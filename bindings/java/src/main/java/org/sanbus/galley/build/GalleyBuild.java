@@ -8,7 +8,16 @@ import java.util.*;
 /**
  * Builds a Galley parser and its shared library for a Java consumer.
  *
- * Usage: java -jar galley.jar &lt;language-dir&gt;
+ * Usage: java -jar galley.jar &lt;language-dir&gt; [generator flags...]
+ *
+ * Generator flags forward verbatim to the generator ahead of
+ * `--emit-metadata`: this tool forwards every flag it does not own and
+ * the binary owns its surface (unknown flags die there with `unknown
+ * argument`), so new generator flags work with no wrapper changes. Only
+ * `--parser-type`'s value-shape is known here (`--parser-type lr` and
+ * `--parser-type=lr` both forward). `--watch` is refused loudly:
+ * forwarding it would park the build inside the generator's watch loop
+ * and never compile.
  *
  * The language dir must contain ll.grm and may contain config.zig,
  * procedures.java (Java hooks dispatched through generated shim),
@@ -190,12 +199,57 @@ public final class GalleyBuild {
         try { Files.writeString(outputPath, String.join("\n", builder), StandardCharsets.UTF_8); } catch (IOException e) { fatal("failed to write shim: " + e.getMessage()); }
     }
 
+    // The --parser-type selection inside forwarded generator flags, if
+    // any. Last wins on both spellings (--parser-type lr,
+    // --parser-type=lr), mirroring the binary. Anything else (including a
+    // bad value) is the generator's to reject — this only answers "must
+    // ll.grm exist?". --parser-type is the one piece of generator surface
+    // this tool knows: its value-shape is needed to find the grammar
+    // file. Every other flag forwards untouched and the binary owns it.
+    private static String parserTypeFromFlags(List<String> flags) {
+        String parserType = null;
+        for (int i = 0; i < flags.size(); i++) {
+            String flag = flags.get(i);
+            if (flag.equals("--parser-type")) {
+                i++;
+                parserType = (i < flags.size()) ? flags.get(i) : null;
+            } else if (flag.startsWith("--parser-type=")) {
+                parserType = flag.substring("--parser-type=".length());
+            }
+        }
+        return parserType;
+    }
+
     public static void main(String[] args) {
-        if (args.length != 1) fatal("usage: galley-java <language-dir>");
+        String usage = "usage: galley-java <language-dir> [generator flags...]";
+        if (args.length < 1) fatal(usage);
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("win")) fatal("the java bindings target POSIX platforms");
         Path languageDir = Paths.get(args[0]).toAbsolutePath().normalize();
-        if (!Files.isRegularFile(languageDir.resolve("ll.grm"))) fatal(languageDir + " does not contain ll.grm");
+        List<String> generatorFlags = new ArrayList<>();
+        for (int i = 1; i < args.length; i++) {
+            String flag = args[i];
+            if (flag.equals("-h") || flag.equals("--help")) {
+                System.out.println(usage);
+                return;
+            }
+            if (flag.equals("--watch")) fatal("--watch needs its own entry (not yet implemented); this build runs the generator once");
+            if (flag.equals("--parser-type")) {
+                i++;
+                if (i >= args.length) fatal("--parser-type needs ll or lr; " + usage);
+                generatorFlags.add(flag);
+                generatorFlags.add(args[i]);
+            } else if (flag.startsWith("-")) {
+                generatorFlags.add(flag);
+            } else {
+                fatal("unexpected positional argument " + flag + "; " + usage);
+            }
+        }
+        // Single-parser generation needs only its own grammar:
+        // --parser-type lr runs against lr.grm alone. Anything else
+        // (including a bad value) is the generator's to reject.
+        if (!"lr".equals(parserTypeFromFlags(generatorFlags)) && !Files.isRegularFile(languageDir.resolve("ll.grm")))
+            fatal(languageDir + " does not contain ll.grm");
 
         Path galleySource = resolveGalley();
         Path cli = galleySource.resolve("zig-out").resolve("bin").resolve("galley");
@@ -208,7 +262,12 @@ public final class GalleyBuild {
             fatal("the Galley at " + galleySource + " is too old for the bindings workflow (no --emit-metadata support); update the checkout");
         }
 
-        run(Arrays.asList(cli.toString(), "--emit-metadata", languageDir.toString()), null);
+        List<String> generateArgs = new ArrayList<>();
+        generateArgs.add(cli.toString());
+        generateArgs.addAll(generatorFlags);
+        generateArgs.add("--emit-metadata");
+        generateArgs.add(languageDir.toString());
+        run(generateArgs, null);
 
         // One library embeds one parser; the consumer build locates the file
         // generation produced from -Dlanguage-dir and infers the family

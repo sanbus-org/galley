@@ -176,159 +176,238 @@ fn resolve_generator_cli() -> PathBuf {
     );
 }
 
-/// Generates the parser for `language_dir` (must contain `ll.grm` and the
-/// language's `config.zig`) and emits cargo directives linking the current
-/// crate's binary against the resulting shared library.
+/// Which parser type to generate. Only options that are not already
+/// file-config belong here: every `--with-`/`--no-` toggle edits
+/// `config.zig`, which is already the source of truth (and already
+/// re-watched below), so repeating those toggles in this API would be a
+/// second source of truth for the same knowledge. Configuration stays
+/// with `config.zig` and the `galley` binary.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ParserType {
+    /// Generate every parser type with a matching grammar file.
+    #[default]
+    All,
+    /// Generate only the LL parser from `ll.grm`.
+    Ll,
+    /// Generate only the LR parser from `lr.grm`.
+    Lr,
+}
+
+/// Build-script options. [`generate_and_link`] is the thin default path
+/// (every parser type); set a single parser type for single-parser
+/// builds:
 ///
-/// Requires `GALLEY_CHECKOUT`. The library is always built in ReleaseFast,
-/// directly next to the grammar (`OUT_DIR` keeps only the procedures archive).
-pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
-    let language_dir = language_dir.as_ref();
-    assert!(
-        language_dir.join("ll.grm").exists(),
-        "{} does not contain ll.grm",
-        language_dir.display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        language_dir.join("ll.grm").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        language_dir.join("config.zig").display()
-    );
+/// ```no_run
+/// // build.rs
+/// fn main() {
+///     galley::build_helper::Options::new("language-dir")
+///         .parser_type(galley::build_helper::ParserType::Lr)
+///         .generate_and_link();
+/// }
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    language_dir: PathBuf,
+    parser_type: ParserType,
+}
 
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
-    // The gate owns all build semantics: generation resolves through the
-    // generator CLI, compiling through the compile inputs. Both
-    // consumer-build legs run the same build with the same flags; only
-    // the inputs differ.
-    let cli = resolve_generator_cli();
-    let (build_file, source_root) = resolve_compile_inputs();
-    println!(
-        "cargo:rerun-if-changed={}",
-        source_root.join("bindings/c/capi.zig").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        source_root.join("bindings/c/galley.h").display()
-    );
-    println!("cargo:rerun-if-changed={}", build_file.display());
+impl Options {
+    /// Options for `language_dir`, generating every parser type.
+    pub fn new(language_dir: impl AsRef<Path>) -> Self {
+        Options {
+            language_dir: language_dir.as_ref().to_path_buf(),
+            parser_type: ParserType::All,
+        }
+    }
 
-    // Parser generation relies on CLI flags introduced alongside the
-    // bindings workflow (--emit-metadata). Refuse with guidance when the
-    // resolved generator predates them instead of failing deep inside
-    // generation.
-    let help = Command::new(&cli)
-        .arg("--help")
-        .output()
-        .unwrap_or_else(|e| panic!("failed to spawn {}: {e}", cli.display()));
-    if !String::from_utf8_lossy(&help.stdout).contains("--emit-metadata") {
-        panic!(
+    /// Generate only `parser_type` instead of every parser type.
+    pub fn parser_type(mut self, parser_type: ParserType) -> Self {
+        self.parser_type = parser_type;
+        self
+    }
+
+    /// Generates the parser for the language directory (which must
+    /// contain the grammar and the language's `config.zig`) and emits
+    /// cargo directives linking the current crate's binary against the
+    /// resulting shared library.
+    ///
+    /// Needs no checkout: the `galley` crate carries the generator and
+    /// compile inputs. The library is always built in ReleaseFast,
+    /// directly next to the grammar (`OUT_DIR` keeps only the procedures
+    /// archive).
+    pub fn generate_and_link(self) -> GalleyLayout {
+        let language_dir = &self.language_dir;
+        // Single-parser generation needs only its own grammar. Anything
+        // else (including a grammar missing for the requested type) is
+        // the generator's to reject loudly.
+        let grammar_file = match self.parser_type {
+            ParserType::Lr => "lr.grm",
+            _ => "ll.grm",
+        };
+        assert!(
+            language_dir.join(grammar_file).exists(),
+            "{} does not contain {grammar_file}",
+            language_dir.display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            language_dir.join(grammar_file).display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            language_dir.join("config.zig").display()
+        );
+
+        let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR unset"));
+        // The gate owns all build semantics: generation resolves through the
+        // generator CLI, compiling through the compile inputs. Both
+        // consumer-build legs run the same build with the same flags; only
+        // the inputs differ.
+        let cli = resolve_generator_cli();
+        let (build_file, source_root) = resolve_compile_inputs();
+        println!(
+            "cargo:rerun-if-changed={}",
+            source_root.join("bindings/c/capi.zig").display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            source_root.join("bindings/c/galley.h").display()
+        );
+        println!("cargo:rerun-if-changed={}", build_file.display());
+
+        // Parser generation relies on CLI flags introduced alongside the
+        // bindings workflow (--emit-metadata). Refuse with guidance when the
+        // resolved generator predates them instead of failing deep inside
+        // generation.
+        let help = Command::new(&cli)
+            .arg("--help")
+            .output()
+            .unwrap_or_else(|e| panic!("failed to spawn {}: {e}", cli.display()));
+        if !String::from_utf8_lossy(&help.stdout).contains("--emit-metadata") {
+            panic!(
             "the generator at {} is too old for the bindings workflow (no --emit-metadata support); \
              update the galley crate",
             cli.display()
         );
-    }
+        }
 
-    // Generate the parser into the language directory.
-    // All generation-time options come from config.zig in the language
-    // dir; the CLI is invoked without flags so the config file owns them.
-    // --emit-metadata also produces procedures.zig with the extern
-    // declarations for every hook the grammar requires.
-    run_or_panic({
-        let language_dir = language_dir
+        // Generate the parser into the language directory. All
+        // generation-time options come from config.zig in the language dir;
+        // only the parser-type selection travels as a CLI flag (it is not
+        // file-config), so the config file owns everything else.
+        // --emit-metadata also produces procedures.zig with the extern
+        // declarations for every hook the grammar requires.
+        run_or_panic({
+            let language_dir = language_dir
+                .canonicalize()
+                .expect("canonicalize language dir");
+            let mut c = Command::new(&cli);
+            match self.parser_type {
+                ParserType::Ll => {
+                    c.arg("--parser-type").arg("ll");
+                }
+                ParserType::Lr => {
+                    c.arg("--parser-type").arg("lr");
+                }
+                ParserType::All => {}
+            }
+            c.arg("--emit-metadata").arg(&language_dir);
+            c
+        });
+
+        // Hook implementations live next to the grammar: procedures.zig (the
+        // generated extern declarations), procedures.rs (the consumer's Rust
+        // implementations, compiled here into a static archive and linked into
+        // the shared library), and an optional ll_error_messages.zig /
+        // lr_error_messages.zig with customized syntax-error message hooks.
+        let procedures_zig = language_dir.join("procedures.zig");
+        let procedures_rs = language_dir.join("procedures.rs");
+
+        // One library embeds one parser; the consumer build locates the file
+        // generation produced from the language dir and infers the family
+        // from the filename.
+        for candidate in ["_ll-parser.zig", "_lr-parser.zig"] {
+            let path = language_dir.join(candidate);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+        for candidate in ["ll_error_messages.zig", "lr_error_messages.zig"] {
+            let path = language_dir.join(candidate);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
+
+        // Compile the shared library through the generic consumer build file,
+        // directly next to the grammar.
+        let language_absolute = language_dir
             .canonicalize()
-            .expect("canonicalize language dir");
-        let mut c = Command::new(&cli);
-        c.arg("--emit-metadata").arg(&language_dir);
-        c
-    });
+            .unwrap_or_else(|_| language_dir.to_path_buf());
+        let library_file: &str = if cfg!(target_os = "macos") {
+            "libgalley-rust.dylib"
+        } else {
+            "libgalley-rust.so"
+        };
+        run_or_panic({
+            let mut c = Command::new(zig_executable());
+            c.arg("build")
+                .arg("--build-file")
+                .arg(&build_file)
+                .arg(format!("-Dlanguage-dir={}", language_absolute.display()))
+                .arg("-Dlib-name=galley-rust")
+                .arg(format!("-Doutput={library_file}"))
+                .arg("-Doptimize=ReleaseFast")
+                .arg("--prefix")
+                .arg(&language_absolute)
+                .arg("install")
+                .current_dir(&language_absolute);
+            if procedures_zig.exists() {
+                println!("cargo:rerun-if-changed={}", procedures_zig.display());
+            }
+            // config.zig and {ll,lr}_error_messages.zig next to the parser are
+            // inferred by the consumer build when omitted.
+            if procedures_rs.exists() {
+                println!("cargo:rerun-if-changed={}", procedures_rs.display());
+                let archive = compile_procedures_archive(&procedures_rs, &out_dir);
+                c.arg(format!("-Dprocedures-object={}", archive.display()));
+            }
+            let config_zig = language_dir.join("config.zig");
+            if config_zig.exists() {
+                println!("cargo:rerun-if-changed={}", config_zig.display());
+            }
+            c
+        });
 
-    // Hook implementations live next to the grammar: procedures.zig (the
-    // generated extern declarations), procedures.rs (the consumer's Rust
-    // implementations, compiled here into a static archive and linked into
-    // the shared library), and an optional ll_error_messages.zig /
-    // lr_error_messages.zig with customized syntax-error message hooks.
-    let procedures_zig = language_dir.join("procedures.zig");
-    let procedures_rs = language_dir.join("procedures.rs");
+        let library = language_absolute.join(library_file);
+        let include_dir = source_root.join("bindings/c");
 
-    // One library embeds one parser; the consumer build locates the file
-    // generation produced from the language dir and infers the family
-    // from the filename.
-    for candidate in ["_ll-parser.zig", "_lr-parser.zig"] {
-        let path = language_dir.join(candidate);
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
+        println!(
+            "cargo:rustc-link-search=native={}",
+            language_absolute.display()
+        );
+        println!("cargo:rustc-link-lib=dylib=galley-rust");
+        // Locate the dylib when the example runs from target/debug.
+        // The path is absolute, so moving the folder afterwards breaks the link.
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}",
+            language_absolute.display()
+        );
+
+        GalleyLayout {
+            source_dir: source_root,
+            library,
+            include_dir,
         }
     }
-    for candidate in ["ll_error_messages.zig", "lr_error_messages.zig"] {
-        let path = language_dir.join(candidate);
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
-        }
-    }
+}
 
-    // Compile the shared library through the generic consumer build file,
-    // directly next to the grammar.
-    let language_absolute = language_dir
-        .canonicalize()
-        .unwrap_or_else(|_| language_dir.to_path_buf());
-    let library_file: &str = if cfg!(target_os = "macos") {
-        "libgalley-rust.dylib"
-    } else {
-        "libgalley-rust.so"
-    };
-    run_or_panic({
-        let mut c = Command::new(zig_executable());
-        c.arg("build")
-            .arg("--build-file")
-            .arg(&build_file)
-            .arg(format!("-Dlanguage-dir={}", language_absolute.display()))
-            .arg("-Dlib-name=galley-rust")
-            .arg(format!("-Doutput={library_file}"))
-            .arg("-Doptimize=ReleaseFast")
-            .arg("--prefix")
-            .arg(&language_absolute)
-            .arg("install")
-            .current_dir(&language_absolute);
-        if procedures_zig.exists() {
-            println!("cargo:rerun-if-changed={}", procedures_zig.display());
-        }
-        // config.zig and {ll,lr}_error_messages.zig next to the parser are
-        // inferred by the consumer build when omitted.
-        if procedures_rs.exists() {
-            println!("cargo:rerun-if-changed={}", procedures_rs.display());
-            let archive = compile_procedures_archive(&procedures_rs, &out_dir);
-            c.arg(format!("-Dprocedures-object={}", archive.display()));
-        }
-        let config_zig = language_dir.join("config.zig");
-        if config_zig.exists() {
-            println!("cargo:rerun-if-changed={}", config_zig.display());
-        }
-        c
-    });
-
-    let library = language_absolute.join(library_file);
-    let include_dir = source_root.join("bindings/c");
-
-    println!(
-        "cargo:rustc-link-search=native={}",
-        language_absolute.display()
-    );
-    println!("cargo:rustc-link-lib=dylib=galley-rust");
-    // Locate the dylib when the example runs from target/debug.
-    // The path is absolute, so moving the folder afterwards breaks the link.
-    println!(
-        "cargo:rustc-link-arg=-Wl,-rpath,{}",
-        language_absolute.display()
-    );
-
-    GalleyLayout {
-        source_dir: source_root,
-        library,
-        include_dir,
-    }
+/// Generates the parser for `language_dir` and emits cargo directives
+/// linking the current crate's binary against the resulting shared
+/// library. Thin default path: every parser type; use [`Options`] for a
+/// single parser type.
+pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
+    Options::new(language_dir).generate_and_link()
 }
 
 fn zig_executable() -> String {

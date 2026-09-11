@@ -31,10 +31,14 @@ replace github.com/sanbus-org/galley/bindings/go => /path/to/galley/bindings/go
 Then generate, build, and run:
 
 ```console
-$ go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen <language-dir>
+$ go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen <language-dir> [generator flags...]
 $ go build .
 $ ./my-parser-consumer
 ```
+
+Generator flags forward verbatim to the generator ahead of
+`--emit-metadata`: every flag `gen` does not own goes to the generator,
+which owns its surface (documented in [Configuration](/configuration)).
 
 `gen` requires `GALLEY_CHECKOUT` (a Galley working tree);
 `ZIG_EXECUTABLE` selects zig. For convenience,
