@@ -1,0 +1,31 @@
+# Shared demo grammar for every bindings example: comma-separated key:value
+# pairs of small integers (alpha:12,beta:3). All examples parse it byte-identically.
+
+Document
+| PairList
+|
+
+PairList
+| Pair PairListTail
+
+PairListTail
+| "," PairList
+|
+
+Pair
+| Key ":" Number
+
+Key@print
+| letter KeyTail
+
+KeyTail
+| letter KeyTail
+| digit KeyTail
+|
+
+Number
+| digit NumberTail
+
+NumberTail
+| digit NumberTail
+|

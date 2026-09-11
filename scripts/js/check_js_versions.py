@@ -41,6 +41,7 @@ EXAMPLES: dict[str, str] = {
     "examples/js/node/package.json": "galley-js-node-example",
     "examples/js/bun/package.json": "galley-js-bun-example",
     "examples/js/wasm/package.json": "galley-js-wasm-example",
+    "examples/js/universal/package.json": "galley-js-universal-example",
 }
 
 

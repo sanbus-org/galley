@@ -26,6 +26,7 @@ import type {
   WalkedStep,
 } from "@sanbus/galley-core";
 import { GalleyError, dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "@sanbus/galley-core";
+import { ensureDispatch } from "./dispatch.ts";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -530,14 +531,36 @@ function resolveKey(explicit?: string): string {
 export function getWasmPort(libraryPath?: string): WasmPort {
   const key = libraryPath ?? resolveKey();
   const cached = ports.get(key);
-  if (cached) return cached;
+  if (cached) {
+    // Dispatch rides with the port, not the Session: every consumer of
+    // the port gets working procedure hooks (a no-op where the file
+    // scanner is unseeded, so browsers still register explicitly).
+    try {
+      ensureDispatch(libraryPath ?? cached.libraryPath);
+    } catch {
+      // Missing installer — stays no-op.
+    }
+    return cached;
+  }
   if (!isNode()) throw new NeedInitError(libraryPath);
   const resolved = libraryPath ?? findLibrary();
   const direct = ports.get(resolved);
-  if (direct) return direct;
+  if (direct) {
+    try {
+      ensureDispatch(libraryPath ?? direct.libraryPath);
+    } catch {
+      // Missing installer — stays no-op.
+    }
+    return direct;
+  }
   initSync(libraryPath ? { libraryPath: resolved } : {});
   const port = ports.get(resolved) ?? ports.get(key);
   if (!port) throw new NeedInitError(libraryPath);
+  try {
+    ensureDispatch(libraryPath ?? port.libraryPath);
+  } catch {
+    // Missing installer — stays no-op.
+  }
   return port;
 }
 

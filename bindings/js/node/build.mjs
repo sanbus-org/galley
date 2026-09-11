@@ -16,87 +16,16 @@
  * missing compiler or headers is a loud error.
  */
 
-import { spawnSync } from "node:child_process";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildParserArtifact } from "@sanbus/galley-core/build/builder.mjs";
-
-const LIBRARY_NAME = "galley-js-node";
-const ADDON_NAME = "galley-js-node.node";
+import {
+  NATIVE_LIBRARY_BASE,
+  buildParserArtifact,
+} from "@sanbus/galley-core/build/builder.mjs";
 
 function fatal(message) {
   console.error(`galley-bindings: ${message}`);
   process.exit(1);
-}
-
-// Directory holding node_api.h for the running Node (shipped with every
-// Node distribution next to the executable).
-function nodeIncludeDirectory() {
-  const candidate = path.resolve(path.dirname(process.execPath), "..", "include", "node");
-  try {
-    fs.accessSync(path.join(candidate, "node_api.h"));
-    return candidate;
-  } catch {
-    fatal(`node_api.h not found under ${candidate}; reinstall Node with headers`);
-  }
-}
-
-function compileAddon(languageDirectory) {
-  if (process.platform === "win32") {
-    fatal("the Node addon is not supported on Windows; use WSL or another adapter");
-  }
-  // C inputs come from the checkout. The gate already requires
-  // GALLEY_CHECKOUT, so it is set by the time this runs.
-  const checkout = process.env.GALLEY_CHECKOUT;
-  if (!checkout) fatal("GALLEY_CHECKOUT is not set; point it at a Galley checkout");
-  const zig = process.env.ZIG_EXECUTABLE ?? "zig";
-  const addonSource = path.join(checkout, "bindings", "js", "node", "addon.c");
-  const headerDirectory = path.join(checkout, "bindings", "c");
-  const directory = path.resolve(languageDirectory);
-  const addonOutput = path.join(directory, ADDON_NAME);
-  // The gate may skip a fresh parser library; the addon still needs to
-  // exist and postdate both its source and the library it links.
-  try {
-    const addonTime = fs.statSync(addonOutput).mtimeMs;
-    const sourceTime = fs.statSync(addonSource).mtimeMs;
-    let libraryTime = 0;
-    for (const entry of fs.readdirSync(directory)) {
-      if (entry === ADDON_NAME) continue;
-      if (entry.startsWith("libgalley-js-node.")) {
-        libraryTime = Math.max(libraryTime, fs.statSync(path.join(directory, entry)).mtimeMs);
-      }
-    }
-    if (addonTime >= sourceTime && addonTime >= libraryTime && libraryTime > 0) return;
-  } catch {
-    // Missing addon, source, or library: compile (or fail loud below).
-  }
-  const linkArguments = [
-    "-shared",
-    "-O2",
-    `-I${nodeIncludeDirectory()}`,
-    `-I${headerDirectory}`,
-    addonSource,
-    "-o",
-    addonOutput,
-    `-L${directory}`,
-    "-lgalley-js-node",
-  ];
-  if (process.platform === "darwin") {
-    // Node-API symbols resolve when Node loads the addon.
-    linkArguments.push("-undefined", "dynamic_lookup");
-    linkArguments.push("-Wl,-rpath,@loader_path");
-  } else {
-    // Position-independent code plus libdl for shim probing.
-    linkArguments.push("-fPIC", "-ldl", "-Wl,-rpath,$ORIGIN");
-  }
-  // The addon links the grammar's parser library so a missing or stale
-  // library fails here, next to the grammar.
-  const result = spawnSync(zig, ["cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
-  if (result.status !== 0) {
-    fatal(`zig cc failed for ${ADDON_NAME}:\n${result.stderr || result.stdout || "unknown error"}`);
-  }
-  console.error(`galley-bindings: built ${addonOutput}; import from ${directory}`);
 }
 
 async function main() {
@@ -104,10 +33,10 @@ async function main() {
   const bindingsDirectory = path.dirname(fileURLToPath(import.meta.url));
   await buildParserArtifact({
     languageDirectory: process.argv[2],
-    libraryName: LIBRARY_NAME,
+    libraryName: NATIVE_LIBRARY_BASE,
     bindingsDirectory,
+    addon: true,
   });
-  compileAddon(process.argv[2]);
 }
 
 main().catch((error) => fatal(error?.message ?? String(error)));

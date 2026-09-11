@@ -26,6 +26,7 @@ import {
   resolveArtifact,
   artifactFileName,
 } from "@sanbus/galley-core";
+import { ensureDispatchFor } from "./dispatch.ts";
 const require = createRequire(import.meta.url);
 
 /**
@@ -858,6 +859,13 @@ export function getNodePort(explicitPath?: string): NodePort {
   const cachedPort = portCache.get(ffi.libPath);
   if (cachedPort) return cachedPort;
   const port = new NodePort(ffi);
+  // Dispatch rides with the port, not the Session: every consumer of the
+  // port (adapter or universal loader) gets working procedure hooks.
+  try {
+    ensureDispatchFor(port.ffi, port);
+  } catch {
+    // Missing installer — stays no-op.
+  }
   portCache.set(ffi.libPath, port);
   return port;
 }

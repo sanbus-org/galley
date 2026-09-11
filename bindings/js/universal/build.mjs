@@ -6,9 +6,9 @@
  *   galley build <language-dir> [--native-only|--wasm-only]
  *
  * Builds both artifacts next to the grammar by default: the canonical
- * shared native library (serves the Node, Bun, and Deno adapters) and the
- * wasm module (serves browsers and the universal fallback leg). The
- * per-adapter builders (`@sanbus/galley-node`, `@sanbus/galley-bun`,
+ * shared native library (serves the Node, Bun, and Deno adapters) plus
+ * the Node NAPI addon, and the wasm module (serves browsers and the
+ * universal fallback leg). The per-adapter builders (`@sanbus/galley-node`, `@sanbus/galley-bun`,
  * `@sanbus/galley-wasm`, the Deno `build.ts`) remain as thin wrappers over the
  * same shared gate for single-leg builds.
  *
@@ -55,6 +55,7 @@ async function main() {
       libraryName: NATIVE_LIBRARY_BASE,
       bindingsDirectory,
       dependencyName: "@sanbus/galley-core",
+      addon: true,
     });
   }
   if (!nativeOnly) {
