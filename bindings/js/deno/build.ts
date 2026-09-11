@@ -3,11 +3,11 @@
  * Builds a Galley parser and its shared library for a JavaScript consumer
  * on Deno.
  *
- * Usage (from a language directory, e.g. examples/js/deno):
+ * Usage (from a language directory, e.g. examples/js):
  *   deno task build
  * which runs:
  *   deno run --allow-read --allow-write --allow-run --allow-env \
- *     ../../../bindings/js/deno/build.ts .
+ *     ../../bindings/js/deno/build.ts .
  *
  * Thin wrapper over the shared gate (`../core/build/builder.mjs`), which
  * documents the accepted grammar files and owns the build. For both legs

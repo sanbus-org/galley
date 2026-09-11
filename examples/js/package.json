@@ -3,12 +3,15 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@sanbus/galley": "file:../../../bindings/js/universal"
+    "@sanbus/galley": "file:../../bindings/js/universal"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
+    "@sanbus/galley-bun": "file:../../bindings/js/bun",
+    "@sanbus/galley-node": "file:../../bindings/js/node",
+    "@sanbus/galley-wasm": "file:../../bindings/js/wasm",
     "@types/node": "^22.0.0",
     "playwright": "1.63.0",
     "tsx": "^4.19.0",

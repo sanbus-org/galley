@@ -38,10 +38,7 @@ EXPECTED: dict[str, str] = {
 # Example manifests (repo-relative) -> expected name. Version fields on
 # these files are gated by scripts/check_versions.py (they must omit one).
 EXAMPLES: dict[str, str] = {
-    "examples/js/node/package.json": "galley-js-node-example",
-    "examples/js/bun/package.json": "galley-js-bun-example",
-    "examples/js/wasm/package.json": "galley-js-wasm-example",
-    "examples/js/universal/package.json": "galley-js-universal-example",
+    "examples/js/package.json": "galley-js-universal-example",
 }
 
 

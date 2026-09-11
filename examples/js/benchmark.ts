@@ -7,8 +7,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { Session, libFileName } from "@sanbus/galley-node";
+import { init, Session, artifactFileName, wasmArtifactFileName } from "@sanbus/galley";
 
 const LOGICAL_INPUT = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS = 10;
@@ -19,19 +20,31 @@ function resolveInput(explicit: string | undefined): string {
   if (checkout) {
     const candidate = path.join(checkout, LOGICAL_INPUT);
     if (fs.existsSync(candidate)) return candidate;
+    console.error(`GALLEY_CHECKOUT=${checkout} has no ${LOGICAL_INPUT}`);
+    process.exit(1);
   }
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", LOGICAL_INPUT);
+  console.error(`pass the sample file or set GALLEY_CHECKOUT at a Galley checkout (needs ${LOGICAL_INPUT})`);
+  process.exit(1);
+}
+
+// GALLEY_WASM=1 (or a path) benchmarks the WebAssembly backend
+// instead of native, mirroring demo.ts.
+function jsonWasmPath(): string | null {
+  const selected = process.env.GALLEY_WASM;
+  if (!selected) return null;
+  if (selected !== "1") return selected;
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark", wasmArtifactFileName("galley-js-wasm"));
 }
 
 function jsonLibrary(): string {
   const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark");
-  const candidate = path.join(dir, libFileName());
+  const candidate = path.join(dir, artifactFileName("galley-js-node", process.platform));
   if (fs.existsSync(candidate)) return candidate;
   console.error(`missing ${candidate}`);
   process.exit(1);
 }
 
-function main(): number {
+async function main(): Promise<number> {
   const arguments_ = process.argv.slice(2);
   let iterations = DEFAULT_ITERATIONS;
   const explicit = arguments_[0];
@@ -53,9 +66,16 @@ function main(): number {
   }
   const length = data.length;
 
+  try {
+    const wasm = jsonWasmPath();
+    await init(wasm ? { wasmPath: wasm, quiet: true } : { libraryPath: jsonLibrary() });
+  } catch {
+    console.error("failed to create a parser session");
+    return 1;
+  }
   let session: Session;
   try {
-    session = new Session({ libraryPath: jsonLibrary() });
+    session = new Session();
   } catch {
     console.error("failed to create a parser session");
     return 1;
@@ -115,4 +135,4 @@ function withThousands(n: number | bigint): string {
   return out;
 }
 
-process.exit(main());
+main().then((code) => process.exit(code));

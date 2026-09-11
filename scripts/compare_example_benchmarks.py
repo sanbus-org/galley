@@ -56,6 +56,7 @@ class Runner:
     name: str
     argv: list[str]
     cwd: Path | None = None
+    env: dict[str, str] | None = None
 
 
 @dataclass
@@ -146,7 +147,7 @@ def default_runners(root: Path) -> list[Runner]:
         Runner(
             "typescript",
             ["npx", "tsx", "benchmark.ts"],
-            cwd=root / "examples" / "js" / "node",
+            cwd=root / "examples" / "js",
         ),
         Runner(
             "deno",
@@ -158,17 +159,18 @@ def default_runners(root: Path) -> list[Runner]:
                 "--allow-env",
                 "benchmark.ts",
             ],
-            cwd=root / "examples" / "js" / "deno",
+            cwd=root / "examples" / "js",
         ),
         Runner(
             "bun",
             ["bun", "benchmark.ts"],
-            cwd=root / "examples" / "js" / "bun",
+            cwd=root / "examples" / "js",
         ),
         Runner(
             "wasm",
             ["npx", "tsx", "benchmark.ts"],
-            cwd=root / "examples" / "js" / "wasm",
+            cwd=root / "examples" / "js",
+            env={"GALLEY_WASM": "1"},
         ),
         Runner(
             "java",
@@ -186,6 +188,7 @@ def default_runners(root: Path) -> list[Runner]:
 
 def run_one(runner: Runner, sample: Path, iterations: int) -> int:
     argv = [*runner.argv, str(sample), str(iterations)]
+    env = {**os.environ, **runner.env} if runner.env else None
     result = subprocess.run(
         argv,
         cwd=runner.cwd,
@@ -193,6 +196,7 @@ def run_one(runner: Runner, sample: Path, iterations: int) -> int:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
