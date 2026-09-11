@@ -1,0 +1,5 @@
+# The sdist carries the same no-checkout inputs as the wheel: the compile
+# kit and the generator CLI for every platform (both staged at publish;
+# the repo never tracks them).
+recursive-include galley_bindings/compile-kit *
+recursive-include galley_bindings/generator *

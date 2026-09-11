@@ -216,6 +216,41 @@ jobs:
           python -m galley_bindings bindings/python/test-fixture
           PYTHONPATH="$GITHUB_WORKSPACE/bindings/python/test-fixture" python bindings/python/tests/test_bindings.py
 
+      - name: Prove no-checkout generate and compile (python)
+        if: ${{ matrix.language == 'python' }}
+        run: |
+          # The kit ships compile inputs in the wheel; assemble it the way
+          # publish does (the repo never tracks it). The host generator
+          # binary stands in for the staged platform package (linux-x64 on
+          # this runner).
+          ./scripts/js/assemble_compile_kit.sh bindings/python/galley_bindings/compile-kit
+          zig build -Doptimize=ReleaseFast galley
+          mkdir -p bindings/python/galley_bindings/generator/cli-linux-x64/bin
+          cp zig-out/bin/galley bindings/python/galley_bindings/generator/cli-linux-x64/bin/galley
+          rm -rf /tmp/py-proof && mkdir -p /tmp/py-proof
+          cp bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/python/test-fixture/procedures.py /tmp/py-proof/
+          # The real entry point, not the gate directly: generation must
+          # use the shipped binary, and compiling (library plus extension)
+          # must succeed with no checkout.
+          env -u GALLEY_CHECKOUT python -m galley_bindings /tmp/py-proof
+          ls /tmp/py-proof/libgalley-python.* /tmp/py-proof/galley*.so /tmp/py-proof/galley.pyi
+          for generated in _ll-parser.zig _lr-parser.zig metadata.json; do
+            if [ -f bindings/python/test-fixture/$generated ]; then
+              cmp bindings/python/test-fixture/$generated /tmp/py-proof/$generated || exit 1
+            fi
+          done
+          # Determinism: with the kit hidden, generation (via the shipped
+          # binary) succeeds but the build must fail loudly naming what it
+          # needs instead of guessing.
+          mv bindings/python/galley_bindings/compile-kit /tmp/py-proof/kit-hidden
+          if env -u GALLEY_CHECKOUT GALLEY_CLI="$PWD/bindings/python/galley_bindings/generator/cli-linux-x64/bin/galley" python -m galley_bindings /tmp/py-proof 2>/tmp/py-proof/stderr.txt; then
+            echo "python build without compile inputs unexpectedly succeeded"
+            exit 1
+          fi
+          grep -q 'compile-kit' /tmp/py-proof/stderr.txt || exit 1
+          mv /tmp/py-proof/kit-hidden bindings/python/galley_bindings/compile-kit
+          rm -rf bindings/python/galley_bindings/compile-kit bindings/python/galley_bindings/generator
+
       - name: Build example (typescript)
         if: ${{ matrix.language == 'typescript' }}
         working-directory: examples/js

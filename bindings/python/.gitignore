@@ -9,3 +9,7 @@ build/
 /test-fixture/galley.*.so
 /test-fixture/galley.pyi
 /test-fixture/libgalley-python.*
+# Assembled on demand by scripts/js/assemble_compile_kit.sh, never tracked.
+/galley_bindings/compile-kit/
+# Staged at publish from the shared CLI artifacts, never tracked.
+/galley_bindings/generator/

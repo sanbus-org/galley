@@ -1,18 +1,19 @@
 #!/bin/bash
-# Assembles the dependency-less compile kit shipped inside @sanbus/galley-core.
+# Assembles the dependency-less compile kit shipped inside @sanbus/galley-core
+# and the galley-bindings Python wheel.
 #
 # The kit is the consumer build plus every source it reads, copied from this
 # checkout: the consumer build.zig verbatim, and under sources/ a slim
 # dependency root (a stub build.zig re-exporting build/common.zig) holding
 # verbatim copies of build/common.zig, src/runtime/, the CLI
-# procedure/error-message templates, bindings/c/capi.zig and galley.h, and
-# the Node NAPI addon.c.
+# procedure/error-message templates, bindings/c/capi.zig and galley.h, the
+# Node NAPI addon.c, and the Python extension source (_galley.c) plus its
+# PEP 484 stub.
 #
-# Nothing here is a second implementation: the gate (builder.mjs) invokes
-# the same consumer build with the same flags; only the source root differs
-# (kit for consumers, GALLEY_CHECKOUT for contributors). The repo never
-# tracks the kit: publish assembles it into the tarball, contributors and CI
-# assemble it on demand.
+# One assembler, one source list: every binding ships the same kit and only
+# the source root differs at build time (kit for consumers, GALLEY_CHECKOUT
+# for contributors). The repo never tracks the kit: publish assembles it
+# into the tarball/wheel, contributors and CI assemble it on demand.
 #
 # Usage: ./scripts/js/assemble_compile_kit.sh [DEST]
 # DEST defaults to bindings/js/core/compile-kit.
@@ -35,7 +36,9 @@ for source in \
 	"$ROOT/src/cli/templates/lr_error_messages.zig" \
 	"$ROOT/bindings/c/capi.zig" \
 	"$ROOT/bindings/c/galley.h" \
-	"$ROOT/bindings/js/node/addon.c"; do
+	"$ROOT/bindings/js/node/addon.c" \
+	"$ROOT/bindings/python/_galley.c" \
+	"$ROOT/bindings/python/galley.pyi"; do
 	test -f "$source" || {
 		echo "assemble_compile_kit: missing $source" >&2
 		exit 1
@@ -45,7 +48,7 @@ done
 rm -rf "$DEST"
 mkdir -p "$DEST/sources/build" "$DEST/sources/src/runtime" \
 	"$DEST/sources/src/cli/templates" "$DEST/sources/bindings/c" \
-	"$DEST/sources/bindings/js/node"
+	"$DEST/sources/bindings/js/node" "$DEST/sources/bindings/python"
 
 cp "$ROOT/bindings/c/consumer/build.zig" "$DEST/build.zig"
 cat >"$DEST/build.zig.zon" <<EOF
@@ -101,4 +104,5 @@ for template in procedures.zig ll_error_messages.zig lr_error_messages.zig; do
 done
 cp "$ROOT/bindings/c/capi.zig" "$ROOT/bindings/c/galley.h" "$DEST/sources/bindings/c/"
 cp "$ROOT/bindings/js/node/addon.c" "$DEST/sources/bindings/js/node/addon.c"
+cp "$ROOT/bindings/python/_galley.c" "$ROOT/bindings/python/galley.pyi" "$DEST/sources/bindings/python/"
 echo "assemble_compile_kit: $DEST"
