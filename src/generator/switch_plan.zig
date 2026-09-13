@@ -25,7 +25,29 @@ pub const Node = struct {
 };
 
 pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node {
+    try diagnoseEqualBytes(allocator, source_entries);
     return buildWithInheritedFallback(allocator, source_entries, 0, null);
+}
+
+/// Rejects identical byte strings bound to different targets. Checking the
+/// top-level entries suffices: equal full strings are equal here, and equal
+/// suffixes deeper in the tree imply equal full strings. Prefix-related
+/// entries differ and pass through to longest-match planning.
+fn diagnoseEqualBytes(allocator: std.mem.Allocator, entries: []const Entry) !void {
+    for (entries, 0..) |lhs, i| {
+        for (entries[i + 1 ..]) |rhs| {
+            if (lhs.target == rhs.target) continue;
+            if (!std.mem.eql(u8, lhs.terminal, rhs.terminal)) continue;
+            var message = std.Io.Writer.Allocating.init(allocator);
+            defer message.deinit();
+            const writer = &message.writer;
+            try writer.print("ambiguous token: byte sequence ", .{});
+            try common.emitStringLiteral(writer, lhs.terminal);
+            try writer.print(" matches two alternatives with identical bytes and no longest match, so give one side an exception or merge the targets", .{});
+            std.log.warn("{s}", .{message.written()});
+            return error.AmbiguousGrammar;
+        }
+    }
 }
 
 const InheritedFallback = struct {
@@ -149,6 +171,54 @@ fn entriesEqualPayload(node: *const Node, entries: []const Entry) bool {
         if (lhs.target != rhs.target or !std.mem.eql(u8, lhs.terminal, rhs.terminal)) return false;
     }
     return true;
+}
+
+test "switch planning rejects identical bytes with different targets" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // digit vs "1": same byte, different targets. No longest match exists.
+    try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
+        .{ .terminal = "1", .target = 0 },
+        .{ .terminal = "1", .target = 1 },
+    }));
+    // NUL terminal vs EOF: same byte, different targets.
+    try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
+        .{ .terminal = "\x00", .target = 0 },
+        .{ .terminal = "\x00", .target = 1 },
+    }));
+    // Verbatim-style empty match on two targets is the same conflict.
+    try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
+        .{ .terminal = "", .target = 0 },
+        .{ .terminal = "", .target = 1 },
+    }));
+}
+
+test "switch planning keeps identical bytes with one target and prefix families" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Same bytes, same target: dedup, no conflict. Heads with equal
+    // payloads still group together.
+    const shared = try build(allocator, &.{
+        .{ .terminal = "1", .target = 0 },
+        .{ .terminal = "1", .target = 0 },
+        .{ .terminal = "2", .target = 0 },
+    });
+    try std.testing.expect(shared.fallback == null);
+    try std.testing.expectEqual(@as(usize, 1), shared.groups.items.len);
+    try std.testing.expectEqual(@as(usize, 2), shared.groups.items[0].heads.items.len);
+
+    // Prefix family: short terminal is the fallback, continuation is the
+    // child group. Deterministic longest-match, not a conflict.
+    const prefixed = try build(allocator, &.{
+        .{ .terminal = "=", .target = 0 },
+        .{ .terminal = "==", .target = 1 },
+    });
+    try std.testing.expectEqual(@as(?usize, 0), prefixed.groups.items[0].child.fallback);
+    try std.testing.expectEqual(@as(usize, 1), prefixed.groups.items[0].child.fallback_length);
 }
 
 test "switch planning preserves grouped heads fallback and leaf topology" {
