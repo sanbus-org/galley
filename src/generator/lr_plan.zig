@@ -59,9 +59,12 @@ pub const LRPlan = struct {
     recovery: recovery_planning.Plan = .{},
 
     pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar) !LRPlan {
+        var analysis = try common.analyzeGrammarSets(allocator, grammar);
+        defer analysis.deinit();
         var builder = Builder{
             .allocator = allocator,
             .grammar = grammar,
+            .analysis = &analysis,
             .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
         };
         try builder.buildStates();
@@ -90,6 +93,7 @@ const SyntaxErrorSite = enum { action, state, goto };
 const Builder = struct {
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
+    analysis: *const common.GrammarAnalysis,
     plan: LRPlan,
 
     fn buildStates(self: *Builder) !void {
@@ -241,7 +245,7 @@ const Builder = struct {
 
             var lookaheads = std.AutoHashMap(usize, void).init(self.allocator);
             defer lookaheads.deinit();
-            try common.firstsAfterItem(self.allocator, self.grammar, item, &lookaheads);
+            try common.firstsAfterItemWithAnalysis(self.grammar, self.analysis, item, &lookaheads);
             for (self.grammar.rules.items, 0..) |candidate_rule, rule_index| {
                 if (candidate_rule.header != head_symbol) continue;
                 var iterator = lookaheads.keyIterator();
@@ -500,9 +504,12 @@ test "LR action gate reports generative overlap with state and both sides" {
 
     // The table gate fires before any switch is planned, so this failure
     // cannot come from `diagnoseEqualBytes`.
+    var analysis = try common.analyzeGrammarSets(allocator, &grammar);
+    defer analysis.deinit();
     var gate = Builder{
         .allocator = allocator,
         .grammar = &grammar,
+        .analysis = &analysis,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();
@@ -565,9 +572,12 @@ test "LR action gate reports nullable letter tail overlapping a lowercase follow
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
 
+    var analysis = try common.analyzeGrammarSets(allocator, &grammar);
+    defer analysis.deinit();
     var gate = Builder{
         .allocator = allocator,
         .grammar = &grammar,
+        .analysis = &analysis,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();

@@ -51,6 +51,8 @@ pub fn build(
     }
 
     if (grammar.uses_explicit_recovery) {
+        var analysis = try common.analyzeGrammarSets(allocator, grammar);
+        defer analysis.deinit();
         for (states) |state| {
             var metadata = StateMetadata{};
             for (state.items.items, 0..) |item, item_index| {
@@ -64,7 +66,7 @@ pub fn build(
                 if (grammar.symbols.items[child_variable].kind != .variable) continue;
                 var lookaheads = std.AutoHashMap(usize, void).init(allocator);
                 defer lookaheads.deinit();
-                try common.firstsAfterItem(allocator, grammar, parent, &lookaheads);
+                try common.firstsAfterItemWithAnalysis(grammar, &analysis, parent, &lookaheads);
                 const procedure_occurrence = common.procedureOccurrenceFor(grammar, parent.rule, parent.head);
                 for (state.items.items, 0..) |child, child_index| {
                     if (child.head != 0 or child.variable != child_variable or !lookaheads.contains(child.lookahead) or
