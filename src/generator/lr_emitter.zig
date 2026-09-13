@@ -201,6 +201,14 @@ const Generator = struct {
             \\        }
             \\        if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
             \\    }
+            \\    // Bounds check so the stack reads below never peek an empty stack.
+            \\    // Only configurations that read the stack are gated; no-AST/
+            \\    // no-procedure parsers keep theirs empty by design.
+            \\    if (comptime is_ast_enabled or are_procedures_enabled) {
+            \\        if (stack.storage.items.len == 0) {
+            \\            return root.ParseError.SyntaxError;
+            \\        }
+            \\    }
             \\    if (context.verbosityLevel() > 0) {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
