@@ -63,7 +63,6 @@ pub fn main(init: std.process.Init) !void {
             .allocator = init.arena.allocator(),
             .source = source,
             .parser_type = parser_type,
-            .options = options.generator_options,
             .strip_recovery_annotations = options.strip_recovery_annotations,
         },
         ParserEmission.emit,
@@ -101,16 +100,18 @@ const ParserEmission = struct {
     allocator: std.mem.Allocator,
     source: []const u8,
     parser_type: generator.ParserType,
-    options: generator.Options,
     strip_recovery_annotations: bool,
 
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
+        // Single generation channel: emitted parsers are configuration
+        // independent and read `config.zig` at comptime. Option flags only
+        // shape `--config-output`.
         if (self.strip_recovery_annotations) {
             const grammar = try generator.parseGrammar(self.allocator, self.source);
             const automatic_grammar = try generator.grammarWithoutRecoveryAnnotations(self.allocator, grammar);
-            try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, self.options);
+            try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, .{});
         } else {
-            try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, self.options);
+            try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{});
         }
     }
 };
