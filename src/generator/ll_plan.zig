@@ -329,6 +329,9 @@ const Builder = struct {
     pending_ambiguity: ?Ambiguity = null,
 
     fn analyzeGrammar(self: *Builder) !void {
+        var analysis = try common.analyzeGrammarSets(self.allocator, self.grammar);
+        defer analysis.deinit();
+
         self.plan.nullable_rules = try self.allocator.alloc(?usize, self.grammar.symbols.items.len);
         @memset(self.plan.nullable_rules, null);
         self.plan.first_sets = try self.allocator.alloc([]const TerminalRule, self.grammar.symbols.items.len);
@@ -337,15 +340,56 @@ const Builder = struct {
         for (self.plan.follow_sets) |*set| set.* = &.{};
 
         for (self.grammar.variables.items) |variable| {
-            self.plan.nullable_rules[variable] = try common.nullableRule(self.allocator, self.grammar, variable, null);
+            self.plan.nullable_rules[variable] = try common.nullableRuleFromNullable(
+                self.allocator,
+                self.grammar,
+                analysis.nullable,
+                variable,
+            );
             var first_map = std.AutoHashMap(usize, usize).init(self.allocator);
             defer first_map.deinit();
-            try self.firsts(variable, &first_map, null);
+            for (self.grammar.rules.items, 0..) |rule, rule_index| {
+                if (rule.header != variable) continue;
+                for (rule.rhs.items) |symbol_index| {
+                    if (self.grammar.symbols.items[symbol_index].kind != .variable) {
+                        try self.putUnique(&first_map, variable, symbol_index, rule_index);
+                        break;
+                    }
+                    var it = analysis.firsts[symbol_index].keyIterator();
+                    while (it.next()) |entry| try self.putUnique(&first_map, variable, entry.*, rule_index);
+                    if (!analysis.nullable[symbol_index]) break;
+                }
+            }
             self.plan.first_sets[variable] = try self.terminalRulesFromMap(first_map);
 
             var follow_map = std.AutoHashMap(usize, usize).init(self.allocator);
             defer follow_map.deinit();
-            try self.follows(variable, &follow_map, null);
+            for (self.grammar.rules.items, 0..) |rule, rule_index| {
+                for (rule.rhs.items, 0..) |symbol_index, rhs_pos| {
+                    if (symbol_index != variable) continue;
+                    var propagated = true;
+                    var next_pos = rhs_pos + 1;
+                    while (next_pos < rule.rhs.items.len) : (next_pos += 1) {
+                        const next_symbol_index = rule.rhs.items[next_pos];
+                        if (self.grammar.symbols.items[next_symbol_index].kind == .variable) {
+                            var it = analysis.firsts[next_symbol_index].keyIterator();
+                            while (it.next()) |entry| try follow_map.put(entry.*, rule_index);
+                            if (!analysis.nullable[next_symbol_index]) {
+                                propagated = false;
+                                break;
+                            }
+                        } else {
+                            try follow_map.put(next_symbol_index, rule_index);
+                            propagated = false;
+                            break;
+                        }
+                    }
+                    if (propagated and rule.header != variable) {
+                        var it = analysis.follows[rule.header].keyIterator();
+                        while (it.next()) |entry| try follow_map.put(entry.*, rule_index);
+                    }
+                }
+            }
             self.plan.follow_sets[variable] = try self.terminalRulesFromMap(follow_map);
         }
         try common.validateVerbatimSymbols(self.allocator, self.grammar);
@@ -358,81 +402,6 @@ const Builder = struct {
             try result.append(self.allocator, .{ .terminal = entry.key_ptr.*, .rule = entry.value_ptr.* });
         }
         return result.toOwnedSlice(self.allocator);
-    }
-
-    fn firsts(self: *Builder, variable: usize, out: *std.AutoHashMap(usize, usize), visited: ?*std.AutoHashMap(usize, void)) !void {
-        if (visited) |set| {
-            if (set.contains(variable)) return;
-        }
-        var local_visited = std.AutoHashMap(usize, void).init(self.allocator);
-        defer local_visited.deinit();
-        if (visited) |set| {
-            var it = set.iterator();
-            while (it.next()) |entry| try local_visited.put(entry.key_ptr.*, {});
-        }
-        try local_visited.put(variable, {});
-
-        for (self.grammar.rules.items, 0..) |rule, rule_index| {
-            if (rule.header != variable) continue;
-            for (rule.rhs.items) |symbol_index| {
-                const symbol = self.grammar.symbols.items[symbol_index];
-                if (symbol.kind == .variable) {
-                    var child_firsts = std.AutoHashMap(usize, usize).init(self.allocator);
-                    defer child_firsts.deinit();
-                    try self.firsts(symbol_index, &child_firsts, &local_visited);
-                    var child_iterator = child_firsts.iterator();
-                    while (child_iterator.next()) |entry| try self.putUnique(out, variable, entry.key_ptr.*, rule_index);
-                } else {
-                    try self.putUnique(out, variable, symbol_index, rule_index);
-                }
-                if (symbol.kind != .variable or try common.nullableRule(self.allocator, self.grammar, symbol_index, null) == null) break;
-            }
-        }
-    }
-
-    fn follows(self: *Builder, variable: usize, out: *std.AutoHashMap(usize, usize), visited: ?*std.AutoHashMap(usize, void)) !void {
-        if (visited) |set| {
-            if (set.contains(variable)) return;
-        }
-        var local_visited = std.AutoHashMap(usize, void).init(self.allocator);
-        defer local_visited.deinit();
-        if (visited) |set| {
-            var it = set.iterator();
-            while (it.next()) |entry| try local_visited.put(entry.key_ptr.*, {});
-        }
-        try local_visited.put(variable, {});
-
-        for (self.grammar.rules.items, 0..) |rule, rule_index| {
-            for (rule.rhs.items, 0..) |symbol_index, rhs_pos| {
-                if (symbol_index != variable) continue;
-                var propagated = true;
-                var next_pos = rhs_pos + 1;
-                while (next_pos < rule.rhs.items.len) : (next_pos += 1) {
-                    const next_symbol_index = rule.rhs.items[next_pos];
-                    const next_symbol = self.grammar.symbols.items[next_symbol_index];
-                    if (next_symbol.kind == .variable) {
-                        var next_firsts = std.AutoHashMap(usize, usize).init(self.allocator);
-                        defer next_firsts.deinit();
-                        try self.firsts(next_symbol_index, &next_firsts, null);
-                        var it = next_firsts.iterator();
-                        while (it.next()) |entry| try out.put(entry.key_ptr.*, rule_index);
-                    } else {
-                        try out.put(next_symbol_index, rule_index);
-                    }
-                    if (next_symbol.kind != .variable or try common.nullableRule(self.allocator, self.grammar, next_symbol_index, null) == null) {
-                        propagated = false;
-                        break;
-                    }
-                }
-                if (propagated and rule.header != variable) {
-                    var header_follow = std.AutoHashMap(usize, usize).init(self.allocator);
-                    defer header_follow.deinit();
-                    try self.follows(rule.header, &header_follow, &local_visited);
-                    var it = header_follow.iterator();
-                    while (it.next()) |entry| try out.put(entry.key_ptr.*, rule_index);
-                }
-            }
-        }
     }
 
     fn buildParseTable(self: *Builder) !void {

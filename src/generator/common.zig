@@ -248,8 +248,13 @@ pub fn prepareGrammar(
     }
 
     std.mem.sort(Rule, result.rules.items, result.symbols.items, ruleLessThan);
-    for (result.variables.items) |variable| {
-        _ = try nullableRule(allocator, &result, variable, null);
+    {
+        const nullable = try allocator.alloc(bool, result.symbols.items.len);
+        defer allocator.free(nullable);
+        computeNullableFixpoint(&result, nullable);
+        for (result.variables.items) |variable| {
+            _ = try nullableRuleFromNullable(allocator, &result, nullable, variable);
+        }
     }
     return result;
 }
@@ -335,54 +340,209 @@ pub fn nullableAmbiguityMessage(
     );
 }
 
+/// Nullable flags plus FIRST/FOLLOW terminal sets indexed by symbol.
+/// Emptiness is reported through `nullable` rather than epsilon tokens.
+pub const GrammarAnalysis = struct {
+    nullable: []bool,
+    firsts: []std.AutoHashMap(usize, void),
+    follows: []std.AutoHashMap(usize, void),
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *GrammarAnalysis) void {
+        self.allocator.free(self.nullable);
+        for (self.firsts) |*map| map.deinit();
+        self.allocator.free(self.firsts);
+        for (self.follows) |*map| map.deinit();
+        self.allocator.free(self.follows);
+    }
+
+    pub fn isNullable(self: *const GrammarAnalysis, symbol: usize) bool {
+        return self.nullable[symbol];
+    }
+};
+
+fn computeNullableFixpoint(grammar: *const PreparedGrammar, nullable: []bool) void {
+    @memset(nullable, false);
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (grammar.rules.items) |rule| {
+            if (nullable[rule.header]) continue;
+            var rule_nullable = true;
+            for (rule.rhs.items) |symbol_index| {
+                if (grammar.symbols.items[symbol_index].kind != .variable or !nullable[symbol_index]) {
+                    rule_nullable = false;
+                    break;
+                }
+            }
+            if (rule_nullable) {
+                nullable[rule.header] = true;
+                changed = true;
+            }
+        }
+    }
+}
+
+/// Computes nullable plus FIRST and FOLLOW terminal sets once per grammar.
+/// FIRST(A) holds every terminal that can start a derivation of A; FOLLOW(A)
+/// holds every terminal that can follow A. Neither stores epsilon; emptiness
+/// is reported through `nullable`.
+pub fn analyzeGrammarSets(allocator: std.mem.Allocator, grammar: *const PreparedGrammar) !GrammarAnalysis {
+    const nullable = try allocator.alloc(bool, grammar.symbols.items.len);
+    errdefer allocator.free(nullable);
+    computeNullableFixpoint(grammar, nullable);
+
+    var firsts = try allocator.alloc(std.AutoHashMap(usize, void), grammar.symbols.items.len);
+    errdefer allocator.free(firsts);
+    for (firsts) |*map| map.* = std.AutoHashMap(usize, void).init(allocator);
+    errdefer {
+        for (firsts) |*map| map.deinit();
+    }
+
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (grammar.rules.items) |rule| {
+            for (rule.rhs.items) |symbol_index| {
+                if (grammar.symbols.items[symbol_index].kind != .variable) {
+                    if (!firsts[rule.header].contains(symbol_index)) {
+                        try firsts[rule.header].put(symbol_index, {});
+                        changed = true;
+                    }
+                    break;
+                }
+                // Adding a variable's own FIRST set to itself is a no-op;
+                // skipping also avoids mutating a map while iterating it.
+                if (symbol_index != rule.header) {
+                    var it = firsts[symbol_index].keyIterator();
+                    while (it.next()) |entry| {
+                        if (!firsts[rule.header].contains(entry.*)) {
+                            try firsts[rule.header].put(entry.*, {});
+                            changed = true;
+                        }
+                    }
+                }
+                if (!nullable[symbol_index]) break;
+            }
+        }
+    }
+
+    var follows = try allocator.alloc(std.AutoHashMap(usize, void), grammar.symbols.items.len);
+    errdefer allocator.free(follows);
+    for (follows) |*map| map.* = std.AutoHashMap(usize, void).init(allocator);
+    errdefer {
+        for (follows) |*map| map.deinit();
+    }
+
+    changed = true;
+    while (changed) {
+        changed = false;
+        for (grammar.rules.items) |rule| {
+            for (rule.rhs.items, 0..) |symbol_index, position| {
+                if (grammar.symbols.items[symbol_index].kind != .variable) continue;
+                var next = position + 1;
+                var propagates = true;
+                while (next < rule.rhs.items.len) {
+                    const next_index = rule.rhs.items[next];
+                    if (grammar.symbols.items[next_index].kind != .variable) {
+                        if (!follows[symbol_index].contains(next_index)) {
+                            try follows[symbol_index].put(next_index, {});
+                            changed = true;
+                        }
+                        propagates = false;
+                        break;
+                    }
+                    var it = firsts[next_index].keyIterator();
+                    while (it.next()) |entry| {
+                        if (!follows[symbol_index].contains(entry.*)) {
+                            try follows[symbol_index].put(entry.*, {});
+                            changed = true;
+                        }
+                    }
+                    if (!nullable[next_index]) {
+                        propagates = false;
+                        break;
+                    }
+                    next += 1;
+                }
+                // Empty or fully nullable suffix: FOLLOW(header) flows here.
+                // Self-propagation is a no-op; skipping avoids iterating a
+                // map while mutating it.
+                if (propagates and rule.header != symbol_index) {
+                    var it = follows[rule.header].keyIterator();
+                    while (it.next()) |entry| {
+                        if (!follows[symbol_index].contains(entry.*)) {
+                            try follows[symbol_index].put(entry.*, {});
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return .{ .nullable = nullable, .firsts = firsts, .follows = follows, .allocator = allocator };
+}
+
+/// Given a finished nullable table, returns the index of the sole nullable
+/// rule for `variable`, or null when none exists. Two nullable productions
+/// report both shapes and return `error.AmbiguousGrammar`.
+pub fn nullableRuleFromNullable(
+    allocator: std.mem.Allocator,
+    grammar: *const PreparedGrammar,
+    nullable: []const bool,
+    variable: usize,
+) !?usize {
+    var found: ?usize = null;
+    for (grammar.rules.items, 0..) |rule, rule_index| {
+        if (rule.header != variable) continue;
+        var rule_nullable = true;
+        for (rule.rhs.items) |symbol_index| {
+            if (grammar.symbols.items[symbol_index].kind != .variable or !nullable[symbol_index]) {
+                rule_nullable = false;
+                break;
+            }
+        }
+        if (!rule_nullable) continue;
+        if (found) |first| {
+            const message = try nullableAmbiguityMessage(
+                allocator,
+                grammar.symbols.items,
+                variable,
+                grammar.rules.items[first],
+                rule,
+            );
+            defer allocator.free(message);
+            std.log.warn("{s}", .{message});
+            return error.AmbiguousGrammar;
+        }
+        found = rule_index;
+    }
+    return found;
+}
+
 /// Returns the index of the sole nullable rule for `variable`, or null when
 /// none exists. When two or more productions of the same variable are
 /// nullable the grammar is ambiguous and `error.AmbiguousGrammar` is
 /// returned after reporting the variable and both productions.
-/// Copy-on-write visited propagation keeps the recursion free of the
-/// caller's set.
 pub fn nullableRule(
     allocator: std.mem.Allocator,
     grammar: *const PreparedGrammar,
     variable: usize,
-    visited: ?*std.AutoHashMap(usize, void),
 ) !?usize {
-    if (visited) |set| if (set.contains(variable)) return null;
-    var local_visited = std.AutoHashMap(usize, void).init(allocator);
-    defer local_visited.deinit();
-    if (visited) |set| {
-        var it = set.keyIterator();
-        while (it.next()) |entry| try local_visited.put(entry.*, {});
-    }
-    try local_visited.put(variable, {});
-    var found: ?usize = null;
-    for (grammar.rules.items, 0..) |rule, rule_index| {
-        if (rule.header != variable) continue;
-        for (rule.rhs.items) |symbol_index| {
-            if (grammar.symbols.items[symbol_index].kind != .variable or try nullableRule(allocator, grammar, symbol_index, &local_visited) == null) break;
-        } else {
-            if (found) |first| {
-                const message = try nullableAmbiguityMessage(
-                    allocator,
-                    grammar.symbols.items,
-                    variable,
-                    grammar.rules.items[first],
-                    rule,
-                );
-                defer allocator.free(message);
-                std.log.warn("{s}", .{message});
-                return error.AmbiguousGrammar;
-            }
-            found = rule_index;
-        }
-    }
-    return found;
+    const nullable = try allocator.alloc(bool, grammar.symbols.items.len);
+    defer allocator.free(nullable);
+    computeNullableFixpoint(grammar, nullable);
+    return nullableRuleFromNullable(allocator, grammar, nullable, variable);
 }
 
 /// Rejects grammars whose verbatim-annotated RHS positions can match empty
 /// input, shared by the LL and LR planners.
 pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const PreparedGrammar) !void {
     if (!grammar.uses_verbatim) return;
+    const nullable = try allocator.alloc(bool, grammar.symbols.items.len);
+    defer allocator.free(nullable);
+    computeNullableFixpoint(grammar, nullable);
     for (grammar.rules.items) |rule| {
         for (rule.rhs.items, 0..) |symbol_index, position| {
             const annotations = rule.rhs_annotations.items[position];
@@ -395,7 +555,7 @@ pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const Pre
             const symbol = grammar.symbols.items[symbol_index];
             const empty_matchable = switch (symbol.kind) {
                 .terminal, .generative_terminal => symbol.id.len == 0,
-                .variable => try nullableRule(allocator, grammar, symbol_index, null) != null,
+                .variable => try nullableRuleFromNullable(allocator, grammar, nullable, symbol_index) != null,
                 .end => false,
             };
             if (empty_matchable) return error.EmptyVerbatimSymbol;
@@ -403,43 +563,12 @@ pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const Pre
     }
 }
 
-/// Collects the FIRST terminal symbol indices of `variable` into `out`.
-pub fn firstsOfVariable(
-    allocator: std.mem.Allocator,
-    grammar: *const PreparedGrammar,
-    variable: usize,
-    out: *std.AutoHashMap(usize, void),
-    visited: ?*std.AutoHashMap(usize, void),
-) !void {
-    if (visited) |set| if (set.contains(variable)) return;
-    var local_visited = std.AutoHashMap(usize, void).init(allocator);
-    defer local_visited.deinit();
-    if (visited) |set| {
-        var it = set.keyIterator();
-        while (it.next()) |entry| try local_visited.put(entry.*, {});
-    }
-    try local_visited.put(variable, {});
-    for (grammar.rules.items) |rule| {
-        if (rule.header != variable) continue;
-        for (rule.rhs.items) |symbol_index| {
-            const symbol = grammar.symbols.items[symbol_index];
-            if (symbol.kind == .variable) {
-                try firstsOfVariable(allocator, grammar, symbol_index, out, &local_visited);
-                if (try nullableRule(allocator, grammar, symbol_index, null) == null) break;
-            } else {
-                try out.put(symbol_index, {});
-                break;
-            }
-        }
-    }
-}
-
 /// Collects the FIRST terminals of the symbols appearing after the dot of an
 /// item, falling back to the item's own lookahead when the tail is empty or
 /// fully nullable.
-pub fn firstsAfterItem(
-    allocator: std.mem.Allocator,
+pub fn firstsAfterItemWithAnalysis(
     grammar: *const PreparedGrammar,
+    analysis: *const GrammarAnalysis,
     item: anytype,
     out: *std.AutoHashMap(usize, void),
 ) !void {
@@ -447,10 +576,10 @@ pub fn firstsAfterItem(
     var index = item.head + 1;
     while (index < rule.rhs.items.len) : (index += 1) {
         const symbol_index = rule.rhs.items[index];
-        const symbol = grammar.symbols.items[symbol_index];
-        if (symbol.kind == .variable) {
-            try firstsOfVariable(allocator, grammar, symbol_index, out, null);
-            if (try nullableRule(allocator, grammar, symbol_index, null) == null) return;
+        if (grammar.symbols.items[symbol_index].kind == .variable) {
+            var it = analysis.firsts[symbol_index].keyIterator();
+            while (it.next()) |entry| try out.put(entry.*, {});
+            if (!analysis.nullable[symbol_index]) return;
         } else {
             try out.put(symbol_index, {});
             return;
