@@ -673,6 +673,9 @@ pub fn emitProcedureSupport(
     augmented_start: usize,
     generative_terminal: ?usize,
 ) !void {
+    const rule_procedure_quota = @max(1000, rules.len * 8);
+    const symbol_procedure_quota = @max(1000, symbols.len * 8);
+    const variable_procedure_quota = @max(1000, variables.len * 8);
     try writer.print(
         \\const ProcedureSequenceNode = struct {{
         \\    procedure: *const data_structures.Procedure,
@@ -680,6 +683,7 @@ pub fn emitProcedureSupport(
         \\}};
         \\
         \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
+        \\    @setEvalBranchQuota(@max(1000, procedure_names.len * 8));
         \\    if (procedure_names.len == 0) return null;
         \\    const procedure_name = procedure_names[0];
         \\    return &ProcedureSequenceNode{{
@@ -698,6 +702,7 @@ pub fn emitProcedureSupport(
         \\}}
         \\
         \\pub const rule_procedures = rule_procedures: {{
+        \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
         \\
         \\    for (rules, 0..) |rule, index| {{
@@ -711,6 +716,7 @@ pub fn emitProcedureSupport(
         \\}};
         \\
         \\pub const symbol_procedures = symbol_procedures: {{
+        \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
         \\
         \\    for (symbols, 0..) |symbol, index| {{
@@ -725,7 +731,7 @@ pub fn emitProcedureSupport(
         \\
         \\const variable_procedure_names = &[_][]const []const u8{{
         \\
-    , .{ rules.len, rules.len, symbols.len, symbols.len });
+    , .{ rule_procedure_quota, rules.len, rules.len, symbol_procedure_quota, symbols.len, symbols.len });
     for (variables) |symbol_index| {
         const symbol = symbols[symbol_index];
         try writer.writeAll("    &[_][]const u8{");
@@ -762,6 +768,7 @@ pub fn emitProcedureSupport(
     try writer.print(
         \\
         \\pub const variable_procedures = variable_procedures: {{
+        \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
         \\
         \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
@@ -774,7 +781,7 @@ pub fn emitProcedureSupport(
         \\pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
         \\
         \\
-    , .{ variables.len, variables.len });
+    , .{ variable_procedure_quota, variables.len, variables.len });
     try emitStrictReductionCheck(allocator, writer, rules, symbols, augmented_start, generative_terminal);
 }
 

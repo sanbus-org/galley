@@ -97,7 +97,6 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
     const ArgType = signature_fn_info.params[0].type orelse @compileError(std.fmt.comptimePrint("{s} procedure: Generic parameters not allwoed here", .{
         procedure_name,
     }));
-    const arg_type_info = @typeInfo(ArgType);
 
     const ProcedureType = @TypeOf(procedure);
     const procedure_type_info = @typeInfo(ProcedureType);
@@ -147,16 +146,6 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
                 procedure_name,
                 *ProcedureArguments,
             }));
-        }
-
-        const procedure_arg_type_info = @typeInfo(@typeInfo(ProcedureArgType).pointer.child);
-        inline for (procedure_arg_type_info.@"struct".fields) |field| {
-            if (!@hasField(arg_type_info.pointer.child, field.name)) {
-                @compileError(std.fmt.comptimePrint("{s} procedure: Args is missing required field: '{s}'", .{
-                    procedure_name,
-                    field.name,
-                }));
-            }
         }
     }
 
