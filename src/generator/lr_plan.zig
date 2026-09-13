@@ -125,7 +125,11 @@ const Builder = struct {
             for (state.items.items) |item| {
                 const rule = self.grammar.rules.items[item.rule];
                 if (item.variable == self.plan.augmented_start) {
-                    try self.addAction(state, .{ .terminal = self.plan.eof, .kind = .accept });
+                    // Accept only with the dot after the original start. State 0 holds
+                    // `_AugmentedStart -> . Start EOF` and must not accept empty input.
+                    if (item.head > 0) {
+                        try self.addAction(state, .{ .terminal = self.plan.eof, .kind = .accept });
+                    }
                 } else if (item.head < rule.rhs.items.len) {
                     const head_symbol = rule.rhs.items[item.head];
                     if (self.grammar.symbols.items[head_symbol].kind != .variable) {
@@ -158,9 +162,10 @@ const Builder = struct {
     fn addAction(self: *Builder, state: *State, action: Action) !void {
         for (state.actions.items) |*existing| {
             if (existing.terminal != action.terminal) continue;
+            if (existing.kind == .accept and action.kind == .accept) return;
             if (existing.kind == .accept or action.kind == .accept) {
-                existing.* = if (existing.kind == .accept) existing.* else action;
-                return;
+                try self.reportActionConflict(state, existing.*, action);
+                return error.AmbiguousGrammar;
             }
             if (existing.kind == action.kind and existing.state == action.state and existing.rule == action.rule) {
                 if (self.occurrencesEquivalent(existing.occurrence, action.occurrence)) return;
@@ -409,6 +414,28 @@ test "LR planning completes canonical topology decisions and recovery metadata" 
     for (plan.state_decisions.items) |decision| {
         if (decision.action_tree.fallback == null) try std.testing.expect(decision.action_tree.diagnostic != null);
     }
+}
+
+test "LR plan accepts only after the original start" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const grammar = try testPreparedGrammar(allocator);
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = true };
+    const plan = try LRPlan.build(allocator, &grammar, options);
+
+    // State 0 holds `_AugmentedStart -> . Root EOF` and must not accept on EOF.
+    for (plan.states.items[0].actions.items) |action| {
+        try std.testing.expect(action.kind != .accept);
+    }
+    // The state past the original start accepts on EOF.
+    var found_accept = false;
+    for (plan.states.items) |state| {
+        for (state.actions.items) |action| {
+            if (action.kind == .accept and action.terminal == plan.eof) found_accept = true;
+        }
+    }
+    try std.testing.expect(found_accept);
 }
 
 fn testAmbiguousGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {

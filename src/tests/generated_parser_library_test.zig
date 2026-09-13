@@ -298,3 +298,17 @@ test "generated_parser_api parse files" {
         try expectParsedAll(result, sample_path, sample_input, "parse files");
     }
 }
+
+test "generated_parser_api LR empty input is rejected" {
+    if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
+    if (comptime parser.parser.parser_type != .lr) return error.SkipZigTest;
+    // Every LR matrix language has a non-nullable start: empty input must be
+    // SyntaxError in AST-on and AST-off builds, never a false success or an
+    // out-of-range stack read.
+    for ([_][]const u8{ "", "\x00" }) |input| {
+        try std.testing.expectError(
+            parser.ParseError.SyntaxError,
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic }),
+        );
+    }
+}
