@@ -156,7 +156,9 @@ fn stepLength(entries: []const Entry) usize {
     for (entries) |entry| {
         if (entry.terminal.len > 0) result = @min(result, entry.terminal.len);
     }
-    return result;
+    // Case values are u128, so a switch compares at most 16 bytes. Longer
+    // heads continue in a child node instead of truncating through bytesToInt.
+    return @min(result, 16);
 }
 
 fn groupLessThan(_: void, lhs: Group, rhs: Group) bool {
@@ -263,4 +265,40 @@ test "switch planning inherits ancestor fallback length" {
     const length_leaf = l.groups.items[0].child;
     try std.testing.expectEqual(@as(?usize, 3), length_leaf.fallback);
     try std.testing.expectEqual(@as(usize, 7), length_leaf.fallback_length);
+}
+
+test "switch planning caps steps at 16 bytes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Unique 17-byte terminal: root compares the first 16 bytes, the final
+    // byte continues in the child.
+    const single = try build(allocator, &.{
+        .{ .terminal = "abcdefghijklmnopq", .target = 0 },
+    });
+    try std.testing.expectEqual(@as(usize, 16), single.step_length);
+    try std.testing.expectEqual(@as(usize, 16), single.groups.items[0].heads.items[0].len);
+    try std.testing.expectEqual(@as(usize, 1), single.groups.items[0].child.step_length);
+
+    // Two 17-byte terminals differing in the first byte stay distinct: with
+    // 16-byte heads their case values differ instead of truncating to equal.
+    const colliding = try build(allocator, &.{
+        .{ .terminal = "A1234567890123456", .target = 0 },
+        .{ .terminal = "B1234567890123456", .target = 1 },
+    });
+    try std.testing.expectEqual(@as(usize, 16), colliding.step_length);
+    try std.testing.expectEqual(@as(usize, 2), colliding.groups.items.len);
+    const case_a = common.bytesToInt(colliding.groups.items[0].heads.items[0]);
+    const case_b = common.bytesToInt(colliding.groups.items[1].heads.items[0]);
+    try std.testing.expect(case_a != case_b);
+
+    // Remaining suffixes longer than 16 bytes cap the child step as well.
+    const suffixes = try build(allocator, &.{
+        .{ .terminal = "Q", .target = 0 },
+        .{ .terminal = "Qaaaaaaaaaaaaaaaaa", .target = 1 },
+        .{ .terminal = "Qbbbbbbbbbbbbbbbbb", .target = 2 },
+    });
+    const tail = suffixes.groups.items[0].child;
+    try std.testing.expectEqual(@as(usize, 16), tail.step_length);
 }
