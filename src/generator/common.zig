@@ -827,6 +827,30 @@ pub fn longestRecoveryTerminalLength(symbols: []const Symbol, rules: []const Rul
     return longest;
 }
 
+/// Identical bytes only; prefixes stay longest-match.
+pub fn overlappingTerminalMember(a: []const []const u8, b: []const []const u8) ?[]const u8 {
+    for (a) |x| {
+        for (b) |y| {
+            if (std.mem.eql(u8, x, y)) return x;
+        }
+    }
+    return null;
+}
+
+/// Null for identical indices; otherwise the first shared byte sequence.
+pub fn overlappingSymbolMember(symbols: []const Symbol, a: usize, b: usize) ?[]const u8 {
+    if (a == b) return null;
+    if (a >= symbols.len or b >= symbols.len) return null;
+    return overlappingTerminalMember(symbols[a].terminals.items, symbols[b].terminals.items);
+}
+
+test "overlapping members require identical bytes" {
+    try std.testing.expectEqualStrings("a", overlappingTerminalMember(&.{ "a", "ab" }, &.{"a"}).?);
+    try std.testing.expect(overlappingTerminalMember(&.{"="}, &.{"=="}) == null);
+    try std.testing.expect(overlappingTerminalMember(&.{""}, &.{""}).?.len == 0);
+    try std.testing.expect(overlappingTerminalMember(&.{"a"}, &.{"b"}) == null);
+}
+
 pub fn recoveryOccurrenceTargetId(symbol_count: usize, rules: []const Rule, rule_index: usize, position: usize) usize {
     var id = symbol_count + rules.len;
     for (rules[0..rule_index]) |rule| id += rule.rhs.items.len;

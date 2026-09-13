@@ -161,18 +161,24 @@ const Builder = struct {
 
     fn addAction(self: *Builder, state: *State, action: Action) !void {
         for (state.actions.items) |*existing| {
-            if (existing.terminal != action.terminal) continue;
+            const overlap: ?[]const u8 = if (existing.terminal == action.terminal)
+                null
+            else
+                common.overlappingSymbolMember(self.grammar.symbols.items, existing.terminal, action.terminal) orelse continue;
             if (existing.kind == .accept and action.kind == .accept) return;
             if (existing.kind == .accept or action.kind == .accept) {
-                try self.reportActionConflict(state, existing.*, action);
+                try self.reportActionConflict(state, existing.*, action, overlap);
                 return error.AmbiguousGrammar;
             }
             if (existing.kind == action.kind and existing.state == action.state and existing.rule == action.rule) {
-                if (self.occurrencesEquivalent(existing.occurrence, action.occurrence)) return;
+                if (self.occurrencesEquivalent(existing.occurrence, action.occurrence)) {
+                    if (overlap == null) return;
+                    continue;
+                }
                 try self.reportProcedureHooksConflict(state, existing.*);
                 return error.AmbiguousProcedureHooks;
             }
-            try self.reportActionConflict(state, existing.*, action);
+            try self.reportActionConflict(state, existing.*, action, overlap);
             return error.AmbiguousGrammar;
         }
         try state.actions.append(self.allocator, action);
@@ -186,15 +192,31 @@ const Builder = struct {
         std.log.warn("ambiguous grammar: state {d} has multiple procedure hooks on the same reduction:\n  {s}", .{ state_index, existing_rule_text });
     }
 
-    fn reportActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action) !void {
-        const state_index = self.stateIndex(state.*) orelse return;
-        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, existing.terminal);
-        defer self.allocator.free(terminal_name);
+    fn reportActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action, overlap: ?[]const u8) !void {
+        const message = try self.explainActionConflict(state, existing, incoming, overlap);
+        defer self.allocator.free(message);
+        std.log.warn("{s}", .{message});
+    }
+
+    fn explainActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action, overlap: ?[]const u8) ![]const u8 {
+        const state_index = self.stateIndex(state.*) orelse 0;
         const existing_text = try self.describeAction(existing);
         defer self.allocator.free(existing_text);
         const incoming_text = try self.describeAction(incoming);
         defer self.allocator.free(incoming_text);
-        std.log.warn("ambiguous grammar: state {d}, terminal {s} has conflicting actions:\n  {s}\n  {s}", .{ state_index, terminal_name, existing_text, incoming_text });
+        if (overlap) |bytes| {
+            const existing_name = try common.symbolText(self.allocator, self.grammar.symbols.items, existing.terminal);
+            defer self.allocator.free(existing_name);
+            const incoming_name = try common.symbolText(self.allocator, self.grammar.symbols.items, incoming.terminal);
+            defer self.allocator.free(incoming_name);
+            var overlap_literal = std.Io.Writer.Allocating.init(self.allocator);
+            defer overlap_literal.deinit();
+            try common.emitStringLiteral(&overlap_literal.writer, bytes);
+            return try std.fmt.allocPrint(self.allocator, "ambiguous grammar: state {d}, terminals {s} and {s} share bytes {s} with conflicting actions:\n  {s}\n  {s}", .{ state_index, existing_name, incoming_name, overlap_literal.written(), existing_text, incoming_text });
+        }
+        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, existing.terminal);
+        defer self.allocator.free(terminal_name);
+        return try std.fmt.allocPrint(self.allocator, "ambiguous grammar: state {d}, terminal {s} has conflicting actions:\n  {s}\n  {s}", .{ state_index, terminal_name, existing_text, incoming_text });
     }
 
     fn describeAction(self: *Builder, action: Action) ![]const u8 {
@@ -461,4 +483,151 @@ test "LR planning reports conflicting actions" {
     const grammar = try testAmbiguousGrammar(allocator);
     const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar, options));
+}
+
+test "LR action gate reports generative overlap with state and both sides" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Direct overlap: `digit` vs literal "1" start different productions, so
+    // state 0 holds two shifts on different symbols sharing byte "1".
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const digit = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "digit", .generative_terminal);
+    const one = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "1", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{digit});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{one});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+
+    // The table gate fires before any switch is planned, so this failure
+    // cannot come from `diagnoseEqualBytes`.
+    var gate = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = options,
+        .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
+    };
+    try gate.buildStates();
+    try std.testing.expectError(error.AmbiguousGrammar, gate.buildParseTable());
+
+    // State 0 contains the overlapping shifts; find them.
+    var shift_digit: ?Action = null;
+    var shift_one: ?Action = null;
+    for (gate.plan.states.items[0].items.items) |item| {
+        const rule = grammar.rules.items[item.rule];
+        if (item.head >= rule.rhs.items.len) continue;
+        const head = rule.rhs.items[item.head];
+        if (head == digit) {
+            const target = try gate.gotoState(gate.plan.states.items[0], head);
+            const target_index = gate.stateIndex(target) orelse continue;
+            shift_digit = .{ .terminal = head, .kind = .shift, .state = target_index };
+        }
+        if (head == one) {
+            const target = try gate.gotoState(gate.plan.states.items[0], head);
+            const target_index = gate.stateIndex(target) orelse continue;
+            shift_one = .{ .terminal = head, .kind = .shift, .state = target_index };
+        }
+    }
+    try std.testing.expect(shift_digit != null and shift_one != null);
+    const overlap = common.overlappingSymbolMember(grammar.symbols.items, digit, one);
+    try std.testing.expect(overlap != null);
+    try std.testing.expectEqualStrings("1", overlap.?);
+
+    var probe = State{};
+    try gate.addAction(&probe, shift_digit.?);
+    try std.testing.expectError(error.AmbiguousGrammar, gate.addAction(&probe, shift_one.?));
+
+    const message = try gate.explainActionConflict(&gate.plan.states.items[0], shift_digit.?, shift_one.?, overlap);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "state 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "\"digit\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "share bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "shift to state") != null);
+}
+
+test "LR action gate reports nullable letter tail overlapping a lowercase follower" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Same shape as the LL nullable-tail case: `Tail` is nullable with FIRST
+    // `letter`, FOLLOW(`Tail`) holds `lowercase_letter` via
+    // `Root -> Tail lowercase_letter`. State 0 then shifts on `letter` while
+    // reducing `Tail -> <empty>` on overlapping `lowercase_letter`.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Tail", .variable);
+    const letter = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "letter", .generative_terminal);
+    const lower = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "lowercase_letter", .generative_terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, lower });
+    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{letter});
+    try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+
+    var gate = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = options,
+        .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
+    };
+    try gate.buildStates();
+    try std.testing.expectError(error.AmbiguousGrammar, gate.buildParseTable());
+
+    var empty_rule: ?usize = null;
+    for (grammar.rules.items, 0..) |rule, rule_index| {
+        if (rule.header == tail and rule.rhs.items.len == 0) empty_rule = rule_index;
+    }
+    try std.testing.expect(empty_rule != null);
+    const shift_target = try gate.gotoState(gate.plan.states.items[0], letter);
+    const shift_index = gate.stateIndex(shift_target) orelse return error.TestExpectedShiftState;
+    const shift_letter: Action = .{ .terminal = letter, .kind = .shift, .state = shift_index };
+    const reduce_empty: Action = .{ .terminal = lower, .kind = .reduce, .rule = empty_rule.? };
+    const overlap = common.overlappingSymbolMember(grammar.symbols.items, letter, lower);
+    try std.testing.expect(overlap != null);
+    try std.testing.expectEqualStrings("a", overlap.?);
+
+    var probe = State{};
+    try gate.addAction(&probe, shift_letter);
+    try std.testing.expectError(error.AmbiguousGrammar, gate.addAction(&probe, reduce_empty));
+
+    const message = try gate.explainActionConflict(&gate.plan.states.items[0], shift_letter, reduce_empty, overlap);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "state 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "\"letter\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "\"lowercase_letter\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "share bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "reduce by Tail -> <empty>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "shift to state") != null);
+}
+
+test "LR action gate keeps prefix families longest-match" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const eq = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "=", .terminal);
+    const eqeq = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "==", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{eq});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{eqeq});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+    const plan = try LRPlan.build(allocator, &grammar, options);
+    try std.testing.expect(plan.states.items.len > 1);
 }

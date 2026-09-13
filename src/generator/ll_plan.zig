@@ -72,12 +72,12 @@ pub const LLPlan = struct {
                 if (try factorSharedPrefixStep(allocator, grammar, options, ambiguity)) {
                     factoring_steps += 1;
                     if (factoring_steps > max_automatic_factoring_steps) {
-                        try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+                        try builder.reportAmbiguity(ambiguity);
                         return error.AmbiguousGrammar;
                     }
                     continue;
                 }
-                try builder.reportAmbiguity(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+                try builder.reportAmbiguity(ambiguity);
                 return error.AmbiguousGrammar;
             }
             try builder.planAstSuppressedParsers();
@@ -112,7 +112,17 @@ pub const LLPlan = struct {
     }
 };
 
-const Ambiguity = struct { variable: usize, terminal: usize, rule_a: usize, rule_b: usize };
+const Ambiguity = struct {
+    variable: usize,
+    terminal: usize,
+    rule_a: usize,
+    rule_b: usize,
+    /// Set only for expanded-member overlap between two different terminal
+    /// symbols. `terminal` is the first side, `other_terminal` the second,
+    /// and `overlap` the shared byte sequence that collides.
+    other_terminal: ?usize = null,
+    overlap: ?[]const u8 = null,
+};
 
 /// Bounds automatic left-factoring rewrites per grammar so a pathological
 /// conflict cycle fails with `AmbiguousGrammar` instead of looping.
@@ -436,37 +446,83 @@ const Builder = struct {
 
     fn addParseEntry(self: *Builder, entry: ParseEntry) !void {
         for (self.plan.parse_table.items) |existing| {
-            if (existing.variable != entry.variable or existing.terminal != entry.terminal) continue;
-            if (existing.rule != entry.rule) {
-                if (self.pending_ambiguity == null) {
-                    self.pending_ambiguity = .{ .variable = entry.variable, .terminal = entry.terminal, .rule_a = existing.rule, .rule_b = entry.rule };
+            if (existing.variable != entry.variable) continue;
+            if (existing.terminal == entry.terminal) {
+                if (existing.rule != entry.rule) {
+                    if (self.pending_ambiguity == null) {
+                        self.pending_ambiguity = .{ .variable = entry.variable, .terminal = entry.terminal, .rule_a = existing.rule, .rule_b = entry.rule };
+                    }
                 }
+                return;
+            }
+            if (existing.rule == entry.rule) continue;
+            const overlap = common.overlappingSymbolMember(self.grammar.symbols.items, existing.terminal, entry.terminal) orelse continue;
+            if (self.pending_ambiguity == null) {
+                self.pending_ambiguity = .{
+                    .variable = entry.variable,
+                    .terminal = existing.terminal,
+                    .rule_a = existing.rule,
+                    .rule_b = entry.rule,
+                    .other_terminal = entry.terminal,
+                    .overlap = overlap,
+                };
             }
             return;
         }
         try self.plan.parse_table.append(self.allocator, entry);
     }
 
-    fn reportAmbiguity(self: *Builder, variable: usize, terminal: usize, rule_a: usize, rule_b: usize) !void {
-        const message = try self.explainConflict(variable, terminal, rule_a, rule_b);
+    fn reportAmbiguity(self: *Builder, ambiguity: Ambiguity) !void {
+        const message = try self.explainConflict(ambiguity);
         defer self.allocator.free(message);
         std.log.warn("{s}", .{message});
     }
 
-    fn explainConflict(self: *Builder, variable: usize, terminal: usize, rule_a: usize, rule_b: usize) ![]const u8 {
+    fn explainConflict(self: *Builder, ambiguity: Ambiguity) ![]const u8 {
         var out = std.ArrayList(u8).empty;
-        const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
+        const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, ambiguity.variable);
         defer self.allocator.free(variable_name);
-        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, terminal);
+        if (ambiguity.other_terminal) |other_terminal| {
+            const terminal_a_name = try common.symbolText(self.allocator, self.grammar.symbols.items, ambiguity.terminal);
+            defer self.allocator.free(terminal_a_name);
+            const terminal_b_name = try common.symbolText(self.allocator, self.grammar.symbols.items, other_terminal);
+            defer self.allocator.free(terminal_b_name);
+            var overlap_literal = std.Io.Writer.Allocating.init(self.allocator);
+            defer overlap_literal.deinit();
+            if (ambiguity.overlap) |bytes| {
+                try common.emitStringLiteral(&overlap_literal.writer, bytes);
+            } else {
+                try overlap_literal.writer.writeAll("\"\"");
+            }
+            try out.appendSlice(self.allocator, "ambiguous grammar: variable ");
+            try out.appendSlice(self.allocator, variable_name);
+            try out.appendSlice(self.allocator, ", terminals ");
+            try out.appendSlice(self.allocator, terminal_a_name);
+            try out.appendSlice(self.allocator, " and ");
+            try out.appendSlice(self.allocator, terminal_b_name);
+            try out.appendSlice(self.allocator, " share bytes ");
+            try out.appendSlice(self.allocator, overlap_literal.written());
+            try out.appendSlice(self.allocator, " matching different productions:\n");
+            try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_a);
+            try self.appendProductionChain(&out, ambiguity.variable, other_terminal, ambiguity.rule_b);
+            if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |suggestion| {
+                defer self.allocator.free(suggestion);
+                try out.appendSlice(self.allocator, "  suggestion: left-factor the shared prefix\n  ");
+                try out.appendSlice(self.allocator, suggestion);
+                try out.appendSlice(self.allocator, "\n");
+            }
+            return out.toOwnedSlice(self.allocator);
+        }
+        const terminal_name = try common.symbolText(self.allocator, self.grammar.symbols.items, ambiguity.terminal);
         defer self.allocator.free(terminal_name);
         try out.appendSlice(self.allocator, "ambiguous grammar: variable ");
         try out.appendSlice(self.allocator, variable_name);
         try out.appendSlice(self.allocator, ", terminal ");
         try out.appendSlice(self.allocator, terminal_name);
         try out.appendSlice(self.allocator, " matches two productions:\n");
-        try self.appendProductionChain(&out, variable, terminal, rule_a);
-        try self.appendProductionChain(&out, variable, terminal, rule_b);
-        if (try self.leftFactorSuggestion(variable, rule_a, rule_b)) |suggestion| {
+        try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_a);
+        try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_b);
+        if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |suggestion| {
             defer self.allocator.free(suggestion);
             try out.appendSlice(self.allocator, "  suggestion: left-factor the shared prefix\n  ");
             try out.appendSlice(self.allocator, suggestion);
@@ -1140,7 +1196,7 @@ test "ambiguity explanation traces first and follow derivation chains" {
     try std.testing.expectEqual(tail, ambiguity.variable);
     try std.testing.expectEqual(open, ambiguity.terminal);
 
-    const message = try builder.explainConflict(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+    const message = try builder.explainConflict(ambiguity);
     defer allocator.free(message);
     try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail -> ConditionalBranch ConditionalBranchTail") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "    ConditionalBranch -> X Y") != null);
@@ -1178,7 +1234,7 @@ test "ambiguity explanation stops at a rule containing the terminal directly" {
     try builder.buildParseTable();
 
     const ambiguity = builder.pending_ambiguity.?;
-    const message = try builder.explainConflict(ambiguity.variable, ambiguity.terminal, ambiguity.rule_a, ambiguity.rule_b);
+    const message = try builder.explainConflict(ambiguity);
     defer allocator.free(message);
     try std.testing.expect(std.mem.indexOf(u8, message, "  Root -> Via\n    Via -> \"a\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "  Root -> \"a\"\n") != null);
@@ -1331,4 +1387,121 @@ test "left-factorization yields no suggestion without a shared prefix" {
         .plan = LLPlan.init(allocator),
     };
     try std.testing.expect(try builder.leftFactorSuggestion(root_index, rule_a, rule_b) == null);
+}
+
+test "LL table gate reports generative overlap with both productions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Direct overlap: `digit` expands to "0".."9", so byte "1" collides with
+    // the literal "1" on different productions of the same variable.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const digit = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "digit", .generative_terminal);
+    const one = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "1", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{digit});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{one});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try builder.analyzeGrammar();
+    try builder.buildParseTable();
+    const ambiguity = builder.pending_ambiguity orelse return error.TestExpectedAmbiguity;
+    try std.testing.expectEqual(root, ambiguity.variable);
+    try std.testing.expect(ambiguity.other_terminal != null);
+    try std.testing.expectEqualStrings("1", ambiguity.overlap.?);
+
+    const message = try builder.explainConflict(ambiguity);
+    defer allocator.free(message);
+    // Names the variable and both productions, not only the colliding byte.
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root -> \"digit\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root -> \"1\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "\"1\"") != null);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "LL table gate reports nullable letter tail overlapping a lowercase follower" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // `Tail` is nullable with FIRST `letter`; FOLLOW(`Tail`) contains
+    // `lowercase_letter` via `Root -> Tail lowercase_letter`. Every
+    // lowercase byte collides, so the FIRST/FOLLOW clash must surface at the
+    // parse-table gate with the Tail variable and both Tail productions.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Tail", .variable);
+    const letter = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "letter", .generative_terminal);
+    const lower = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "lowercase_letter", .generative_terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, lower });
+    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{letter});
+    try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try builder.analyzeGrammar();
+    try builder.buildParseTable();
+    const ambiguity = builder.pending_ambiguity orelse return error.TestExpectedAmbiguity;
+    try std.testing.expectEqual(tail, ambiguity.variable);
+    try std.testing.expect(ambiguity.other_terminal != null);
+    try std.testing.expectEqualStrings("a", ambiguity.overlap.?);
+
+    const message = try builder.explainConflict(ambiguity);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Tail") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Tail -> \"letter\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Tail -> <empty>") != null);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "LL table gate keeps prefix families longest-match" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // "=" vs "==" share a prefix but no identical bytes, so the table gate
+    // stays silent and the shared switch gate plans longest-match.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const eq = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "=", .terminal);
+    const eqeq = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "==", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{eq});
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{eqeq});
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
+    const plan = try LLPlan.build(allocator, &grammar, options);
+    try std.testing.expect(plan.has_parse_entries[root]);
 }
