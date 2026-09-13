@@ -58,17 +58,16 @@ pub const LRPlan = struct {
     eof: usize = 0,
     recovery: recovery_planning.Plan = .{},
 
-    pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, options: common.Options) !LRPlan {
+    pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar) !LRPlan {
         var builder = Builder{
             .allocator = allocator,
             .grammar = grammar,
-            .options = options,
             .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
         };
         try builder.buildStates();
         try builder.buildParseTable();
         try common.validateVerbatimSymbols(allocator, grammar);
-        builder.plan.recovery = try recovery_planning.build(allocator, grammar, options, builder.plan.states.items);
+        builder.plan.recovery = try recovery_planning.build(allocator, grammar, builder.plan.states.items);
         try builder.planStateDecisionsAndDiagnostics();
         try builder.planMetadata();
         return builder.plan;
@@ -91,7 +90,6 @@ const SyntaxErrorSite = enum { action, state, goto };
 const Builder = struct {
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
-    options: common.Options,
     plan: LRPlan,
 
     fn buildStates(self: *Builder) !void {
@@ -139,7 +137,7 @@ const Builder = struct {
                             .terminal = head_symbol,
                             .kind = .shift,
                             .state = target_index,
-                            .occurrence = common.procedureOccurrenceFor(self.grammar, self.options, item.rule, item.head),
+                            .occurrence = common.procedureOccurrenceFor(self.grammar, item.rule, item.head),
                         });
                     }
                 } else try self.addAction(state, .{
@@ -252,7 +250,7 @@ const Builder = struct {
                     .rule = rule_index,
                     .head = 0,
                     .lookahead = lookahead.*,
-                    .occurrence = common.procedureOccurrenceFor(self.grammar, self.options, item.rule, item.head),
+                    .occurrence = common.procedureOccurrenceFor(self.grammar, item.rule, item.head),
                 });
             }
         }
@@ -425,8 +423,7 @@ test "LR planning completes canonical topology decisions and recovery metadata" 
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testPreparedGrammar(allocator);
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = true };
-    const plan = try LRPlan.build(allocator, &grammar, options);
+    const plan = try LRPlan.build(allocator, &grammar);
 
     try std.testing.expect(plan.states.items.len > 1);
     try std.testing.expectEqual(plan.states.items.len, plan.state_decisions.items.len);
@@ -443,8 +440,7 @@ test "LR plan accepts only after the original start" {
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testPreparedGrammar(allocator);
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = true };
-    const plan = try LRPlan.build(allocator, &grammar, options);
+    const plan = try LRPlan.build(allocator, &grammar);
 
     // State 0 holds `_AugmentedStart -> . Root EOF` and must not accept on EOF.
     for (plan.states.items[0].actions.items) |action| {
@@ -481,8 +477,7 @@ test "LR planning reports conflicting actions" {
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testAmbiguousGrammar(allocator);
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
-    try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar, options));
+    try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar));
 }
 
 test "LR action gate reports generative overlap with state and both sides" {
@@ -503,14 +498,11 @@ test "LR action gate reports generative overlap with state and both sides" {
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
 
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
-
     // The table gate fires before any switch is planned, so this failure
     // cannot come from `diagnoseEqualBytes`.
     var gate = Builder{
         .allocator = allocator,
         .grammar = &grammar,
-        .options = options,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();
@@ -573,12 +565,9 @@ test "LR action gate reports nullable letter tail overlapping a lowercase follow
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
 
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
-
     var gate = Builder{
         .allocator = allocator,
         .grammar = &grammar,
-        .options = options,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();
@@ -627,7 +616,6 @@ test "LR action gate keeps prefix families longest-match" {
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
 
-    const options = common.Options{ .with_ast = false, .with_procedures = false, .with_error_recovery = false };
-    const plan = try LRPlan.build(allocator, &grammar, options);
+    const plan = try LRPlan.build(allocator, &grammar);
     try std.testing.expect(plan.states.items.len > 1);
 }

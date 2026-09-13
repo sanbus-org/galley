@@ -22,10 +22,6 @@ pub const Options = struct {
     allow_no_ast_tree_procedures: bool = false,
     require_reduction_procedures: bool = false,
     syntax_error_reporter: ?*const fn (message: []const u8) void = null,
-
-    pub fn validate(self: Options) !void {
-        _ = self;
-    }
 };
 
 pub const ErrorMessageSpec = struct {
@@ -463,11 +459,12 @@ pub fn firstsAfterItem(
     try out.put(item.lookahead, {});
 }
 
-/// Resolves whether a rule RHS position carries a recoverable procedure
-/// occurrence, shared by the LR planning and recovery passes.
+/// Resolves whether a rule RHS position carries a procedure occurrence.
+/// Grammar fact only: an occurrence exists whenever the grammar declares a
+/// procedure or verbatim at that position. Which occurrences run under a
+/// given configuration is decided at comptime inside the generated parser.
 pub fn procedureOccurrenceFor(
     grammar: *const PreparedGrammar,
-    options: Options,
     rule_index: usize,
     position: usize,
 ) ?RecoveryOccurrence {
@@ -475,9 +472,8 @@ pub fn procedureOccurrenceFor(
     if (position >= rule.rhs.items.len) return null;
     const annotations = rule.rhs_annotations.items[position];
     if (annotations.verbatim) return .{ .rule = rule_index, .position = position };
-    if (!options.with_procedures or annotations.procedures.items.len == 0) return null;
-    const symbol = grammar.symbols.items[rule.rhs.items[position]];
-    return if (symbolReturnsNode(symbol, options)) .{ .rule = rule_index, .position = position } else null;
+    if (annotations.procedures.items.len == 0) return null;
+    return .{ .rule = rule_index, .position = position };
 }
 
 pub fn addSymbol(

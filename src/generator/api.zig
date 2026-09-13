@@ -130,7 +130,6 @@ pub fn emitParser(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    try options.validate();
     switch (parser_type) {
         .ll => try ll_generator.emitParserWithOptions(allocator, parsed_grammar, writer, options),
         .lr => try lr_generator.emitParserWithOptions(allocator, parsed_grammar, writer, options),
@@ -144,7 +143,6 @@ pub fn emitErrorMessages(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    try options.validate();
     switch (parser_type) {
         .ll => try ll_generator.emitErrorMessagesWithOptions(allocator, parsed_grammar, writer, options),
         .lr => try lr_generator.emitErrorMessagesWithOptions(allocator, parsed_grammar, writer, options),
@@ -885,7 +883,7 @@ test "LR rejects indistinguishable variable and terminal occurrence hooks" {
     );
     try std.testing.expectError(
         error.AmbiguousProcedureHooks,
-        generateParserAlloc(arena.allocator(), terminal_source, .lr, .{ .ast_for_terminals = true }),
+        generateParserAlloc(arena.allocator(), terminal_source, .lr, .{}),
     );
 }
 
@@ -916,7 +914,49 @@ test "LR accepts indistinguishable occurrences with identical hook chains" {
     defer arena.deinit();
 
     _ = try generateParserAlloc(arena.allocator(), variable_source, .lr, .{});
-    _ = try generateParserAlloc(arena.allocator(), terminal_source, .lr, .{ .ast_for_terminals = true });
+    _ = try generateParserAlloc(arena.allocator(), terminal_source, .lr, .{});
+}
+
+test "LR terminal occurrence hooks survive default options" {
+    const source =
+        \\Start
+        \\| "a"@myhook
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // Occurrence metadata is a grammar fact: default `Options{}` must still
+    // emit the terminal hook so the `ast_for_terminals` comptime branch can run it.
+    const output = try generateParserAlloc(arena.allocator(), source, .lr, .{});
+    try std.testing.expect(std.mem.indexOf(u8, output, "comptime makeProcedureSequence(&[_][]const u8{\"hook_\" ++ \"myhook\"})") != null);
+}
+
+test "LR generation is configuration independent" {
+    const source =
+        \\Start
+        \\| "a"@myhook
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // One generation channel: the emitted parser enumerates every
+    // configuration via `config.zig` comptime gates, so the bytes must not
+    // depend on the `Options` present at generation time. The CLI and
+    // `generate-parser-file` both emit with `.{}` for this reason.
+    const default_output = try generateParserAlloc(arena.allocator(), source, .lr, .{});
+    const no_ast_output = try generateParserAlloc(arena.allocator(), source, .lr, .{
+        .with_ast = false,
+        .with_procedures = false,
+    });
+    const terminal_ast_output = try generateParserAlloc(arena.allocator(), source, .lr, .{
+        .ast_for_terminals = true,
+    });
+    try std.testing.expectEqualStrings(default_output, no_ast_output);
+    try std.testing.expectEqualStrings(default_output, terminal_ast_output);
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !usize {
@@ -1177,8 +1217,8 @@ test "Galley recovery annotations preserve the canonical LR topology" {
         .with_error_recovery = true,
     };
 
-    try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped, options));
-    try std.testing.expectEqual(@as(usize, 183), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated, options));
+    try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped));
+    try std.testing.expectEqual(@as(usize, 183), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

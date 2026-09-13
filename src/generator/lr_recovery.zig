@@ -23,7 +23,6 @@ pub const Plan = struct {
 pub fn build(
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
-    options: common.Options,
     states: anytype,
 ) !Plan {
     var result = Plan{};
@@ -36,8 +35,6 @@ pub fn build(
 
     // Grammar-fact gated: automatic candidates exist whenever the grammar
     // uses automatic (annotation-free) recovery, independent of options.
-    // (`options` still flows into occurrence metadata below until that pass
-    // is fully neutralized.)
     if (!grammar.uses_explicit_recovery) {
         for (states) |state| {
             var candidates = std.ArrayList([]const u8).empty;
@@ -68,7 +65,7 @@ pub fn build(
                 var lookaheads = std.AutoHashMap(usize, void).init(allocator);
                 defer lookaheads.deinit();
                 try common.firstsAfterItem(allocator, grammar, parent, &lookaheads);
-                const procedure_occurrence = common.procedureOccurrenceFor(grammar, options, parent.rule, parent.head);
+                const procedure_occurrence = common.procedureOccurrenceFor(grammar, parent.rule, parent.head);
                 for (state.items.items, 0..) |child, child_index| {
                     if (child.head != 0 or child.variable != child_variable or !lookaheads.contains(child.lookahead) or
                         !std.meta.eql(child.occurrence, procedure_occurrence)) continue;
