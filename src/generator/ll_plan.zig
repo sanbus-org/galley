@@ -1144,9 +1144,9 @@ test "ambiguity explanation traces first and follow derivation chains" {
     defer allocator.free(message);
     try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail -> ConditionalBranch ConditionalBranchTail") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "    ConditionalBranch -> X Y") != null);
-    try std.testing.expect(std.mem.indexOf(u8, message, "    X ->") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "    X -> <empty>") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "    Y -> X \"{\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail ->\n    Z -> ConditionalBranchTail \"{\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "  ConditionalBranchTail -> <empty>\n    Z -> ConditionalBranchTail \"{\"") != null);
 }
 
 test "ambiguity explanation stops at a rule containing the terminal directly" {

@@ -1301,3 +1301,16 @@ test "recovery annotation detection is independent of with_error_recovery (regre
         try std.testing.expect(std.mem.indexOf(u8, lr_output, "pub const has_recovery_annotations = false;") != null);
     }
 }
+
+test "epsilon/epsilon ambiguity is rejected for LL and LR" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const source = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        "tests/epsilon-ambiguity/grammar.grm",
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    try std.testing.expectError(error.AmbiguousGrammar, generateParserAlloc(arena.allocator(), source, .ll, .{}));
+    try std.testing.expectError(error.AmbiguousGrammar, generateParserAlloc(arena.allocator(), source, .lr, .{}));
+}

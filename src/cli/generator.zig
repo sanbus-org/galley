@@ -845,7 +845,6 @@ test "plain generation does not materialize error message files; fill does" {
     try cwd.writeFile(io, .{ .sub_path = grammar_path, .data =
         \\Document
         \\| PairList
-        \\|
         \\
         \\PairList
         \\| Pair PairListTail
@@ -856,7 +855,6 @@ test "plain generation does not materialize error message files; fill does" {
         \\
         \\Pair
         \\| Key ":" Number
-        \\|
         \\
         \\Key
         \\| letter KeyTail
