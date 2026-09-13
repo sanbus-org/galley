@@ -70,13 +70,13 @@ String
 
 _DoubleStringContent
 | "\\" character _DoubleStringContent
-| character^"\u{22}"^"\\" _DoubleStringContent
+| character^"\u{22}"^"\\"^"\n" _DoubleStringContent
 | new_line _DoubleStringContent
 |
 
 _SingleStringContent
 | "\\" character _SingleStringContent
-| character^"'"^"\\" _SingleStringContent
+| character^"'"^"\\"^"\n" _SingleStringContent
 | new_line _SingleStringContent
 |
 
@@ -85,12 +85,12 @@ LongString
 
 _LongStringContent
 | "]" _LongStringAfterBracket
-| character^"]" _LongStringContent
+| character^"]"^"\n" _LongStringContent
 | new_line _LongStringContent
 
 _LongStringAfterBracket
 | "]"
-| character^"]" _LongStringContent
+| character^"]"^"\n" _LongStringContent
 | new_line _LongStringContent
 
 _LineCommentTail

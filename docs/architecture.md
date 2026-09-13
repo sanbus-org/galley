@@ -28,6 +28,8 @@ Traditional parsers split execution into two passes: a lexer (tokenizer) that sc
 
 Galley eliminates the separate lexer pass entirely. Character matching and structural grammar reduction happen simultaneously in a single, unified pass over the source byte buffer, avoiding the token-allocation and intermediate-buffering overhead of a separate lexer.
 
+Token selection follows longest-match: when two terminals in one decision share a byte prefix (for example `"="` and `"=="`, or `">"` and `">="` inside `operator`), the shorter terminal is the fallback and the continuation is a nested group, so the longest available match wins deterministically in both LL and LR parsers. Identical byte strings with different targets have no longest match and are rejected at generation time as `AmbiguousGrammar`: give one side an exception (for example `character^"\n"` next to a `new_line` alternative) or merge the targets.
+
 ---
 
 ## Native Call-Stack Execution

@@ -227,13 +227,13 @@ HexDigitTail
 
 # Block comments #| ... |# (Common Lisp style: non-nesting)
 BlockCommentBody
-| character^"|" BlockCommentBody
+| character^"|"^"\n" BlockCommentBody
 | new_line BlockCommentBody
 | "|" BlockCommentAfterPipe
 
 BlockCommentAfterPipe
 | "#"
-| character^"#" BlockCommentBody
+| character^"#"^"\n"^"|" BlockCommentBody
 | new_line BlockCommentBody
 | "|" BlockCommentAfterPipe
 
@@ -244,7 +244,7 @@ String
 
 _StringContent
 | "\\" _EscapeSequence _StringContent
-| character^"\u{22}"^"\\" _StringContent
+| character^"\u{22}"^"\\"^"\n" _StringContent
 | new_line _StringContent
 |
 
