@@ -252,6 +252,9 @@ pub fn prepareGrammar(
     }
 
     std.mem.sort(Rule, result.rules.items, result.symbols.items, ruleLessThan);
+    for (result.variables.items) |variable| {
+        _ = try nullableRule(allocator, &result, variable, null);
+    }
     return result;
 }
 
@@ -270,13 +273,18 @@ pub fn symbolText(allocator: std.mem.Allocator, symbols: []const Symbol, symbol_
     };
 }
 
-/// Renders a production as `Header -> symbol symbol ...` for diagnostics.
+/// Renders a production as `Header -> symbol symbol ...` for diagnostics,
+/// or `Header -> <empty>` when the RHS is empty, matching `symbolsText`.
 pub fn ruleText(allocator: std.mem.Allocator, symbols: []const Symbol, rule: Rule) ![]const u8 {
     var out = std.ArrayList(u8).empty;
     const header = try symbolText(allocator, symbols, rule.header);
     defer allocator.free(header);
     try out.appendSlice(allocator, header);
     try out.appendSlice(allocator, " ->");
+    if (rule.rhs.items.len == 0) {
+        try out.appendSlice(allocator, " <empty>");
+        return out.toOwnedSlice(allocator);
+    }
     for (rule.rhs.items) |symbol_index| {
         const text = try symbolText(allocator, symbols, symbol_index);
         defer allocator.free(text);
@@ -309,9 +317,34 @@ pub fn symbolReturnsNode(symbol: Symbol, options: Options) bool {
     };
 }
 
-/// Returns the index of a rule for `variable` whose entire RHS is nullable,
-/// or null when no such rule exists (including cycles). Copy-on-write visited
-/// propagation keeps the recursion free of the caller's set.
+/// Formats the epsilon/epsilon diagnostic for `variable` with its first two
+/// nullable productions. Shared by `nullableRule` and its tests so the
+/// logged text is asserted, not just the error.
+pub fn nullableAmbiguityMessage(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    variable: usize,
+    first: Rule,
+    second: Rule,
+) ![]u8 {
+    const variable_name = symbols[variable].id;
+    const first_text = try ruleText(allocator, symbols, first);
+    defer allocator.free(first_text);
+    const second_text = try ruleText(allocator, symbols, second);
+    defer allocator.free(second_text);
+    return std.fmt.allocPrint(
+        allocator,
+        "ambiguous grammar: variable \"{s}\" has two nullable productions:\n  {s}\n  {s}",
+        .{ variable_name, first_text, second_text },
+    );
+}
+
+/// Returns the index of the sole nullable rule for `variable`, or null when
+/// none exists. When two or more productions of the same variable are
+/// nullable the grammar is ambiguous and `error.AmbiguousGrammar` is
+/// returned after reporting the variable and both productions.
+/// Copy-on-write visited propagation keeps the recursion free of the
+/// caller's set.
 pub fn nullableRule(
     allocator: std.mem.Allocator,
     grammar: *const PreparedGrammar,
@@ -326,13 +359,28 @@ pub fn nullableRule(
         while (it.next()) |entry| try local_visited.put(entry.*, {});
     }
     try local_visited.put(variable, {});
+    var found: ?usize = null;
     for (grammar.rules.items, 0..) |rule, rule_index| {
         if (rule.header != variable) continue;
         for (rule.rhs.items) |symbol_index| {
             if (grammar.symbols.items[symbol_index].kind != .variable or try nullableRule(allocator, grammar, symbol_index, &local_visited) == null) break;
-        } else return rule_index;
+        } else {
+            if (found) |first| {
+                const message = try nullableAmbiguityMessage(
+                    allocator,
+                    grammar.symbols.items,
+                    variable,
+                    grammar.rules.items[first],
+                    rule,
+                );
+                defer allocator.free(message);
+                std.log.warn("{s}", .{message});
+                return error.AmbiguousGrammar;
+            }
+            found = rule_index;
+        }
     }
-    return null;
+    return found;
 }
 
 /// Rejects grammars whose verbatim-annotated RHS positions can match empty
@@ -1123,6 +1171,34 @@ test "diagnostic symbol and rule text renders productions" {
     const rule_text = try ruleText(allocator, symbols.items, rule);
     defer allocator.free(rule_text);
     try std.testing.expectEqualStrings("Expression -> Term \"+\" Term", rule_text);
+
+    const empty_rule = Rule{ .header = expression, .rhs_index = "1" };
+    const empty_text = try ruleText(allocator, symbols.items, empty_rule);
+    defer allocator.free(empty_text);
+    try std.testing.expectEqualStrings("Expression -> <empty>", empty_text);
+}
+
+test "nullable ambiguity message names the variable and both productions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+    const variable = try addSymbol(allocator, &symbols, &variables, "A", .variable);
+    const other_variable = try addSymbol(allocator, &symbols, &variables, "B", .variable);
+
+    const empty_rule = Rule{ .header = variable, .rhs_index = "0" };
+    var second_rule = Rule{ .header = variable, .rhs_index = "1" };
+    try second_rule.rhs.append(allocator, other_variable);
+    try second_rule.rhs_annotations.append(allocator, .{});
+
+    const message = try nullableAmbiguityMessage(allocator, symbols.items, variable, empty_rule, second_rule);
+    defer allocator.free(message);
+    try std.testing.expectEqualStrings(
+        "ambiguous grammar: variable \"A\" has two nullable productions:\n  A -> <empty>\n  A -> B",
+        message,
+    );
 }
 
 test "strict reduction coverage selects visible productions only" {
