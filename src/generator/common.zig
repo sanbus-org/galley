@@ -921,34 +921,141 @@ pub fn indented(allocator: std.mem.Allocator, indent: []const u8, extra: usize) 
 }
 
 pub fn expandGenerativeTerminal(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), id: []const u8) !void {
-    if (std.mem.eql(u8, id, "digit")) return appendChars(allocator, out, "0123456789");
-    if (std.mem.eql(u8, id, "hex_digit")) return appendChars(allocator, out, "0123456789abcdefABCDEF");
-    if (std.mem.eql(u8, id, "letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    if (std.mem.eql(u8, id, "lowercase_letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyz");
-    if (std.mem.eql(u8, id, "uppercase_letter")) return appendChars(allocator, out, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    if (std.mem.eql(u8, id, "new_line")) return out.append(allocator, "\n");
-    if (std.mem.eql(u8, id, "space")) return out.append(allocator, " ");
-    if (std.mem.eql(u8, id, "block_start")) return out.append(allocator, "\x01");
-    if (std.mem.eql(u8, id, "block_end")) return out.append(allocator, "\x02");
-    if (std.mem.eql(u8, id, "utf8_lead_two")) return appendByteRange(allocator, out, 0xc2, 0xdf);
-    if (std.mem.eql(u8, id, "utf8_lead_three_general")) {
+    const caret = std.mem.indexOfScalar(u8, id, '^');
+    const base = if (caret) |index| id[0..index] else id;
+    var members: std.ArrayList([]const u8) = .empty;
+    defer members.deinit(allocator);
+    try expandBaseTerminal(allocator, &members, base);
+    if (caret == null) {
+        try out.appendSlice(allocator, members.items);
+        return;
+    }
+    var exceptions: std.ArrayList([]const u8) = .empty;
+    defer exceptions.deinit(allocator);
+    try parseExceptionTerminals(allocator, id, &exceptions);
+    for (members.items) |member| {
+        // Exceptions match members by whole-string equality.
+        var excluded = false;
+        for (exceptions.items) |exception| {
+            if (std.mem.eql(u8, member, exception)) {
+                excluded = true;
+                break;
+            }
+        }
+        if (!excluded) try out.append(allocator, member);
+    }
+}
+
+fn expandBaseTerminal(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), base: []const u8) !void {
+    if (std.mem.eql(u8, base, "digit")) return appendChars(allocator, out, "0123456789");
+    if (std.mem.eql(u8, base, "hex_digit")) return appendChars(allocator, out, "0123456789abcdefABCDEF");
+    if (std.mem.eql(u8, base, "letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    if (std.mem.eql(u8, base, "lowercase_letter")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyz");
+    if (std.mem.eql(u8, base, "uppercase_letter")) return appendChars(allocator, out, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    if (std.mem.eql(u8, base, "new_line")) return out.append(allocator, "\n");
+    if (std.mem.eql(u8, base, "space")) return out.append(allocator, " ");
+    if (std.mem.eql(u8, base, "block_start")) return out.append(allocator, "\x01");
+    if (std.mem.eql(u8, base, "block_end")) return out.append(allocator, "\x02");
+    if (std.mem.eql(u8, base, "utf8_lead_two")) return appendByteRange(allocator, out, 0xc2, 0xdf);
+    if (std.mem.eql(u8, base, "utf8_lead_three_general")) {
         try appendByteRange(allocator, out, 0xe1, 0xec);
         return appendByteRange(allocator, out, 0xee, 0xef);
     }
-    if (std.mem.eql(u8, id, "utf8_lead_four_general")) return appendByteRange(allocator, out, 0xf1, 0xf3);
-    if (std.mem.eql(u8, id, "utf8_continuation")) return appendByteRange(allocator, out, 0x80, 0xbf);
-    if (std.mem.eql(u8, id, "utf8_continuation_80_8f")) return appendByteRange(allocator, out, 0x80, 0x8f);
-    if (std.mem.eql(u8, id, "utf8_continuation_80_9f")) return appendByteRange(allocator, out, 0x80, 0x9f);
-    if (std.mem.eql(u8, id, "utf8_continuation_90_bf")) return appendByteRange(allocator, out, 0x90, 0xbf);
-    if (std.mem.eql(u8, id, "utf8_continuation_a0_bf")) return appendByteRange(allocator, out, 0xa0, 0xbf);
-    if (std.mem.startsWith(u8, id, "character")) return appendCharsExcept(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\x0b\x0c", id);
-    if (std.mem.startsWith(u8, id, "whitespace")) return appendChars(allocator, out, " \t\n\r\x0b\x0c");
-    if (std.mem.startsWith(u8, id, "punctuation")) return appendChars(allocator, out, "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
-    if (std.mem.startsWith(u8, id, "operator")) {
+    if (std.mem.eql(u8, base, "utf8_lead_four_general")) return appendByteRange(allocator, out, 0xf1, 0xf3);
+    if (std.mem.eql(u8, base, "utf8_continuation")) return appendByteRange(allocator, out, 0x80, 0xbf);
+    if (std.mem.eql(u8, base, "utf8_continuation_80_8f")) return appendByteRange(allocator, out, 0x80, 0x8f);
+    if (std.mem.eql(u8, base, "utf8_continuation_80_9f")) return appendByteRange(allocator, out, 0x80, 0x9f);
+    if (std.mem.eql(u8, base, "utf8_continuation_90_bf")) return appendByteRange(allocator, out, 0x90, 0xbf);
+    if (std.mem.eql(u8, base, "utf8_continuation_a0_bf")) return appendByteRange(allocator, out, 0xa0, 0xbf);
+    if (std.mem.eql(u8, base, "character")) return appendChars(allocator, out, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\x0b\x0c");
+    if (std.mem.eql(u8, base, "whitespace")) return appendChars(allocator, out, " \t\n\r\x0b\x0c");
+    if (std.mem.eql(u8, base, "punctuation")) return appendChars(allocator, out, "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
+    if (std.mem.eql(u8, base, "operator")) {
         for (&[_][]const u8{ "+", "*", "/", "&", "|", ">", ">=", "<", "<=", "=" }) |op| try out.append(allocator, op);
         return;
     }
     return error.UnknownGenerativeTerminal;
+}
+
+fn parseExceptionTerminals(allocator: std.mem.Allocator, id: []const u8, out: *std.ArrayList([]const u8)) !void {
+    var i = std.mem.indexOfScalar(u8, id, '^') orelse return;
+    while (i < id.len) {
+        i += 1;
+        if (i >= id.len) break;
+        if (i + 1 < id.len and id[i] == '\\' and id[i + 1] == '"') {
+            const end = rawStringEnd(id, i) orelse return error.InvalidRawString;
+            const content = try allocator.dupe(u8, id[i + 3 .. end - 2]);
+            try out.append(allocator, content);
+            i = end;
+            continue;
+        }
+        const quote = id[i];
+        i += 1;
+        var decoded = std.ArrayList(u8).empty;
+        defer decoded.deinit(allocator);
+        while (i < id.len and id[i] != quote) {
+            if (id[i] == '\\' and i + 1 < id.len) {
+                switch (id[i + 1]) {
+                    'n' => {
+                        try decoded.append(allocator, '\n');
+                        i += 2;
+                        continue;
+                    },
+                    'r' => {
+                        try decoded.append(allocator, '\r');
+                        i += 2;
+                        continue;
+                    },
+                    't' => {
+                        try decoded.append(allocator, '\t');
+                        i += 2;
+                        continue;
+                    },
+                    '\\' => {
+                        try decoded.append(allocator, '\\');
+                        i += 2;
+                        continue;
+                    },
+                    '"' => {
+                        try decoded.append(allocator, '"');
+                        i += 2;
+                        continue;
+                    },
+                    '\'' => {
+                        try decoded.append(allocator, '\'');
+                        i += 2;
+                        continue;
+                    },
+                    'x' => {
+                        if (i + 3 >= id.len) return error.InvalidRawString;
+                        const byte = std.fmt.parseInt(u8, id[i + 2 .. i + 4], 16) catch return error.InvalidRawString;
+                        try decoded.append(allocator, byte);
+                        i += 4;
+                        continue;
+                    },
+                    'u' => {
+                        if (i + 2 >= id.len or id[i + 2] != '{') return error.InvalidRawString;
+                        const end = std.mem.indexOfScalarPos(u8, id, i + 3, '}') orelse return error.InvalidRawString;
+                        const digits = id[i + 3 .. end];
+                        if (digits.len == 0 or digits.len > 2) return error.InvalidRawString;
+                        const byte = std.fmt.parseInt(u8, digits, 16) catch return error.InvalidRawString;
+                        try decoded.append(allocator, byte);
+                        i = end + 1;
+                        continue;
+                    },
+                    else => {
+                        try decoded.append(allocator, id[i + 1]);
+                        i += 2;
+                        continue;
+                    },
+                }
+            }
+            try decoded.append(allocator, id[i]);
+            i += 1;
+        }
+        if (i < id.len) i += 1;
+        try out.append(allocator, try decoded.toOwnedSlice(allocator));
+    }
 }
 
 fn appendChars(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), chars: []const u8) !void {
@@ -1026,6 +1133,9 @@ test "character exceptions exclude raw string and quoted content" {
     };
     const cases = [_]Case{
         .{ .id = "character^\"\n\"", .excluded = "\n" },
+        .{ .id = "character^\"\\n\"", .excluded = "\n" },
+        .{ .id = "character^\"\\t\"", .excluded = "\t" },
+        .{ .id = "character^\"\\r\"", .excluded = "\r" },
         .{ .id = "character^\\\"~\"~\"", .excluded = "\"" },
         .{ .id = "character^\\\"~\"~\"^\"\n\"^\"\\\\\"", .excluded = "\"\n\\" },
         .{ .id = "character^\\\"~x~\"^\"\n\"", .excluded = "x\n" },
@@ -1064,64 +1174,59 @@ test "character exceptions reject malformed raw strings" {
     }
 }
 
-fn appendCharsExcept(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), chars: []const u8, id: []const u8) !void {
-    var excluded = [_]bool{false} ** 256;
-    var i = std.mem.indexOfScalar(u8, id, '^') orelse id.len;
-    while (i < id.len) {
-        i += 1;
-        if (i >= id.len) break;
-        if (i + 1 < id.len and id[i] == '\\' and id[i + 1] == '"') {
-            const end = rawStringEnd(id, i) orelse return error.InvalidRawString;
-            const content_start = i + 3;
-            for (id[content_start .. end - 2]) |byte| excluded[byte] = true;
-            i = end;
-            continue;
-        }
-        const quote = id[i];
-        i += 1;
-        while (i < id.len and id[i] != quote) {
-            if (id[i] == '\\' and i + 1 < id.len) {
-                switch (id[i + 1]) {
-                    'n' => {
-                        excluded['\n'] = true;
-                        i += 2;
-                        continue;
-                    },
-                    'r' => {
-                        excluded['\r'] = true;
-                        i += 2;
-                        continue;
-                    },
-                    't' => {
-                        excluded['\t'] = true;
-                        i += 2;
-                        continue;
-                    },
-                    'u' => {
-                        if (i + 2 >= id.len or id[i + 2] != '{') return error.InvalidRawString;
-                        const end = std.mem.indexOfScalarPos(u8, id, i + 3, '}') orelse return error.InvalidRawString;
-                        const digits = id[i + 3 .. end];
-                        if (digits.len == 0 or digits.len > 2) return error.InvalidRawString;
-                        const byte = std.fmt.parseInt(u8, digits, 16) catch return error.InvalidRawString;
-                        excluded[byte] = true;
-                        i = end + 1;
-                        continue;
-                    },
-                    else => {},
-                }
+test "generative exceptions exclude whole terminals for every class" {
+    const Case = struct {
+        id: []const u8,
+        expected_count: usize,
+        present: []const u8,
+        absent: []const u8,
+    };
+    const cases = [_]Case{
+        .{ .id = "digit^\"1\"", .expected_count = 9, .present = "029", .absent = "1" },
+        .{ .id = "digit^\"1\"^\"3\"", .expected_count = 8, .present = "029", .absent = "13" },
+        .{ .id = "whitespace^\" \"", .expected_count = 5, .present = "\t\n", .absent = " " },
+        .{ .id = "punctuation^\".\"", .expected_count = 31, .present = "!,", .absent = "." },
+        .{ .id = "letter^\"a\"", .expected_count = 51, .present = "b", .absent = "a" },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    for (cases) |case| {
+        var expanded: std.ArrayList([]const u8) = .empty;
+        try expandGenerativeTerminal(arena.allocator(), &expanded, case.id);
+        try std.testing.expectEqual(case.expected_count, expanded.items.len);
+        for (case.present) |byte| {
+            var found = false;
+            for (expanded.items) |item| {
+                if (std.mem.eql(u8, item, &.{byte})) found = true;
             }
-            excluded[id[i]] = true;
-            i += 1;
+            try std.testing.expect(found);
         }
-        if (i < id.len) i += 1;
-    }
-    for (chars) |byte| {
-        if (!excluded[byte]) {
-            const item = try allocator.alloc(u8, 1);
-            item[0] = byte;
-            try out.append(allocator, item);
+        for (case.absent) |byte| {
+            for (expanded.items) |item| {
+                try std.testing.expect(!std.mem.eql(u8, item, &.{byte}));
+            }
         }
     }
+
+    var operator_single: std.ArrayList([]const u8) = .empty;
+    try expandGenerativeTerminal(arena.allocator(), &operator_single, "operator^\"+\"");
+    try std.testing.expectEqual(@as(usize, 9), operator_single.items.len);
+    for (operator_single.items) |item| {
+        try std.testing.expect(!std.mem.eql(u8, item, "+"));
+    }
+
+    var operator_multi: std.ArrayList([]const u8) = .empty;
+    try expandGenerativeTerminal(arena.allocator(), &operator_multi, "operator^\">=\"");
+    try std.testing.expectEqual(@as(usize, 9), operator_multi.items.len);
+    var saw_head = false;
+    var saw_tail = false;
+    for (operator_multi.items) |item| {
+        try std.testing.expect(!std.mem.eql(u8, item, ">="));
+        if (std.mem.eql(u8, item, ">")) saw_head = true;
+        if (std.mem.eql(u8, item, "=")) saw_tail = true;
+    }
+    try std.testing.expect(saw_head);
+    try std.testing.expect(saw_tail);
 }
 
 /// Returns the index just past the closing quote of a raw string literal that
