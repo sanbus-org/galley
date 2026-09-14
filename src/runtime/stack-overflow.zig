@@ -586,7 +586,9 @@ test "centered stack overflow excerpt stops at sentinel and clamps cursor" {
 
 test "stack overflow diagnostic captures parser location and token" {
     var input = [_]u8{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 0 };
+    var dummy_runtime: root.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context: root.data_structures.Context = .{
+        .runtime_context = &dummy_runtime,
         .chunk_buffer = &input,
     };
 

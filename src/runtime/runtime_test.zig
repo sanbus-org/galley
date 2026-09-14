@@ -28,7 +28,8 @@ test "wrapProcedure invokes a zero-argument handler" {
         "zeroArgumentHandler",
     );
 
-    var context: galley.data_structures.Context = .{};
+    var dummy_runtime: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: galley.data_structures.Context = .{ .runtime_context = &dummy_runtime };
     var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
     try wrapped(&args);
 
@@ -45,7 +46,8 @@ test "wrapProcedure forwards ProcedureArguments" {
     var node_allocator = try galley.data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 1);
     defer node_allocator.deinit(std.testing.allocator);
     const address = try node_allocator.create(0, 1);
-    var context: galley.data_structures.Context = .{ .node_allocator = &node_allocator };
+    var dummy_runtime: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: galley.data_structures.Context = .{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = address };
     try wrapped(&args);
 

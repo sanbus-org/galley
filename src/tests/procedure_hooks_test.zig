@@ -323,9 +323,6 @@ test "procedure-hooks AST nodes retain source text lengths" {
     }
     try std.testing.expectEqual(@as(usize, 0), zero_length_nodes);
 
-    var registration = parser.data_structures.RuntimeContextRegistration.init(&context, &session.runtime_context);
-    registration.register();
-    defer registration.unregister();
     const text = try parser.data_structures.Node.augmentedText(root, &context);
     try std.testing.expectEqualStrings(input, text);
 }

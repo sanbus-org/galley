@@ -1084,7 +1084,8 @@ test "procedure hook current node pointer survives node allocation" {
     if (comptime !root.parser.is_ast_enabled) return;
     var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 1);
     defer node_allocator.deinit(std.testing.allocator);
-    var context = Context{};
+    var dummy_runtime: root.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = Context{ .runtime_context = &dummy_runtime };
     context.node_allocator = &node_allocator;
 
     const address = try node_allocator.create(0, 1);
@@ -1169,8 +1170,8 @@ test "augmented iterate" {
     }
 }
 
-fn testContext(node_allocator: *TestASTAllocator, text: []u8) Context {
-    var context = Context{};
+fn testContext(node_allocator: *TestASTAllocator, text: []u8, runtime_context: *root.data_structures.RuntimeContext) Context {
+    var context = Context{ .runtime_context = runtime_context };
     context.node_allocator = node_allocator;
     if (comptime root.config.indentation_syntax) {
         context.token.resetBuffered();
@@ -1197,7 +1198,7 @@ const TestFixture = struct {
     }
 
     pub fn getContext(self: *TestFixture) Context {
-        return testContext(&self.node_allocator, self.text);
+        return testContext(&self.node_allocator, self.text, self.runtime_context);
     }
 
     pub fn init() !TestFixture {
@@ -1521,9 +1522,6 @@ test "insertChildren" {
 fn testAugmentedText(fixture: *TestFixture) !void {
     var context = fixture.getContext();
     const ctx = &context;
-    var runtime_registration = root.data_structures.RuntimeContextRegistration.init(ctx, fixture.runtime_context);
-    runtime_registration.register();
-    defer runtime_registration.unregister();
 
     // Leaf nodes return their own text
     fixture.nodes[5].text_start = 0;
@@ -1578,16 +1576,13 @@ test "augmentedText traverses deep trees iteratively" {
     defer node_allocator.deinit(std.testing.allocator);
 
     var input = [_]u8{'Z'};
-    var context = testContext(&node_allocator, input[0..]);
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var runtime_context = root.data_structures.RuntimeContext{
         .io = undefined,
         .arena_allocator = arena.allocator(),
     };
-    var runtime_registration = root.data_structures.RuntimeContextRegistration.init(&context, &runtime_context);
-    runtime_registration.register();
-    defer runtime_registration.unregister();
+    var context = testContext(&node_allocator, input[0..], &runtime_context);
 
     const root_node = try node_allocator.create(0, 0);
     var parent = root_node;
