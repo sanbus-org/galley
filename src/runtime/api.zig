@@ -699,6 +699,7 @@ pub const Session = struct {
         self.runtime_context.arena_allocator = self.arena.allocator();
 
         var context_value = data_structures.Context{
+            .runtime_context = &self.runtime_context,
             .source = source,
             .node_allocator = if (parser.is_ast_enabled) &self.node_allocator else {},
             .chunk_buffer = self.chunk_buffer,
@@ -717,9 +718,7 @@ pub const Session = struct {
     }
 
     fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !ParseResult {
-        var runtime_registration = data_structures.RuntimeContextRegistration.init(context_value, &self.runtime_context);
-        runtime_registration.register();
-        defer runtime_registration.unregister();
+        context_value.runtime_context = &self.runtime_context;
 
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.message_overrides = &self.message_overrides;
@@ -815,7 +814,8 @@ test "message override placeholders show synthetic display names" {
 }
 
 test "galley LL grammar error hook returns custom guidance" {
-    var context: data_structures.Context = undefined;
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: data_structures.Context = .{ .runtime_context = &dummy_runtime };
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
         .line = 51,
         .column = 1,

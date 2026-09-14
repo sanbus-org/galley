@@ -42,7 +42,6 @@ pub const ASTMemoryBenchmarkStats = @import("node.zig").ASTMemoryBenchmarkStats;
 pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;
-pub const RuntimeContextRegistration = @import("context.zig").RuntimeContextRegistration;
 pub const max_syntax_error_stack_depth = @import("context.zig").max_syntax_error_stack_depth;
 pub const SyntaxErrorStack = @import("context.zig").SyntaxErrorStack;
 pub const Offsets = @import("offsets.zig").Offsets;

@@ -202,9 +202,6 @@ pub const RuntimeContext = struct {
     }
 };
 
-var runtime_registry_mutex: std.atomic.Mutex = .unlocked;
-var runtime_registry_head: ?*RuntimeContextRegistration = null;
-
 /// Maximum number of in-progress variables that the LL parser tracks for
 /// syntax error reporting. The generated `syntax_error_stack_depth` const must
 /// not exceed this value.
@@ -278,10 +275,6 @@ pub const SyntaxErrorStack = struct {
     }
 };
 
-fn lockRuntimeRegistry() void {
-    while (!runtime_registry_mutex.tryLock()) std.atomic.spinLoopHint();
-}
-
 pub const Context = struct {
     pub const BytesSource = struct {
         input: []const u8,
@@ -292,6 +285,11 @@ pub const Context = struct {
         file: std.Io.File.Reader,
         bytes: BytesSource,
     };
+
+    /// Session-owned runtime state for the current parse. Wired by `Session`
+    /// on every parse; generated parsers already hold `*Context` so this is
+    /// the single gate — no registry lookup.
+    runtime_context: *RuntimeContext,
 
     token: data_structures.Token = .{},
     source: Source = .{ .bytes = .{ .input = &[_]u8{0} } },
@@ -342,12 +340,12 @@ pub const Context = struct {
 
     const Self = @This();
 
-    pub noinline fn runtime(self: *Self) *RuntimeContext {
-        return registeredRuntimeContext(self);
+    pub inline fn runtime(self: *Self) *RuntimeContext {
+        return self.runtime_context;
     }
 
-    pub noinline fn runtimeConst(self: *const Self) *const RuntimeContext {
-        return registeredRuntimeContext(self);
+    pub inline fn runtimeConst(self: *const Self) *const RuntimeContext {
+        return self.runtime_context;
     }
 
     pub inline fn verbosityLevel(self: *const Self) usize {
@@ -1442,58 +1440,4 @@ test "newline summary counts every marker and retains the final position" {
     const summary = summarizeNewlines("a\n\nb\x01c\x02\x02d");
     try std.testing.expectEqual(@as(u32, 5), summary.count);
     try std.testing.expectEqual(@as(?usize, 7), summary.last);
-}
-
-pub const RuntimeContextRegistration = struct {
-    context_address: usize,
-    runtime_context: *RuntimeContext,
-    next: ?*RuntimeContextRegistration = null,
-    is_registered: bool = false,
-
-    pub fn init(context: *Context, runtime_context: *RuntimeContext) RuntimeContextRegistration {
-        return .{
-            .context_address = @intFromPtr(context),
-            .runtime_context = runtime_context,
-        };
-    }
-
-    pub fn register(self: *RuntimeContextRegistration) void {
-        lockRuntimeRegistry();
-        defer runtime_registry_mutex.unlock();
-
-        std.debug.assert(!self.is_registered);
-        self.next = runtime_registry_head;
-        runtime_registry_head = self;
-        self.is_registered = true;
-    }
-
-    pub fn unregister(self: *RuntimeContextRegistration) void {
-        lockRuntimeRegistry();
-        defer runtime_registry_mutex.unlock();
-
-        var link = &runtime_registry_head;
-        while (link.*) |registration| {
-            if (registration == self) {
-                link.* = registration.next;
-                self.next = null;
-                self.is_registered = false;
-                return;
-            }
-            link = &registration.next;
-        }
-        unreachable;
-    }
-};
-
-fn registeredRuntimeContext(context: *const Context) *RuntimeContext {
-    const context_address = @intFromPtr(context);
-
-    lockRuntimeRegistry();
-    defer runtime_registry_mutex.unlock();
-
-    var registration = runtime_registry_head;
-    while (registration) |entry| : (registration = entry.next) {
-        if (entry.context_address == context_address) return entry.runtime_context;
-    }
-    @panic("parser context has no active runtime registration");
 }

@@ -125,7 +125,8 @@ test "dropSelf drops the current node" {
     var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 1);
     defer node_allocator.deinit(std.testing.allocator);
     const address = try node_allocator.create(0, 1);
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = address };
     try dropSelf(&args);
     try std.testing.expectEqual(@as(?data_structures.Node.Pointer, null), args.node_address);
@@ -143,7 +144,8 @@ test "dropChildren keeps the node and detaches its children" {
     try data_structures.Node.appendChildren(parent, &node_allocator, first);
     try data_structures.Node.appendChildren(parent, &node_allocator, last);
 
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = parent };
     try dropChildren(&args);
 
@@ -164,7 +166,8 @@ test "dropIfEmpty drops only empty nodes" {
     const non_empty = try node_allocator.create(0, 1);
     const child = try node_allocator.create(0, 2);
     try data_structures.Node.appendChildren(non_empty, &node_allocator, child);
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = non_empty };
     try dropIfEmpty(&args);
     try std.testing.expectEqual(non_empty, args.node_address.?);
@@ -193,7 +196,8 @@ test "replaceWithChildren promotes a wrapper's children" {
     try data_structures.Node.appendChildren(parent, &node_allocator, wrapper);
     try data_structures.Node.appendChildren(parent, &node_allocator, after);
 
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = wrapper };
     try replaceWithChildren(&args);
 
@@ -225,7 +229,8 @@ test "rightRecursiveReduction flattens a matching tail" {
     try data_structures.Node.appendChildren(parent, &node_allocator, first);
     try data_structures.Node.appendChildren(parent, &node_allocator, tail);
 
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = parent };
     try rightRecursiveReduction(&args);
 
@@ -252,7 +257,8 @@ test "leftRecursiveReduction flattens a matching head" {
     try data_structures.Node.appendChildren(parent, &node_allocator, head);
     try data_structures.Node.appendChildren(parent, &node_allocator, last);
 
-    var context = data_structures.Context{ .node_allocator = &node_allocator };
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = parent };
     try leftRecursiveReduction(&args);
 
