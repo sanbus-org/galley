@@ -284,21 +284,28 @@ node and needs no hooks — suffix children splice directly into the parent,
 so the tree and the surviving `reduction_<Var>_<N>` hook are identical to
 the unfactored shape. The merged hook can no longer tell which alternative
 matched except through its children, exactly as with a hand-factored
-grammar minus the tail hooks. Generation still warns with the suggested
-rewrite only when automatic factoring cannot preserve behavior: the prefix
-occurrences carry different annotations, a production carries its own
-annotations, or the overlap is indirect (terminals shared through
-different derivation chains rather than a common RHS prefix).
+grammar minus the tail hooks. Hoistable prefixes are factored silently with
+no warning. When factoring would discard hooks, generation fails with
+`AmbiguousGrammar` and names the refusal instead of suggesting a rewrite
+that would lose it: divergent prefix occurrences name the position and the
+differing hooks, and a production carrying its own annotations names the
+production and what it carries. An indirect overlap with no common RHS
+prefix reports just the two productions. Production lines render without
+annotations, so the hook itself is visible only in grammar source and named
+in the note:
 as in:
 
+```text
+Root
+| "a"@prefixHook "b"
+| "a"
 ```
-warning: ambiguous grammar: variable Root, terminal ":" matches two productions:
-  Root -> ":" Fields ActionTail
-  Root -> ":" ActionTail
-warning:   suggestion: left-factor the shared prefix
-  Root -> ":" Root_Tail
-  Root_Tail -> Fields ActionTail
-  Root_Tail -> ActionTail
+
+```
+warning: ambiguous grammar: variable Root, terminal "a" matches two productions:
+  Root -> "a"
+  Root -> "a" "b"
+warning:   note: automatic left-factoring refused: prefix occurrence at position 0 ("a") has divergent procedures between Root -> "a" and Root -> "a" "b"; hoisting would discard those occurrence hooks. Reconcile the prefix annotations or factor manually.
 ```
 
 ### Rule 3: Keep mixed-associativity operators at separate levels

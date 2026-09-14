@@ -128,6 +128,97 @@ const Ambiguity = struct {
 /// conflict cycle fails with `AmbiguousGrammar` instead of looping.
 const max_automatic_factoring_steps: usize = 64;
 
+/// Why a shared RHS prefix can or cannot be hoisted. The single
+/// `assessSharedPrefix` gate owns this decision so automatic factoring and
+/// the diagnostic can never diverge: factoring rewrites only on
+/// `hoistable`, the diagnostic renders a refusal note on the two annotation
+/// cases and stays silent on `no_prefix`.
+const PrefixRefusal = enum {
+    hoistable,
+    no_prefix,
+    prefix_annotations_differ,
+    production_annotations,
+};
+
+const SharedPrefix = struct {
+    prefix_len: usize,
+    refusal: PrefixRefusal,
+    /// Valid for `prefix_annotations_differ`: prefix position whose
+    /// occurrence annotations disagree across the sharing set.
+    divergent_position: usize = 0,
+    /// Valid for `prefix_annotations_differ`: a sharing rule whose
+    /// occurrence annotations differ from the first sharing rule at
+    /// `divergent_position`. Valid for `production_annotations`: the first
+    /// sharing rule carrying production-level annotations.
+    divergent_rule: usize = 0,
+};
+
+/// Collects every rule of `variable` sharing the `rule_a`/`rule_b` prefix
+/// into `sharing` and reports whether that prefix can be hoisted. The
+/// sharing set is the full set, not just the conflicting pair, so a third
+/// rule with divergent annotations still refuses. Callers pass an empty
+/// list; it is filled on any nonempty prefix and must be freed by the
+/// caller.
+fn assessSharedPrefix(
+    allocator: std.mem.Allocator,
+    grammar: *const common.PreparedGrammar,
+    variable: usize,
+    rule_a: usize,
+    rule_b: usize,
+    sharing: *std.ArrayList(usize),
+) !SharedPrefix {
+    const rhs_a = grammar.rules.items[rule_a].rhs.items;
+    const rhs_b = grammar.rules.items[rule_b].rhs.items;
+    var prefix_len: usize = 0;
+    while (prefix_len < rhs_a.len and prefix_len < rhs_b.len and rhs_a[prefix_len] == rhs_b[prefix_len]) : (prefix_len += 1) {}
+    if (prefix_len == 0) return .{ .prefix_len = 0, .refusal = .no_prefix };
+
+    for (grammar.rules.items, 0..) |rule, rule_index| {
+        if (rule.header != variable) continue;
+        if (rule.rhs.items.len < prefix_len) continue;
+        var matches = true;
+        for (rhs_a[0..prefix_len], 0..) |symbol_index, position| {
+            if (rule.rhs.items[position] != symbol_index) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) try sharing.append(allocator, rule_index);
+    }
+    if (sharing.items.len < 2) return .{ .prefix_len = prefix_len, .refusal = .no_prefix };
+
+    const first_rule = grammar.rules.items[sharing.items[0]];
+    for (sharing.items[1..]) |rule_index| {
+        const rule = grammar.rules.items[rule_index];
+        for (0..prefix_len) |position| {
+            if (!annotationsEqual(first_rule.rhs_annotations.items[position], rule.rhs_annotations.items[position])) {
+                return .{
+                    .prefix_len = prefix_len,
+                    .refusal = .prefix_annotations_differ,
+                    .divergent_position = position,
+                    .divergent_rule = rule_index,
+                };
+            }
+        }
+    }
+
+    // Transparent splice has no reduction site for production-level
+    // annotations: each sharing rule's own procedures, recovery scope, and
+    // verbatim markers would have nowhere to fire once the alternatives
+    // merge into one parent production.
+    for (sharing.items) |rule_index| {
+        if (!ruleAnnotationsEmpty(grammar.rules.items[rule_index].annotations)) {
+            return .{
+                .prefix_len = prefix_len,
+                .refusal = .production_annotations,
+                .divergent_rule = rule_index,
+            };
+        }
+    }
+
+    return .{ .prefix_len = prefix_len, .refusal = .hoistable };
+}
+
 /// Applies one automatic left-factoring rewrite for `ambiguity` when the two
 /// conflicting productions share a nonempty RHS prefix whose occurrence
 /// annotations agree in every sharing rule. The shared prefix is hoisted
@@ -148,42 +239,20 @@ fn factorSharedPrefixStep(
 ) !bool {
     _ = options;
     const variable = ambiguity.variable;
-    const rhs_a = grammar.rules.items[ambiguity.rule_a].rhs.items;
-    const rhs_b = grammar.rules.items[ambiguity.rule_b].rhs.items;
-    var prefix_len: usize = 0;
-    while (prefix_len < rhs_a.len and prefix_len < rhs_b.len and rhs_a[prefix_len] == rhs_b[prefix_len]) : (prefix_len += 1) {}
-    if (prefix_len == 0) return false;
-
     var sharing = std.ArrayList(usize).empty;
-    for (grammar.rules.items, 0..) |rule, rule_index| {
-        if (rule.header != variable) continue;
-        if (rule.rhs.items.len < prefix_len) continue;
-        var matches = true;
-        for (rhs_a[0..prefix_len], 0..) |symbol_index, position| {
-            if (rule.rhs.items[position] != symbol_index) {
-                matches = false;
-                break;
-            }
-        }
-        if (matches) try sharing.append(allocator, rule_index);
-    }
-    if (sharing.items.len < 2) return false;
-
+    defer sharing.deinit(allocator);
+    const assessment = try assessSharedPrefix(
+        allocator,
+        grammar,
+        variable,
+        ambiguity.rule_a,
+        ambiguity.rule_b,
+        &sharing,
+    );
+    if (assessment.refusal != .hoistable) return false;
+    const prefix_len = assessment.prefix_len;
+    const rhs_a = grammar.rules.items[ambiguity.rule_a].rhs.items;
     const first_rule = grammar.rules.items[sharing.items[0]];
-    for (sharing.items[1..]) |rule_index| {
-        const rule = grammar.rules.items[rule_index];
-        for (0..prefix_len) |position| {
-            if (!annotationsEqual(first_rule.rhs_annotations.items[position], rule.rhs_annotations.items[position])) return false;
-        }
-    }
-
-    // Transparent splice has no reduction site for production-level
-    // annotations: each sharing rule's own procedures, recovery scope, and
-    // verbatim markers would have nowhere to fire once the alternatives
-    // merge into one parent production.
-    for (sharing.items) |rule_index| {
-        if (!ruleAnnotationsEmpty(grammar.rules.items[rule_index].annotations)) return false;
-    }
 
     const variable_name = try common.symbolText(allocator, grammar.symbols.items, variable);
     defer allocator.free(variable_name);
@@ -474,10 +543,9 @@ const Builder = struct {
             try out.appendSlice(self.allocator, " matching different productions:\n");
             try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_a);
             try self.appendProductionChain(&out, ambiguity.variable, other_terminal, ambiguity.rule_b);
-            if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |suggestion| {
-                defer self.allocator.free(suggestion);
-                try out.appendSlice(self.allocator, "  suggestion: left-factor the shared prefix\n  ");
-                try out.appendSlice(self.allocator, suggestion);
+            if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |appendix| {
+                defer self.allocator.free(appendix);
+                try out.appendSlice(self.allocator, appendix);
                 try out.appendSlice(self.allocator, "\n");
             }
             return out.toOwnedSlice(self.allocator);
@@ -491,10 +559,9 @@ const Builder = struct {
         try out.appendSlice(self.allocator, " matches two productions:\n");
         try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_a);
         try self.appendProductionChain(&out, ambiguity.variable, ambiguity.terminal, ambiguity.rule_b);
-        if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |suggestion| {
-            defer self.allocator.free(suggestion);
-            try out.appendSlice(self.allocator, "  suggestion: left-factor the shared prefix\n  ");
-            try out.appendSlice(self.allocator, suggestion);
+        if (try self.leftFactorSuggestion(ambiguity.variable, ambiguity.rule_a, ambiguity.rule_b)) |appendix| {
+            defer self.allocator.free(appendix);
+            try out.appendSlice(self.allocator, appendix);
             try out.appendSlice(self.allocator, "\n");
         }
         return out.toOwnedSlice(self.allocator);
@@ -685,34 +752,158 @@ const Builder = struct {
         return null;
     }
 
-    /// When two productions of the same variable share a nonempty RHS prefix,
-    /// returns a suggested left-factored rewrite hoisting that prefix into a
-    /// new tail variable. Returns null when the conflict has no syntactic
-    /// prefix to hoist (e.g. a FIRST/FOLLOW clash through a nullable rule).
+    /// Diagnostic appendix for a parse-table conflict, driven by the same
+    /// `assessSharedPrefix` gate as automatic factoring. Returns the fully
+    /// formatted appendix including its leading two spaces: a hoist
+    /// suggestion when the prefix is hoistable, a refusal note naming the
+    /// blocking annotations when factoring refused for annotations, and null
+    /// when there is no shared prefix to discuss. Never returns rewrite text
+    /// on refusal: the rewrite would discard the named annotations.
     fn leftFactorSuggestion(self: *Builder, variable: usize, rule_a: usize, rule_b: usize) !?[]const u8 {
-        const rhs_a = self.grammar.rules.items[rule_a].rhs.items;
-        const rhs_b = self.grammar.rules.items[rule_b].rhs.items;
-        var prefix_len: usize = 0;
-        while (prefix_len < rhs_a.len and prefix_len < rhs_b.len and rhs_a[prefix_len] == rhs_b[prefix_len]) : (prefix_len += 1) {}
-        if (prefix_len == 0) return null;
-
-        const prefix_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_a[0..prefix_len]);
-        defer self.allocator.free(prefix_text);
-        const suffix_a_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_a[prefix_len..]);
-        defer self.allocator.free(suffix_a_text);
-        const suffix_b_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, rhs_b[prefix_len..]);
-        defer self.allocator.free(suffix_b_text);
-
-        const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
-        defer self.allocator.free(variable_name);
-        const tail_name = try self.freshTailName(variable_name);
-        defer self.allocator.free(tail_name);
-
-        return try std.fmt.allocPrint(
+        var sharing = std.ArrayList(usize).empty;
+        defer sharing.deinit(self.allocator);
+        const assessment = try assessSharedPrefix(
             self.allocator,
-            "{s} -> {s} {s}\n  {s} -> {s}\n  {s} -> {s}",
-            .{ variable_name, prefix_text, tail_name, tail_name, suffix_a_text, tail_name, suffix_b_text },
+            self.grammar,
+            variable,
+            rule_a,
+            rule_b,
+            &sharing,
         );
+        switch (assessment.refusal) {
+            .no_prefix => return null,
+            .hoistable => {
+                const prefix_len = assessment.prefix_len;
+                const first_rhs = self.grammar.rules.items[sharing.items[0]].rhs.items;
+                const prefix_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, first_rhs[0..prefix_len]);
+                defer self.allocator.free(prefix_text);
+
+                const variable_name = try common.symbolText(self.allocator, self.grammar.symbols.items, variable);
+                defer self.allocator.free(variable_name);
+                const tail_name = try self.freshTailName(variable_name);
+                defer self.allocator.free(tail_name);
+
+                var rewrite = std.ArrayList(u8).empty;
+                defer rewrite.deinit(self.allocator);
+                const header_line = try std.fmt.allocPrint(
+                    self.allocator,
+                    "{s} -> {s} {s}",
+                    .{ variable_name, prefix_text, tail_name },
+                );
+                defer self.allocator.free(header_line);
+                try rewrite.appendSlice(self.allocator, header_line);
+                for (sharing.items) |rule_index| {
+                    const suffix = self.grammar.rules.items[rule_index].rhs.items[prefix_len..];
+                    const suffix_text = try common.symbolsText(self.allocator, self.grammar.symbols.items, suffix);
+                    defer self.allocator.free(suffix_text);
+                    const tail_line = try std.fmt.allocPrint(
+                        self.allocator,
+                        "\n  {s} -> {s}",
+                        .{ tail_name, suffix_text },
+                    );
+                    defer self.allocator.free(tail_line);
+                    try rewrite.appendSlice(self.allocator, tail_line);
+                }
+                return try std.fmt.allocPrint(
+                    self.allocator,
+                    "  suggestion: left-factor the shared prefix\n  {s}",
+                    .{rewrite.items},
+                );
+            },
+            .prefix_annotations_differ => {
+                const first_rule = self.grammar.rules.items[sharing.items[0]];
+                const divergent_rule = self.grammar.rules.items[assessment.divergent_rule];
+                const kinds = try occurrenceDifferenceKinds(
+                    self.allocator,
+                    first_rule.rhs_annotations.items[assessment.divergent_position],
+                    divergent_rule.rhs_annotations.items[assessment.divergent_position],
+                );
+                defer self.allocator.free(kinds);
+                const symbol_index = first_rule.rhs.items[assessment.divergent_position];
+                const symbol_name = try common.symbolText(self.allocator, self.grammar.symbols.items, symbol_index);
+                defer self.allocator.free(symbol_name);
+                const first_text = try common.ruleText(self.allocator, self.grammar.symbols.items, first_rule);
+                defer self.allocator.free(first_text);
+                const divergent_text = try common.ruleText(self.allocator, self.grammar.symbols.items, divergent_rule);
+                defer self.allocator.free(divergent_text);
+                return try std.fmt.allocPrint(
+                    self.allocator,
+                    "  note: automatic left-factoring refused: prefix occurrence at position {d} ({s}) has divergent {s} between {s} and {s}; hoisting would discard those occurrence hooks. Reconcile the prefix annotations or factor manually.",
+                    .{ assessment.divergent_position, symbol_name, kinds, first_text, divergent_text },
+                );
+            },
+            .production_annotations => {
+                const rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, self.grammar.rules.items[assessment.divergent_rule]);
+                defer self.allocator.free(rule_text);
+                const kinds = try presentProductionKinds(self.allocator, self.grammar.rules.items[assessment.divergent_rule].annotations);
+                defer self.allocator.free(kinds);
+                return try std.fmt.allocPrint(
+                    self.allocator,
+                    "  note: automatic left-factoring refused: production {s} carries {s} that would lose its reduction site in a transparent tail. Remove the production annotations or factor manually.",
+                    .{ rule_text, kinds },
+                );
+            },
+        }
+    }
+
+    fn occurrenceDifferenceKinds(allocator: std.mem.Allocator, a: common.Annotations, b: common.Annotations) ![]const u8 {
+        var kinds = std.ArrayList([]const u8).empty;
+        defer kinds.deinit(allocator);
+        var procedures_differ = a.procedures.items.len != b.procedures.items.len;
+        if (!procedures_differ) {
+            for (a.procedures.items, b.procedures.items) |a_name, b_name| {
+                if (!std.mem.eql(u8, a_name, b_name)) {
+                    procedures_differ = true;
+                    break;
+                }
+            }
+        }
+        if (procedures_differ) try kinds.append(allocator, "procedures");
+        var recovery_differ = a.recovery_points.items.len != b.recovery_points.items.len;
+        if (!recovery_differ) {
+            for (a.recovery_points.items, b.recovery_points.items) |a_point, b_point| {
+                if (!std.mem.eql(u8, a_point.terminal, b_point.terminal) or a_point.@"resume" != b_point.@"resume") {
+                    recovery_differ = true;
+                    break;
+                }
+            }
+        }
+        if (recovery_differ) try kinds.append(allocator, "recovery points");
+        const a_literal_empty = a.verbatim_literal == null;
+        const b_literal_empty = b.verbatim_literal == null;
+        var verbatim_differ = a.verbatim != b.verbatim or a.verbatim_consume != b.verbatim_consume;
+        if (!verbatim_differ) {
+            if (a_literal_empty and b_literal_empty) {
+                verbatim_differ = false;
+            } else if (a_literal_empty or b_literal_empty) {
+                verbatim_differ = true;
+            } else {
+                verbatim_differ = !std.mem.eql(u8, a.verbatim_literal.?, b.verbatim_literal.?);
+            }
+        }
+        if (verbatim_differ) try kinds.append(allocator, "verbatim capture");
+        if (kinds.items.len == 0) try kinds.append(allocator, "annotations");
+        return joinAnnotationKinds(allocator, kinds.items);
+    }
+
+    fn presentProductionKinds(allocator: std.mem.Allocator, annotations: common.Annotations) ![]const u8 {
+        var kinds = std.ArrayList([]const u8).empty;
+        defer kinds.deinit(allocator);
+        if (annotations.procedures.items.len > 0) try kinds.append(allocator, "procedures");
+        if (annotations.recovery_points.items.len > 0) try kinds.append(allocator, "recovery points");
+        if (annotations.verbatim or annotations.verbatim_literal != null) try kinds.append(allocator, "verbatim capture");
+        if (kinds.items.len == 0) try kinds.append(allocator, "annotations");
+        return joinAnnotationKinds(allocator, kinds.items);
+    }
+
+    fn joinAnnotationKinds(allocator: std.mem.Allocator, kinds: []const []const u8) ![]const u8 {
+        if (kinds.len == 1) return allocator.dupe(u8, kinds[0]);
+        var out = std.ArrayList(u8).empty;
+        for (kinds, 0..) |kind, index| {
+            if (index != 0) try out.appendSlice(allocator, ", ");
+            try out.appendSlice(allocator, kind);
+        }
+        return out.toOwnedSlice(allocator);
     }
 
     fn freshTailName(self: *Builder, variable_name: []const u8) ![]const u8 {
@@ -1103,6 +1294,23 @@ test "LL planning keeps conflicts whose prefix annotations diverge" {
         try rule.rhs_annotations.items[0].procedures.append(allocator, try allocator.dupe(u8, "prefixHook"));
         break;
     }
+    var probe = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = true, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try probe.analyzeGrammar();
+    try probe.buildParseTable();
+    const ambiguity = probe.pending_ambiguity orelse return error.TestExpectedAmbiguity;
+    const message = try probe.explainConflict(ambiguity);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "note: automatic left-factoring refused") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "prefix occurrence") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "procedures") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "between Root ->") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "suggestion: left-factor") == null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root_Tail") == null);
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
 }
@@ -1120,6 +1328,71 @@ test "LL planning keeps conflicts whose productions carry procedures" {
         try rule.annotations.procedures.append(allocator, try allocator.dupe(u8, "productionHook"));
         break;
     }
+    var probe = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = true, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try probe.analyzeGrammar();
+    try probe.buildParseTable();
+    const ambiguity = probe.pending_ambiguity orelse return error.TestExpectedAmbiguity;
+    const message = try probe.explainConflict(ambiguity);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "note: automatic left-factoring refused") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "production") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "procedures") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "reduction site") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "suggestion: left-factor") == null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root_Tail") == null);
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
+}
+
+test "left-factor refusal sees a divergent third sharing rule" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    // Three productions share prefix "a". The first two agree with each other,
+    // so a pair-only check would still suggest a hoist; the full sharing set
+    // must refuse because the third carries a divergent prefix hook.
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    const b = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "b", .terminal);
+    const c = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "c", .terminal);
+    const d = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "d", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{ a, c });
+    try appendTestRule(allocator, &grammar.rules, root, "2", &.{ a, d });
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+    for (grammar.rules.items) |*rule| {
+        if (rule.header != root or rule.rhs.items.len != 2) continue;
+        if (rule.rhs.items[1] != d) continue;
+        try rule.rhs_annotations.items[0].procedures.append(allocator, try allocator.dupe(u8, "prefixHook"));
+        break;
+    }
+    var probe = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = true, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+    try probe.analyzeGrammar();
+    try probe.buildParseTable();
+    const ambiguity = probe.pending_ambiguity orelse return error.TestExpectedAmbiguity;
+    const message = try probe.explainConflict(ambiguity);
+    defer allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "note: automatic left-factoring refused") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "prefix occurrence") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "between Root ->") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "suggestion: left-factor") == null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "Root_Tail") == null);
     const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
     try std.testing.expectError(error.AmbiguousGrammar, LLPlan.build(allocator, &grammar, options));
 }
@@ -1315,6 +1588,56 @@ test "left-factor suggestion hoists a shared RHS prefix" {
     try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root -> \":\" Root_Tail") != null);
     try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> Fields Tail") != null);
     try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> Tail") != null);
+}
+
+test "left-factor suggestion lists every sharing suffix" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
+    const b = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "b", .terminal);
+    const c = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "c", .terminal);
+    const d = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "d", .terminal);
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+
+    try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
+    try appendTestRule(allocator, &grammar.rules, root, "1", &.{ a, c });
+    try appendTestRule(allocator, &grammar.rules, root, "2", &.{ a, d });
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+
+    var root_index: usize = undefined;
+    for (grammar.symbols.items, 0..) |symbol, index| {
+        if (std.mem.eql(u8, symbol.id, "Root")) root_index = index;
+    }
+    var rule_a: usize = undefined;
+    var rule_b: usize = undefined;
+    var found: usize = 0;
+    for (grammar.rules.items, 0..) |rule, index| {
+        if (rule.header != root_index) continue;
+        if (found == 0) rule_a = index else if (found == 1) rule_b = index;
+        found += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 3), found);
+
+    var builder = Builder{
+        .allocator = allocator,
+        .grammar = &grammar,
+        .options = .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false },
+        .plan = LLPlan.init(allocator),
+    };
+
+    const suggestion = (try builder.leftFactorSuggestion(root_index, rule_a, rule_b)).?;
+    defer allocator.free(suggestion);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "suggestion: left-factor") != null);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> \"b\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> \"c\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, suggestion, "Root_Tail -> \"d\"") != null);
 }
 
 test "left-factorization yields no suggestion without a shared prefix" {

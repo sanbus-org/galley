@@ -88,7 +88,7 @@ Rules that repeat a variable on their own right-hand side (list and suffix shape
 
 ## Ambiguity Diagnostics
 
-When the LL planner finds two productions of a variable that share a terminal, it reports the conflict together with the derivation chain that explains each side: the reason rules that placed the terminal into FIRST or FOLLOW, the nullable derivations that let it pass through, and where the terminal is finally produced. A left-factored rewrite is suggested when the conflicting productions share a prefix. See [Grammar Guidelines §7](/grammar_guidelines#7-operator-precedence--ambiguity-free-expression-extraction) for the reported output.
+When the LL planner finds two productions of a variable that share a terminal, it reports the conflict together with the derivation chain that explains each side: the reason rules that placed the terminal into FIRST or FOLLOW, the nullable derivations that let it pass through, and where the terminal is finally produced. When the conflicting productions share a hoistable prefix, the planner factors it automatically; when annotations block factoring, the diagnostic names the refusal instead of suggesting a rewrite. See [Grammar Guidelines §7](/grammar_guidelines#7-operator-precedence--ambiguity-free-expression-extraction) for the reported output.
 
 ---
 
