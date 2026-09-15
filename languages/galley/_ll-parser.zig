@@ -1262,6 +1262,7 @@ const ProcedureSequenceNode = struct {
 };
 
 fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {
+    @setEvalBranchQuota(@max(1000, procedure_names.len * 8));
     if (procedure_names.len == 0) return null;
     const procedure_name = procedure_names[0];
     return &ProcedureSequenceNode{
@@ -1280,6 +1281,7 @@ fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_str
 }
 
 pub const rule_procedures = rule_procedures: {
+    @setEvalBranchQuota(1000);
     var arr: [76]?*const data_structures.Procedure = .{null} ** 76;
 
     for (rules, 0..) |rule, index| {
@@ -1293,6 +1295,7 @@ pub const rule_procedures = rule_procedures: {
 };
 
 pub const symbol_procedures = symbol_procedures: {
+    @setEvalBranchQuota(1000);
     var arr: [78]?*const data_structures.Procedure = .{null} ** 78;
 
     for (symbols, 0..) |symbol, index| {
@@ -1355,6 +1358,7 @@ pub const user_hook_names = [_][]const u8{
 };
 
 pub const variable_procedures = variable_procedures: {
+    @setEvalBranchQuota(1000);
     var arr: [43]?*const ProcedureSequenceNode = .{null} ** 43;
 
     for (variable_procedure_names, 0..) |procedure_names, index| {
@@ -1379,7 +1383,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_Annotation_2' for production Annotation -> \">\" VerbatimMarker (rhs_index 2)");
         }
         if (!@hasDecl(procedures, "reduction_AnnotationTail_1")) {
-            @compileError("missing reduction procedure 'reduction_AnnotationTail_1' for production AnnotationTail -> (rhs_index 1)");
+            @compileError("missing reduction procedure 'reduction_AnnotationTail_1' for production AnnotationTail -> <empty> (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_AnnotationTail_0")) {
             @compileError("missing reduction procedure 'reduction_AnnotationTail_0' for production AnnotationTail -> \"@\" Annotation AnnotationTail (rhs_index 0)");
@@ -1400,7 +1404,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_CamelCaseId_0' for production CamelCaseId -> \"lowercase_letter\" CamelCaseIdTail (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_CamelCaseIdTail_2")) {
-            @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_2' for production CamelCaseIdTail -> (rhs_index 2)");
+            @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_2' for production CamelCaseIdTail -> <empty> (rhs_index 2)");
         }
         if (!@hasDecl(procedures, "reduction_CamelCaseIdTail_0")) {
             @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_0' for production CamelCaseIdTail -> \"letter\" CamelCaseIdTail (rhs_index 0)");
@@ -1409,7 +1413,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_CamelCaseIdTail_1' for production CamelCaseIdTail -> \"digit\" CamelCaseIdTail (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_Comment_1")) {
-            @compileError("missing reduction procedure 'reduction_Comment_1' for production Comment -> (rhs_index 1)");
+            @compileError("missing reduction procedure 'reduction_Comment_1' for production Comment -> <empty> (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_Comment_0")) {
             @compileError("missing reduction procedure 'reduction_Comment_0' for production Comment -> CommentLine Comment (rhs_index 0)");
@@ -1424,7 +1428,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_ControlCharacter_1' for production ControlCharacter -> \"\\x02\" (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_GenerativeTerminalExceptions_1")) {
-            @compileError("missing reduction procedure 'reduction_GenerativeTerminalExceptions_1' for production GenerativeTerminalExceptions -> (rhs_index 1)");
+            @compileError("missing reduction procedure 'reduction_GenerativeTerminalExceptions_1' for production GenerativeTerminalExceptions -> <empty> (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_GenerativeTerminalExceptions_0")) {
             @compileError("missing reduction procedure 'reduction_GenerativeTerminalExceptions_0' for production GenerativeTerminalExceptions -> \"^\" TerminalSymbol GenerativeTerminalExceptions (rhs_index 0)");
@@ -1433,7 +1437,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_GenerativeTerminalSymbol_0' for production GenerativeTerminalSymbol -> LowercaseId GenerativeTerminalExceptions (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_IdTail_3")) {
-            @compileError("missing reduction procedure 'reduction_IdTail_3' for production IdTail -> (rhs_index 3)");
+            @compileError("missing reduction procedure 'reduction_IdTail_3' for production IdTail -> <empty> (rhs_index 3)");
         }
         if (!@hasDecl(procedures, "reduction_IdTail_2")) {
             @compileError("missing reduction procedure 'reduction_IdTail_2' for production IdTail -> \"_\" IdTail (rhs_index 2)");
@@ -1451,7 +1455,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_NewLine_0' for production NewLine -> \"new_line\" Comment (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_OptionalNewLineMany_1")) {
-            @compileError("missing reduction procedure 'reduction_OptionalNewLineMany_1' for production OptionalNewLineMany -> (rhs_index 1)");
+            @compileError("missing reduction procedure 'reduction_OptionalNewLineMany_1' for production OptionalNewLineMany -> <empty> (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_OptionalNewLineMany_0")) {
             @compileError("missing reduction procedure 'reduction_OptionalNewLineMany_0' for production OptionalNewLineMany -> NewLine OptionalNewLineMany (rhs_index 0)");
@@ -1469,7 +1473,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_RecoveryPoint_0' for production RecoveryPoint -> TerminalAndCursor (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_RightHandSide_1")) {
-            @compileError("missing reduction procedure 'reduction_RightHandSide_1' for production RightHandSide -> (rhs_index 1)");
+            @compileError("missing reduction procedure 'reduction_RightHandSide_1' for production RightHandSide -> <empty> (rhs_index 1)");
         }
         if (!@hasDecl(procedures, "reduction_RightHandSide_0")) {
             @compileError("missing reduction procedure 'reduction_RightHandSide_0' for production RightHandSide -> \"space\" Symbol AnnotationTail RightHandSide (rhs_index 0)");
@@ -1487,7 +1491,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_Rules_0' for production Rules -> Comment OptionalNewLineMany Rule RulesTail (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_RulesTail_2")) {
-            @compileError("missing reduction procedure 'reduction_RulesTail_2' for production RulesTail -> (rhs_index 2)");
+            @compileError("missing reduction procedure 'reduction_RulesTail_2' for production RulesTail -> <empty> (rhs_index 2)");
         }
         if (!@hasDecl(procedures, "reduction_RulesTail_1")) {
             @compileError("missing reduction procedure 'reduction_RulesTail_1' for production RulesTail -> Rule RulesTail (rhs_index 1)");
@@ -1496,7 +1500,7 @@ comptime {
             @compileError("missing reduction procedure 'reduction_RulesTail_0' for production RulesTail -> NewLine RulesTail (rhs_index 0)");
         }
         if (!@hasDecl(procedures, "reduction_SimpleStringContent_2")) {
-            @compileError("missing reduction procedure 'reduction_SimpleStringContent_2' for production SimpleStringContent -> (rhs_index 2)");
+            @compileError("missing reduction procedure 'reduction_SimpleStringContent_2' for production SimpleStringContent -> <empty> (rhs_index 2)");
         }
         if (!@hasDecl(procedures, "reduction_SimpleStringContent_0")) {
             @compileError("missing reduction procedure 'reduction_SimpleStringContent_0' for production SimpleStringContent -> \"character^\"\\\\u{22}\"\" SimpleStringContent (rhs_index 0)");
@@ -35291,8 +35295,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_0_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Start__expected_Rules", "syntax_error_ll_Start"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Start__expected_Rules", "syntax_error_ll_Start", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35318,8 +35322,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_1_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Rules__expected_Comment", "syntax_error_ll_Rules"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Rules__expected_Comment", "syntax_error_ll_Rules", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35345,8 +35349,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_2_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35372,8 +35376,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_3_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_OptionalNewLineMany__expected_NewLine_or_end_of_OptionalNewLineMany", "syntax_error_ll_OptionalNewLineMany"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_OptionalNewLineMany__expected_NewLine_or_end_of_OptionalNewLineMany", "syntax_error_ll_OptionalNewLineMany", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35399,8 +35403,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_4_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Rule__expected_VariableSymbol", "syntax_error_ll_Rule"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Rule__expected_VariableSymbol", "syntax_error_ll_Rule", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35426,8 +35430,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_5_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RulesTail__expected_NewLine_or_Rule_or_end_of_RulesTail", "syntax_error_ll_RulesTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RulesTail__expected_NewLine_or_Rule_or_end_of_RulesTail", "syntax_error_ll_RulesTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35453,8 +35457,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_6_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35480,8 +35484,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_7_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35507,8 +35511,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_8_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35534,8 +35538,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_9_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35561,8 +35565,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_10_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35579,8 +35583,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_11_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35606,8 +35610,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_12_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35624,8 +35628,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_13_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35651,8 +35655,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_14_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35678,8 +35682,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_15_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35705,8 +35709,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_16_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35732,8 +35736,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_17_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35759,8 +35763,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_18_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35786,8 +35790,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_19_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35804,8 +35808,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_20_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35831,8 +35835,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_21_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35849,8 +35853,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_22_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35876,8 +35880,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_23_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35894,8 +35898,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_24_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35921,8 +35925,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_25_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35939,8 +35943,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_26_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35966,8 +35970,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_27_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -35993,8 +35997,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_28_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36011,8 +36015,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_29_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36029,8 +36033,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_30_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36056,8 +36060,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_31_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36083,8 +36087,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_32_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36101,8 +36105,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_33_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36128,8 +36132,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_34_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36155,8 +36159,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_35_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36173,8 +36177,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_36_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36200,8 +36204,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_37_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36227,8 +36231,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_38_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36254,8 +36258,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_39_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36281,8 +36285,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_40_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36308,8 +36312,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_41_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36326,8 +36330,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_42_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36346,8 +36350,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_43_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36366,8 +36370,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_44_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36386,8 +36390,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_45_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36406,8 +36410,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_46_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36424,8 +36428,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_47_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36442,8 +36446,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_48_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36460,8 +36464,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_49_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36478,8 +36482,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_50_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36496,8 +36500,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_51_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36514,8 +36518,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_52_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36532,8 +36536,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_53_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36550,8 +36554,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_54_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36568,8 +36572,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_55_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36586,8 +36590,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_56_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36604,8 +36608,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_57_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36622,8 +36626,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_58_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36649,8 +36653,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_59_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36667,8 +36671,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_60_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36685,8 +36689,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_61_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36712,8 +36716,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_62_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36730,8 +36734,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_63_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36757,8 +36761,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_64_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36775,8 +36779,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_65_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36793,8 +36797,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_66_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36811,8 +36815,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_67_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36829,8 +36833,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_68_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36856,8 +36860,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_69_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36874,8 +36878,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_70_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36901,8 +36905,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_71_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_BlockStart__expected_generative_terminal_block_start", "syntax_error_ll_BlockStart"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_BlockStart__expected_generative_terminal_block_start", "syntax_error_ll_BlockStart", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36919,8 +36923,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_72_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_block_start__expected_generative_terminal_block_start", "syntax_error_ll_generative_terminal_block_start"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_block_start__expected_generative_terminal_block_start", "syntax_error_ll_generative_terminal_block_start", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36946,8 +36950,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_73_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_BlockEnd__expected_generative_terminal_block_end", "syntax_error_ll_BlockEnd"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_BlockEnd__expected_generative_terminal_block_end", "syntax_error_ll_BlockEnd", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36964,8 +36968,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_74_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_block_end__expected_generative_terminal_block_end", "syntax_error_ll_generative_terminal_block_end"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_block_end__expected_generative_terminal_block_end", "syntax_error_ll_generative_terminal_block_end", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -36991,8 +36995,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_75_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37009,8 +37013,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_76_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37029,8 +37033,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_77_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__AugmentedStart__expected_Start", "syntax_error_ll__AugmentedStart"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__AugmentedStart__expected_Start", "syntax_error_ll__AugmentedStart", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37047,8 +37051,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_78_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_special_EOF__expected_special_EOF", "syntax_error_ll_special_EOF"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_special_EOF__expected_special_EOF", "syntax_error_ll_special_EOF", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37074,8 +37078,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_79_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37101,8 +37105,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_80_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37128,8 +37132,8 @@ if (comptime (error_recovery_mode == .explicit and are_procedures_enabled) or (e
 }
 
 fn ll_syntax_error_81_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37148,8 +37152,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_82_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37168,8 +37172,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_83_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37188,8 +37192,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_84_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37208,8 +37212,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_85_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37228,8 +37232,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_86_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37248,8 +37252,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_87_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37266,8 +37270,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_88_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37286,8 +37290,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_89_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37304,8 +37308,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_90_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37324,8 +37328,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_91_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37344,8 +37348,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_92_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37364,8 +37368,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_93_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37384,8 +37388,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_94_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37404,8 +37408,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_95_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37424,8 +37428,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_96_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37442,8 +37446,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_97_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37462,8 +37466,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_98_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37480,8 +37484,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_99_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37500,8 +37504,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_100_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37518,8 +37522,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_101_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37538,8 +37542,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_102_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37556,8 +37560,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_103_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37576,8 +37580,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_104_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37596,8 +37600,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_105_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37614,8 +37618,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_106_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37632,8 +37636,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_107_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37652,8 +37656,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_108_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37672,8 +37676,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_109_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37690,8 +37694,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_110_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37710,8 +37714,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_111_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37730,8 +37734,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_112_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37748,8 +37752,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_113_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37768,8 +37772,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_114_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37788,8 +37792,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_115_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37808,8 +37812,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_116_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37828,8 +37832,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_117_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37848,8 +37852,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_118_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37866,8 +37870,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_119_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37886,8 +37890,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_120_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37906,8 +37910,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_121_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37926,8 +37930,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_122_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37946,8 +37950,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_123_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37964,8 +37968,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_124_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -37982,8 +37986,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_125_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38000,8 +38004,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_126_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38018,8 +38022,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_127_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38036,8 +38040,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_128_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38054,8 +38058,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_129_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38072,8 +38076,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_130_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38090,8 +38094,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_131_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38108,8 +38112,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_132_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38126,8 +38130,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_133_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38144,8 +38148,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_134_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38162,8 +38166,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_135_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38182,8 +38186,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_136_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38200,8 +38204,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_137_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38218,8 +38222,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_138_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38238,8 +38242,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_139_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38256,8 +38260,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_140_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38276,8 +38280,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_141_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38294,8 +38298,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_142_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38312,8 +38316,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_143_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38330,8 +38334,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_144_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38348,8 +38352,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_145_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38368,8 +38372,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_146_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38386,8 +38390,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_147_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38406,8 +38410,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_148_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38424,8 +38428,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_149_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38444,8 +38448,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_150_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38464,8 +38468,8 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_151_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
 
 
@@ -38484,934 +38488,173 @@ if (comptime error_recovery_mode == .explicit) {
 }
 
 fn ll_syntax_error_152_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0"})) |message| return message;
-    return llFailFastDefaultMessage(args);
+    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{"syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0", "syntax_error_ll", "syntax_error"})) |message| return message;
+    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }
+
+const ll_flushed_syntax_messages = [_]*const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8{
+    ll_syntax_error_0_message,
+    ll_syntax_error_1_message,
+    ll_syntax_error_2_message,
+    ll_syntax_error_3_message,
+    ll_syntax_error_4_message,
+    ll_syntax_error_5_message,
+    ll_syntax_error_6_message,
+    ll_syntax_error_7_message,
+    ll_syntax_error_8_message,
+    ll_syntax_error_9_message,
+    ll_syntax_error_10_message,
+    ll_syntax_error_11_message,
+    ll_syntax_error_12_message,
+    ll_syntax_error_13_message,
+    ll_syntax_error_14_message,
+    ll_syntax_error_15_message,
+    ll_syntax_error_16_message,
+    ll_syntax_error_17_message,
+    ll_syntax_error_18_message,
+    ll_syntax_error_19_message,
+    ll_syntax_error_20_message,
+    ll_syntax_error_21_message,
+    ll_syntax_error_22_message,
+    ll_syntax_error_23_message,
+    ll_syntax_error_24_message,
+    ll_syntax_error_25_message,
+    ll_syntax_error_26_message,
+    ll_syntax_error_27_message,
+    ll_syntax_error_28_message,
+    ll_syntax_error_29_message,
+    ll_syntax_error_30_message,
+    ll_syntax_error_31_message,
+    ll_syntax_error_32_message,
+    ll_syntax_error_33_message,
+    ll_syntax_error_34_message,
+    ll_syntax_error_35_message,
+    ll_syntax_error_36_message,
+    ll_syntax_error_37_message,
+    ll_syntax_error_38_message,
+    ll_syntax_error_39_message,
+    ll_syntax_error_40_message,
+    ll_syntax_error_41_message,
+    ll_syntax_error_42_message,
+    ll_syntax_error_43_message,
+    ll_syntax_error_44_message,
+    ll_syntax_error_45_message,
+    ll_syntax_error_46_message,
+    ll_syntax_error_47_message,
+    ll_syntax_error_48_message,
+    ll_syntax_error_49_message,
+    ll_syntax_error_50_message,
+    ll_syntax_error_51_message,
+    ll_syntax_error_52_message,
+    ll_syntax_error_53_message,
+    ll_syntax_error_54_message,
+    ll_syntax_error_55_message,
+    ll_syntax_error_56_message,
+    ll_syntax_error_57_message,
+    ll_syntax_error_58_message,
+    ll_syntax_error_59_message,
+    ll_syntax_error_60_message,
+    ll_syntax_error_61_message,
+    ll_syntax_error_62_message,
+    ll_syntax_error_63_message,
+    ll_syntax_error_64_message,
+    ll_syntax_error_65_message,
+    ll_syntax_error_66_message,
+    ll_syntax_error_67_message,
+    ll_syntax_error_68_message,
+    ll_syntax_error_69_message,
+    ll_syntax_error_70_message,
+    ll_syntax_error_71_message,
+    ll_syntax_error_72_message,
+    ll_syntax_error_73_message,
+    ll_syntax_error_74_message,
+    ll_syntax_error_75_message,
+    ll_syntax_error_76_message,
+    ll_syntax_error_77_message,
+    ll_syntax_error_78_message,
+    ll_syntax_error_79_message,
+    ll_syntax_error_80_message,
+    ll_syntax_error_81_message,
+    ll_syntax_error_82_message,
+    ll_syntax_error_83_message,
+    ll_syntax_error_84_message,
+    ll_syntax_error_85_message,
+    ll_syntax_error_86_message,
+    ll_syntax_error_87_message,
+    ll_syntax_error_88_message,
+    ll_syntax_error_89_message,
+    ll_syntax_error_90_message,
+    ll_syntax_error_91_message,
+    ll_syntax_error_92_message,
+    ll_syntax_error_93_message,
+    ll_syntax_error_94_message,
+    ll_syntax_error_95_message,
+    ll_syntax_error_96_message,
+    ll_syntax_error_97_message,
+    ll_syntax_error_98_message,
+    ll_syntax_error_99_message,
+    ll_syntax_error_100_message,
+    ll_syntax_error_101_message,
+    ll_syntax_error_102_message,
+    ll_syntax_error_103_message,
+    ll_syntax_error_104_message,
+    ll_syntax_error_105_message,
+    ll_syntax_error_106_message,
+    ll_syntax_error_107_message,
+    ll_syntax_error_108_message,
+    ll_syntax_error_109_message,
+    ll_syntax_error_110_message,
+    ll_syntax_error_111_message,
+    ll_syntax_error_112_message,
+    ll_syntax_error_113_message,
+    ll_syntax_error_114_message,
+    ll_syntax_error_115_message,
+    ll_syntax_error_116_message,
+    ll_syntax_error_117_message,
+    ll_syntax_error_118_message,
+    ll_syntax_error_119_message,
+    ll_syntax_error_120_message,
+    ll_syntax_error_121_message,
+    ll_syntax_error_122_message,
+    ll_syntax_error_123_message,
+    ll_syntax_error_124_message,
+    ll_syntax_error_125_message,
+    ll_syntax_error_126_message,
+    ll_syntax_error_127_message,
+    ll_syntax_error_128_message,
+    ll_syntax_error_129_message,
+    ll_syntax_error_130_message,
+    ll_syntax_error_131_message,
+    ll_syntax_error_132_message,
+    ll_syntax_error_133_message,
+    ll_syntax_error_134_message,
+    ll_syntax_error_135_message,
+    ll_syntax_error_136_message,
+    ll_syntax_error_137_message,
+    ll_syntax_error_138_message,
+    ll_syntax_error_139_message,
+    ll_syntax_error_140_message,
+    ll_syntax_error_141_message,
+    ll_syntax_error_142_message,
+    ll_syntax_error_143_message,
+    ll_syntax_error_144_message,
+    ll_syntax_error_145_message,
+    ll_syntax_error_146_message,
+    ll_syntax_error_147_message,
+    ll_syntax_error_148_message,
+    ll_syntax_error_149_message,
+    ll_syntax_error_150_message,
+    ll_syntax_error_151_message,
+    ll_syntax_error_152_message,
+};
 
 fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {
     const site = context.pendingSyntaxErrorSite() orelse return;
     context.clearPendingSyntaxErrorSite();
-    switch (site) {
-        0 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Start__expected_Rules", "syntax_error_ll_Start", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        1 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Rules__expected_Comment", "syntax_error_ll_Rules", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        2 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        3 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_OptionalNewLineMany__expected_NewLine_or_end_of_OptionalNewLineMany", "syntax_error_ll_OptionalNewLineMany", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        4 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Rule__expected_VariableSymbol", "syntax_error_ll_Rule", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        5 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RulesTail__expected_NewLine_or_Rule_or_end_of_RulesTail", "syntax_error_ll_RulesTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        6 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        7 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        8 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        9 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        10 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        11 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        12 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        13 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        14 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        15 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        16 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        17 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        18 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        19 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        20 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        21 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        22 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        23 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        24 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        25 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        26 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        27 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        28 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        29 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        30 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        31 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        32 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        33 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        34 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        35 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        36 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        37 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        38 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        39 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        40 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        41 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        42 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        43 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        44 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        45 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        46 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        47 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        48 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        49 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        50 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        51 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        52 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        53 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        54 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        55 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        56 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        57 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        58 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        59 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        60 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        61 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        62 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        63 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        64 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        65 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        66 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        67 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        68 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        69 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        70 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        71 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_BlockStart__expected_generative_terminal_block_start", "syntax_error_ll_BlockStart", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        72 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_block_start__expected_generative_terminal_block_start", "syntax_error_ll_generative_terminal_block_start", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        73 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_BlockEnd__expected_generative_terminal_block_end", "syntax_error_ll_BlockEnd", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        74 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_block_end__expected_generative_terminal_block_end", "syntax_error_ll_generative_terminal_block_end", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        75 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        76 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        77 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__AugmentedStart__expected_Start", "syntax_error_ll__AugmentedStart", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        78 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_special_EOF__expected_special_EOF", "syntax_error_ll_special_EOF", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        79 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        80 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        81 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        82 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Comment__expected_CommentLine_or_end_of_Comment", "syntax_error_ll_Comment", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        83 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_NewLine__expected_generative_terminal_new_line", "syntax_error_ll_NewLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        84 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VariableSymbol__expected_UppercaseId_or_terminal__", "syntax_error_ll_VariableSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        85 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnnotationTail__expected_end_of_AnnotationTail_or_terminal__x64", "syntax_error_ll_AnnotationTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        86 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSides__expected_RightHandSideLine", "syntax_error_ll_RightHandSides", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        87 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSideLine__expected_terminal__x124", "syntax_error_ll_RightHandSideLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        88 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x124__expected_terminal__x124", "syntax_error_ll_terminal__x124", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        89 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSide__expected_end_of_RightHandSide_or_generative_terminal_space", "syntax_error_ll_RightHandSide", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        90 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_space__expected_generative_terminal_space", "syntax_error_ll_generative_terminal_space", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        91 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Symbol__expected_TerminalSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        92 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Symbol__expected_GenerativeTerminalSymbol_or_TerminalSymbol_or_VariableSymbol", "syntax_error_ll_Symbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        93 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalSymbol__expected_RawString", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        94 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalSymbol__expected_RawString_or_terminal__x34", "syntax_error_ll_TerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        95 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_GenerativeTerminalSymbol__expected_LowercaseId", "syntax_error_ll_GenerativeTerminalSymbol", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        96 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_UppercaseId__expected_generative_terminal_uppercase_letter", "syntax_error_ll_UppercaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        97 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal____expected_terminal__", "syntax_error_ll_terminal__", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        98 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RawString__expected_terminal__x92_x92_x34", "syntax_error_ll_RawString", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        99 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x34__expected_terminal__x34", "syntax_error_ll_terminal__x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        100 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_SimpleStringContent__expected__Utf8Scalar_or_end_of_SimpleStringContent_or_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_SimpleStringContent", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        101 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92_x92_x34__expected_terminal__x92_x92_x34", "syntax_error_ll_terminal__x92_x92_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        102 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RawIndicator__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_RawIndicator", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        103 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        104 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_LowercaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_LowercaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        105 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_GenerativeTerminalExceptions__expected_end_of_GenerativeTerminalExceptions_or_terminal__x94", "syntax_error_ll_GenerativeTerminalExceptions", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        106 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x94__expected_terminal__x94", "syntax_error_ll_terminal__x94", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        107 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x64__expected_terminal__x64", "syntax_error_ll_terminal__x64", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        108 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Annotation__expected_Procedure_or_terminal__x33_or_terminal__x62", "syntax_error_ll_Annotation", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        109 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_Procedure__expected_CamelCaseId", "syntax_error_ll_Procedure", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        110 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x33__expected_terminal__x33", "syntax_error_ll_terminal__x33", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        111 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        112 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RecoveryPoint__expected_TerminalAndCursor", "syntax_error_ll_RecoveryPoint", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        113 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x62__expected_terminal__x62", "syntax_error_ll_terminal__x62", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        114 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        115 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_VerbatimMarker__expected_TerminalAndCursor_or_terminal__x62", "syntax_error_ll_VerbatimMarker", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        116 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CamelCaseId__expected_generative_terminal_lowercase_letter", "syntax_error_ll_CamelCaseId", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        117 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        118 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_TerminalAndCursor__expected_TerminalSymbol_or_terminal__x94", "syntax_error_ll_TerminalAndCursor", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        119 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34__expected_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        120 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8Scalar__expected__Utf8FourByte_or__Utf8ThreeByte_or__Utf8TwoByte", "syntax_error_ll__Utf8Scalar", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        121 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8TwoByte__expected_generative_terminal_utf8_lead_two", "syntax_error_ll__Utf8TwoByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        122 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8ThreeByte__expected_generative_terminal_utf8_lead_three_general_or_terminal__x92xe0_or_terminal__x92xed", "syntax_error_ll__Utf8ThreeByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        123 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll__Utf8FourByte__expected_generative_terminal_utf8_lead_four_general_or_terminal__x92xf0_or_terminal__x92xf4", "syntax_error_ll__Utf8FourByte", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        124 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_two__expected_generative_terminal_utf8_lead_two", "syntax_error_ll_generative_terminal_utf8_lead_two", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        125 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation__expected_generative_terminal_utf8_continuation", "syntax_error_ll_generative_terminal_utf8_continuation", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        126 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xe0__expected_terminal__x92xe0", "syntax_error_ll_terminal__x92xe0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        127 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf__expected_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll_generative_terminal_utf8_continuation_a0_bf", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        128 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_three_general__expected_generative_terminal_utf8_lead_three_general", "syntax_error_ll_generative_terminal_utf8_lead_three_general", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        129 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xed__expected_terminal__x92xed", "syntax_error_ll_terminal__x92xed", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        130 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_80_9f__expected_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll_generative_terminal_utf8_continuation_80_9f", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        131 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xf0__expected_terminal__x92xf0", "syntax_error_ll_terminal__x92xf0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        132 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_90_bf__expected_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll_generative_terminal_utf8_continuation_90_bf", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        133 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_lead_four_general__expected_generative_terminal_utf8_lead_four_general", "syntax_error_ll_generative_terminal_utf8_lead_four_general", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        134 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92xf4__expected_terminal__x92xf4", "syntax_error_ll_terminal__x92xf4", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        135 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_utf8_continuation_80_8f__expected_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll_generative_terminal_utf8_continuation_80_8f", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        136 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_ControlCharacter__expected_terminal__x92x01_or_terminal__x92x02", "syntax_error_ll_ControlCharacter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        137 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92x01__expected_terminal__x92x01", "syntax_error_ll_terminal__x92x01", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        138 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x92x02__expected_terminal__x92x02", "syntax_error_ll_terminal__x92x02", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        139 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent__expected_ControlCharacter_or_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_AnyContent", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        140 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34__expected_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll_generative_terminal_character_x94_x34_x92_x92n_x34", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        141 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_IdTail__expected_end_of_IdTail_or_generative_terminal_digit_or_generative_terminal_letter_or_terminal__", "syntax_error_ll_IdTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        142 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_letter__expected_generative_terminal_letter", "syntax_error_ll_generative_terminal_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        143 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_digit__expected_generative_terminal_digit", "syntax_error_ll_generative_terminal_digit", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        144 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_lowercase_letter__expected_generative_terminal_lowercase_letter", "syntax_error_ll_generative_terminal_lowercase_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        145 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_uppercase_letter__expected_generative_terminal_uppercase_letter", "syntax_error_ll_generative_terminal_uppercase_letter", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        146 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CamelCaseIdTail__expected_end_of_CamelCaseIdTail_or_generative_terminal_digit_or_generative_terminal_letter", "syntax_error_ll_CamelCaseIdTail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        147 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_generative_terminal_new_line__expected_generative_terminal_new_line", "syntax_error_ll_generative_terminal_new_line", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        148 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_CommentLine__expected_terminal__x35", "syntax_error_ll_CommentLine", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        149 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_terminal__x35__expected_terminal__x35", "syntax_error_ll_terminal__x35", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        150 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_RightHandSides_Tail__expected_RightHandSides_or_end_of_RightHandSides_Tail", "syntax_error_ll_RightHandSides_Tail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        151 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent_Tail__expected_AnyContent", "syntax_error_ll_AnyContent_Tail", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        152 => {
-            const diagnostic = context.runtime().lastDiagnostic().?;
-            const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{ "syntax_error_ll_AnyContent_Tail0__expected_AnyContent", "syntax_error_ll_AnyContent_Tail0", "syntax_error_ll", "syntax_error" }) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch "";
-            context.runtime().last_rendered_message = diagnostic_message;
-            if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
-        },
-        else => unreachable,
-    }
+    const diagnostic = context.runtime().lastDiagnostic().?;
+    const diagnostic_message = ll_flushed_syntax_messages[site](.{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }) catch "";
+    context.runtime().last_rendered_message = diagnostic_message;
+    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
 }
 
 pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
@@ -39462,14 +38705,4 @@ fn llFailFastSyntaxError(
     context.runtime().last_rendered_message = diagnostic_message;
     if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{s}", .{diagnostic_message});
     return root.ParseError.SyntaxError;
-}
-
-fn llFailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {
-    @branchHint(.cold);
-    if (args.context.runtime().resolveMessageOverride(args.diagnostic, root.config.error_messages)) |overridden| return overridden;
-    if (comptime @hasDecl(error_messages, "syntax_error_ll"))
-        return error_messages.syntax_error_ll(args);
-    if (comptime @hasDecl(error_messages, "syntax_error"))
-        return error_messages.syntax_error(args);
-    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
 }

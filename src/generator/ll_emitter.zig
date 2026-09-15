@@ -8,8 +8,6 @@ pub const Options = common.Options;
 pub const atomic_file = common.atomic_file;
 const Symbol = common.Symbol;
 const Rule = common.Rule;
-const bytesToInt = common.bytesToInt;
-const emitEscapedForComment = common.emitEscapedForComment;
 const emitFormatToken = common.emitFormatToken;
 const emitStringLiteral = common.emitStringLiteral;
 const indented = common.indented;
@@ -170,10 +168,8 @@ const Generator = struct {
             \\}
             \\
         );
-        // Cold fail-fast support at the very end so the large
-        // `llFailFastDefaultMessage` (session → config → hooks chain) does
-        // not sit between the hot parser functions and displace them in the
-        // final binary layout.
+        // Cold fail-fast support at the very end so it does not sit between
+        // the hot parser functions and displace them in the final binary.
         try self.emitFailFastSyntaxErrorSupport(writer);
     }
 
@@ -225,16 +221,13 @@ const Generator = struct {
     }
 
     fn emitExplicitSyntaxDiagnosticFlusher(self: *Generator, writer: *std.Io.Writer) !void {
-        try writer.writeAll("fn llFlushSyntaxDiagnostic(context: *data_structures.Context) !void {\n");
-        try writer.writeAll("    const site = context.pendingSyntaxErrorSite() orelse return;\n");
-        try writer.writeAll("    context.clearPendingSyntaxErrorSite();\n");
-        try writer.writeAll("    switch (site) {\n");
+        const renderer_names = try self.allocator.alloc([]const u8, self.plan.syntax_error_handlers.items.len);
+        defer self.allocator.free(renderer_names);
         for (self.plan.syntax_error_handlers.items, 0..) |spec, site_index| {
-            try writer.print("        {d} => {{\n", .{site_index});
-            try self.emitSyntaxErrorMessagePrint(writer, spec.exact_name, spec.symbol_name, "            ");
-            try writer.writeAll("        },\n");
+            renderer_names[site_index] = try std.fmt.allocPrint(self.allocator, "{s}_message", .{spec.name});
         }
-        try writer.writeAll("        else => unreachable,\n    }\n}\n\n");
+        defer for (renderer_names) |name| self.allocator.free(name);
+        try emitter_common.emitExplicitDiagnosticFlusher(writer, "ll", renderer_names);
     }
 
     fn emitOccurrenceRecoveryScope(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize) !void {
@@ -700,41 +693,55 @@ const Generator = struct {
             }
             return;
         }
-        const step_length = node.step_length;
-        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
-        for (node.groups.items) |group| {
-            try writer.print("{s}    ", .{indent});
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.print("{d}", .{bytesToInt(head)});
-            }
-            try writer.writeAll(" => { // ");
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.writeByte('\'');
-                try emitEscapedForComment(writer, head);
-                try writer.writeByte('\'');
-            }
-            try writer.writeByte('\n');
-            if (group.child.isLeaf()) {
-                try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
-            } else {
-                var child_indent = std.ArrayList(u8).empty;
-                try child_indent.appendSlice(self.allocator, indent);
-                try child_indent.appendSlice(self.allocator, "        ");
-                try self.emitSelfRepeatingSwitch(writer, group.child, prefix_length + step_length, child_indent.items, params);
-                try writer.writeByte('\n');
-            }
-            try writer.print("{s}    }},\n", .{indent});
-        }
-        if (node.fallback != null) {
-            try writer.print("{s}    else => {{ // ''\n", .{indent});
-            try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
-            try writer.print("{s}    }},\n", .{indent});
+        try emitter_common.emitMergedSwitch(
+            SelfRepeatingSwitchContext,
+            anyerror,
+            self.allocator,
+            writer,
+            node,
+            prefix_length,
+            indent,
+            .{ .generator = self, .node = node, .prefix_length = prefix_length, .indent = indent, .params = params },
+            renderSelfRepeatingProngBody,
+            renderSelfRepeatingFallbackBody,
+            renderSelfRepeatingElse,
+        );
+    }
+
+    const SelfRepeatingSwitchContext = struct {
+        generator: *Generator,
+        node: *const switch_planning.Node,
+        prefix_length: usize,
+        indent: []const u8,
+        params: SelfRepeatingLeafParams,
+    };
+
+    fn renderSelfRepeatingProngBody(context: SelfRepeatingSwitchContext, buffer: *std.Io.Writer, group_index: usize) !void {
+        const group = context.node.groups.items[group_index];
+        const step_length = context.node.step_length;
+        if (group.child.isLeaf()) {
+            try context.generator.emitSelfRepeatingLeafBody(buffer, try indented(context.generator.allocator, context.indent, 8), context.params);
         } else {
-            try writer.print("{s}    else => break,\n", .{indent});
+            var child_indent = std.ArrayList(u8).empty;
+            try child_indent.appendSlice(context.generator.allocator, context.indent);
+            try child_indent.appendSlice(context.generator.allocator, "        ");
+            try context.generator.emitSelfRepeatingSwitch(buffer, group.child, context.prefix_length + step_length, child_indent.items, context.params);
+            try buffer.writeByte('\n');
         }
-        try writer.print("{s}}}", .{indent});
+    }
+
+    fn renderSelfRepeatingFallbackBody(context: SelfRepeatingSwitchContext, buffer: *std.Io.Writer) !void {
+        try context.generator.emitSelfRepeatingLeafBody(buffer, try indented(context.generator.allocator, context.indent, 8), context.params);
+    }
+
+    fn renderSelfRepeatingElse(context: SelfRepeatingSwitchContext, writer: *std.Io.Writer) !void {
+        if (context.node.fallback != null) {
+            try writer.print("{s}    else => {{ // ''\n", .{context.indent});
+            try context.generator.emitSelfRepeatingLeafBody(writer, try indented(context.generator.allocator, context.indent, 8), context.params);
+            try writer.print("{s}    }},\n", .{context.indent});
+        } else {
+            try writer.print("{s}    else => break,\n", .{context.indent});
+        }
     }
 
     fn emitSelfRepeatingLeafBody(self: *Generator, writer: *std.Io.Writer, indent: []const u8, params: SelfRepeatingLeafParams) !void {
@@ -856,36 +863,51 @@ const Generator = struct {
             }
         }
 
-        const step_length = node.step_length;
-        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
-        for (node.groups.items) |group| {
-            try writer.print("{s}    ", .{indent});
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.print("{d}", .{bytesToInt(head)});
-            }
-            try writer.writeAll(" => { // ");
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.writeByte('\'');
-                try emitEscapedForComment(writer, head);
-                try writer.writeByte('\'');
-            }
-            try writer.writeByte('\n');
+        try emitter_common.emitMergedSwitch(
+            RuleSwitchContext,
+            anyerror,
+            self.allocator,
+            writer,
+            node,
+            prefix_length,
+            indent,
+            .{ .generator = self, .symbol_index = symbol_index, .node = node, .prefix_length = prefix_length, .indent = indent, .skip_ast_construction = skip_ast_construction, .is_self_repeating = is_self_repeating },
+            renderRuleProngBody,
+            renderRuleFallbackBody,
+            renderRuleElse,
+        );
+    }
 
-            if (group.child.isLeaf()) {
-                try self.emitSwitchLeaf(writer, symbol_index, group.child.fallback.?, group.child.fallback_length orelse prefix_length + step_length, indent, skip_ast_construction);
-            } else {
-                var child_indent = std.ArrayList(u8).empty;
-                try child_indent.appendSlice(self.allocator, indent);
-                try child_indent.appendSlice(self.allocator, "        ");
-                try self.emitRuleSwitch(writer, symbol_index, group.child, prefix_length + step_length, child_indent.items, skip_ast_construction, is_self_repeating);
-                try writer.writeByte('\n');
-            }
-            try writer.print("{s}    }},\n", .{indent});
+    const RuleSwitchContext = struct {
+        generator: *Generator,
+        symbol_index: usize,
+        node: *const switch_planning.Node,
+        prefix_length: usize,
+        indent: []const u8,
+        skip_ast_construction: bool,
+        is_self_repeating: bool,
+    };
+
+    fn renderRuleProngBody(context: RuleSwitchContext, buffer: *std.Io.Writer, group_index: usize) !void {
+        const group = context.node.groups.items[group_index];
+        const step_length = context.node.step_length;
+        if (group.child.isLeaf()) {
+            try context.generator.emitSwitchLeaf(buffer, context.symbol_index, group.child.fallback.?, group.child.fallback_length orelse context.prefix_length + step_length, context.indent, context.skip_ast_construction);
+        } else {
+            var child_indent = std.ArrayList(u8).empty;
+            try child_indent.appendSlice(context.generator.allocator, context.indent);
+            try child_indent.appendSlice(context.generator.allocator, "        ");
+            try context.generator.emitRuleSwitch(buffer, context.symbol_index, group.child, context.prefix_length + step_length, child_indent.items, context.skip_ast_construction, context.is_self_repeating);
+            try buffer.writeByte('\n');
         }
-        try self.emitSwitchElse(writer, symbol_index, node, prefix_length, indent, skip_ast_construction, is_self_repeating);
-        try writer.print("{s}}}", .{indent});
+    }
+
+    fn renderRuleFallbackBody(context: RuleSwitchContext, buffer: *std.Io.Writer) !void {
+        try context.generator.emitSwitchLeaf(buffer, context.symbol_index, context.node.fallback.?, context.node.fallback_length orelse context.prefix_length, context.indent, context.skip_ast_construction);
+    }
+
+    fn renderRuleElse(context: RuleSwitchContext, writer: *std.Io.Writer) !void {
+        try context.generator.emitSwitchElse(writer, context.symbol_index, context.node, context.prefix_length, context.indent, context.skip_ast_construction, context.is_self_repeating);
     }
 
     fn emitSwitchLeaf(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, rule_index: usize, length: usize, indent: []const u8, skip_ast_construction: bool) !void {
@@ -1023,7 +1045,7 @@ const Generator = struct {
         try writer.writeAll("} }, ");
         try self.emitRecoveryCandidates(writer, spec.expected_tokens);
         try writer.writeAll(");\n");
-        try self.emitSyntaxErrorMessagePrint(writer, spec.exact_name, spec.symbol_name, "        ");
+        try emitter_common.emitSiteMessagePrint(writer, spec.name, "        ");
         try writer.writeAll("    }\n");
         try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
         try writer.writeAll("    if (try llRecoveryOffset(context, ");
@@ -1039,7 +1061,7 @@ const Generator = struct {
     fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
         try writer.writeByte('\n');
-        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "ll", "LL", "syntax_error_ll");
+        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "ll", "LL");
     }
 
     fn emitFailFastSyntaxErrorMessageRenderer(
@@ -1049,20 +1071,7 @@ const Generator = struct {
     ) !void {
         _ = self;
         try writer.writeByte('\n');
-        try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{ spec.exact_name, spec.symbol_name }, "llFailFastDefaultMessage");
-    }
-
-    fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, exact_name: []const u8, symbol_name: []const u8, indent: []const u8) !void {
-        _ = self;
-        try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
-        try writer.print(
-            "{s}const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{{ \"{s}\", \"{s}\", \"syntax_error_ll\", \"syntax_error\" }}) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch \"\";\n",
-            .{ indent, exact_name, symbol_name },
-        );
-        try writer.print(
-            "{s}context.runtime().last_rendered_message = diagnostic_message;\n{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print(\"{{s}}\", .{{diagnostic_message}});\n",
-            .{ indent, indent },
-        );
+        try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{ spec.exact_name, spec.symbol_name, "syntax_error_ll", "syntax_error" });
     }
 
     fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
@@ -1323,34 +1332,49 @@ const Generator = struct {
             }
         }
 
-        const step_length = node.step_length;
-        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
-        for (node.groups.items) |group| {
-            try writer.print("{s}    ", .{indent});
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.print("{d}", .{bytesToInt(head)});
-            }
-            try writer.writeAll(" => { // ");
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.writeByte('\'');
-                try emitEscapedForComment(writer, head);
-                try writer.writeByte('\'');
-            }
-            try writer.writeByte('\n');
+        try emitter_common.emitMergedSwitch(
+            TransparentSwitchContext,
+            EmitError,
+            self.allocator,
+            writer,
+            node,
+            prefix_length,
+            indent,
+            .{ .generator = self, .tail = tail, .node = node, .prefix_length = prefix_length, .indent = indent, .inline_context = context },
+            renderTransparentProngBody,
+            renderTransparentFallbackBody,
+            renderTransparentElse,
+        );
+    }
 
-            if (group.child.isLeaf()) {
-                try self.emitTransparentTailLeaf(writer, tail, group.child.fallback.?, indent, context);
-            } else {
-                var child_indent = std.ArrayList(u8).empty;
-                try child_indent.appendSlice(self.allocator, indent);
-                try child_indent.appendSlice(self.allocator, "        ");
-                try self.emitTransparentTailSwitch(writer, tail, group.child, prefix_length + step_length, child_indent.items, context);
-                try writer.writeByte('\n');
-            }
-            try writer.print("{s}    }},\n", .{indent});
+    const TransparentSwitchContext = struct {
+        generator: *Generator,
+        tail: usize,
+        node: *const switch_planning.Node,
+        prefix_length: usize,
+        indent: []const u8,
+        inline_context: TransparentInlineContext,
+    };
+
+    fn renderTransparentProngBody(context: TransparentSwitchContext, buffer: *std.Io.Writer, group_index: usize) EmitError!void {
+        const group = context.node.groups.items[group_index];
+        const step_length = context.node.step_length;
+        if (group.child.isLeaf()) {
+            try context.generator.emitTransparentTailLeaf(buffer, context.tail, group.child.fallback.?, context.indent, context.inline_context);
+        } else {
+            var child_indent = std.ArrayList(u8).empty;
+            try child_indent.appendSlice(context.generator.allocator, context.indent);
+            try child_indent.appendSlice(context.generator.allocator, "        ");
+            try context.generator.emitTransparentTailSwitch(buffer, context.tail, group.child, context.prefix_length + step_length, child_indent.items, context.inline_context);
+            try buffer.writeByte('\n');
         }
+    }
+
+    fn renderTransparentFallbackBody(context: TransparentSwitchContext, buffer: *std.Io.Writer) EmitError!void {
+        try context.generator.emitTransparentTailLeaf(buffer, context.tail, context.node.fallback.?, context.indent, context.inline_context);
+    }
+
+    fn renderTransparentElse(context: TransparentSwitchContext, writer: *std.Io.Writer) EmitError!void {
         // Transparent helpers head no self-repeating loop by construction
         // (factored suffixes predate their tail), so the error branch always
         // reports rather than breaking a repetition.
@@ -1361,14 +1385,13 @@ const Generator = struct {
         // parent's body scope (and finalizing a node the tail must never
         // own). Only a missing fallback delegates for the error branch,
         // which emits no rule body.
-        if (node.fallback) |rule_index| {
-            try writer.print("{s}    else => {{ // ''\n", .{indent});
-            try self.emitTransparentTailLeaf(writer, tail, rule_index, indent, context);
-            try writer.print("{s}    }},\n", .{indent});
+        if (context.node.fallback) |rule_index| {
+            try writer.print("{s}    else => {{ // ''\n", .{context.indent});
+            try context.generator.emitTransparentTailLeaf(writer, context.tail, rule_index, context.indent, context.inline_context);
+            try writer.print("{s}    }},\n", .{context.indent});
         } else {
-            try self.emitSwitchElse(writer, tail, node, prefix_length, indent, context.skip_ast_construction, false);
+            try context.generator.emitSwitchElse(writer, context.tail, context.node, context.prefix_length, context.indent, context.inline_context.skip_ast_construction, false);
         }
-        try writer.print("{s}}}", .{indent});
     }
 
     fn emitTransparentTailLeaf(

@@ -1,5 +1,6 @@
 const std = @import("std");
 const common = @import("generator_common");
+const switch_planning = @import("generator_switch_plan");
 
 /// Writes the procedure-module lookup name for one grammar annotation.
 /// Every author-written hook — standard tree helpers included — is emitted
@@ -83,12 +84,25 @@ pub fn emitProductionRecoveryScope(writer: *std.Io.Writer, scopes: *const common
     try writer.writeAll(" }");
 }
 
+/// Emits the shared report boilerplate for an already-rendered
+/// `diagnostic_message`: records it as the last rendered message and routes
+/// it to the configured reporter (or stderr).
+pub fn emitDiagnosticReport(writer: *std.Io.Writer, indent: []const u8) !void {
+    try writer.print("{s}context.runtime().last_rendered_message = diagnostic_message;\n", .{indent});
+    try writer.print("{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print(\"{{s}}\", .{{diagnostic_message}});\n", .{indent});
+}
+
+/// Emits an automatic-recovery message print through a per-site `*_message`
+/// renderer, plus the shared report.
+pub fn emitSiteMessagePrint(writer: *std.Io.Writer, message_function: []const u8, indent: []const u8) !void {
+    try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
+    try writer.print("{s}const diagnostic_message = {s}_message(.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch \"\";\n", .{ indent, message_function });
+    try emitDiagnosticReport(writer, indent);
+}
+
 /// Emits the fail-fast syntax error support block shared verbatim by the LL
-/// and LR backends (emitted when error recovery is disabled). `function_prefix`
-/// is the backend lowercase prefix (`ll`/`lr`), `renderer_decl` is the renderer
-/// type name prefix (`LL`/`LR`), and `error_messages_decl` is the decl name in
-/// the generated error messages namespace (`syntax_error_ll`/`syntax_error_lr`).
-pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: []const u8, renderer_decl: []const u8, error_messages_decl: []const u8) !void {
+/// and LR backends (emitted when error recovery is disabled).
+pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: []const u8, renderer_decl: []const u8) !void {
     try writer.print(
         \\const {s}FailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
         \\
@@ -106,28 +120,21 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\        .diagnostic = context.runtime().lastDiagnostic().?,
         \\        .style = .plain,
         \\    }}) catch "";
-        \\    context.runtime().last_rendered_message = diagnostic_message;
-        \\    if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print("{{s}}", .{{diagnostic_message}});
+    , .{ renderer_decl, function_prefix, renderer_decl });
+    try writer.writeByte('\n');
+    try emitDiagnosticReport(writer, "    ");
+    try writer.writeAll(
         \\    return root.ParseError.SyntaxError;
-        \\}}
+        \\}
         \\
-        \\fn {s}FailFastDefaultMessage(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror![]const u8 {{
-        \\    @branchHint(.cold);
-        \\    if (args.context.runtime().resolveMessageOverride(args.diagnostic, root.config.error_messages)) |overridden| return overridden;
-        \\    if (comptime @hasDecl(error_messages, "{s}"))
-        \\        return error_messages.{s}(args);
-        \\    if (comptime @hasDecl(error_messages, "syntax_error"))
-        \\        return error_messages.syntax_error(args);
-        \\    return root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);
-        \\}}
-        \\
-    , .{ renderer_decl, function_prefix, renderer_decl, function_prefix, error_messages_decl, error_messages_decl });
+    );
 }
 
-/// Emits a fail-fast syntax error message renderer function shared by the LL
-/// and LR backends. `error_message_fields` is the ordered list of error
-/// messages namespace decls to try before `fallback_message_function`.
-pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8, fallback_message_function: []const u8) !void {
+/// Emits a fail-fast syntax error message renderer. `error_message_fields`
+/// is the full hook chain (site hooks, then family, then global); hook
+/// failures fall through inside `resolveSyntaxErrorMessage`, and the builtin
+/// diagnostic is the final fallback.
+pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8) !void {
     try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) \"__TEXT,__unlikely\" else \".text.unlikely\") anyerror![]const u8 {{\n", .{function_name});
     try writer.writeAll("    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
     for (error_message_fields, 0..) |field, index| {
@@ -135,7 +142,7 @@ pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []cons
         try writer.print("\"{s}\"", .{field});
     }
     try writer.writeAll("})) |message| return message;\n");
-    try writer.print("    return {s}(args);\n}}\n\n", .{fallback_message_function});
+    try writer.writeAll("    return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);\n}\n\n");
 }
 
 /// Emits the standalone customization file from completed diagnostic plans.
@@ -960,6 +967,174 @@ pub fn emitProcedureDispatchTail(
             indent, indent,         indent, indent,
         });
     }
+}
+
+/// Merged switch prong produced by `mergeSwitchBodies`: one emitted body
+/// shared by every original group index in `sources`. `body` aliases the
+/// caller's first occurrence slice; `sources` is owned.
+pub const MergedProng = struct {
+    body: []const u8,
+    sources: []const usize,
+};
+
+/// Groups identical switch-prong bodies so emitters can combine case
+/// headers. Bodies equal to `fallback_body` are dropped; the `else` arm
+/// covers them.
+///
+/// `bodies[i]` must include every behavior-changing field (rule/action
+/// identity and consumed length). Two intentional omissions: LL variable
+/// leaves omit length (peek-only), LR reduce arms omit terminal/length
+/// (consume nothing).
+pub fn mergeSwitchBodies(
+    allocator: std.mem.Allocator,
+    bodies: []const []const u8,
+    fallback_body: ?[]const u8,
+) ![]MergedProng {
+    var unique_bodies = std.ArrayList([]const u8).empty;
+    defer unique_bodies.deinit(allocator);
+    var unique_sources = std.ArrayList(std.ArrayList(usize)).empty;
+    defer unique_sources.deinit(allocator);
+
+    for (bodies, 0..) |body, index| {
+        if (fallback_body) |fallback| {
+            if (std.mem.eql(u8, body, fallback)) continue;
+        }
+        for (unique_bodies.items, 0..) |existing, unique_index| {
+            if (std.mem.eql(u8, existing, body)) {
+                try unique_sources.items[unique_index].append(allocator, index);
+                break;
+            }
+        } else {
+            try unique_bodies.append(allocator, body);
+            var list = std.ArrayList(usize).empty;
+            errdefer list.deinit(allocator);
+            try list.append(allocator, index);
+            try unique_sources.append(allocator, list);
+        }
+    }
+
+    const result = try allocator.alloc(MergedProng, unique_bodies.items.len);
+    for (unique_bodies.items, 0..) |body, i| {
+        result[i] = .{
+            .body = body,
+            .sources = try unique_sources.items[i].toOwnedSlice(allocator),
+        };
+    }
+    return result;
+}
+
+/// Emits one merged switch-prong header: `{indent}    <ints> => { // <comments>`.
+/// Shared by every backend so combined headers format identically.
+pub fn emitSwitchProngHeader(
+    writer: *std.Io.Writer,
+    heads: []const []const u8,
+    indent: []const u8,
+) !void {
+    try writer.print("{s}    ", .{indent});
+    for (heads, 0..) |head, i| {
+        if (i != 0) try writer.writeAll(", ");
+        try writer.print("{d}", .{common.bytesToInt(head)});
+    }
+    try writer.writeAll(" => { // ");
+    for (heads, 0..) |head, i| {
+        if (i != 0) try writer.writeAll(", ");
+        try writer.writeByte('\'');
+        try common.emitEscapedForComment(writer, head);
+        try writer.writeByte('\'');
+    }
+    try writer.writeByte('\n');
+}
+
+/// Renders one terminal/action switch, folding identical prong bodies behind
+/// combined headers. Zero-prong results keep the `switch (head)` shell: the
+/// head read is a pure peek, and the shell hides downstream unreachability
+/// (notably LR reduce-only states).
+pub fn emitMergedSwitch(
+    comptime Context: type,
+    comptime Error: type,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    node: *const switch_planning.Node,
+    prefix_length: usize,
+    indent: []const u8,
+    context: Context,
+    comptime renderProngBody: fn (Context, *std.Io.Writer, usize) Error!void,
+    comptime renderFallbackBody: fn (Context, *std.Io.Writer) Error!void,
+    comptime renderElse: fn (Context, *std.Io.Writer) Error!void,
+) Error!void {
+    const step_length = node.step_length;
+    var group_buffers = std.ArrayList(std.Io.Writer.Allocating).empty;
+    defer {
+        for (group_buffers.items) |*buffer| buffer.deinit();
+        group_buffers.deinit(allocator);
+    }
+    var bodies = std.ArrayList([]const u8).empty;
+    defer bodies.deinit(allocator);
+    for (node.groups.items, 0..) |_, group_index| {
+        var buffer = std.Io.Writer.Allocating.init(allocator);
+        errdefer buffer.deinit();
+        try renderProngBody(context, &buffer.writer, group_index);
+        try bodies.append(allocator, buffer.written());
+        try group_buffers.append(allocator, buffer);
+    }
+    var fallback_buffer = std.Io.Writer.Allocating.init(allocator);
+    defer fallback_buffer.deinit();
+    var fallback_body: ?[]const u8 = null;
+    if (node.fallback != null) {
+        try renderFallbackBody(context, &fallback_buffer.writer);
+        fallback_body = fallback_buffer.written();
+    }
+    const merged = try mergeSwitchBodies(allocator, bodies.items, fallback_body);
+    defer {
+        for (merged) |prong| allocator.free(prong.sources);
+        allocator.free(merged);
+    }
+    try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+    for (merged) |prong| {
+        var heads = std.ArrayList([]const u8).empty;
+        defer heads.deinit(allocator);
+        for (prong.sources) |source_index| {
+            for (node.groups.items[source_index].heads.items) |head| try heads.append(allocator, head);
+        }
+        std.mem.sort([]const u8, heads.items, {}, common.headLessThan);
+        try emitSwitchProngHeader(writer, heads.items, indent);
+        try writer.writeAll(prong.body);
+        try writer.print("{s}    }},\n", .{indent});
+    }
+    try renderElse(context, writer);
+    try writer.print("{s}}}", .{indent});
+}
+
+/// Emits the explicit-recovery diagnostic flusher shared by the LL and LR
+/// backends: a function-pointer table over the per-site `*_message`
+/// functions, indexed by pending syntax-error site.
+pub fn emitExplicitDiagnosticFlusher(
+    writer: *std.Io.Writer,
+    prefix: []const u8,
+    renderer_names: []const []const u8,
+) !void {
+    try writer.print(
+        "const {s}_flushed_syntax_messages = [_]*const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8{{\n",
+        .{prefix},
+    );
+    for (renderer_names) |name| {
+        try writer.print("    {s},\n", .{name});
+    }
+    try writer.writeAll("};\n\n");
+    try writer.print(
+        \\fn {s}FlushSyntaxDiagnostic(context: *data_structures.Context) !void {{
+        \\    const site = context.pendingSyntaxErrorSite() orelse return;
+        \\    context.clearPendingSyntaxErrorSite();
+        \\    const diagnostic = context.runtime().lastDiagnostic().?;
+        \\    const diagnostic_message = {s}_flushed_syntax_messages[site](.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch "";
+    , .{ prefix, prefix });
+    try writer.writeByte('\n');
+    try emitDiagnosticReport(writer, "    ");
+    try writer.writeAll(
+        \\}
+        \\
+        \\
+    );
 }
 
 /// Emits a comma-separated rendering of the rule RHS for Debug-mode reduction

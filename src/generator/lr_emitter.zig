@@ -8,8 +8,6 @@ pub const Options = common.Options;
 pub const atomic_file = common.atomic_file;
 const Symbol = common.Symbol;
 const Rule = common.Rule;
-const bytesToInt = common.bytesToInt;
-const emitEscapedForComment = common.emitEscapedForComment;
 const emitFormatToken = common.emitFormatToken;
 const emitStringLiteral = common.emitStringLiteral;
 const indented = common.indented;
@@ -243,9 +241,8 @@ const Generator = struct {
             \\}
             \\
         );
-        // Cold fail-fast support at the very end so the large
-        // `lrFailFastDefaultMessage` (session → config → hooks chain) does
-        // not sit between the hot state functions and displace them.
+        // Cold fail-fast support at the very end so it does not sit between
+        // the hot state functions and displace them.
         try self.emitFailFastSyntaxErrorSupport(writer);
     }
 
@@ -372,39 +369,54 @@ const Generator = struct {
     }
 
     fn emitActionSwitch(self: *Generator, writer: *std.Io.Writer, state: State, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8) !void {
-        const step_length = node.step_length;
-        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
-        for (node.groups.items) |group| {
-            try writer.print("{s}    ", .{indent});
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.print("{d}", .{bytesToInt(head)});
-            }
-            try writer.writeAll(" => { // ");
-            for (group.heads.items, 0..) |head, i| {
-                if (i != 0) try writer.writeAll(", ");
-                try writer.writeByte('\'');
-                try emitEscapedForComment(writer, head);
-                try writer.writeByte('\'');
-            }
-            try writer.writeByte('\n');
+        try emitter_common.emitMergedSwitch(
+            ActionSwitchContext,
+            anyerror,
+            self.allocator,
+            writer,
+            node,
+            prefix_length,
+            indent,
+            .{ .generator = self, .state = state, .node = node, .prefix_length = prefix_length, .indent = indent },
+            renderActionProngBody,
+            renderActionFallbackBody,
+            renderActionElse,
+        );
+    }
 
-            if (group.child.isLeaf()) {
-                try self.emitAction(writer, state.actions.items[group.child.fallback.?], group.child.fallback_length orelse prefix_length + step_length, try indented(self.allocator, indent, 8));
-            } else {
-                try self.emitActionSwitch(writer, state, group.child, prefix_length + step_length, try indented(self.allocator, indent, 8));
-                try writer.writeByte('\n');
-            }
-            try writer.print("{s}    }},\n", .{indent});
-        }
-        if (node.fallback) |action| {
-            try writer.print("{s}    else => {{\n", .{indent});
-            try self.emitAction(writer, state.actions.items[action], node.fallback_length orelse prefix_length, try indented(self.allocator, indent, 8));
-            try writer.print("{s}    }},\n", .{indent});
+    const ActionSwitchContext = struct {
+        generator: *Generator,
+        state: State,
+        node: *const switch_planning.Node,
+        prefix_length: usize,
+        indent: []const u8,
+    };
+
+    fn renderActionProngBody(context: ActionSwitchContext, buffer: *std.Io.Writer, group_index: usize) !void {
+        const group = context.node.groups.items[group_index];
+        const step_length = context.node.step_length;
+        const body_indent = try indented(context.generator.allocator, context.indent, 8);
+        if (group.child.isLeaf()) {
+            try context.generator.emitAction(buffer, context.state.actions.items[group.child.fallback.?], group.child.fallback_length orelse context.prefix_length + step_length, body_indent);
         } else {
-            try self.emitSyntaxError(writer, node.diagnostic.?, try indented(self.allocator, indent, 4));
+            try context.generator.emitActionSwitch(buffer, context.state, group.child, context.prefix_length + step_length, body_indent);
+            try buffer.writeByte('\n');
         }
-        try writer.print("{s}}}", .{indent});
+    }
+
+    fn renderActionFallbackBody(context: ActionSwitchContext, buffer: *std.Io.Writer) !void {
+        const body_indent = try indented(context.generator.allocator, context.indent, 8);
+        try context.generator.emitAction(buffer, context.state.actions.items[context.node.fallback.?], context.node.fallback_length orelse context.prefix_length, body_indent);
+    }
+
+    fn renderActionElse(context: ActionSwitchContext, writer: *std.Io.Writer) !void {
+        if (context.node.fallback) |action| {
+            try writer.print("{s}    else => {{\n", .{context.indent});
+            try context.generator.emitAction(writer, context.state.actions.items[action], context.node.fallback_length orelse context.prefix_length, try indented(context.generator.allocator, context.indent, 8));
+            try writer.print("{s}    }},\n", .{context.indent});
+        } else {
+            try context.generator.emitSyntaxError(writer, context.node.diagnostic.?, try indented(context.generator.allocator, context.indent, 4));
+        }
     }
 
     fn emitAction(self: *Generator, writer: *std.Io.Writer, action: Action, length: usize, indent: []const u8) !void {
@@ -1409,17 +1421,13 @@ const Generator = struct {
     }
 
     fn emitExplicitSyntaxDiagnosticFlusher(self: *Generator, writer: *std.Io.Writer) !void {
-        try writer.writeAll("fn lrFlushSyntaxDiagnostic(context: *data_structures.Context) !void {\n");
-        try writer.print("    @setEvalBranchQuota({d});\n", .{@max(1000, self.plan.syntax_error_handlers.items.len * 8)});
-        try writer.writeAll("    const site = context.pendingSyntaxErrorSite() orelse return;\n");
-        try writer.writeAll("    context.clearPendingSyntaxErrorSite();\n");
-        try writer.writeAll("    switch (site) {\n");
+        const renderer_names = try self.allocator.alloc([]const u8, self.plan.syntax_error_handlers.items.len);
+        defer self.allocator.free(renderer_names);
         for (self.plan.syntax_error_handlers.items, 0..) |spec, site_index| {
-            try writer.print("        {d} => {{\n", .{site_index});
-            try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "            ");
-            try writer.writeAll("        },\n");
+            renderer_names[site_index] = try std.fmt.allocPrint(self.allocator, "{s}_message", .{spec.name});
         }
-        try writer.writeAll("        else => unreachable,\n    }\n}\n\n");
+        defer for (renderer_names) |name| self.allocator.free(name);
+        try emitter_common.emitExplicitDiagnosticFlusher(writer, "lr", renderer_names);
     }
 
     fn emitOccurrenceRecoveryScope(self: *Generator, writer: *std.Io.Writer, occurrence: Occurrence) !void {
@@ -1511,7 +1519,7 @@ const Generator = struct {
         try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
         try self.emitStringSliceItems(writer, spec.expected_tokens);
         try writer.writeAll("});\n");
-        try self.emitSyntaxErrorMessagePrint(writer, spec.error_function_name, "        ");
+        try emitter_common.emitSiteMessagePrint(writer, spec.name, "        ");
         try writer.writeAll("    }\n");
         try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
         if (spec.recoverable) {
@@ -1531,7 +1539,7 @@ const Generator = struct {
 
     fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
-        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "lr", "LR", "syntax_error_lr");
+        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "lr", "LR");
     }
 
     fn emitFailFastSyntaxErrorMessageRenderer(
@@ -1540,7 +1548,7 @@ const Generator = struct {
         spec: SyntaxErrorHandlerSpec,
     ) !void {
         _ = self;
-        try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{spec.error_function_name}, "lrFailFastDefaultMessage");
+        try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{ spec.error_function_name, "syntax_error_lr", "syntax_error" });
     }
 
     fn emitStringSliceItems(self: *Generator, writer: *std.Io.Writer, items: []const []const u8) !void {
@@ -1549,19 +1557,6 @@ const Generator = struct {
             if (index != 0) try writer.writeAll(", ");
             try emitStringLiteral(writer, item);
         }
-    }
-
-    fn emitSyntaxErrorMessagePrint(self: *Generator, writer: *std.Io.Writer, function_name: []const u8, indent: []const u8) !void {
-        _ = self;
-        try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
-        try writer.print(
-            "{s}const diagnostic_message = root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{{ \"{s}\", \"syntax_error_lr\", \"syntax_error\" }}) orelse root.renderParseDiagnostic(context.runtime().arena_allocator, diagnostic, .plain) catch \"\";\n",
-            .{ indent, function_name },
-        );
-        try writer.print(
-            "{s}context.runtime().last_rendered_message = diagnostic_message;\n{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print(\"{{s}}\", .{{diagnostic_message}});\n",
-            .{ indent, indent },
-        );
     }
 
     fn symbolReturnsStackNode(self: *Generator, symbol_index: usize) bool {

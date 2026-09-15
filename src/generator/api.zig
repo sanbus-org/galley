@@ -335,14 +335,41 @@ test "LL decision falls back to the shorter terminal when one literal prefixes a
         .with_procedures = false,
     });
 
-    // The ".l" prefix is shared by the ".length" literal and identifier tails
-    // such as ".left". When the bytes after ".l" are not "length", the decision
-    // must fall back to the empty alternative instead of reporting a syntax
-    // error, so inputs like "state.left" still parse.
-    const length_head = std.mem.indexOf(u8, output, "=> { // 'ength'") orelse return error.TestUnexpectedStructure;
-    const trailing_else = std.mem.indexOfPos(u8, output, length_head, "else =>") orelse return error.TestUnexpectedStructure;
-    try std.testing.expect(std.mem.startsWith(u8, output[trailing_else..], "else => { // ''"));
+    // ".l" is shared by ".length" and identifier tails like ".left": the
+    // "ength" prong folds into the empty `else` (same empty IdTail body),
+    // which must survive; distinct ".length" routing is checked below.
+    const id_tail = fnBody(output, "fn parse_IdTail(") orelse return error.TestUnexpectedStructure;
+    const tail_switch = std.mem.indexOf(u8, id_tail, "head(u40, 2)") orelse return error.TestUnexpectedStructure;
+    const tail_else = std.mem.indexOfPos(u8, id_tail, tail_switch, "else =>") orelse return error.TestUnexpectedStructure;
+    try std.testing.expect(std.mem.startsWith(u8, id_tail[tail_else..], "else => { // ''"));
+    try std.testing.expect(std.mem.indexOf(u8, id_tail, "// 'ength'") == null);
+
+    // ".length" still routes to the length rule, not into empty:
+    // OptionalLengthQuery keeps a distinct 'length' arm expanding '.length'.
+    const length_query = fnBody(output, "fn parse_OptionalLengthQuery(") orelse return error.TestUnexpectedStructure;
+    try std.testing.expect(std.mem.indexOf(u8, length_query, "// 'length'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, length_query, "OptionalLengthQuery -> '.length'") != null);
+
+    // And the OperandDotTail lookahead still distinguishes the two: ".length"
+    // takes the empty arm (deferring to the length query) while other "."
+    // inputs take the "." Id arm.
+    const dot_tail = fnBody(output, "fn parse_OperandDotTail(") orelse return error.TestUnexpectedStructure;
+    try std.testing.expect(std.mem.indexOf(u8, dot_tail, "// 'length'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dot_tail, "OperandDotTail -> '.', Id") != null);
 }
+
+/// Returns the generated body of one parser function, from its signature
+/// through (not including) the next top-level function.
+fn fnBody(output: []const u8, signature: []const u8) ?[]const u8 {
+    const start = std.mem.indexOf(u8, output, signature) orelse return null;
+    const rest = output[start..];
+    var end = rest.len;
+    for ([_][]const u8{ "\nfn ", "\ninline fn ", "\nnoinline fn ", "\npub fn " }) |marker| {
+        if (std.mem.indexOfPos(u8, rest, signature.len, marker)) |pos| end = @min(end, pos);
+    }
+    return rest[0..end];
+}
+
 test "grammar accepts raw Unicode terminals and Unicode scalar escapes" {
     const source =
         \\Start
@@ -1021,17 +1048,16 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
 
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
 
-    // Site renderers delegate to the shared resolver, naming their exact
-    // and symbol-level hooks before the family and global fallbacks.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
+    // Site renderers resolve the full chain in one place: exact and
+    // symbol-level hooks, then family and global fallbacks, then the builtin
+    // diagnostic. Hook failures fall through inside the shared resolver.
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
     const exact = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail\"", site);
-    _ = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail\"", exact);
-
-    const fallback = try generatedFunction(output, "fn llFailFastDefaultMessage");
-    const configured = try expectContains(fallback, "resolveMessageOverride(args.diagnostic, root.config.error_messages)");
-    const parser_level = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error_ll\")", configured);
-    const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
-    _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
+    const symbol = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail\"", exact);
+    const family = try expectContainsAfter(output, "\"syntax_error_ll\"", symbol);
+    _ = try expectContainsAfter(output, "\"syntax_error\"", family);
+    _ = try expectContains(output, "return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);");
+    try expectNotContains(output, "fn llFailFastDefaultMessage(");
 }
 
 test "generateParserAlloc emits LR syntax error hook fallback chain" {
@@ -1040,16 +1066,14 @@ test "generateParserAlloc emits LR syntax error hook fallback chain" {
 
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .lr, .{ .with_procedures = false });
 
-    // Site renderers delegate to the shared resolver with the state hook
-    // first; the file-local default keeps hook + builtin fallbacks.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
-    _ = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
-
-    const fallback = try generatedFunction(output, "fn lrFailFastDefaultMessage");
-    const configured = try expectContains(fallback, "resolveMessageOverride(args.diagnostic, root.config.error_messages)");
-    const parser_level = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error_lr\")", configured);
-    const global = try expectContainsAfter(fallback, "@hasDecl(error_messages, \"syntax_error\")", parser_level);
-    _ = try expectContainsAfter(fallback, "root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style)", global);
+    // Site renderers resolve the full chain in one place: state hook first,
+    // then family and global fallbacks, then the builtin diagnostic.
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    const state = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
+    const family = try expectContainsAfter(output, "\"syntax_error_lr\"", state);
+    _ = try expectContainsAfter(output, "\"syntax_error\"", family);
+    _ = try expectContains(output, "return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);");
+    try expectNotContains(output, "fn lrFailFastDefaultMessage(");
 }
 
 test "generateParserAlloc emits position-based LL recovery" {
@@ -1098,7 +1122,7 @@ test "generateParserAlloc emits position-based LR recovery" {
     _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
     // Message resolution goes through the shared chain with the state hook
     // named first.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(context, diagnostic, config.error_messages, error_messages, .{");
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
     _ = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
 }
 
@@ -1114,7 +1138,7 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
     _ = try expectContains(ll_output, "noinline fn ll_syntax_error_");
     _ = try expectContains(ll_output, "@branchHint(.cold);");
     _ = try expectContains(ll_output, "fn llFailFastSyntaxError(");
-    _ = try expectContains(ll_output, "fn llFailFastDefaultMessage(");
+    _ = try expectContains(ll_output, "_message(args: root.SyntaxErrorMessageArgs)");
     // Recovery machinery is emitted unconditionally and selected at
     // comptime; absence assertions from the baked era no longer apply.
 
@@ -1126,7 +1150,7 @@ test "generateParserAlloc defaults to fail-fast syntax errors" {
     _ = try expectContains(lr_output, "noinline fn lr_syntax_error_");
     _ = try expectContains(lr_output, "@branchHint(.cold);");
     _ = try expectContains(lr_output, "fn lrFailFastSyntaxError(");
-    _ = try expectContains(lr_output, "fn lrFailFastDefaultMessage(");
+    _ = try expectContains(lr_output, "_message(args: root.SyntaxErrorMessageArgs)");
     // See above: recovery support is unconditional; mode selection is
     // comptime, so dead-shape presence is expected and absence assertions
     // from the baked era no longer apply.
