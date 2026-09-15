@@ -10,18 +10,9 @@ const default_iterations: usize = 10;
 fn resolveInput(
     io: std.Io,
     gpa: std.mem.Allocator,
-    environ_map: *std.process.Environ.Map,
     explicit: ?[]const u8,
 ) ![]u8 {
     if (explicit) |path| return gpa.dupe(u8, path);
-
-    if (environ_map.get("GALLEY_CHECKOUT")) |checkout| {
-        if (checkout.len > 0) {
-            const candidate = try std.fs.path.join(gpa, &.{ checkout, logical_input });
-            if (fileExists(io, candidate)) return candidate;
-            gpa.free(candidate);
-        }
-    }
 
     const from_example = try std.fs.path.join(gpa, &.{ "..", "..", logical_input });
     if (fileExists(io, from_example)) return from_example;
@@ -58,7 +49,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    const path = resolveInput(init.io, init.gpa, init.environ_map, explicit) catch {
+    const path = resolveInput(init.io, init.gpa, explicit) catch {
         std.debug.print("failed to read {s}\n", .{logical_input});
         std.process.exit(1);
     };

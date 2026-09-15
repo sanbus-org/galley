@@ -51,6 +51,8 @@ To turn a directory that only contains a grammar into a runnable Zig project, pa
 ./zig-out/bin/galley --bootstrap-zig-project my-language
 ```
 
+If `GALLEY_CHECKOUT` is set to a Galley working tree, `build.zig.zon` depends on it with `.path` and does not run `zig fetch`.
+
 Bootstrapping is off by default; pass `--bootstrap-zig-project` to create the
 minimal project. That scaffold is a stub runner for *your* grammar, using the
 same `addParserModule` helper as the rest of the Zig API. The native runtime

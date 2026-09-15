@@ -5,8 +5,7 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .galley = .{
-            .url = "git+https://github.com/sanbus-org/galley.git#@@COMMIT@@",
-            .hash = "@@HASH@@",
+            @@DEPENDENCY@@
         },
     },
     .paths = .{
