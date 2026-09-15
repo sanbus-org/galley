@@ -263,18 +263,19 @@ pub fn addGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
-    const generator_emitter_common_mod = b.addModule("generator_emitter_common", .{
-        .root_source_file = b.path("src/generator/emitter_common.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    generator_emitter_common_mod.addImport("generator_common", generator_common_mod);
     const generator_switch_plan_mod = b.addModule("generator_switch_plan", .{
         .root_source_file = b.path("src/generator/switch_plan.zig"),
         .target = target,
         .optimize = optimize,
     });
     generator_switch_plan_mod.addImport("generator_common", generator_common_mod);
+    const generator_emitter_common_mod = b.addModule("generator_emitter_common", .{
+        .root_source_file = b.path("src/generator/emitter_common.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    generator_emitter_common_mod.addImport("generator_common", generator_common_mod);
+    generator_emitter_common_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
     const generator_config_file_mod = b.addModule("generator_config_file", .{
         .root_source_file = b.path("src/generator/config_file.zig"),
         .target = target,
