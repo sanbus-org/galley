@@ -1,0 +1,18 @@
+Start
+| Item Tail
+
+Tail
+| new_line Item Tail
+|
+
+Item
+| Exp
+| ">" block_start Item block_end
+| "{" Item "}"
+
+Exp
+| "x" ExpTail
+
+ExpTail
+| "+" Item
+|

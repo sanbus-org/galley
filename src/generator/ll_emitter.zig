@@ -331,6 +331,7 @@ const Generator = struct {
         const decision = self.plan.parserDecision(variable, skip_ast_construction);
         if (decision.tree.entries.len == 0) {
             const spec = self.plan.syntax_error_handlers.items[decision.tree.diagnostic.?];
+            try emitter_common.emitSkipLeftoverBlockEndNewlines(writer, "    ");
             try writer.writeAll("    switch (context.head(u8, 0)) {\n");
             try writer.writeAll("        else => {\n");
             try writer.writeAll("            @branchHint(.unlikely);\n");

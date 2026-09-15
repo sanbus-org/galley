@@ -114,6 +114,15 @@ pub fn add(b: *std.Build, options: Options) !void {
         test_step.dependOn(&run_generator_common_tests.step);
         trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_common_tests.step);
 
+        const generator_config_file_tests = b.addTest(.{
+            .name = "generator-config-file-tests",
+            .root_module = generator.generator_config_file_mod,
+            .filters = selection.names,
+        });
+        const run_generator_config_file_tests = b.addRunArtifact(generator_config_file_tests);
+        test_step.dependOn(&run_generator_config_file_tests.step);
+        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_config_file_tests.step);
+
         inline for (.{
             .{ "generator-switch-plan-tests", generator.generator_switch_plan_mod },
             .{ "ll-generator-internal-tests", generator.ll_generator_mod },
@@ -236,6 +245,14 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_no_ast_indent_text_tests = try addNoAstIndentTextTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_no_ast_indent_text_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_indent_text_tests.step);
+
+            const run_newline_after_block_end_tests = try addNewlineAfterBlockEndTests(b, options, parser_type, true, selection.names);
+            test_step.dependOn(&run_newline_after_block_end_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_newline_after_block_end_tests.step);
+
+            const run_newline_after_block_end_off_tests = try addNewlineAfterBlockEndTests(b, options, parser_type, false, selection.names);
+            test_step.dependOn(&run_newline_after_block_end_off_tests.step);
+            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_newline_after_block_end_off_tests.step);
 
             const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_explicit_recovery_tests.step);
@@ -1207,6 +1224,82 @@ fn addNoAstIndentTextTests(
 
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/no_ast_indent_text_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addNewlineAfterBlockEndTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    enabled: bool,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const parser_name = try std.fmt.allocPrint(
+        b.allocator,
+        "newline-after-block-end-{s}-{s}",
+        .{ if (enabled) "on" else "off", parser_type },
+    );
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/newline-after-block-end/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(parser_name);
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
+    generate_parser.addArgs(&.{
+        "--no-ast",
+        "--no-procedures",
+        "--indentation-syntax",
+    });
+    if (enabled) generate_parser.addArg("--newline-after-block-end");
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/newline-after-block-end/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/newline-after-block-end/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path(if (enabled)
+            "src/tests/newline_after_block_end_test.zig"
+        else
+            "src/tests/newline_after_block_end_off_test.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},

@@ -40,15 +40,16 @@ pub fn fmtString(string: []const u8) StringFormatter {
 }
 
 /// Display names for the synthetic control-byte terminals, which never occur
-/// as user-typable input: end of input and the indentation pair. Exact
+/// as user-typable input: end of input and the indentation bytes. Exact
 /// full-token match only, so real content bytes are never renamed.
-/// A future per-grammar table plugs in here; until then these three are fixed.
+/// A future per-grammar table plugs in here; until then these four are fixed.
 pub fn tokenDisplayName(token: []const u8) ?[]const u8 {
     if (token.len != 1) return null;
     return switch (token[0]) {
         0x00 => "End of input",
         0x01 => "Indent",
         0x02 => "Dedent",
+        0x03 => "Newline after dedent",
         else => null,
     };
 }
@@ -81,15 +82,16 @@ test "synthetic terminals render display names" {
     try output.writer.print("{f}", .{fmtToken("\x00")});
     try output.writer.print("|{f}", .{fmtToken("\x01")});
     try output.writer.print("|{f}", .{fmtToken("\x02")});
-    try std.testing.expectEqualStrings("End of input|Indent|Dedent", output.written());
+    try output.writer.print("|{f}", .{fmtToken("\x03")});
+    try std.testing.expectEqualStrings("End of input|Indent|Dedent|Newline after dedent", output.written());
 }
 
 test "token formatter leaves other bytes exactly as before" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
 
-    try output.writer.print("{f}|{f}|{f}", .{ fmtToken("{"), fmtToken("\x03"), fmtToken("a\x00b") });
-    try std.testing.expectEqualStrings("{|\\x03|a\\x00b", output.written());
+    try output.writer.print("{f}|{f}|{f}", .{ fmtToken("{"), fmtToken("\x04"), fmtToken("a\x00b") });
+    try std.testing.expectEqualStrings("{|\\x04|a\\x00b", output.written());
 }
 
 test "string formatter preserves valid Unicode and escapes unsafe bytes" {

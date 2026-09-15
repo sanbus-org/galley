@@ -87,6 +87,7 @@ pub fn write(
     writer: *std.Io.Writer,
     options: common.Options,
     indentation_syntax: bool,
+    newline_after_block_end: bool,
 ) !void {
     try writer.writeAll(
         \\//! Parser-generation configuration.
@@ -175,6 +176,17 @@ pub fn write(
         \\/// false - whitespace is insignificant.
         \\pub const indentation_syntax = {};
         \\
+        \\/// After each dedent, emit a control byte that `new_line` matches and
+        \\/// every other expected terminal skips.
+        \\///
+        \\/// true  - a dedent yields `block_end` then that byte, so
+        \\///         `new_line`-separated rows continue after a block while
+        \\///         closers such as `}}` do not see a leftover newline.
+        \\/// false - a dedent yields only `block_end` tokens (the default).
+        \\///
+        \\/// Only meaningful when indentation_syntax is enabled.
+        \\pub const newline_after_block_end = {};
+        \\
         \\/// Static syntax-error message overrides baked into the generated
         \\/// parser.
         \\///
@@ -197,7 +209,20 @@ pub fn write(
         if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "null",
         options.with_input_streaming,
         indentation_syntax,
+        newline_after_block_end,
     });
+}
+
+test "write emits newline_after_block_end from its argument" {
+    var off = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer off.deinit();
+    try write(&off.writer, .{}, false, false);
+    try std.testing.expect(std.mem.indexOf(u8, off.written(), "pub const newline_after_block_end = false;") != null);
+
+    var on = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer on.deinit();
+    try write(&on.writer, .{}, true, true);
+    try std.testing.expect(std.mem.indexOf(u8, on.written(), "pub const newline_after_block_end = true;") != null);
 }
 
 fn writeBool(

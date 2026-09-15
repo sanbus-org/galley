@@ -4,6 +4,10 @@ const std = @import("std");
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
+inline fn newlineAfterBlockEndEnabled() bool {
+    return root.config.indentation_syntax and @hasDecl(root.config, "newline_after_block_end") and root.config.newline_after_block_end;
+}
+
 const NewlineSummary = struct {
     count: u32 = 0,
     last: ?usize = null,
@@ -14,6 +18,10 @@ fn summarizeNewlines(input: []const u8) NewlineSummary {
     for (input, 0..) |byte, index| {
         switch (byte) {
             '\n', '\x01', '\x02' => {
+                summary.count += 1;
+                summary.last = index;
+            },
+            '\x03' => if (comptime newlineAfterBlockEndEnabled()) {
                 summary.count += 1;
                 summary.last = index;
             },
@@ -340,6 +348,34 @@ pub const Context = struct {
 
     const Self = @This();
 
+    /// Drop leftover `\x03` tokens emitted after `block_end`. No-ops unless
+    /// both `indentation_syntax` and `newline_after_block_end` are on, so
+    /// generated callers stay configuration-independent.
+    ///
+    /// This is the only skip loop. One-byte decisions peek first and call
+    /// here only when the peeked byte is `\x03`, so the common path still
+    /// does a single `head()`.
+    pub inline fn skipLeftoverBlockEndNewlines(self: *Self) void {
+        if (comptime !newlineAfterBlockEndEnabled()) return;
+        while (self.head(u8, 0) == 3) {
+            @branchHint(.unlikely);
+            self.releaseToken(1);
+        }
+    }
+
+    /// True when `available` starts with `candidate`. With
+    /// `newline_after_block_end`, a leftover `\x03` matches a candidate that
+    /// starts with `\n`.
+    pub fn recoveryCandidateMatches(_: *const Self, available: []const u8, candidate: []const u8) bool {
+        if (candidate.len > available.len) return false;
+        if (std.mem.eql(u8, available[0..candidate.len], candidate)) return true;
+        if (comptime newlineAfterBlockEndEnabled()) {
+            return candidate.len > 0 and candidate[0] == '\n' and available[0] == 0x03 and
+                (candidate.len == 1 or std.mem.eql(u8, available[1..candidate.len], candidate[1..]));
+        }
+        return false;
+    }
+
     pub inline fn runtime(self: *Self) *RuntimeContext {
         return self.runtime_context;
     }
@@ -477,9 +513,7 @@ pub const Context = struct {
         while (offset < upper) : (offset += 1) {
             if (lookahead[offset] == 0) break;
             for (points, 0..) |point, point_index| {
-                if (point.terminal.len > lookahead.len - offset or
-                    !std.mem.eql(u8, lookahead[offset..][0..point.terminal.len], point.terminal))
-                {
+                if (!self.recoveryCandidateMatches(lookahead[offset..], point.terminal)) {
                     continue;
                 }
                 if (winning_point == null or point.terminal.len > points[winning_point.?].terminal.len) {
@@ -965,6 +999,9 @@ pub const Context = struct {
                     try output.appendNTimes(self.runtime().arena_allocator, '\x01', new_indent - current_indent);
                 } else {
                     try output.appendNTimes(self.runtime().arena_allocator, '\x02', current_indent - new_indent);
+                    if (comptime newlineAfterBlockEndEnabled()) {
+                        try output.append(self.runtime().arena_allocator, 0x03);
+                    }
                 }
                 current_indent = new_indent;
                 if (output.items.len >= required) break;
@@ -1184,6 +1221,13 @@ pub const Context = struct {
                                 self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
                             self.appendToken('\x02', boundary_source);
+                        }
+                        if (comptime newlineAfterBlockEndEnabled()) {
+                            if (comptime root.position_tracking_enabled) {
+                                self.line_offsets.append(0);
+                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
+                            }
+                            self.appendToken(0x03, boundary_source);
                         }
                     }
                     self.current_indent = new_indent;
@@ -1437,7 +1481,7 @@ pub const Context = struct {
 };
 
 test "newline summary counts every marker and retains the final position" {
-    const summary = summarizeNewlines("a\n\nb\x01c\x02\x02d");
+    const summary = summarizeNewlines("a\n\nb\x01c\x02\x02\x03d");
     try std.testing.expectEqual(@as(u32, 5), summary.count);
     try std.testing.expectEqual(@as(?usize, 7), summary.last);
 }
