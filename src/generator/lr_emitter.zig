@@ -77,6 +77,7 @@ const Generator = struct {
         // (LL parity), and unused support folds away under lazy analysis.
         try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
         try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items, self.augmented_start, self.generative_terminal);
+        try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
 
         try writer.writeAll(
             \\const ReduceResult = struct {

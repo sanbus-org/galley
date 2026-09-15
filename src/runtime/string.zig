@@ -39,19 +39,30 @@ pub fn fmtString(string: []const u8) StringFormatter {
     return .{ .string = string };
 }
 
-/// Display names for the synthetic control-byte terminals, which never occur
-/// as user-typable input: end of input and the indentation bytes. Exact
+/// Display names for the synthetic control-byte terminals. Exact
 /// full-token match only, so real content bytes are never renamed.
+///
+/// `0x01`/`0x02` name only with `indentation_syntax`; `0x03` names only
+/// with `indentation_syntax` plus `newline_after_block_end`. With those
+/// flags off the bytes are ordinary source bytes. `0x00` (end of input)
+/// is always synthetic.
 /// A future per-grammar table plugs in here; until then these four are fixed.
 pub fn tokenDisplayName(token: []const u8) ?[]const u8 {
     if (token.len != 1) return null;
-    return switch (token[0]) {
-        0x00 => "End of input",
-        0x01 => "Indent",
-        0x02 => "Dedent",
-        0x03 => "Newline after dedent",
-        else => null,
-    };
+    if (token[0] == 0x00) return "End of input";
+    if (token[0] == 0x01) {
+        if (comptime root.data_structures.indentationSyntaxEnabled()) return "Indent";
+        return null;
+    }
+    if (token[0] == 0x02) {
+        if (comptime root.data_structures.indentationSyntaxEnabled()) return "Dedent";
+        return null;
+    }
+    if (token[0] == 0x03) {
+        if (comptime root.data_structures.newlineAfterBlockEndEnabled()) return "Newline after dedent";
+        return null;
+    }
+    return null;
 }
 
 const TokenFormatter = struct {
@@ -75,7 +86,7 @@ pub fn fmtToken(token: []const u8) TokenFormatter {
     return .{ .token = token };
 }
 
-test "synthetic terminals render display names" {
+test "synthetic terminals render display names when their syntax is enabled" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
 
@@ -83,7 +94,15 @@ test "synthetic terminals render display names" {
     try output.writer.print("|{f}", .{fmtToken("\x01")});
     try output.writer.print("|{f}", .{fmtToken("\x02")});
     try output.writer.print("|{f}", .{fmtToken("\x03")});
-    try std.testing.expectEqualStrings("End of input|Indent|Dedent|Newline after dedent", output.written());
+    const indent_on = comptime root.data_structures.indentationSyntaxEnabled();
+    const leftover_on = comptime root.data_structures.newlineAfterBlockEndEnabled();
+    const expected = if (leftover_on)
+        "End of input|Indent|Dedent|Newline after dedent"
+    else if (indent_on)
+        "End of input|Indent|Dedent|\\x03"
+    else
+        "End of input|\\x01|\\x02|\\x03";
+    try std.testing.expectEqualStrings(expected, output.written());
 }
 
 test "token formatter leaves other bytes exactly as before" {

@@ -266,7 +266,7 @@ test generateParserAlloc {
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
 }
 
-test "generateParserAlloc aliases block-end newline onto new_line switch cases" {
+test "generateParserAlloc rewrites leftover to new_line without extra prongs" {
     const source =
         \\Start
         \\| "a" Tail
@@ -282,8 +282,14 @@ test "generateParserAlloc aliases block-end newline onto new_line switch cases" 
 
     const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
     const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, .{ .with_procedures = false });
-    try std.testing.expect(std.mem.indexOf(u8, ll_output, "3, 10 =>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, lr_output, "3, 10 =>") != null);
+    for ([2][]const u8{ ll_output, lr_output }) |output| {
+        try std.testing.expect(std.mem.indexOf(u8, output, "3, 10 =>") == null);
+        _ = try expectContains(output, "if (comptime data_structures.newlineAfterBlockEndEnabled())");
+        _ = try expectContains(output, "if (byte == 3)");
+        _ = try expectContains(output, "byte = 10;");
+        _ = try expectContains(output, "10 => { // '\\n'");
+        try expectNotContains(output, "reserves 0x03");
+    }
 }
 
 test "generateParserAlloc skips block-end newline before multi-byte decisions" {
@@ -318,7 +324,7 @@ test "generateParserAlloc skips leftover through skipLeftoverBlockEndNewlines on
     try expectNotContains(output, "while (byte == 3)");
 }
 
-test "generateParserAlloc aliases leftover newline onto multi-byte newline heads" {
+test "generateParserAlloc rewrites leftover on multi-byte newline heads" {
     const source =
         \\Start
         \\| new_line "ab"
@@ -331,11 +337,34 @@ test "generateParserAlloc aliases leftover newline onto multi-byte newline heads
 
     const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
     const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, .{ .with_procedures = false });
-    try std.testing.expect(std.mem.indexOf(u8, ll_output, "3, 10 =>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, lr_output, "3, 10 =>") != null);
+    for ([2][]const u8{ ll_output, lr_output }) |output| {
+        try std.testing.expect(std.mem.indexOf(u8, output, "3, 10 =>") == null);
+        _ = try expectContains(output, "if (comptime data_structures.newlineAfterBlockEndEnabled())");
+        _ = try expectContains(output, "== 3)");
+        _ = try expectContains(output, "10 => { // '\\n'");
+        try expectNotContains(output, "reserves 0x03");
+    }
 }
 
-test "generateParserAlloc does not duplicate leftover newline onto an explicit \\x03 terminal" {
+test "generateParserAlloc masks the first byte on multi-byte newline heads" {
+    const source =
+        \\Start
+        \\| "\u{a}a"
+        \\| "\u{a}b"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    _ = try expectContains(output, "var peeked = context.head(u16, 0);");
+    _ = try expectContains(output, "@as(u8, @truncate(peeked >> 8)) == 3");
+    _ = try expectContains(output, "| (@as(u16, 10) << 8)");
+    try expectNotContains(output, "reserves 0x03");
+}
+
+test "generateParserAlloc gates explicit \\x03 on the leftover feature" {
     const source =
         \\Start
         \\| "\u{3}"
@@ -346,10 +375,19 @@ test "generateParserAlloc does not duplicate leftover newline onto an explicit \
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
-    try expectNotContains(output, "3, 3");
-    _ = try expectContains(output, "3 => { // '\\x03'");
-    _ = try expectContains(output, "10 => { // '\\n'");
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{ .with_procedures = false });
+        // Codegen stays config-independent: both prongs are emitted, plus the
+        // rewrite. With the feature on the explicit prong is unreachable by
+        // design, so generation also emits a gated compile error instead of
+        // silently misparsing. Flag-off use still compiles.
+        try expectNotContains(output, "3, 3");
+        _ = try expectContains(output, "3 => { // '\\x03'");
+        _ = try expectContains(output, "10 => { // '\\n'");
+        _ = try expectContains(output, "byte = 10;");
+        _ = try expectContains(output, "if (data_structures.newlineAfterBlockEndEnabled())");
+        _ = try expectContains(output, "reserves 0x03");
+    }
 }
 
 test "LL decision falls back to the shorter terminal when one literal prefixes another" {

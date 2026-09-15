@@ -4,8 +4,12 @@ const std = @import("std");
 const data_structures = root.data_structures;
 const string_utilities = root.string_utilities;
 
-inline fn newlineAfterBlockEndEnabled() bool {
-    return root.config.indentation_syntax and @hasDecl(root.config, "newline_after_block_end") and root.config.newline_after_block_end;
+pub inline fn indentationSyntaxEnabled() bool {
+    return @hasDecl(root.config, "indentation_syntax") and root.config.indentation_syntax;
+}
+
+pub inline fn newlineAfterBlockEndEnabled() bool {
+    return indentationSyntaxEnabled() and @hasDecl(root.config, "newline_after_block_end") and root.config.newline_after_block_end;
 }
 
 const NewlineSummary = struct {
@@ -17,7 +21,11 @@ fn summarizeNewlines(input: []const u8) NewlineSummary {
     var summary = NewlineSummary{};
     for (input, 0..) |byte, index| {
         switch (byte) {
-            '\n', '\x01', '\x02' => {
+            '\n' => {
+                summary.count += 1;
+                summary.last = index;
+            },
+            '\x01', '\x02' => if (comptime indentationSyntaxEnabled()) {
                 summary.count += 1;
                 summary.last = index;
             },
@@ -148,12 +156,8 @@ pub const RuntimeContext = struct {
             switch (diagnostic) {
                 .syntax => |syntax| {
                     // Synthetic terminals show their display name; every other
-                    // token keeps its existing raw rendering.
-                    if (string_utilities.tokenDisplayName(syntax.unexpected_token)) |name| {
-                        writer.writeAll(name) catch {};
-                    } else {
-                        writer.writeAll(syntax.unexpected_token) catch {};
-                    }
+                    // token renders human-readable so control bytes escape.
+                    writer.print("{f}", .{string_utilities.fmtToken(syntax.unexpected_token)}) catch {};
                 },
                 .semantic, .indentation => {},
             }
@@ -162,11 +166,7 @@ pub const RuntimeContext = struct {
                 .syntax => |syntax| {
                     for (syntax.expected_tokens, 0..) |token, index| {
                         if (index != 0) writer.writeAll(", ") catch {};
-                        if (string_utilities.tokenDisplayName(token)) |name| {
-                            writer.print("'{s}'", .{name}) catch {};
-                        } else {
-                            writer.print("'{s}'", .{token}) catch {};
-                        }
+                        writer.print("'{f}'", .{string_utilities.fmtToken(token)}) catch {};
                     }
                 },
                 .semantic, .indentation => {},
@@ -359,6 +359,11 @@ pub const Context = struct {
         if (comptime !newlineAfterBlockEndEnabled()) return;
         while (self.head(u8, 0) == 3) {
             @branchHint(.unlikely);
+            if (comptime builtin.mode == .Debug) {
+                if (self.verbosityLevel() > 1) {
+                    std.debug.print("Dropping leftover block-end newline (\\x03)\n", .{});
+                }
+            }
             self.releaseToken(1);
         }
     }
@@ -1480,8 +1485,16 @@ pub const Context = struct {
     }
 };
 
-test "newline summary counts every marker and retains the final position" {
+test "newline summary counts markers enabled by config" {
     const summary = summarizeNewlines("a\n\nb\x01c\x02\x02\x03d");
-    try std.testing.expectEqual(@as(u32, 5), summary.count);
-    try std.testing.expectEqual(@as(?usize, 7), summary.last);
+    const indent_markers: u32 = if (comptime indentationSyntaxEnabled()) 3 else 0;
+    const leftover_markers: u32 = if (comptime newlineAfterBlockEndEnabled()) 1 else 0;
+    try std.testing.expectEqual(@as(u32, 2 + indent_markers + leftover_markers), summary.count);
+    const expected_last: ?usize = if (comptime newlineAfterBlockEndEnabled())
+        8
+    else if (comptime indentationSyntaxEnabled())
+        7
+    else
+        2;
+    try std.testing.expectEqual(expected_last, summary.last);
 }

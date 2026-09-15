@@ -783,8 +783,14 @@ test "synthetic terminals render display names in diagnostics" {
 
     const rendered = output.written();
     try std.testing.expect(std.mem.indexOf(u8, rendered, "Unexpected token \"End of input\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "'Indent', 'Dedent', '{'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "\\x") == null);
+    if (comptime data_structures.indentationSyntaxEnabled()) {
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "'Indent', 'Dedent', '{'") != null);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "\\x") == null);
+    } else {
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "'{'") != null);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "\\x01") != null);
+        try std.testing.expect(std.mem.indexOf(u8, rendered, "\\x02") != null);
+    }
 }
 
 test "message override placeholders show synthetic display names" {
@@ -807,8 +813,12 @@ test "message override placeholders show synthetic display names" {
         .io = io,
         .arena_allocator = arena_state.allocator(),
     };
+    const expected = if (comptime data_structures.indentationSyntaxEnabled())
+        "saw End of input want 'Indent', '{'"
+    else
+        "saw End of input want '\\x01', '{'";
     try std.testing.expectEqualStrings(
-        "saw End of input want 'Indent', '{'",
+        expected,
         runtime.resolveMessageOverride(diagnostic, config_tables).?,
     );
 }
