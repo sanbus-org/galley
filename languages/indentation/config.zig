@@ -75,6 +75,17 @@ pub const input_streaming = false;
 /// false - whitespace is insignificant.
 pub const indentation_syntax = true;
 
+/// After each dedent, emit a control byte that `new_line` matches and
+/// every other expected terminal skips.
+///
+/// true  - a dedent yields `block_end` then that byte, so
+///         `new_line`-separated rows continue after a block while
+///         closers such as `}` do not see a leftover newline.
+/// false - a dedent yields only `block_end` tokens (the default).
+///
+/// Only meaningful when indentation_syntax is enabled.
+pub const newline_after_block_end = false;
+
 /// Static syntax-error message overrides baked into the generated
 /// parser.
 ///

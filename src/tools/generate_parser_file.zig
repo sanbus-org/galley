@@ -12,6 +12,7 @@ const CliOptions = struct {
     label: ?[]const u8 = null,
     strip_recovery_annotations: bool = false,
     indentation_syntax: bool = false,
+    newline_after_block_end: bool = false,
     generator_options: generator.Options = .{},
     ast_edited: bool = false,
     procedures_edited: bool = false,
@@ -22,6 +23,7 @@ const CliOptions = struct {
     allow_no_ast_tree_procedures_edited: bool = false,
     require_reduction_procedures_edited: bool = false,
     indentation_syntax_edited: bool = false,
+    newline_after_block_end_edited: bool = false,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -46,7 +48,7 @@ pub fn main(init: std.process.Init) !void {
             config_data = try editedConfigFromFlags(init.gpa, base, options);
         } else {
             var config_buffer = std.Io.Writer.Allocating.init(init.gpa);
-            try generator.config_file.write(&config_buffer.writer, options.generator_options, options.indentation_syntax);
+            try generator.config_file.write(&config_buffer.writer, options.generator_options, options.indentation_syntax, options.newline_after_block_end);
             config_data = try init.gpa.dupe(u8, config_buffer.written());
             config_buffer.deinit();
         }
@@ -86,6 +88,7 @@ fn editedConfigFromFlags(gpa: std.mem.Allocator, base: []const u8, options: CliO
         .{ "allow_no_ast_tree_procedures", if (options.allow_no_ast_tree_procedures_edited) (if (o.allow_no_ast_tree_procedures) "true" else "false") else null },
         .{ "require_reduction_procedures", if (options.require_reduction_procedures_edited) (if (o.require_reduction_procedures) "true" else "false") else null },
         .{ "indentation_syntax", if (options.indentation_syntax_edited) (if (options.indentation_syntax) "true" else "false") else null },
+        .{ "newline_after_block_end", if (options.newline_after_block_end_edited) (if (options.newline_after_block_end) "true" else "false") else null },
     }) |edit| {
         if (edit[1]) |value| {
             const next = try generator.config_file.editedConstantSource(gpa, updated orelse base, edit[0], value);
@@ -158,6 +161,9 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--indentation-syntax")) {
             result.indentation_syntax = true;
             result.indentation_syntax_edited = true;
+        } else if (std.mem.eql(u8, arg, "--newline-after-block-end")) {
+            result.newline_after_block_end = true;
+            result.newline_after_block_end_edited = true;
         } else if (std.mem.eql(u8, arg, "--with-ast")) {
             result.generator_options.with_ast = true;
             result.ast_edited = true;
@@ -232,6 +238,9 @@ fn printUsage(init: std.process.Init) !void {
         \\                             Test-only: clear recovery annotations before generation.
         \\      --indentation-syntax   Sets indentation_syntax = true in the
         \\                             written config.zig.
+        \\      --newline-after-block-end
+        \\                             Sets newline_after_block_end = true in
+        \\                             the written config.zig.
         \\      --with-ast             Enables AST construction.
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.

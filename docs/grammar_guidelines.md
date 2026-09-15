@@ -173,6 +173,8 @@ match them through three generative terminals:
 | `block_end` | `\x02` | One level of indentation was closed. |
 | `new_line` | `\n` | A line boundary at the same indentation level. |
 
+Set `pub const newline_after_block_end = true;` as well to emit `\x03` after each `block_end` sequence. Both this constant and `indentation_syntax` must be on; otherwise the leftover is not emitted and runtime skip/alias are no-ops. A production that expects `new_line` matches that byte as a newline (including as the first byte of a longer head), so a `new_line`-separated list continues after a block item. Any other expected terminal skips it at the start of a decision, including multi-byte roots such as `"if"` vs `"while"`, so `{ Item }` does not see a leftover newline in front of `}`. Real `\n` tokens are unchanged. Nested switches after a consumed first byte do not skip or alias again. An explicit `"\u{3}"` terminal occupies the leftover switch value, so a leftover takes that branch instead of `new_line`; `\x03` is reserved for this leftover.
+
 Galley's `languages/indentation/ll.grm` is a maintained example: blocks are written as
 `block_start Fields block_end`, and a sequence of same-level rows joins them with
 `new_line`.

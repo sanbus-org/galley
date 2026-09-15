@@ -657,6 +657,7 @@ const Generator = struct {
     }
 
     fn emitStateSyntaxError(self: *Generator, writer: *std.Io.Writer, diagnostic: usize, indent: []const u8) !void {
+        try emitter_common.emitSkipLeftoverBlockEndNewlines(writer, indent);
         const spec = self.plan.syntax_error_handlers.items[diagnostic];
         try self.emitSyntaxErrorCall(writer, spec, indent);
     }

@@ -26,6 +26,7 @@ const ConfigEdits = struct {
     allow_no_ast_tree_procedures: ?bool = null,
     require_reduction_procedures: ?bool = null,
     indentation_syntax: ?bool = null,
+    newline_after_block_end: ?bool = null,
 
     fn apply(self: ConfigEdits, init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !void {
         const path = try std.fs.path.join(gpa, &.{ language_dir, "config.zig" });
@@ -51,6 +52,7 @@ const ConfigEdits = struct {
             .{ "allow_no_ast_tree_procedures", self.allow_no_ast_tree_procedures },
             .{ "require_reduction_procedures", self.require_reduction_procedures },
             .{ "indentation_syntax", self.indentation_syntax },
+            .{ "newline_after_block_end", self.newline_after_block_end },
         }) |edit| {
             if (edit[1]) |value| {
                 const next = try generator.config_file.editedConstantSource(
@@ -141,6 +143,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.edits.indentation_syntax = true;
         } else if (std.mem.eql(u8, arg, "--no-indentation-syntax")) {
             result.edits.indentation_syntax = false;
+        } else if (std.mem.eql(u8, arg, "--newline-after-block-end")) {
+            result.edits.newline_after_block_end = true;
+        } else if (std.mem.eql(u8, arg, "--no-newline-after-block-end")) {
+            result.edits.newline_after_block_end = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
             result.edits.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
@@ -236,6 +242,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --indentation-syntax   Writes `indentation_syntax = true`.
         \\      --no-indentation-syntax
         \\                             Writes `indentation_syntax = false`.
+        \\      --newline-after-block-end
+        \\                             Writes `newline_after_block_end = true`.
+        \\      --no-newline-after-block-end
+        \\                             Writes `newline_after_block_end = false`.
         \\      --fill-error-messages  Append missing default syntax error hooks.
         \\      --emit-metadata        Write metadata.json and procedures.zig
         \\                             next to the generated parser(s); the
@@ -273,7 +283,7 @@ fn generateLanguage(init: std.process.Init, language_dir: []const u8, options: C
     // then rewrite constants in place before any parser is emitted.
     var config_source = std.Io.Writer.Allocating.init(init.gpa);
     defer config_source.deinit();
-    try generator.config_file.write(&config_source.writer, .{}, false);
+    try generator.config_file.write(&config_source.writer, .{}, false, false);
     result.created_config = try createFileIfMissing(init.io, init.gpa, language_dir, "config.zig", config_source.written());
     try options.edits.apply(init, init.gpa, language_dir);
 
@@ -1191,7 +1201,7 @@ test "every constant written by config_file.write stays editable" {
     defer arena.deinit();
 
     var config_buffer = std.Io.Writer.Allocating.init(arena.allocator());
-    try generator.config_file.write(&config_buffer.writer, .{}, false);
+    try generator.config_file.write(&config_buffer.writer, .{}, false, false);
     const fresh = config_buffer.written();
 
     inline for (.{
@@ -1204,6 +1214,7 @@ test "every constant written by config_file.write stays editable" {
         "position_tracking",
         "input_streaming",
         "indentation_syntax",
+        "newline_after_block_end",
     }) |name| {
         const edited_true = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "true");
         const edited_false = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "false");
@@ -1304,7 +1315,7 @@ test "CLI error_recovery flag does not affect recovery annotation detection (reg
     {
         var buf = std.Io.Writer.Allocating.init(arena.allocator());
         defer buf.deinit();
-        try generator.config_file.write(&buf.writer, .{ .with_error_recovery = false }, false);
+        try generator.config_file.write(&buf.writer, .{ .with_error_recovery = false }, false, false);
         try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.zig", .data = buf.written() });
     }
     {

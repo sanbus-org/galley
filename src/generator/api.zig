@@ -266,6 +266,92 @@ test generateParserAlloc {
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
 }
 
+test "generateParserAlloc aliases block-end newline onto new_line switch cases" {
+    const source =
+        \\Start
+        \\| "a" Tail
+        \\
+        \\Tail
+        \\| new_line "a" Tail
+        \\|
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, .{ .with_procedures = false });
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "3, 10 =>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lr_output, "3, 10 =>") != null);
+}
+
+test "generateParserAlloc skips block-end newline before multi-byte decisions" {
+    const source =
+        \\Start
+        \\| "if"
+        \\| "while"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    try std.testing.expect(std.mem.indexOf(u8, output, "context.skipLeftoverBlockEndNewlines()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "switch (context.head(u16, 0))") != null);
+}
+
+test "generateParserAlloc skips leftover through skipLeftoverBlockEndNewlines on 1-byte decisions" {
+    const source =
+        \\Start
+        \\| "a"
+        \\| "b"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    _ = try expectContains(output, "context.skipLeftoverBlockEndNewlines()");
+    try expectNotContains(output, "while (byte == 3)");
+}
+
+test "generateParserAlloc aliases leftover newline onto multi-byte newline heads" {
+    const source =
+        \\Start
+        \\| new_line "ab"
+        \\| new_line "ac"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ll_output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    const lr_output = try generateParserAlloc(arena.allocator(), source, .lr, .{ .with_procedures = false });
+    try std.testing.expect(std.mem.indexOf(u8, ll_output, "3, 10 =>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lr_output, "3, 10 =>") != null);
+}
+
+test "generateParserAlloc does not duplicate leftover newline onto an explicit \\x03 terminal" {
+    const source =
+        \\Start
+        \\| "\u{3}"
+        \\| new_line
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    try expectNotContains(output, "3, 3");
+    _ = try expectContains(output, "3 => { // '\\x03'");
+    _ = try expectContains(output, "10 => { // '\\n'");
+}
+
 test "LL decision falls back to the shorter terminal when one literal prefixes another" {
     const source =
         \\Test
@@ -1089,6 +1175,7 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "pub const is_error_recovery_enabled = config.error_recovery;");
     _ = try expectContains(output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(output, "fn llRecoveryOffset(");
+    _ = try expectContains(output, "context.recoveryCandidateMatches(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
     _ = try expectContains(output, "try parse_Item(context)");
     _ = try expectContains(output, "return ll_syntax_error_");
@@ -1111,6 +1198,7 @@ test "generateParserAlloc emits position-based LR recovery" {
     _ = try expectContains(output, "pub const is_error_recovery_enabled = config.error_recovery;");
     _ = try expectContains(output, "pub const has_recovery_annotations = false;");
     _ = try expectContains(output, "fn lrRecoveryOffset(");
+    _ = try expectContains(output, "context.recoveryCandidateMatches(");
     _ = try expectContains(output, "state_recovery: while (true)");
     _ = try expectContains(output, "if (result.is_recovery) continue :state_recovery;");
     _ = try expectContains(output, ".is_recovery = true");

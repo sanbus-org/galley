@@ -44,6 +44,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
 | `input_streaming` | `bool` | Stream files incrementally. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. |
 | `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. |
+| `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. No-op unless `indentation_syntax` is also enabled. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
 
 The file is created with documented defaults when missing (for example by
@@ -78,6 +79,7 @@ parser files; consumers pick up new configuration when they next compile.
 | `--with-input-streaming` / `--no-input-streaming` | Flag | Writes `input_streaming = true` / `false`. |
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Writes `ast_for_terminals = true` / `false`. |
 | `--indentation-syntax` / `--no-indentation-syntax` | Flag | Writes `indentation_syntax = true` / `false`. |
+| `--newline-after-block-end` / `--no-newline-after-block-end` | Flag | Writes `newline_after_block_end = true` / `false`. |
 | `--allow-no-ast-tree-procedures` | Flag | Writes `allow_no_ast_tree_procedures = true`. |
 | `--require-reduction-procedures` / `--no-require-reduction-procedures` | Flag | Writes `require_reduction_procedures = true` / `false`. |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |

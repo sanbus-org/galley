@@ -24,7 +24,7 @@ pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const
         \\    var offset = start;
         \\    while (offset < upper) : (offset += 1) {{
         \\        for (candidates) |candidate| {{
-        \\            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {{
+        \\            if (context.recoveryCandidateMatches(lookahead[offset..], candidate)) {{
         \\                context.finishSyntaxRecovery();
         \\                return offset;
         \\            }}
@@ -36,6 +36,10 @@ pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const
         \\}}
         \\
     , .{function_name});
+}
+
+pub fn emitSkipLeftoverBlockEndNewlines(writer: *std.Io.Writer, indent: []const u8) !void {
+    try writer.print("{s}context.skipLeftoverBlockEndNewlines();\n", .{indent});
 }
 
 pub fn emitRecoveryPoints(writer: *std.Io.Writer, points: []const common.RecoveryPoint) !void {
@@ -1023,6 +1027,31 @@ pub fn mergeSwitchBodies(
     return result;
 }
 
+fn switchHasNewlineHead(node: *const switch_planning.Node) bool {
+    for (node.groups.items) |group| {
+        for (group.heads.items) |head| {
+            if (head.len > 0 and head[0] == '\n') return true;
+        }
+    }
+    return false;
+}
+
+fn switchHasHead(node: *const switch_planning.Node, needle: []const u8) bool {
+    for (node.groups.items) |group| {
+        for (group.heads.items) |head| {
+            if (std.mem.eql(u8, head, needle)) return true;
+        }
+    }
+    return false;
+}
+
+fn headsContain(heads: []const []const u8, needle: []const u8) bool {
+    for (heads) |head| {
+        if (std.mem.eql(u8, head, needle)) return true;
+    }
+    return false;
+}
+
 /// Emits one merged switch-prong header: `{indent}    <ints> => { // <comments>`.
 /// Shared by every backend so combined headers format identically.
 pub fn emitSwitchProngHeader(
@@ -1089,12 +1118,56 @@ pub fn emitMergedSwitch(
         for (merged) |prong| allocator.free(prong.sources);
         allocator.free(merged);
     }
-    try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+    if (prefix_length == 0 and !switchHasNewlineHead(node)) {
+        if (step_length == 1) {
+            // Peek once, then delegate leftover `\x03` to
+            // `skipLeftoverBlockEndNewlines` so the skip loop lives in one place.
+            try writer.print(
+                \\{s}switch (blk: {{
+                \\{s}    var byte = context.head(u8, 0);
+                \\{s}    if (byte == 3) {{
+                \\{s}        @branchHint(.unlikely);
+                \\{s}        context.skipLeftoverBlockEndNewlines();
+                \\{s}        byte = context.head(u8, 0);
+                \\{s}    }}
+                \\{s}    break :blk byte;
+                \\{s}}}) {{
+                \\
+            , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent });
+        } else {
+            try emitSkipLeftoverBlockEndNewlines(writer, indent);
+            try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+        }
+    } else {
+        try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
+    }
+    var aliased_heads = std.ArrayList([]u8).empty;
+    defer {
+        for (aliased_heads.items) |head| allocator.free(head);
+        aliased_heads.deinit(allocator);
+    }
     for (merged) |prong| {
         var heads = std.ArrayList([]const u8).empty;
         defer heads.deinit(allocator);
         for (prong.sources) |source_index| {
-            for (node.groups.items[source_index].heads.items) |head| try heads.append(allocator, head);
+            for (node.groups.items[source_index].heads.items) |head| {
+                try heads.append(allocator, head);
+            }
+        }
+        if (prefix_length == 0) {
+            var alias_index: usize = 0;
+            while (alias_index < heads.items.len) : (alias_index += 1) {
+                const head = heads.items[alias_index];
+                if (head.len == 0 or head[0] != '\n') continue;
+                const aliased = try allocator.dupe(u8, head);
+                aliased[0] = 0x03;
+                if (headsContain(heads.items, aliased) or switchHasHead(node, aliased)) {
+                    allocator.free(aliased);
+                    continue;
+                }
+                try heads.append(allocator, aliased);
+                try aliased_heads.append(allocator, aliased);
+            }
         }
         std.mem.sort([]const u8, heads.items, {}, common.headLessThan);
         try emitSwitchProngHeader(writer, heads.items, indent);
