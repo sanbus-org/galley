@@ -106,7 +106,9 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (options.bootstrap_zig_project) {
-        try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result);
+        const checkout = init.environ_map.get("GALLEY_CHECKOUT");
+        const galley_checkout = if (checkout) |path| if (path.len == 0) null else path else null;
+        try bootstrapZigProject(init.io, init.gpa, init.arena.allocator(), .cwd(), language_dir, result, galley_checkout);
     }
 
     if (options.watch) {
@@ -243,7 +245,10 @@ fn printUsage(init: std.process.Init) !void {
         \\                             build.zig.zon, src/main.zig) that parses
         \\                             files via addParserModule. Stub for a new
         \\                             grammar, not a second API; see
-        \\                             examples/zig. Off by default.
+        \\                             examples/zig. Off by default. If
+        \\                             GALLEY_CHECKOUT is set, build.zig.zon
+        \\                             uses a .path to that tree instead of
+        \\                             fetching GitHub.
         \\      --watch                Regenerate the parser whenever the grammar
         \\                             file changes. Keep the previous parser
         \\                             output if regeneration fails.
@@ -437,7 +442,15 @@ fn refreshGrammarStat(init: std.process.Init, language_dir: []const u8, entry: *
     entry.size = stat.size;
 }
 
-fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.mem.Allocator, dir: std.Io.Dir, language_dir: []const u8, result: GenerationResult) !void {
+fn bootstrapZigProject(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    arena_allocator: std.mem.Allocator,
+    dir: std.Io.Dir,
+    language_dir: []const u8,
+    result: GenerationResult,
+    galley_checkout: ?[]const u8,
+) !void {
     const bootstrap_files = [_][]const u8{ "build.zig", "build.zig.zon", "src/main.zig" };
     for (bootstrap_files) |basename| {
         if (fileExists(io, gpa, dir, language_dir, basename)) {
@@ -458,6 +471,9 @@ fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.
     defer gpa.free(src_dir);
     try dir.createDirPath(io, src_dir);
 
+    const dependency = try galleyZonDependency(io, gpa, dir, language_dir, galley_checkout);
+    defer gpa.free(dependency);
+
     const build_zig_path = try std.fs.path.join(gpa, &.{ language_dir, "build.zig" });
     defer gpa.free(build_zig_path);
     try generator.atomic_file.writeAll(io, dir, build_zig_path, .create, build_zig_2);
@@ -466,17 +482,13 @@ fn bootstrapZigProject(io: std.Io, gpa: std.mem.Allocator, arena_allocator: std.
     defer gpa.free(main_zig_path);
     try generator.atomic_file.writeAll(io, dir, main_zig_path, .create, defaultMainZigSource);
 
-    const dependency_hash = try fetchGalleyHash(io, gpa, language_dir);
-    defer gpa.free(dependency_hash);
-
     const zon = try std.mem.replaceOwned(u8, arena_allocator, defaultZonSource, "@@NAME@@", package_name);
     const zon_1 = try std.mem.replaceOwned(u8, arena_allocator, zon, "@@FINGERPRINT@@", fingerprint);
-    const zon_2 = try std.mem.replaceOwned(u8, arena_allocator, zon_1, "@@COMMIT@@", bootstrap_options.galley_git_commit);
-    const zon_3 = try std.mem.replaceOwned(u8, arena_allocator, zon_2, "@@HASH@@", dependency_hash);
+    const zon_2 = try std.mem.replaceOwned(u8, arena_allocator, zon_1, "@@DEPENDENCY@@", dependency);
 
     const zon_path = try std.fs.path.join(gpa, &.{ language_dir, "build.zig.zon" });
     defer gpa.free(zon_path);
-    try generator.atomic_file.writeAll(io, dir, zon_path, .create, zon_3);
+    try generator.atomic_file.writeAll(io, dir, zon_path, .create, zon_2);
 
     std.debug.print("Created build.zig, build.zig.zon, and src/main.zig in {s}\n", .{language_dir});
 }
@@ -508,6 +520,74 @@ fn computeFingerprint(io: std.Io, allocator: std.mem.Allocator, package_name: []
     if (low == 0x00000000 or low == 0xffffffff) low = 1;
 
     return std.fmt.allocPrint(allocator, "{x:0>16}", .{(@as(u64, crc32) << 32) | low});
+}
+
+fn galleyZonDependency(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    dir: std.Io.Dir,
+    language_dir: []const u8,
+    galley_checkout: ?[]const u8,
+) ![]u8 {
+    if (galley_checkout) |checkout| {
+        const relative = try galleyCheckoutRelativePath(io, gpa, dir, language_dir, checkout);
+        defer gpa.free(relative);
+        if (std.mem.indexOfScalar(u8, relative, '"') != null) {
+            fatal("error: GALLEY_CHECKOUT path contains a double quote: {s}\n", .{relative});
+        }
+        return std.fmt.allocPrint(gpa, ".path = \"{s}\"", .{relative});
+    }
+
+    const hash = try fetchGalleyHash(io, gpa, language_dir);
+    defer gpa.free(hash);
+    return std.fmt.allocPrint(gpa, ".url = \"git+{s}#{s}\",\n            .hash = \"{s}\"", .{
+        bootstrap_options.galley_git_url,
+        bootstrap_options.galley_git_commit,
+        hash,
+    });
+}
+
+fn galleyCheckoutRelativePath(
+    io: std.Io,
+    gpa: std.mem.Allocator,
+    dir: std.Io.Dir,
+    language_dir: []const u8,
+    checkout: []const u8,
+) ![]u8 {
+    const language_path = std.mem.trimEnd(u8, language_dir, "/");
+    var from_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const from_len = dir.realPathFile(io, if (language_path.len == 0) language_dir else language_path, &from_buf) catch |err| {
+        fatal("error: unable to resolve language directory: {any}\n", .{err});
+    };
+    const from = from_buf[0..from_len];
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const to = try std.fs.path.resolve(gpa, &.{ cwd, checkout });
+    defer gpa.free(to);
+    std.Io.Dir.cwd().access(io, to, .{}) catch {
+        fatal("error: GALLEY_CHECKOUT does not exist: {s}\n", .{checkout});
+    };
+    const marker = try std.fs.path.join(gpa, &.{ to, "build.zig" });
+    defer gpa.free(marker);
+    std.Io.Dir.cwd().access(io, marker, .{}) catch {
+        fatal("error: GALLEY_CHECKOUT is not a Galley working tree (missing build.zig): {s}\n", .{checkout});
+    };
+
+    const relative = try std.fs.path.relative(gpa, cwd, null, from, to);
+    if (relative.len == 0) {
+        gpa.free(relative);
+        return gpa.dupe(u8, ".");
+    }
+    if (std.fs.path.isAbsolute(relative)) {
+        fatal("error: GALLEY_CHECKOUT is not reachable by a relative path from {s}\n", .{language_dir});
+    }
+    if (std.fs.path.sep != '/') {
+        for (relative) |*byte| {
+            if (byte.* == std.fs.path.sep) byte.* = '/';
+        }
+    }
+    return relative;
 }
 
 fn fetchGalleyHash(io: std.Io, gpa: std.mem.Allocator, language_dir: []const u8) ![]const u8 {
@@ -1158,8 +1238,30 @@ test "bootstrapZigProject refuses to overwrite an existing build.zig" {
 
     try std.testing.expectError(
         error.BootstrapFileExists,
-        bootstrapZigProject(std.testing.io, std.testing.allocator, arena.allocator(), tmp.dir, ".", .{}),
+        bootstrapZigProject(std.testing.io, std.testing.allocator, arena.allocator(), tmp.dir, ".", .{}, null),
     );
+}
+
+test "bootstrapZigProject uses GALLEY_CHECKOUT as a relative path dependency" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const dir_abs_len = try tmp.dir.realPath(std.testing.io, &dir_buf);
+    const checkout = try std.fs.path.join(arena.allocator(), &.{ dir_buf[0..dir_abs_len], "checkout" });
+    try tmp.dir.createDirPath(std.testing.io, "checkout");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "checkout/build.zig", .data = "" });
+
+    try bootstrapZigProject(std.testing.io, std.testing.allocator, arena.allocator(), tmp.dir, "project", .{}, checkout);
+
+    const zon = try tmp.dir.readFileAlloc(std.testing.io, "project/build.zig.zon", std.testing.allocator, .limited(8192));
+    defer std.testing.allocator.free(zon);
+    try std.testing.expect(std.mem.indexOf(u8, zon, ".path = \"../checkout\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zon, ".url") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zon, ".hash") == null);
 }
 
 test "CLI error_recovery flag does not affect recovery annotation detection (regression for inverted warning)" {
