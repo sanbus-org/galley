@@ -114,6 +114,7 @@ const Generator = struct {
             try self.emitExplicitRecoverySupport(writer);
         }
         try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items, self.augmented_start, self.generative_terminal);
+        try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);

@@ -828,6 +828,45 @@ fn emitStrictReductionCheck(
     try writer.writeAll("    }\n}\n");
 }
 
+/// Emits a gated compile error when the grammar uses byte `0x03` explicitly
+/// while the leftover-newline feature can be on. One byte cannot mean both
+/// the leftover and a user terminal: with the feature on, every decision
+/// start rewrites or skips a peeked `0x03`, so an explicit `0x03` prong is
+/// unreachable. The block is emitted only when the grammar contains `0x03`,
+/// and fires only when the consumer enables the feature, so flag-off use of
+/// `0x03` as an ordinary byte still compiles. Same pattern as
+/// `emitStrictReductionCheck`: config-independent codegen, gated compile.
+pub fn emitReservedLeftoverCheck(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    symbols: []const common.Symbol,
+) !void {
+    var offender: ?[]const u8 = null;
+    for (symbols) |symbol| {
+        if (symbol.kind == .terminal and std.mem.indexOfScalar(u8, symbol.id, 0x03) != null) {
+            offender = symbol.id;
+            break;
+        }
+        for (symbol.terminals.items) |member| {
+            if (std.mem.indexOfScalar(u8, member, 0x03) != null) {
+                offender = member;
+                break;
+            }
+        }
+        if (offender != null) break;
+    }
+    const bad = offender orelse return;
+    const message = try std.fmt.allocPrint(
+        allocator,
+        "newline_after_block_end reserves 0x03: explicit terminal '{s}' conflicts with the leftover newline; remove the terminal or set newline_after_block_end = false",
+        .{bad},
+    );
+    defer allocator.free(message);
+    try writer.writeAll("\ncomptime {\n    if (data_structures.newlineAfterBlockEndEnabled()) {\n        @compileError(");
+    try common.emitStringLiteral(writer, message);
+    try writer.writeAll(");\n    }\n}\n");
+}
+
 /// Appends `hook_`-prefixed hook names to `user_hooks`, skipping names
 /// already present.
 fn collectUserHooks(
@@ -1036,22 +1075,6 @@ fn switchHasNewlineHead(node: *const switch_planning.Node) bool {
     return false;
 }
 
-fn switchHasHead(node: *const switch_planning.Node, needle: []const u8) bool {
-    for (node.groups.items) |group| {
-        for (group.heads.items) |head| {
-            if (std.mem.eql(u8, head, needle)) return true;
-        }
-    }
-    return false;
-}
-
-fn headsContain(heads: []const []const u8, needle: []const u8) bool {
-    for (heads) |head| {
-        if (std.mem.eql(u8, head, needle)) return true;
-    }
-    return false;
-}
-
 /// Emits one merged switch-prong header: `{indent}    <ints> => { // <comments>`.
 /// Shared by every backend so combined headers format identically.
 pub fn emitSwitchProngHeader(
@@ -1118,22 +1141,60 @@ pub fn emitMergedSwitch(
         for (merged) |prong| allocator.free(prong.sources);
         allocator.free(merged);
     }
-    if (prefix_length == 0 and !switchHasNewlineHead(node)) {
-        if (step_length == 1) {
+    if (prefix_length == 0) {
+        if (switchHasNewlineHead(node)) {
+            if (step_length == 1) {
+                // Leftover `\x03` rewrites to `\n` under comptime, so no
+                // extra switch prong is baked in. With the feature off this
+                // folds to a plain peek.
+                try writer.print(
+                    \\{s}switch (blk: {{
+                    \\{s}    var byte = context.head(u8, 0);
+                    \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
+                    \\{s}        if (byte == 3) {{
+                    \\{s}            @branchHint(.unlikely);
+                    \\{s}            byte = 10;
+                    \\{s}        }}
+                    \\{s}    }}
+                    \\{s}    break :blk byte;
+                    \\{s}}}) {{
+                    \\
+                , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
+            } else {
+                const int_bits = step_length * 8;
+                const shift: usize = (step_length - 1) * 8;
+                try writer.print(
+                    \\{s}switch (blk: {{
+                    \\{s}    var peeked = context.head(u{d}, 0);
+                    \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
+                    \\{s}        if (@as(u8, @truncate(peeked >> {d})) == 3) {{
+                    \\{s}            @branchHint(.unlikely);
+                    \\{s}            peeked = (peeked & (((@as(u{d}, 1) << {d}) - 1))) | (@as(u{d}, 10) << {d});
+                    \\{s}        }}
+                    \\{s}    }}
+                    \\{s}    break :blk peeked;
+                    \\{s}}}) {{
+                    \\
+                , .{ indent, indent, int_bits, indent, indent, shift, indent, indent, int_bits, shift, int_bits, shift, indent, indent, indent, indent });
+            }
+        } else if (step_length == 1) {
             // Peek once, then delegate leftover `\x03` to
             // `skipLeftoverBlockEndNewlines` so the skip loop lives in one place.
+            // The outer comptime gate folds away when the feature is off.
             try writer.print(
                 \\{s}switch (blk: {{
                 \\{s}    var byte = context.head(u8, 0);
-                \\{s}    if (byte == 3) {{
-                \\{s}        @branchHint(.unlikely);
-                \\{s}        context.skipLeftoverBlockEndNewlines();
-                \\{s}        byte = context.head(u8, 0);
+                \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
+                \\{s}        if (byte == 3) {{
+                \\{s}            @branchHint(.unlikely);
+                \\{s}            context.skipLeftoverBlockEndNewlines();
+                \\{s}            byte = context.head(u8, 0);
+                \\{s}        }}
                 \\{s}    }}
                 \\{s}    break :blk byte;
                 \\{s}}}) {{
                 \\
-            , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent });
+            , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
         } else {
             try emitSkipLeftoverBlockEndNewlines(writer, indent);
             try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
@@ -1141,32 +1202,12 @@ pub fn emitMergedSwitch(
     } else {
         try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });
     }
-    var aliased_heads = std.ArrayList([]u8).empty;
-    defer {
-        for (aliased_heads.items) |head| allocator.free(head);
-        aliased_heads.deinit(allocator);
-    }
     for (merged) |prong| {
         var heads = std.ArrayList([]const u8).empty;
         defer heads.deinit(allocator);
         for (prong.sources) |source_index| {
             for (node.groups.items[source_index].heads.items) |head| {
                 try heads.append(allocator, head);
-            }
-        }
-        if (prefix_length == 0) {
-            var alias_index: usize = 0;
-            while (alias_index < heads.items.len) : (alias_index += 1) {
-                const head = heads.items[alias_index];
-                if (head.len == 0 or head[0] != '\n') continue;
-                const aliased = try allocator.dupe(u8, head);
-                aliased[0] = 0x03;
-                if (headsContain(heads.items, aliased) or switchHasHead(node, aliased)) {
-                    allocator.free(aliased);
-                    continue;
-                }
-                try heads.append(allocator, aliased);
-                try aliased_heads.append(allocator, aliased);
             }
         }
         std.mem.sort([]const u8, heads.items, {}, common.headLessThan);
