@@ -471,6 +471,28 @@ const session = new Session();
 the same names as the default entry. Hooks register explicitly with
 `installProcedures` before parsing.
 
+## Development builds
+
+Every `main` push publishes dev versions to GitHub Packages under the
+`@sanbus-org` scope (stable releases stay `@sanbus` on npmjs). Dev
+versions look like `0.1.3-dev.42.gabc1234` and install like any scoped
+package, with one extra `.npmrc` line and a token — GitHub Packages
+requires authentication even for public packages:
+
+```
+// .npmrc
+@sanbus-org:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+```sh
+npm install @sanbus-org/galley@0.1.3-dev.42.gabc1234
+```
+
+Dev versions are ephemeral: only the newest ~20 per package are kept
+(older ones are pruned daily), and npmjs never sees them at all. Pin a
+stable release for anything durable.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI

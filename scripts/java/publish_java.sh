@@ -38,20 +38,8 @@ tar --exclude='./target' -cf - -C "$MODULE_DIR" . | tar -xf - -C "$work"
 # The root VERSION file is the single source of truth for the version too,
 # not just the skip check above: pin the top-level project version only,
 # never plugin or dependency versions.
-python3 - "$work/pom.xml" "$VERSION" <<'EOF'
-import sys
-import xml.etree.ElementTree as ET
-path, version = sys.argv[1], sys.argv[2]
-namespace = "{http://maven.apache.org/POM/4.0.0}"
-ET.register_namespace("", "http://maven.apache.org/POM/4.0.0")
-tree = ET.parse(path)
-root = tree.getroot()
-element = root.find(f"{namespace}version")
-assert element is not None
-element.text = version
-tree.write(path, encoding="utf-8", xml_declaration=True)
-EOF
-grep -q "<version>$VERSION</version>" "$work/pom.xml" || {
+python3 "$ROOT/scripts/java/pin_pom.py" "$work/pom.xml" "$VERSION"
+grep -qF "<version>$VERSION</version>" "$work/pom.xml" || {
 	echo "publish_java: version pin failed" >&2
 	exit 1
 }

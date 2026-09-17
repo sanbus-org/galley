@@ -202,6 +202,17 @@ concurrent use — keep one per goroutine or guard it externally. Node
 handles, text slices, and diagnostics remain valid until the next parse on
 the same session or `Close`.
 
+## Development builds
+
+No action needed: the Go module proxy serves every pushed commit, so any
+commit is installable directly:
+
+```sh
+go get github.com/sanbus-org/galley/bindings/go@<commit-sha>
+```
+
+Tagged releases only mark stable points.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI

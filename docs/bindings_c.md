@@ -336,6 +336,27 @@ pointers derived from them are stable across allocations. Node storage can
 be preallocated with `galley_reserve_nodes`; `galley_node_capacity` reports
 the current capacity.
 
+## Development builds
+
+Every `main` push refreshes the floating `dev-latest` GitHub release
+with per-platform kits (`galley-c-<platform>.tar.gz`) holding the
+generator binary, `galley.h`, and the compile inputs — no repo checkout
+needed. Each kit ships a README with the two commands; you still need a
+Zig 0.16.0+ toolchain and a C compiler:
+
+```sh
+mkdir -p galley-c && tar xzf galley-c-linux-x64.tar.gz -C galley-c
+./galley-c/bin/galley --emit-metadata <language-dir>
+zig build --build-file galley-c/share/galley/compile-kit/build.zig \
+  -Dlanguage-dir=<language-dir> -Dlib-name=<name> \
+  -Doutput=lib<name>.so -Doptimize=ReleaseFast \
+  --prefix <language-dir> install
+```
+
+`dev-latest` is replaced on every push; versioned releases carry the
+same kits under versioned names for anything durable. One kit serves C
+and C++ alike.
+
 ## Related Pages
 
 - [Using Galley as a Library](/using-galley) — the language-directory

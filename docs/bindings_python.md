@@ -257,6 +257,14 @@ GALLEY_CHECKOUT=$PWD python -m galley_bindings bindings/python/test-fixture
 PYTHONPATH=bindings/python/test-fixture python3 bindings/python/tests/test_bindings.py
 ```
 
+## Development builds
+
+There is no dev registry for Python (GitHub Packages has no PyPI
+equivalent): instead, every green CI run uploads the built sdist and
+wheel as workflow artifacts (Actions → the run → Artifacts →
+`pkg-python`), carrying that commit's generator and compile kit. Download and
+`pip install` the wheel directly. Versioned releases go to PyPI as usual.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI

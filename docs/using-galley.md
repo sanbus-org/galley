@@ -29,6 +29,11 @@ For local development, add Galley to your project's `build.zig.zon` with a relat
 ```
 
 When consuming a published archive, use its `url` and `hash` instead. The dependency name does not have to be `galley`, but the examples below assume that it is.
+For in-development commits, every `main` push refreshes the floating
+`dev-latest` GitHub release with a source tarball at a stable URL —
+`zig fetch --save <dev-latest galley-src.tar.gz URL>` pins the latest
+dev snapshot; versioned releases carry the same tarball under versioned
+names for anything durable.
 
 Galley requires Zig 0.16 or newer.
 

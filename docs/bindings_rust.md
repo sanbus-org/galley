@@ -215,6 +215,22 @@ let opts = SessionOptions {
 let mut session = Session::with_options(opts).expect("session");
 ```
 
+## Development builds
+
+Every green CI run uploads the publish-equivalent `.crate` as a workflow
+artifact (Actions → the run → Artifacts → `pkg-rust`), carrying that
+commit's generator and compile kit. Download, extract, and depend by
+path — no Zig toolchain needed, same as a crates.io release:
+
+```toml
+[dependencies]
+galley = { path = "../galley-0.1.3-dev.42.gabc1234" }
+```
+
+Contributors with a checkout can alternatively pin a git dependency to a
+rev, but that path builds the generator from source and needs Zig
+installed. Versioned releases go to crates.io as usual.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI

@@ -1,0 +1,28 @@
+name: dev-prune
+
+on:
+  schedule:
+    # Daily retention for the GitHub dev channel: keep the newest ~20
+    # dev versions per package (GitHub deletion has no age or
+    # maintainer-count criteria, unlike npmjs unpublish). Dev versions
+    # never touch npmjs, so there is nothing to prune there.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  prune-github:
+    name: prune-github
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Prune old dev versions from GitHub Packages
+        env:
+          # Classic PAT with read:packages and delete:packages (the
+          # Packages REST API does not accept GITHUB_TOKEN).
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: python3 scripts/js/prune_github_packages.py

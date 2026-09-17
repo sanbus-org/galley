@@ -38,11 +38,9 @@ jobs:
           cache-dependency-path: docs/package-lock.json
 
       - name: Install Zig
-        run: |
-          URL=$(curl -s https://ziglang.org/download/index.json | jq -r '."0.16.0"."x86_64-linux".tarball')
-          curl -L "$URL" -o zig.tar.xz
-          tar -xf zig.tar.xz
-          echo "$PWD/zig-x86_64-linux-0.16.0" >>$GITHUB_PATH
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
 
       - name: Install dependencies
         working-directory: docs

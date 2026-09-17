@@ -279,6 +279,36 @@ session.symbolIsTerminal(0);
 session.variableNameAt(0);
 ```
 
+## Development builds
+
+Every `main` push deploys a `-SNAPSHOT` stream to GitHub Packages
+Maven (stable releases go to Maven Central), versioned after the
+`VERSION` file at the repo root (e.g. `0.1.3-SNAPSHOT`). The stream is
+overwritten per push, so it always tracks `main`:
+
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/sanbus-org/galley</url>
+    <snapshots><enabled>true</enabled></snapshots>
+  </repository>
+</repositories>
+```
+
+```xml
+<dependency>
+  <groupId>com.sassanh.sanbus</groupId>
+  <artifactId>galley</artifactId>
+  <!-- The VERSION file's value plus -SNAPSHOT, e.g. 0.1.3-SNAPSHOT. -->
+  <version>0.1.3-SNAPSHOT</version>
+</dependency>
+```
+
+Authenticate with a `github` server entry in `settings.xml` (a token
+with `read:packages`); GitHub Packages requires authentication either
+way. Pin a Central release for anything durable.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI
