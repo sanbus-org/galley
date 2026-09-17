@@ -23,4 +23,7 @@ fi
 echo "publish_go: pushing $tag"
 git -C "$ROOT" tag "$tag"
 git -C "$ROOT" push origin "$tag"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+	printf 'headline_url=%s\n' "https://github.com/sanbus-org/galley/tree/$tag" >>"$GITHUB_OUTPUT"
+fi
 echo "publish_go: done"

@@ -471,6 +471,27 @@ const session = new Session();
 the same names as the default entry. Hooks register explicitly with
 `installProcedures` before parsing.
 
+## Development builds
+
+Every green `main` push publishes dev versions to the static registry.
+Dev versions look like
+`0.1.3-dev.42.gabc123456789`:
+
+```
+// .npmrc (replace <R2_NPM_HOSTNAME> with the registry's public host)
+@sanbus:registry=https://<R2_NPM_HOSTNAME>/
+```
+
+```sh
+npm install @sanbus/galley@0.1.3-dev.42.gabc123456789
+```
+
+Dev versions are ephemeral: they expire after about 48 hours, and only
+the newest ~20 per package are kept.
+Stable releases stay on npmjs and are served through the same registry;
+a fresh stable appears here on the next `main` push after tagging.
+Pin a stable release for anything durable.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI

@@ -336,6 +336,26 @@ pointers derived from them are stable across allocations. Node storage can
 be preallocated with `galley_reserve_nodes`; `galley_node_capacity` reports
 the current capacity.
 
+## Development builds
+
+Every green CI run uploads per-platform kits (`galley-c-<version>-<platform>.tar.gz`) as
+workflow artifacts (Actions → the run → Artifacts → `pkg-c`), holding
+the generator binary, `galley.h`, and the compile inputs — no repo
+checkout needed. Each kit ships a README with the two commands; you
+still need a Zig 0.16.0+ toolchain and a C compiler:
+
+```sh
+mkdir -p galley-c && tar xzf galley-c-<version>-linux-x64.tar.gz -C galley-c --strip-components=1
+./galley-c/bin/galley --emit-metadata <language-dir>
+zig build --build-file galley-c/share/galley/compile-kit/build.zig \
+  -Dlanguage-dir=<language-dir> -Dlib-name=<name> \
+  -Doutput=lib<name>.so -Doptimize=ReleaseFast \
+  --prefix <language-dir> install
+```
+
+Versioned releases carry the same kits under versioned names for
+anything durable. One kit serves C and C++ alike.
+
 ## Related Pages
 
 - [Using Galley as a Library](/using-galley) — the language-directory
