@@ -29,6 +29,10 @@ For local development, add Galley to your project's `build.zig.zon` with a relat
 ```
 
 When consuming a published archive, use its `url` and `hash` instead. The dependency name does not have to be `galley`, but the examples below assume that it is.
+For in-development commits, every green CI run uploads a source tarball
+as a workflow artifact (Actions → the run → Artifacts → `pkg-zig`).
+Versioned releases carry the same tarball under versioned names for
+anything durable — `zig fetch --save` those URLs.
 
 Galley requires Zig 0.16 or newer.
 

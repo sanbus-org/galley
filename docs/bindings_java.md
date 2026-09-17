@@ -279,6 +279,13 @@ session.symbolIsTerminal(0);
 session.variableNameAt(0);
 ```
 
+## Development builds
+
+Every green CI run uploads
+the built jar as a workflow artifact (Actions → the run → Artifacts →
+`pkg-java`). Download it and depend on it like any Central release.
+Versioned releases go to Maven Central as usual.
+
 ## Related Pages
 
 - [C and C++](/bindings_c) — the underlying C ABI
