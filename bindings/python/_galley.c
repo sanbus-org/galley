@@ -17,7 +17,9 @@
  *   str inputs use the interpreter's cached UTF-8 buffer.
  *
  * Sessions are not thread-safe and every call holds the GIL: use one
- * session per thread or guard it externally. Node text, diagnostic
+ * session per thread or guard it externally. Procedure hooks are
+ * registered module-globally and shared by every session, so guard
+ * installs with the session. Node text, diagnostic
  * strings, and expected-token data remain valid until the next parse on
  * the same session; this module copies all of it before returning.
  */
@@ -54,6 +56,16 @@ typedef struct {
     PyObject *session_obj;
 } ProcedureArgsObject;
 
+typedef struct {
+    PyObject_HEAD
+    GalleySession *session;
+    /* Active-parse hook snapshots, innermost last. Each entry is the hook
+     * table copied on parse entry (empty when the live table was empty),
+     * so nested parses restore the enclosing level instead of sharing one
+     * process-global stack. */
+    PyObject *gate_snapshots;
+} SessionObject;
+
 static PyObject *push_parsing_session(PyObject *self)
 {
     PyObject *previous = parsing_session;
@@ -76,20 +88,36 @@ static PyObject *make_procedure_args(void *args)
     return (PyObject *)object;
 }
 
+/* The hook table dispatch and the native gates both read: the innermost
+ * active parse level's entry snapshot, or the live table when no parse
+ * is active. One gate owns both halves, so a mid-parse install stays
+ * invisible in-flight exactly like a mid-parse clear does. */
+static PyObject *dispatch_table_for(PyObject *session_obj)
+{
+    if (session_obj != NULL) {
+        SessionObject *session_object = (SessionObject *)session_obj;
+        PyObject *snapshots = session_object->gate_snapshots;
+        if (snapshots != NULL && PyList_GET_SIZE(snapshots) > 0)
+            return PyList_GET_ITEM(snapshots, PyList_GET_SIZE(snapshots) - 1);
+    }
+    return py_procedure_table;
+}
+
 /* Python procedure dispatch: called from the generated Zig shim
  * (procedures_python.zig) for every reduction. The shim holds a
  * single global function pointer registered at module init; when the
  * library was built without Python support the pointer stays NULL and
  * hooks are no-ops. */
 static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
-    if (py_procedure_table == NULL)
+    PyObject *table = dispatch_table_for(parsing_session);
+    if (table == NULL)
         return;
     PyObject *key = PyUnicode_FromStringAndSize(name, (Py_ssize_t)name_len);
     if (key == NULL) {
         PyErr_Clear();
         return;
     }
-    PyObject *callable = PyDict_GetItemWithError(py_procedure_table, key);
+    PyObject *callable = PyDict_GetItemWithError(table, key);
     Py_DECREF(key);
     if (callable == NULL) {
         if (PyErr_Occurred())
@@ -152,10 +180,12 @@ static void try_install_python_dispatch(void) {
 
 /* Selective dispatch gates (see galley_bindings/build.py shim): only
  * enabled hooks cross into Python; unenabled slots return after one
- * boolean check. Synced before every parse (the single gate all three
- * parse legs share), so installs and clears take effect on the next
- * parse with no per-install bookkeeping. Missing symbols (C procedures
- * or stale libraries) are silent no-ops. */
+ * boolean check. Each parse level snapshots the hook table on entry and
+ * syncs from the snapshot, so installs and clears take effect on the
+ * next parse with no per-install bookkeeping, and a nested parse
+ * restores the enclosing level's gates on exit instead of clobbering
+ * them. Missing symbols (C procedures or stale libraries) are silent
+ * no-ops. */
 typedef int (*proc_enable_fn)(const char *, size_t);
 typedef void (*proc_clear_fn)(void);
 static proc_enable_fn py_procedure_enable = NULL;
@@ -178,16 +208,16 @@ static void probe_selective_dispatch(void) {
 #endif
 }
 
-static void sync_procedure_gates(void) {
+static void sync_procedure_gates_from(PyObject *table) {
     probe_selective_dispatch();
     if (py_procedure_clear == NULL || py_procedure_enable == NULL)
         return;
     py_procedure_clear();
-    if (py_procedure_table == NULL)
+    if (table == NULL)
         return;
     PyObject *key, *value;
     Py_ssize_t pos = 0;
-    while (PyDict_Next(py_procedure_table, &pos, &key, &value)) {
+    while (PyDict_Next(table, &pos, &key, &value)) {
         Py_ssize_t name_len = 0;
         const char *name = NULL;
         if (PyUnicode_Check(key)) {
@@ -204,6 +234,65 @@ static void sync_procedure_gates(void) {
         }
         py_procedure_enable(name, (size_t)name_len);
     }
+}
+
+/* Nested-parse gate snapshots: each active parse level copies the hook
+ * table onto its own session and the native gates always reflect the
+ * innermost level's entry state. A hook that installs or clears hooks
+ * mid-parse (for example around a nested parse on another session)
+ * therefore cannot clobber the enclosing parse: exiting a level pops its
+ * snapshot and re-syncs the enclosing one. Dispatch reads the same
+ * snapshots, so installs and clears made mid-parse stay invisible
+ * in-flight alike and apply to parses entered after the edit.
+ * Snapshots ride on the session, mirroring the push/pop parsing-session
+ * chain with no depth limit: the exit restores the enclosing parsing
+ * session's gates, and the outermost exit syncs nothing because the next
+ * parse entry re-syncs from the live table. Sessions are not thread-safe
+ * and every call holds the GIL. */
+static int enter_parse_gates(PyObject *session_obj)
+{
+    SessionObject *session_object = (SessionObject *)session_obj;
+    PyObject *snapshot;
+
+    if (py_procedure_table == NULL) {
+        snapshot = PyDict_New();
+        if (snapshot == NULL)
+            return -1;
+    } else {
+        snapshot = PyDict_Copy(py_procedure_table);
+        if (snapshot == NULL)
+            return -1;
+    }
+    if (session_object->gate_snapshots == NULL) {
+        session_object->gate_snapshots = PyList_New(0);
+        if (session_object->gate_snapshots == NULL) {
+            Py_DECREF(snapshot);
+            return -1;
+        }
+    }
+    if (PyList_Append(session_object->gate_snapshots, snapshot) < 0) {
+        Py_DECREF(snapshot);
+        return -1;
+    }
+    Py_DECREF(snapshot);
+    sync_procedure_gates_from(dispatch_table_for(session_obj));
+    return 0;
+}
+
+static void exit_parse_gates(PyObject *session_obj, PyObject *enclosing_session)
+{
+    SessionObject *session_object = (SessionObject *)session_obj;
+    /* The list is non-empty after a successful enter, but a re-entrant
+     * Session_init mid-parse would have cleared it: pop only when present
+     * and still restore the enclosing gates either way. */
+    if (session_object->gate_snapshots != NULL &&
+        PyList_GET_SIZE(session_object->gate_snapshots) > 0) {
+        if (PySequence_DelItem(session_object->gate_snapshots,
+                               PyList_GET_SIZE(session_object->gate_snapshots) - 1) < 0)
+            PyErr_Clear();
+    }
+    if (enclosing_session != NULL)
+        sync_procedure_gates_from(dispatch_table_for(enclosing_session));
 }
 
 static int auto_register_python_procedures(void) {
@@ -358,11 +447,6 @@ static int check_status(long long status)
 /* ------------------------------------------------------------------ */
 /* Session and Node types                                              */
 /* ------------------------------------------------------------------ */
-
-typedef struct {
-    PyObject_HEAD
-    GalleySession *session;
-} SessionObject;
 
 typedef struct {
     PyObject_HEAD
@@ -535,6 +619,9 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     if (self->session != NULL)
         galley_session_destroy(self->session);
     self->session = session;
+    /* A re-init outside any parse owns no snapshots; drop the chain
+     * defensively so a reused object never inherits gate state. */
+    Py_CLEAR(self->gate_snapshots);
     return 0;
 }
 
@@ -617,6 +704,7 @@ static PyObject *Session_exit(SessionObject *self, PyObject *Py_UNUSED(args),
 static void Session_dealloc(SessionObject *self)
 {
     close_session(self);
+    Py_CLEAR(self->gate_snapshots);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -655,9 +743,15 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
         length = view.len;
     }
     /* A zero-length input must not present a NULL pointer. */
-    sync_procedure_gates();
     PyObject *previous = push_parsing_session(self);
+    if (enter_parse_gates(self) < 0) {
+        pop_parsing_session(previous);
+        if (have_view)
+            PyBuffer_Release(&view);
+        return NULL;
+    }
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
+    exit_parse_gates(self, previous);
     pop_parsing_session(previous);
     if (have_view)
         PyBuffer_Release(&view);
@@ -692,10 +786,14 @@ static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
                         "parse_sentinel expects str or bytes");
         return NULL;
     }
-    sync_procedure_gates();
     PyObject *previous = push_parsing_session(self);
+    if (enter_parse_gates(self) < 0) {
+        pop_parsing_session(previous);
+        return NULL;
+    }
     PyObject *result = status_to_parsed_with_session(
         galley_parse(session, length > 0 ? data : "", (size_t)length), session);
+    exit_parse_gates(self, previous);
     pop_parsing_session(previous);
     return result;
 }
@@ -726,10 +824,14 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
         PyErr_SetString(PyExc_TypeError, "path must be str or bytes");
     }
     if (data != NULL) {
-        sync_procedure_gates();
         PyObject *previous = push_parsing_session(self);
-        result = status_to_parsed_with_session(galley_parse_file(session, data), session);
-        pop_parsing_session(previous);
+        if (enter_parse_gates(self) < 0) {
+            pop_parsing_session(previous);
+        } else {
+            result = status_to_parsed_with_session(galley_parse_file(session, data), session);
+            exit_parse_gates(self, previous);
+            pop_parsing_session(previous);
+        }
     }
     Py_DECREF(filesystem_path);
     return result;
@@ -2978,7 +3080,9 @@ PyDoc_STRVAR(install_procedure_doc,
 "that will be invoked with a ProcedureArguments object (or with no args\n"
 "for compatibility). Hooks are\n"
 "no-ops until installed; reinstalling replaces the previous callable.\n"
-"Mirrors Go's hooks/procedures.go and Rust's procedures.rs registration.");
+"An install or clear made while a parse is active applies to parses\n"
+"entered after it, never to the in-flight one. Mirrors Go's\n"
+"hooks/procedures.go and Rust's procedures.rs registration.");
 
 static PyObject *module_install_procedure(PyObject *Py_UNUSED(module),
                                           PyObject *args)
@@ -3082,7 +3186,9 @@ static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
 PyDoc_STRVAR(clear_procedures_doc,
 "clear_procedures()\n"
 "\n"
-"Clears all registered Python procedure hooks.");
+"Clears all registered Python procedure hooks. Like install, a clear\n"
+"made while a parse is active applies to later parses, never to the\n"
+"in-flight one.");
 
 static PyObject *module_clear_procedures(PyObject *Py_UNUSED(module),
                                          PyObject *Py_UNUSED(ignored))

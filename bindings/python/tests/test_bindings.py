@@ -10,11 +10,43 @@ at the binding's own test fixture (built on demand, never examples/):
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 import galley
 
 
+def _restore_procedures(saved: dict[str, Any]) -> None:
+    """Return the global hook table to a snapshot.
+
+    Procedure hooks are module-global, so a test that installs or clears
+    must not leak into the next one: snapshot in setUp, restore here.
+    """
+    galley.clear_procedures()
+    if saved:
+        galley.install_procedures(saved)
+
+
 class ModuleSurfaceTests(unittest.TestCase):
+    def test_stub_matches_extension_surface(self):
+        # galley.pyi is a hand-kept mirror of the extension API: it must
+        # name exactly what the module exposes, in either direction, or
+        # type-checked code and runtime drift apart silently.
+        import ast
+        import pathlib
+
+        stub_path = pathlib.Path(galley.__file__).parent / "galley.pyi"
+        self.assertTrue(stub_path.is_file(), f"missing {stub_path}")
+        names: list[str] = []
+        for node in ast.parse(stub_path.read_text(encoding="utf-8")).body:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                names.append(node.name)
+            elif isinstance(node, ast.Assign):
+                names += [t.id for t in node.targets if isinstance(t, ast.Name)]
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                names.append(node.target.id)
+        module_names = [n for n in dir(galley) if not n.startswith("_")]
+        self.assertEqual(sorted(set(names)), sorted(set(module_names)))
+
     def test_version_returns_non_empty_string(self):
         self.assertIsInstance(galley.version(), str)
         self.assertNotEqual(galley.version(), "")
@@ -66,12 +98,15 @@ class ModuleSurfaceTests(unittest.TestCase):
 
 class SessionTests(unittest.TestCase):
     session: galley.Session
+    saved_procedures: dict[str, Any]
 
     def setUp(self) -> None:
         self.session = galley.Session(max_errors=10)
+        self.saved_procedures = galley.list_procedures()
 
     def tearDown(self) -> None:
         self.session.close()
+        _restore_procedures(self.saved_procedures)
 
     def test_procedure_hook_can_read_node_text(self) -> None:
         seen: list[bytes] = []
@@ -93,6 +128,81 @@ class SessionTests(unittest.TestCase):
         finally:
             galley.clear_procedures()
         self.assertEqual(len(seen), 2)
+
+    def test_nested_parse_restores_outer_gates(self) -> None:
+        # A hook that swaps the hook set around a nested parse on another
+        # session must not silence the enclosing parse: gates restore on
+        # nested exit, and mid-parse edits apply to later parses only.
+        outer_seen: list[bytes] = []
+        inner_seen: list[bytes] = []
+        nested = False
+
+        def outer_pair(args: galley.ProcedureArguments) -> None:
+            nonlocal nested
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            outer_seen.append(text)
+            if not nested:
+                nested = True
+                inner_session = galley.Session()
+                try:
+                    galley.clear_procedures()
+                    galley.install_procedure("reduction_Number", inner_number)
+                    try:
+                        inner_session.parse("alpha:9")
+                    finally:
+                        galley.clear_procedures()
+                        galley.install_procedure("reduction_Pair", outer_pair)
+                finally:
+                    inner_session.close()
+
+        def inner_number(args: galley.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            inner_seen.append(text)
+
+        galley.install_procedure("reduction_Pair", outer_pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            galley.clear_procedures()
+        self.assertEqual(outer_seen, [b"alpha:12", b"beta:3"])
+        self.assertEqual(inner_seen, [b"9"])
+
+    def test_mid_parse_clear_is_invisible_in_flight(self) -> None:
+        # Dispatch reads the same entry snapshot as the gates: clearing
+        # mid-parse must not silence the enclosing parse's remaining
+        # reductions, and the clear applies to parses entered after it.
+        seen: list[bytes] = []
+        cleared = False
+
+        def outer_pair(args: galley.ProcedureArguments) -> None:
+            nonlocal cleared
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            seen.append(text)
+            if not cleared:
+                cleared = True
+                galley.clear_procedures()
+                inner_session = galley.Session()
+                try:
+                    inner_session.parse("alpha:9")
+                finally:
+                    inner_session.close()
+
+        galley.install_procedure("reduction_Pair", outer_pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            galley.clear_procedures()
+        self.assertEqual(seen, [b"alpha:12", b"beta:3"])
+        self.assertEqual(galley.list_procedures(), {})
 
     def test_parse_accepts_str_bytes_and_buffers(self):
         sample = "alpha:12,beta:3"
@@ -164,12 +274,15 @@ class SessionTests(unittest.TestCase):
 
 class SemanticErrorTests(unittest.TestCase):
     session: galley.Session
+    saved_procedures: dict[str, Any]
 
     def setUp(self) -> None:
         self.session = galley.Session(max_errors=10)
+        self.saved_procedures = galley.list_procedures()
 
     def tearDown(self) -> None:
         self.session.close()
+        _restore_procedures(self.saved_procedures)
 
     def test_hook_reported_semantic_errors_aggregate_and_fail(self) -> None:
         seen_counts: list[int] = []
