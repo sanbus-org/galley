@@ -11,7 +11,9 @@ Sessions are not thread-safe; every call holds the GIL.  Node handles are
 ``galley.Node`` objects bound to their owning ``Session`` – plain ``int``
 addresses are still accepted wherever a node is expected for backward
 compatibility, and ``int(node)`` / ``operator.index(node)`` recover the
-address.  All text/diagnostic accessors copy before returning.
+address.  Procedure hooks are registered module-globally and shared by
+every session, so guard installs with the session.  All text/diagnostic
+accessors copy before returning.
 """
 
 from __future__ import annotations
@@ -556,7 +558,9 @@ def install_procedure(name: str | bytes, callable: Any) -> None:
     ``name`` is the hook name (e.g. ``"reduction_Pair"`` or ``"hook_print"``)
     and ``callable`` is invoked with the opaque ``ProcedureArguments`` pointer
     as an ``int``. Hooks are no-ops until installed; reinstalling replaces
-    the previous callable. Mirrors Go's ``hooks/procedures.go`` and Rust's
+    the previous callable. An install made while a parse is active applies
+    to parses entered after it, never to the in-flight one (clears behave
+    the same). Mirrors Go's ``hooks/procedures.go`` and Rust's
     ``procedures.rs`` registration.
     """
     ...
@@ -570,7 +574,11 @@ def install_procedures(source: Any) -> int:
     ...
 
 def clear_procedures() -> None:
-    """Clear all registered Python procedure hooks."""
+    """Clear all registered Python procedure hooks.
+
+    Like installs, a clear made while a parse is active applies to later
+    parses, never to the in-flight one.
+    """
     ...
 
 def list_procedures() -> dict[str, Any]:
