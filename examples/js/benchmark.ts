@@ -9,7 +9,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { init, Session, artifactFileName, wasmArtifactFileName } from "@sanbus/galley";
+import { Session } from "@sanbus/galley";
+import { Session as WasmSession } from "@sanbus/galley-wasm";
 
 const LOGICAL_INPUT = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS = 10;
@@ -27,21 +28,17 @@ function resolveInput(explicit: string | undefined): string {
   process.exit(1);
 }
 
-// GALLEY_WASM=1 (or a path) benchmarks the WebAssembly backend
-// instead of native, mirroring demo.ts.
-function jsonWasmPath(): string | null {
+// The language directory this benchmark runs: the session loads the
+// standard-named parser artifact from it. Exact directory, no searching.
+const BENCHMARK_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark");
+
+// GALLEY_WASM=1 (or a path to a `.wasm` module file) benchmarks the
+// WebAssembly backend instead of native, mirroring demo.ts.
+function jsonWasmBytes(): Uint8Array | "dir" | null {
   const selected = process.env.GALLEY_WASM;
   if (!selected) return null;
-  if (selected !== "1") return selected;
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark", wasmArtifactFileName("galley-js-wasm"));
-}
-
-function jsonLibrary(): string {
-  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark");
-  const candidate = path.join(dir, artifactFileName("galley-js-node", process.platform));
-  if (fs.existsSync(candidate)) return candidate;
-  console.error(`missing ${candidate}`);
-  process.exit(1);
+  if (selected === "1") return "dir";
+  return new Uint8Array(fs.readFileSync(selected));
 }
 
 async function main(): Promise<number> {
@@ -66,16 +63,15 @@ async function main(): Promise<number> {
   }
   const length = data.length;
 
+  let session: Session | WasmSession;
   try {
-    const wasm = jsonWasmPath();
-    await init(wasm ? { wasmPath: wasm, quiet: true } : { libraryPath: jsonLibrary() });
-  } catch {
-    console.error("failed to create a parser session");
-    return 1;
-  }
-  let session: Session;
-  try {
-    session = new Session();
+    const wasm = jsonWasmBytes();
+    session =
+      wasm === null
+        ? await Session.fromDirectory(BENCHMARK_DIR)
+        : wasm === "dir"
+          ? await WasmSession.fromDirectory(BENCHMARK_DIR)
+          : await WasmSession.fromBytes(wasm);
   } catch {
     console.error("failed to create a parser session");
     return 1;

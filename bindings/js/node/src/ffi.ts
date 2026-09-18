@@ -16,6 +16,7 @@ import process from "node:process";
 import type {
   FfiPort,
   Handle,
+  DispatchHandler,
   SessionCOptions,
   TreeSnapshot,
   WalkedStep,
@@ -24,7 +25,9 @@ import {
   GalleyError,
   MissingArtifactError,
   resolveArtifact,
+  resolveArtifactFile,
   artifactFileName,
+  canonicalResolvePath,
 } from "@sanbus/galley-core";
 import { ensureDispatchFor } from "./dispatch.ts";
 const require = createRequire(import.meta.url);
@@ -229,18 +232,17 @@ export interface GalleyFFI {
   api: AddonApi;
 }
 
-// Cached library and path
-let cached: GalleyFFI | null = null;
-let cachedPath: string | null = null;
+// Cached libraries, one per resolved artifact path.
+const libraries = new Map<string, GalleyFFI>();
 
 // --- library discovery -------------------------------------------------
-// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
-// Anything else is a loud error, never a search. The contract names the
-// parser library; the addon lives beside it under addonFileName().
+// One place, named up front: the language directory must hold the
+// adapter's standard-named files (the parser library plus the NAPI
+// addon beside it). Anything else is a loud error, never a search.
 
 const BUILD_HINT =
   `Build it first: npx galley-js-node <language-dir>\n` +
-  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
+  `That leaves ${libFileName()} and ${addonFileName()} in the directory.`;
 
 export function libFileName(base = "galley-js-node"): string {
   return artifactFileName(base, process.platform);
@@ -259,10 +261,18 @@ function exists(filePath: string): boolean {
   }
 }
 
-export function findLibrary(explicit?: string): string {
-  return resolveArtifact(explicit, {
-    getEnv: (name) => process.env[name],
-    resolvePath: (candidate) => path.resolve(candidate),
+export function findLibrary(languagePath: string): string {
+  return resolveArtifact(languagePath, libFileName(), path.join, {
+    resolvePath: (candidate) => canonicalResolvePath(candidate, path.resolve, fs.realpathSync),
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
+}
+
+/** Explicit-file twin of {@link findLibrary}: names the parser library itself. */
+export function findLibraryFile(filePath: string): string {
+  return resolveArtifactFile(filePath, {
+    resolvePath: (candidate) => canonicalResolvePath(candidate, path.resolve, fs.realpathSync),
     existsSync: exists,
     buildHint: BUILD_HINT,
   });
@@ -278,19 +288,26 @@ function findAddon(libPath: string): string {
 
 // --- loader ------------------------------------------------------------
 
-export function loadLibrary(explicitPath?: string): GalleyFFI {
-  const normalizedExplicit = explicitPath ? path.resolve(explicitPath) : undefined;
-  if (cached && (!normalizedExplicit || cachedPath === normalizedExplicit)) return cached;
+export function loadLibrary(languagePath: string): GalleyFFI {
+  return loadLibraryFile(findLibrary(languagePath));
+}
 
-  const libPath = findLibrary(normalizedExplicit);
+/** Loads the NAPI addon against an explicit parser library file. */
+export function loadLibraryFromFile(filePath: string): GalleyFFI {
+  return loadLibraryFile(findLibraryFile(filePath));
+}
+
+function loadLibraryFile(libPath: string): GalleyFFI {
+  const cached = libraries.get(libPath);
+  if (cached) return cached;
+
   const addonPath = findAddon(libPath);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const addon = require(addonPath) as { load(path: string): AddonApi };
   const api = addon.load(libPath);
 
   const ffi: GalleyFFI = { libPath, api };
-  cached = ffi;
-  cachedPath = libPath;
+  libraries.set(libPath, ffi);
   return ffi;
 }
 
@@ -323,6 +340,7 @@ function bytesToString(bytes: Uint8Array): string {
 export class NodePort implements FfiPort {
   readonly ffi: GalleyFFI;
   readonly libraryPath: string;
+  activeDispatch: DispatchHandler | null = null;
 
   constructor(ffi: GalleyFFI) {
     this.ffi = ffi;
@@ -853,11 +871,20 @@ export class NodePort implements FfiPort {
 
 const portCache = new Map<string, NodePort>();
 
-/** Port for the library at `explicitPath` (or default discovery), cached per path. */
-export function getNodePort(explicitPath?: string): NodePort {
-  const ffi = loadLibrary(explicitPath);
-  const cachedPort = portCache.get(ffi.libPath);
+/** Port for the language directory's library, cached per resolved path. */
+export function getNodePort(languagePath: string): NodePort {
+  return portForLibrary(findLibrary(languagePath));
+}
+
+/** Port for an explicit parser library file, cached per resolved path. */
+export function getNodePortFromFile(filePath: string): NodePort {
+  return portForLibrary(findLibraryFile(filePath));
+}
+
+function portForLibrary(libPath: string): NodePort {
+  const cachedPort = portCache.get(libPath);
   if (cachedPort) return cachedPort;
+  const ffi = loadLibraryFile(libPath);
   const port = new NodePort(ffi);
   // Dispatch rides with the port, not the Session: every consumer of the
   // port (adapter or universal loader) gets working procedure hooks.
@@ -866,6 +893,6 @@ export function getNodePort(explicitPath?: string): NodePort {
   } catch {
     // Missing installer — stays no-op.
   }
-  portCache.set(ffi.libPath, port);
+  portCache.set(libPath, port);
   return port;
 }

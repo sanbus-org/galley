@@ -5,13 +5,12 @@
  * Zero dependencies: no npm packages, no build step for the adapter itself.
  * The core (`@sanbus/galley-core`, resolved to its compiled `dist` via the
  * package `deno.json` import map) owns all session logic; memory copying
- * and integer normalization live here. Requires `--allow-ffi` (dlopen),
- * `--allow-read` (library discovery, `parseFile`), and `--allow-env`
- * (library discovery).
+ * and integer normalization live here. Requires `--allow-ffi` (dlopen)
+ * and `--allow-read` (library discovery, `parseFile`).
  */
 
-import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
+import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
+import { GalleyError, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core";
 import { ensureDispatchFor } from "./dispatch.ts";
 
 const textEncoder = new TextEncoder();
@@ -143,12 +142,15 @@ interface GalleySymbols {
 }
 
 // --- library discovery -------------------------------------------------
-// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
-// Anything else is a loud error, never a search.
+// One place, named up front: the language directory must hold the
+// adapter's standard-named library file or the shared native library
+// `galley build` leaves (it serves every native adapter). Anything else
+// is a loud error naming both tried paths, never a search.
 
 const BUILD_HINT =
-  "Build it first: deno task build in your language dir\n" +
-  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
+  "Build it first: npx galley build <language-dir>\n" +
+  `That leaves ${artifactFileName(SHARED_NATIVE_LIBRARY_BASE, Deno.build.os)} in the directory ` +
+  `(or deno task build in your language dir for the adapter-named ${libFileName()}).`;
 
 export function libFileName(base = "galley-js-deno"): string {
   return artifactFileName(base, Deno.build.os);
@@ -163,11 +165,33 @@ function exists(filePath: string): boolean {
   }
 }
 
-export function findLibrary(explicit?: string): string {
-  // Deno reports the path it was given (no resolve step), as before.
-  return resolveArtifact(explicit, {
-    getEnv: (name) => Deno.env.get(name),
-    resolvePath: (candidate) => candidate,
+// Identity lexical step (Deno reports the path it was given, as
+// before); the shared helper still canonicalizes existing files and
+// keeps the absent-file fallback semantics in one place.
+function resolveCanonical(candidate: string): string {
+  return canonicalResolvePath(candidate, (lexical) => lexical, Deno.realPathSync);
+}
+
+export function findLibrary(languagePath: string): string {
+  const joinPath = (directory: string, file: string): string =>
+    directory.endsWith("/") ? directory + file : `${directory}/${file}`;
+  return resolveAdapterArtifact(
+    languagePath,
+    libFileName(),
+    artifactFileName(SHARED_NATIVE_LIBRARY_BASE, Deno.build.os),
+    joinPath,
+    {
+      resolvePath: resolveCanonical,
+      existsSync: exists,
+      buildHint: BUILD_HINT,
+    },
+  );
+}
+
+/** Explicit-file twin of {@link findLibrary}: names the library itself. */
+export function findLibraryFile(filePath: string): string {
+  return resolveArtifactFile(filePath, {
+    resolvePath: resolveCanonical,
     existsSync: exists,
     buildHint: BUILD_HINT,
   });
@@ -348,6 +372,7 @@ function i64Out(): BigInt64Array {
 // --- FfiPort implementation ----------------------------------------------
 
 export class DenoPort implements FfiPort {
+  activeDispatch: DispatchHandler | null = null;
   readonly native: GalleySymbols;
   readonly libraryPath: string;
   readonly supportsDispatch: boolean;
@@ -1004,9 +1029,17 @@ export class DenoPort implements FfiPort {
 
 const portCache = new Map<string, DenoPort>();
 
-/** Port for the library at `explicitPath` (or default discovery), cached per path. */
-export function getDenoPort(explicitPath?: string): DenoPort {
-  const libPath = findLibrary(explicitPath);
+/** Port for the language directory's library, cached per resolved path. */
+export function getDenoPort(languagePath: string): DenoPort {
+  return portForLibrary(findLibrary(languagePath));
+}
+
+/** Port for an explicit library file, cached per resolved path. */
+export function getDenoPortFromFile(filePath: string): DenoPort {
+  return portForLibrary(findLibraryFile(filePath));
+}
+
+function portForLibrary(libPath: string): DenoPort {
   const cached = portCache.get(libPath);
   if (cached) return cached;
   // Libraries built for C procedures lack the JS dispatch symbol; dlopen

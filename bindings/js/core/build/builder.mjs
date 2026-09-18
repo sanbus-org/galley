@@ -34,7 +34,8 @@
  *
  * The tool generates the parser (`--emit-metadata`) and builds the artifact
  * through the generic consumer build directly next to the grammar, so the
- * adapters can name it through an explicit path or `GALLEY_LIBRARY_PATH`.
+ * adapters can load it from the language directory through
+ * `Session.fromDirectory`.
  *
  * Environment: `ZIG_EXECUTABLE` names an explicit zig; else `zig` on
  * `PATH`; else `uvx` provisioning the pinned ziglang (0.16.0). Neither
@@ -59,7 +60,11 @@ import { emitJsProcedureShim, emitJsProcedureShimWasm } from "./shim.mjs";
 
 /**
  * Canonical shared native build: one library serves the Node, Bun, and
- * Deno adapters (the dispatch symbols are identical across them).
+ * Deno adapters (the dispatch symbols are identical across them). The
+ * Bun/Deno adapters resolve this name as their shared fallback
+ * (`SHARED_NATIVE_LIBRARY_BASE` in `core/src/artifact.ts`, which must
+ * match this literal — separate module systems, so the universal loader
+ * suite pins them equal through an end-to-end `galley build` case).
  */
 export const NATIVE_LIBRARY_BASE = "galley-js-node";
 /** Canonical wasm build for the wasm adapter and the universal fallback leg. */
@@ -311,7 +316,10 @@ export function compileNodeAddon({ languageDirectory, libraryName }) {
   const directory = path.resolve(languageDirectory);
   const addonOutput = path.join(directory, `${libraryName}.node`);
   // The gate may skip a fresh parser library; the addon still needs to
-  // exist and postdate both its source and the library it links.
+  // exist and postdate both its source and the parser library it serves
+  // (the addon resolves every grammar symbol through its own dlopen
+  // probe at load, never through a link, so two copies of one build —
+  // or two grammars, which share an install name — never alias).
   try {
     const addonTime = fs.statSync(addonOutput).mtimeMs;
     const sourceTime = fs.statSync(addonSource).mtimeMs;
@@ -334,25 +342,51 @@ export function compileNodeAddon({ languageDirectory, libraryName }) {
     addonSource,
     "-o",
     addonOutput,
-    `-L${directory}`,
-    `-l${libraryName}`,
   ];
   if (process.platform === "darwin") {
     // Node-API symbols resolve when Node loads the addon.
     linkArguments.push("-undefined", "dynamic_lookup");
-    linkArguments.push("-Wl,-rpath,@loader_path");
   } else {
-    // Position-independent code plus libdl for shim probing.
-    linkArguments.push("-fPIC", "-ldl", "-Wl,-rpath,$ORIGIN");
+    // Position-independent code plus libdl for library probing.
+    linkArguments.push("-fPIC", "-ldl");
   }
-  // The addon links the grammar's parser library so a missing or stale
-  // library fails here, next to the grammar.
   const [zig, ...zigPrefix] = zigCommand();
   const result = spawnSync(zig, [...zigPrefix, "cc", ...linkArguments], { stdio: "pipe", encoding: "utf-8" });
   if (result.status !== 0) {
     fatal(`zig cc failed for ${libraryName}.node:\n${result.stderr || result.stdout || "unknown error"}`);
   }
-  console.error(`galley-bindings: built ${addonOutput}; import from ${directory}`);
+  // The link proves nothing about the grammar library (nothing is
+  // linked); loading it here proves every required symbol resolves,
+  // next to the grammar.
+  smokeLoadAddon(addonOutput, directory, libraryName);
+  console.error(`galley-bindings: built ${addonOutput}; open ${directory} with Session.fromDirectory`);
+}
+
+/**
+ * Load a freshly built addon against its parser library: a missing or
+ * stale library fails the build here, naming the symbol, instead of at
+ * first parse.
+ */
+function smokeLoadAddon(addonOutput, languageDirectory, libraryName) {
+  let library = null;
+  for (const entry of fs.readdirSync(languageDirectory)) {
+    if (entry.startsWith(`lib${libraryName}.`)) {
+      library = path.join(languageDirectory, entry);
+      break;
+    }
+  }
+  if (library === null) fatal(`expected parser library next to ${addonOutput}`);
+  let addon;
+  try {
+    addon = createRequire(import.meta.url)(addonOutput);
+  } catch (error) {
+    fatal(`built addon failed to load ${addonOutput}: ${error.message}`);
+  }
+  try {
+    addon.load(library);
+  } catch (error) {
+    fatal(`built addon failed against ${library}: ${error.message}`);
+  }
 }
 
 /**
@@ -495,7 +529,7 @@ export async function buildParserArtifact({
 
   const destination = path.join(languageDir, outputFileName);
   if (!fs.existsSync(destination)) fatal(`expected library not found at ${destination}`);
-  console.log(`galley-bindings: built ${destination}; import from ${languageDir} (or set GALLEY_LIBRARY_PATH)`);
+  console.log(`galley-bindings: built ${destination}; open ${languageDir} with Session.fromDirectory`);
   if (addon) {
     if (wasm) fatal("the Node addon serves the native leg only; do not combine addon with wasm");
     compileNodeAddon({ languageDirectory: languageDir, libraryName });

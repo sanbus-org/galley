@@ -30,14 +30,14 @@ GALLEY_WASM=1 deno run --allow-ffi --allow-read --allow-write --allow-env demo.t
 editing binding sources use plain `npm install` plus `npm install` inside
 `bindings/js/universal` instead.
 
-One demo runs on every runtime: `await init()` resolves the native
+One demo runs on every runtime: `Session.fromDirectory` resolves the native
 library on Node, Bun, and Deno, and the same code parses through the
 wasm fallback wherever native is absent. Build, run, and benchmark
 conventions: see [examples/README.md](../README.md).
 
 `demo-browser.ts` runs the same grammar and the same procedures as
 `demo.ts` through the wasm-only browser entry (`@sanbus/galley/browser`,
-`init({ url })`), with the same output rows except the file-parse ones
+`Session.fromUrl`), with the same output rows except the file-parse ones
 (`fs` exists only on the runtime side). Bundle with
 vite and serve the bundle beside the wasm module and its page:
 

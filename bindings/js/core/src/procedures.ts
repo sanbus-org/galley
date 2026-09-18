@@ -2,9 +2,15 @@
  * Host-language procedure registry for the JavaScript bindings.
  *
  * Runtime-neutral: the registry, `ProcedureArguments`, and the dispatcher
- * live here. Each adapter installs the dispatcher into its shared library
- * through its own native callback (`galley_install_*_dispatch`) and calls
- * {@link dispatchProcedure} with the decoded hook name.
+ * live here. Each adapter installs a forwarder into its shared library
+ * through its own native callback (`galley_install_*_dispatch`); the
+ * forwarder decodes the hook name and calls the port's `activeDispatch`
+ * slot, which the parsing session set around its parse.
+ *
+ * Registries are per session: every `Session` owns a `ProcedureRegistry`
+ * and publishes its dispatch closure on the port for the duration of
+ * each parse (see `FfiPort.activeDispatch`). Two sessions — even on two
+ * grammars in one process — never share hooks. There is no global table.
  *
  * Hooks receive a `ProcedureArguments` object. Tree queries use
  * `currentNode()` plus the ordinary `Node` methods (which call the port's
@@ -90,80 +96,176 @@ export class ProcedureArguments {
 
 export type HookFn = (args: ProcedureArguments) => void;
 
-let currentSession: Session | null = null;
+/** Hook modules for a session: one module, nested arrays, nullish entries skipped. */
+export type ProceduresOption = Record<string, unknown> | null | undefined | ProceduresOption[];
 
-/** Records the Session whose parse is in flight so hooks can wrap Nodes. */
-export function setParsingSession(session: Session | null): Session | null {
-  const previous = currentSession;
-  currentSession = session;
-  return previous;
-}
-
-/** Session of the parse currently in flight, if any. */
-export function getParsingSession(): Session | null {
-  return currentSession;
-}
-
-const registry = new Map<string, HookFn>();
-
-function isProcedureName(name: string): boolean {
+export function isProcedureName(name: string): boolean {
   return name === "reduction" || name.startsWith("reduction_") || name.startsWith("hook_");
 }
 
 /**
- * Runs the registered hook for `name` (silent no-op when unregistered).
- * Called by each adapter's native dispatch callback. Hook exceptions are
- * logged and swallowed so a throwing hook never aborts the parse (mirrors
- * Python's PyErr_Print behavior).
+ * One session's procedure hooks. Sessions build theirs from the
+ * `procedures` option (plus the adapter's language-directory scan where
+ * the runtime allows it); hooks never cross sessions.
  */
-export function dispatchProcedure(name: string, args: Handle, port: FfiPort): void {
-  const fn = registry.get(name);
-  if (!fn) return;
-  try {
-    if (fn.length === 0) {
-      (fn as () => void)();
-    } else {
-      (fn as HookFn)(new ProcedureArguments(args, currentSession, port));
+export class ProcedureRegistry {
+  readonly #hooks = new Map<string, HookFn>();
+
+  /**
+   * Installs a single procedure hook. `fn` may be
+   * `(args: ProcedureArguments)=>void` or `()=>void`.
+   * Overwrites any existing entry for `name`.
+   */
+  install(name: string, fn: HookFn | (() => void)): void {
+    if (typeof name !== "string" || name.length === 0) throw new TypeError("procedure name must be non-empty string");
+    if (typeof fn !== "function") throw new TypeError("procedure must be a function");
+    this.#hooks.set(name, fn as HookFn);
+  }
+
+  /**
+   * Installs hooks from one module, an array of modules, or nested
+   * arrays; nullish entries are skipped. Later entries win per hook
+   * name, so adapters pass scanned defaults ahead of explicit user
+   * modules. This is the single entry behind the `procedures` option.
+   */
+  installAll(value: unknown): void {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) this.installAll(entry);
+      return;
     }
-  } catch (err) {
-    console.error(`galley procedure ${name} threw:`, err);
+    this.installModule(value as Record<string, unknown>);
+  }
+
+  /**
+   * Scans `module` for exported procedure hooks (`reduction`,
+   * `reduction_*`, `hook_*`) and registers each function. Returns the
+   * number installed. Mirrors `bindings/python/_galley.c:2339`
+   * `install_procedures`.
+   */
+  installModule(module: Record<string, unknown>): number {
+    if (module === null || typeof module !== "object") throw new TypeError("module must be an object");
+    let count = 0;
+    for (const [name, value] of Object.entries(module)) {
+      if (typeof value !== "function") continue;
+      if (!isProcedureName(name)) {
+        warnOnNearMissHook(name);
+        continue;
+      }
+      this.#hooks.set(name, value as HookFn);
+      count++;
+    }
+    return count;
+  }
+
+  /** Removes all registered hooks; subsequent parses will be no-ops. */
+  clear(): void {
+    this.#hooks.clear();
+  }
+
+  /** Returns currently registered procedure names. */
+  names(): string[] {
+    return [...this.#hooks.keys()];
+  }
+
+  /** The hook for `name`, if registered. Used by the dispatcher. */
+  get(name: string): HookFn | undefined {
+    return this.#hooks.get(name);
   }
 }
 
 /**
- * Installs a single procedure hook. `fn` may be
- * `(args: ProcedureArguments)=>void` or `()=>void`.
- * Overwrites any existing entry for `name`.
+ * Installs one session's hooks: the language-directory scan first, then
+ * explicit user modules — later wins per hook name. The single gate
+ * behind every factory's composition, so the precedence lives here
+ * instead of array ordering at each call site.
  */
-export function installProcedure(name: string, fn: HookFn | (() => void)): void {
-  if (typeof name !== "string" || name.length === 0) throw new TypeError("procedure name must be non-empty string");
-  if (typeof fn !== "function") throw new TypeError("procedure must be a function");
-  registry.set(name, fn as HookFn);
+export function installSessionProcedures(
+  registry: ProcedureRegistry,
+  scanned: unknown,
+  explicit: unknown,
+): void {
+  registry.installAll(scanned);
+  registry.installAll(explicit);
 }
 
 /**
- * Scans `module` for exported procedure hooks (`reduction`, `reduction_*`,
- * `hook_*`) and registers each function. Returns the number installed.
- * Mirrors `bindings/python/_galley.c:2339` `install_procedures`.
+ * True for export names that look like mistyped hooks (`reductionPair`,
+ * `hookPrint`, `Reduction_X`): a warning, not an install. Anything else
+ * (helpers, data) stays silent.
  */
-export function installProcedures(module: Record<string, unknown>): number {
-  if (module === null || typeof module !== "object") throw new TypeError("module must be an object");
-  let count = 0;
-  for (const [name, value] of Object.entries(module)) {
-    if (typeof value !== "function") continue;
-    if (!isProcedureName(name)) continue;
-    registry.set(name, value as HookFn);
-    count++;
+function isNearMissHookName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.startsWith("reduct") || lower.startsWith("hook");
+}
+
+/** Warns on a skipped export that looks like a mistyped hook name. */
+function warnOnNearMissHook(name: string): void {
+  if (!isNearMissHookName(name)) return;
+  console.warn(
+    `galley: ignoring export "${name}": ` +
+      `procedure hooks must be named reduction, reduction_*, or hook_*.`,
+  );
+}
+
+/**
+ * Synchronously loads a `procedures` module from a language directory:
+ * tries `procedures`, `procedures.js`, `procedures.ts` in order and
+ * returns the first that loads as an object. Only named exports
+ * (`reduction`, `reduction_*`, `hook_*`) install as hooks — a `default`
+ * export is never read, and a loud warning names the file when it looks
+ * like hooks were left there. Returns null when nothing loadable is
+ * there. `requireModule` and `joinPath` are injected so this stays
+ * runtime-neutral; runtimes without a synchronous loader (browsers,
+ * Deno) pass no loader and register hooks explicitly through the
+ * session instead.
+ */
+export function loadProceduresModule(
+  requireModule: ((specifier: string) => unknown) | undefined,
+  joinPath: (...parts: string[]) => string,
+  directory: string,
+): Record<string, unknown> | null {
+  if (!requireModule) return null;
+  for (const file of ["procedures", "procedures.js", "procedures.ts"]) {
+    const specifier = joinPath(directory, file);
+    let loaded: unknown;
+    try {
+      loaded = requireModule(specifier);
+    } catch (error) {
+      // A missing file means "try the next name". Anything else — a
+      // throw inside the module, an unloadable extension — is the
+      // user's bug, not a miss: rethrow instead of silently running
+      // hookless. A missing nested dependency names its own specifier,
+      // so it rethrows too.
+      if (isMissingSpecifier(error, specifier)) continue;
+      throw error;
+    }
+    if (loaded === null || typeof loaded !== "object") continue;
+    const module = loaded as Record<string, unknown>;
+    warnOnIgnoredDefault(specifier, module.default);
+    return module;
   }
-  return count;
+  return null;
 }
 
-/** Removes all registered hooks; subsequent parses will be no-ops. */
-export function clearProcedures(): void {
-  registry.clear();
+/** True when `error` reports `specifier` itself as not found. */
+function isMissingSpecifier(error: unknown, specifier: string): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") return false;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message.includes(specifier);
 }
 
-/** Returns currently registered procedure names. */
-export function listProcedures(): string[] {
-  return [...registry.keys()];
+/** Warns when a `default` export holds hooks that will never run. */
+function warnOnIgnoredDefault(specifier: string, defaultExport: unknown): void {
+  if (defaultExport === null || typeof defaultExport !== "object") return;
+  for (const [name, value] of Object.entries(defaultExport)) {
+    if (typeof value !== "function" || !isProcedureName(name)) continue;
+    console.warn(
+      `galley: ignoring default export in ${specifier}: ` +
+        `procedure hooks must be named exports (reduction_*, hook_*).`,
+    );
+    return;
+  }
 }

@@ -6,8 +6,6 @@
  */
 
 import {
-  init,
-  installProcedures,
   Session,
   KIND_SYNTAX,
   KIND_INDENTATION,
@@ -49,13 +47,10 @@ function printTree(node: Node, depth: number): void {
 }
 
 async function main(): Promise<void> {
-  // Quiet: the fallback notice is stderr noise, and the wasm leg is the
-  // only leg here — the runtime demo runs it quiet for the same reason.
-  await init({ url: wasmUrl(), quiet: true });
-  if (installProcedures(procedures as unknown as Record<string, unknown>) === 0) {
-    fail("failed to register procedure hooks");
-  }
-  const session = new Session({ maxErrors: 10 });
+  const session = await Session.fromUrl(wasmUrl(), {
+    procedures: procedures as unknown as Record<string, unknown>,
+    maxErrors: 10,
+  });
   try {
     console.log(`galley version: ${session.version()}`);
 

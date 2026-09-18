@@ -912,12 +912,9 @@ jobs:
           check_browser_bundle "$MATRIX/dist-vite-subpath/app.bundle.js" || exit 1
           check_node_bundle "$MATRIX/dist-webpack-default/app.bundle.cjs" || exit 1
           check_browser_bundle "$MATRIX/dist-webpack-subpath/app.bundle.js" || exit 1
-          # Assignment prefixes never glob-expand, so resolve the artifact
-          # into an array first (linux builds `.so`, macOS `.dylib`).
-          NATIVE_LIB=( "$MATRIX"/grammar/libgalley-js-node.* )
-          node_output=$(GALLEY_LIBRARY_PATH="${NATIVE_LIB[0]}" node "$MATRIX/dist-vite-default/app.bundle.js") || exit 1
+          node_output=$(node "$MATRIX/dist-vite-default/app.bundle.js" "$MATRIX/grammar") || exit 1
           echo "$node_output"
-          if echo "$node_output" | grep -q 'WebAssembly'; then
+          if ! echo "$node_output" | grep -q 'via native'; then
             echo "vite node bundle fell back to wasm instead of serving native"
             exit 1
           fi

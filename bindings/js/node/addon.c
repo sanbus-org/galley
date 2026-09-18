@@ -2,12 +2,16 @@
  * Node NAPI addon wrapping bindings/c/galley.h: the single FFI boundary for
  * the Node runtime. TypeScript implements FfiPort through this addon.
  *
- * Loading: `load(parserPath)` dlopens nothing itself for required symbols
- * (this object links the parser library, like any C consumer); it opens a
- * dl handle on the same path solely to probe the optional JS-shim symbols
- * (`galley_install_js_dispatch_id`, `galley_js_procedure_*`), which stay
- * null on libraries that predate them. The returned object binds every
- * function to that library; dispatch installs are per library path.
+ * Loading: `load(parserPath)` dlopens the parser library and resolves
+ * every required symbol through that handle into the returned object, so
+ * two copies of one build (or two different grammars, which share the
+ * same install name) never share code: dyld satisfies a linked
+ * dependency by install name and would alias the second copy to the
+ * first. Nothing here links the parser library and nothing calls it
+ * directly; the optional JS-shim symbols
+ * (`galley_install_js_dispatch_id`, `galley_js_procedure_*`) stay null
+ * on libraries that predate them. Dispatch installs are per library
+ * path.
  *
  * Hooks: parse runs on the JS thread, so the parser callback re-enters JS
  * with napi_call_function in the same thread. Same-thread reentrancy across
@@ -182,6 +186,239 @@ static napi_value make_string_or_null(napi_env env, const char *text) {
 typedef void (*dispatch_id_fn)(void (*target)(uint32_t id, void *args));
 typedef void (*dispatch_name_fn)(void (*target)(const char *name, size_t name_len, void *args));
 
+/* ------------------------------------------------------------------ */
+/* Per-library function table: every grammar call below goes through */
+/* lib->fn, resolved from the dlopen probe at load (see method_load). */
+/* ------------------------------------------------------------------ */
+
+typedef int (*fn_galley_allows_no_ast_tree_procedures_t)(void);
+typedef long long (*fn_galley_diagnostic_context_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_diagnostic_context_count_t)(GalleySession *session);
+typedef long long (*fn_galley_diagnostic_expected_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_diagnostic_expected_count_t)(GalleySession *session);
+typedef long long (*fn_galley_diagnostic_indentation_t)(GalleySession *session, unsigned int *out_spaces, unsigned int *out_indentation_width);
+typedef long long (*fn_galley_diagnostic_kind_t)(GalleySession *session);
+typedef long long (*fn_galley_diagnostic_message_t)(GalleySession *session, const char **out);
+typedef long long (*fn_galley_diagnostic_message_ansi_t)(GalleySession *session, const char **out);
+typedef long long (*fn_galley_diagnostic_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_diagnostic_recovery_kind_t)(GalleySession *session);
+typedef long long (*fn_galley_diagnostic_recovery_lhs_variable_t)(GalleySession *session, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_diagnostic_recovery_occurrence_t)(GalleySession *session, const char **out_parent_variable, size_t *out_parent_variable_len, unsigned int *out_rhs_index, unsigned int *out_symbol_index, const char **out_variable, size_t *out_variable_len);
+typedef long long (*fn_galley_diagnostic_recovery_production_t)(GalleySession *session, const char **out_variable, size_t *out_variable_len, unsigned int *out_rhs_index);
+typedef long long (*fn_galley_diagnostic_recovery_resume_t)(GalleySession *session, long long *out);
+typedef long long (*fn_galley_diagnostic_recovery_terminal_t)(GalleySession *session, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_diagnostic_semantic_t)(GalleySession *session, const char **out_variable, size_t *out_variable_len, const char **out_message, size_t *out_message_len);
+typedef long long (*fn_galley_diagnostic_unexpected_token_t)(GalleySession *session, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_error_recovery_mode_t)(void);
+typedef int (*fn_galley_has_ast_t)(void);
+typedef int (*fn_galley_has_diagnostic_t)(GalleySession *session);
+typedef int (*fn_galley_has_input_streaming_t)(void);
+typedef int (*fn_galley_has_position_tracking_t)(void);
+typedef int (*fn_galley_has_procedures_t)(void);
+typedef long long (*fn_galley_last_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
+typedef unsigned long long (*fn_galley_node_capacity_t)(GalleySession *session);
+typedef unsigned int (*fn_galley_node_child_count_t)(GalleySession *session, GalleyNodeAddress node);
+typedef unsigned long long (*fn_galley_node_count_t)(GalleySession *session);
+typedef GalleyNodeAddress (*fn_galley_node_first_child_t)(GalleySession *session, GalleyNodeAddress node);
+typedef int (*fn_galley_node_is_valid_t)(GalleySession *session, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_node_last_child_t)(GalleySession *session, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_line_column_t)(GalleySession *session, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
+typedef GalleyNodeAddress (*fn_galley_node_next_sibling_t)(GalleySession *session, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_node_parent_t)(GalleySession *session, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_node_prior_sibling_t)(GalleySession *session, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_span_t)(GalleySession *session, GalleyNodeAddress node, unsigned long long *out_start, unsigned long long *out_len);
+typedef long long (*fn_galley_node_symbol_name_t)(GalleySession *session, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_node_text_t)(GalleySession *session, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_node_variable_index_t)(GalleySession *session, GalleyNodeAddress node);
+typedef long long (*fn_galley_parse_t)(GalleySession *session, const char *data, size_t len);
+typedef long long (*fn_galley_parse_file_t)(GalleySession *session, const char *path);
+typedef long long (*fn_galley_parser_type_t)(void);
+typedef unsigned int (*fn_galley_procedure_context_column_t)(void *args);
+typedef unsigned int (*fn_galley_procedure_context_line_t)(void *args);
+typedef unsigned long long (*fn_galley_procedure_current_node_t)(void *args);
+typedef long long (*fn_galley_procedure_drop_children_t)(void *args);
+typedef long long (*fn_galley_procedure_drop_if_empty_t)(void *args);
+typedef long long (*fn_galley_procedure_drop_self_t)(void *args);
+typedef long long (*fn_galley_procedure_replace_with_children_t)(void *args);
+typedef long long (*fn_galley_procedure_report_semantic_error_t)(void *args, const char *message, size_t message_len);
+typedef GalleySession * (*fn_galley_procedure_session_t)(void *args);
+typedef void (*fn_galley_procedure_set_current_node_t)(void *args, unsigned long long node);
+typedef long long (*fn_galley_recorded_context_count_t)(GalleySession *session, unsigned long long diag_index);
+typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, unsigned long long diag_index, unsigned long long context_index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
+typedef long long (*fn_galley_recorded_diagnostic_kind_t)(GalleySession *session, unsigned long long diag_index);
+typedef long long (*fn_galley_recorded_diagnostic_message_t)(GalleySession *session, unsigned long long diag_index, const char **out);
+typedef long long (*fn_galley_recorded_diagnostic_position_t)(GalleySession *session, unsigned long long diag_index, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_recorded_diagnostic_recovery_kind_t)(GalleySession *session, unsigned long long diag_index);
+typedef long long (*fn_galley_recorded_expected_count_t)(GalleySession *session, unsigned long long diag_index);
+typedef long long (*fn_galley_recorded_expected_token_t)(GalleySession *session, unsigned long long diag_index, unsigned long long token_index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_recorded_indentation_t)(GalleySession *session, unsigned long long diag_index, unsigned int *out_spaces, unsigned int *out_indentation_width);
+typedef long long (*fn_galley_recorded_recovery_lhs_variable_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_recorded_recovery_occurrence_t)(GalleySession *session, unsigned long long diag_index, const char **out_parent_variable, size_t *out_parent_variable_len, unsigned int *out_rhs_index, unsigned int *out_symbol_index, const char **out_variable, size_t *out_variable_len);
+typedef long long (*fn_galley_recorded_recovery_production_t)(GalleySession *session, unsigned long long diag_index, const char **out_variable, size_t *out_variable_len, unsigned int *out_rhs_index);
+typedef long long (*fn_galley_recorded_recovery_resume_t)(GalleySession *session, unsigned long long diag_index, long long *out);
+typedef long long (*fn_galley_recorded_recovery_terminal_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_recorded_semantic_t)(GalleySession *session, unsigned long long diag_index, const char **out_variable, size_t *out_variable_len, const char **out_message, size_t *out_message_len);
+typedef long long (*fn_galley_recorded_unexpected_token_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_reserve_nodes_t)(GalleySession *session, unsigned long long capacity);
+typedef GalleyNodeAddress (*fn_galley_root_node_t)(GalleySession *session);
+typedef long long (*fn_galley_semantic_error_count_t)(GalleySession *session);
+typedef GalleySession * (*fn_galley_session_create_t)(void);
+typedef GalleySession * (*fn_galley_session_create_ex_t)(const GalleyCOptions *options);
+typedef void (*fn_galley_session_destroy_t)(GalleySession *session);
+typedef long long (*fn_galley_session_set_message_override_t)(GalleySession *session, const char *name, size_t name_len, const char *message, size_t message_len);
+typedef int (*fn_galley_source_retention_enabled_t)(void);
+typedef int (*fn_galley_stack_overflow_recovery_available_t)(void);
+typedef const char * (*fn_galley_status_string_t)(long long status);
+typedef unsigned long long (*fn_galley_symbol_count_t)(void);
+typedef int (*fn_galley_symbol_is_terminal_t)(GalleySession *session, unsigned long long index);
+typedef long long (*fn_galley_symbol_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_syntax_error_count_t)(GalleySession *session);
+typedef long long (*fn_galley_tree_append_children_t)(GalleySession *session, GalleyNodeAddress parent, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_clean_children_t)(GalleySession *session, GalleyNodeAddress node, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_insert_after_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_insert_before_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_insert_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_promote_children_over_wrapper_t)(GalleySession *session, GalleyNodeAddress wrapper, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_remove_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_remove_self_t)(GalleySession *session, GalleyNodeAddress node, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_remove_siblings_t)(GalleySession *session, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, unsigned long long capacity);
+typedef long long (*fn_galley_tree_unlink_wrapper_t)(GalleySession *session, GalleyNodeAddress wrapper);
+typedef int (*fn_galley_uses_verbatim_t)(void);
+typedef unsigned long long (*fn_galley_variable_count_t)(void);
+typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
+typedef const char * (*fn_galley_version_t)(void);
+typedef GalleyWalker * (*fn_galley_walker_create_t)(GalleySession *session, GalleyNodeAddress node, int skip_semantic_errors);
+typedef void (*fn_galley_walker_destroy_t)(GalleyWalker *walker);
+typedef int (*fn_galley_walker_next_t)(GalleyWalker *walker, GalleyNodeAddress *out_node, unsigned int *out_depth, int *out_is_semantic_error);
+typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
+
+/* Single source for every required parser-library symbol: the slot
+ * enum and the probe table below both expand from GALLEY_FN_LIST, so the
+ * two can never skew (a skewed slot would call the wrong function through
+ * the wrong type). The `fn_<name>_t` typedefs above stay manual —
+ * signatures are not derivable from names — and method_load binds each
+ * name through BIND_OR_THROW. `galley_parse_sentinel` is a JS-level alias
+ * over `galley_parse` and intentionally has no slot.
+ */
+#define GALLEY_FN_LIST(X) \
+  X(galley_allows_no_ast_tree_procedures) \
+  X(galley_diagnostic_context_at) \
+  X(galley_diagnostic_context_count) \
+  X(galley_diagnostic_expected_at) \
+  X(galley_diagnostic_expected_count) \
+  X(galley_diagnostic_indentation) \
+  X(galley_diagnostic_kind) \
+  X(galley_diagnostic_message) \
+  X(galley_diagnostic_message_ansi) \
+  X(galley_diagnostic_position) \
+  X(galley_diagnostic_recovery_kind) \
+  X(galley_diagnostic_recovery_lhs_variable) \
+  X(galley_diagnostic_recovery_occurrence) \
+  X(galley_diagnostic_recovery_production) \
+  X(galley_diagnostic_recovery_resume) \
+  X(galley_diagnostic_recovery_terminal) \
+  X(galley_diagnostic_semantic) \
+  X(galley_diagnostic_unexpected_token) \
+  X(galley_error_recovery_mode) \
+  X(galley_has_ast) \
+  X(galley_has_diagnostic) \
+  X(galley_has_input_streaming) \
+  X(galley_has_position_tracking) \
+  X(galley_has_procedures) \
+  X(galley_last_position) \
+  X(galley_node_capacity) \
+  X(galley_node_child_count) \
+  X(galley_node_count) \
+  X(galley_node_first_child) \
+  X(galley_node_is_valid) \
+  X(galley_node_last_child) \
+  X(galley_node_line_column) \
+  X(galley_node_next_sibling) \
+  X(galley_node_parent) \
+  X(galley_node_prior_sibling) \
+  X(galley_node_span) \
+  X(galley_node_symbol_name) \
+  X(galley_node_text) \
+  X(galley_node_variable_index) \
+  X(galley_parse) \
+  X(galley_parse_file) \
+  X(galley_parser_type) \
+  X(galley_procedure_context_column) \
+  X(galley_procedure_context_line) \
+  X(galley_procedure_current_node) \
+  X(galley_procedure_drop_children) \
+  X(galley_procedure_drop_if_empty) \
+  X(galley_procedure_drop_self) \
+  X(galley_procedure_replace_with_children) \
+  X(galley_procedure_report_semantic_error) \
+  X(galley_procedure_session) \
+  X(galley_procedure_set_current_node) \
+  X(galley_recorded_context_count) \
+  X(galley_recorded_context_name) \
+  X(galley_recorded_diagnostic_count) \
+  X(galley_recorded_diagnostic_kind) \
+  X(galley_recorded_diagnostic_message) \
+  X(galley_recorded_diagnostic_position) \
+  X(galley_recorded_diagnostic_recovery_kind) \
+  X(galley_recorded_expected_count) \
+  X(galley_recorded_expected_token) \
+  X(galley_recorded_indentation) \
+  X(galley_recorded_recovery_lhs_variable) \
+  X(galley_recorded_recovery_occurrence) \
+  X(galley_recorded_recovery_production) \
+  X(galley_recorded_recovery_resume) \
+  X(galley_recorded_recovery_terminal) \
+  X(galley_recorded_semantic) \
+  X(galley_recorded_unexpected_token) \
+  X(galley_reserve_nodes) \
+  X(galley_root_node) \
+  X(galley_semantic_error_count) \
+  X(galley_session_create) \
+  X(galley_session_create_ex) \
+  X(galley_session_destroy) \
+  X(galley_session_set_message_override) \
+  X(galley_source_retention_enabled) \
+  X(galley_stack_overflow_recovery_available) \
+  X(galley_status_string) \
+  X(galley_symbol_count) \
+  X(galley_symbol_is_terminal) \
+  X(galley_symbol_name) \
+  X(galley_syntax_error_count) \
+  X(galley_tree_append_children) \
+  X(galley_tree_clean_children) \
+  X(galley_tree_insert_after) \
+  X(galley_tree_insert_before) \
+  X(galley_tree_insert_children_at) \
+  X(galley_tree_promote_children_over_wrapper) \
+  X(galley_tree_remove_children_at) \
+  X(galley_tree_remove_self) \
+  X(galley_tree_remove_siblings) \
+  X(galley_tree_snapshot) \
+  X(galley_tree_unlink_wrapper) \
+  X(galley_uses_verbatim) \
+  X(galley_variable_count) \
+  X(galley_variable_name) \
+  X(galley_version) \
+  X(galley_walker_create) \
+  X(galley_walker_destroy) \
+  X(galley_walker_next) \
+  X(galley_walker_skip_children)
+
+typedef enum {
+#define GALLEY_FN_SLOT(name) SLOT_##name,
+  GALLEY_FN_LIST(GALLEY_FN_SLOT)
+#undef GALLEY_FN_SLOT
+  SLOT_COUNT
+} FnSlot;
+
+static const char *const fn_symbol[SLOT_COUNT] = {
+#define GALLEY_FN_SYMBOL(name) #name,
+  GALLEY_FN_LIST(GALLEY_FN_SYMBOL)
+#undef GALLEY_FN_SYMBOL
+};
+
 typedef struct Lib {
   void *probe;
   dispatch_id_fn install_id;
@@ -194,10 +431,11 @@ typedef struct Lib {
   napi_ref id_callback;
   napi_ref name_callback;
   napi_ref dispatch_ref;
-  // Every bound name, verified against the probe handle at load so a
-  // header/binary skew fails here naming the symbol.
-  const char *bound_names[192];
-  int bound_count;
+  // Every required symbol, resolved from the probe handle at load so a
+  // header/binary skew fails there naming the symbol. All grammar calls
+  // go through this table; nothing calls the library directly (see the
+  // loading note above).
+  void *fn[SLOT_COUNT];
 } Lib;
 
 /* One parse frame per nesting level; a single handle scope covers the
@@ -351,8 +589,7 @@ static napi_value thunk(napi_env env, napi_callback_info info) {
 /* Binds name on obj to method with this library. Binding records live as
  * long as the process (one set per loaded library path, like the dl
  * handle they belong to). */
-static bool bind(napi_env env, napi_value obj, Lib *lib, const char *name, Method method,
-                 const char *symbol) {
+static bool bind(napi_env env, napi_value obj, Lib *lib, const char *name, Method method) {
   Binding *binding = (Binding *)malloc(sizeof(Binding));
   if (binding == NULL) {
     napi_throw_error(env, NULL, "out of memory");
@@ -366,13 +603,6 @@ static bool bind(napi_env env, napi_value obj, Lib *lib, const char *name, Metho
     return false;
   }
   if (napi_set_named_property(env, obj, name, function) != napi_ok) return false;
-  if (lib->bound_count >= 192) {
-    napi_throw_error(env, NULL, "too many bound functions");
-    return false;
-  }
-  // symbol is the parser-library export to verify (NULL means the api
-  // name is the export name, as for every galley_* function).
-  lib->bound_names[lib->bound_count++] = symbol == NULL ? name : symbol;
   return true;
 }
 
@@ -478,55 +708,48 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
 
 #define NO_ARG_I64(cfn)                                                                    \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     (void)argc;                                                                            \
     (void)argv;                                                                            \
-    return make_i64(env, (int64_t)cfn());                                                  \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])());                                                  \
   }
 
 #define NO_ARG_U64(cfn)                                                                    \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     (void)argc;                                                                            \
     (void)argv;                                                                            \
-    return make_u64(env, (uint64_t)cfn());                                                 \
+    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])());                                                 \
   }
 
 #define NO_ARG_INT(cfn)                                                                    \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     (void)argc;                                                                            \
     (void)argv;                                                                            \
-    return make_i32(env, (int32_t)cfn());                                                  \
+    return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])());                                                  \
   }
 
 #define SESS_U64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    return make_u64(env, (uint64_t)cfn(session));                                          \
+    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                          \
   }
 
 #define SESS_I64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    return make_i64(env, (int64_t)cfn(session));                                           \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                           \
   }
 
 #define SESS_INT(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    return make_i32(env, (int32_t)cfn(session));                                           \
+    return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                           \
   }
 
 #define SESS_NODE_U64(cfn)                                                                 \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
     if (argc < 2) {                                                                        \
@@ -535,12 +758,11 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_u64(env, (uint64_t)cfn(session, (GalleyNodeAddress)node));                 \
+    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                 \
   }
 
 #define SESS_NODE_I64(cfn)                                                                 \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
     if (argc < 2) {                                                                        \
@@ -549,12 +771,11 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_i64(env, (int64_t)cfn(session, (GalleyNodeAddress)node));                  \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                  \
   }
 
 #define SESS_NODE_INT(cfn)                                                                 \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
     if (argc < 2) {                                                                        \
@@ -563,12 +784,11 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_i32(env, (int32_t)cfn(session, (GalleyNodeAddress)node));                  \
+    return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                  \
   }
 
 #define SESS_NODE_U32(cfn)                                                                 \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
     if (argc < 2) {                                                                        \
@@ -577,12 +797,11 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_u32(env, (uint32_t)cfn(session, (GalleyNodeAddress)node));                 \
+    return make_u32(env, (uint32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                 \
   }
 
 #define SESS_INDEX_I64(cfn)                                                                \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     GalleySession *session = NULL;                                                         \
     if (!session_arg(env, argc, argv, &session)) return NULL;                              \
     if (argc < 2) {                                                                        \
@@ -591,39 +810,35 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t index = 0;                                                                    \
     if (!get_u64(env, argv[1], &index)) return NULL;                                       \
-    return make_i64(env, (int64_t)cfn(session, index));                                    \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, index));                                    \
   }
 
 #define ARGS_PTR(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     void *args = NULL;                                                                     \
     if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
-    return make_u64(env, (uint64_t)(uintptr_t)cfn(args));                                  \
+    return make_u64(env, (uint64_t)(uintptr_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                  \
   }
 
 #define ARGS_U64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     void *args = NULL;                                                                     \
     if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
-    return make_u64(env, (uint64_t)cfn(args));                                            \
+    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                            \
   }
 
 #define ARGS_I64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     void *args = NULL;                                                                     \
     if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
-    return make_i64(env, (int64_t)cfn(args));                                             \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                             \
   }
 
 #define ARGS_U32(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    (void)lib;                                                                             \
     void *args = NULL;                                                                     \
     if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
-    return make_u32(env, (uint32_t)cfn(args));                                            \
+    return make_u32(env, (uint32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                            \
   }
 
 NO_ARG_I64(galley_parser_type)
@@ -678,25 +893,22 @@ ARGS_U32(galley_procedure_context_column)
 /* ------------------------------------------------------------------ */
 
 static napi_value method_galley_version(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   (void)argc;
   (void)argv;
-  return make_string_or_null(env, galley_version());
+  return make_string_or_null(env, ((fn_galley_version_t)lib->fn[SLOT_galley_version])());
 }
 
 static napi_value method_galley_status_string(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected status");
     return NULL;
   }
   int64_t status = 0;
   if (!get_i64(env, argv[0], &status)) return NULL;
-  return make_string_or_null(env, galley_status_string(status));
+  return make_string_or_null(env, ((fn_galley_status_string_t)lib->fn[SLOT_galley_status_string])(status));
 }
 
 static napi_value method_galley_symbol_name(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -707,12 +919,11 @@ static napi_value method_galley_symbol_name(napi_env env, Lib *lib, size_t argc,
   if (!get_u64(env, argv[1], &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_symbol_name(session, index, &data, &len);
+  long long status = ((fn_galley_symbol_name_t)lib->fn[SLOT_galley_symbol_name])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_variable_name(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -723,15 +934,14 @@ static napi_value method_galley_variable_name(napi_env env, Lib *lib, size_t arg
   if (!get_u64(env, argv[1], &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_variable_name(session, index, &data, &len);
+  long long status = ((fn_galley_variable_name_t)lib->fn[SLOT_galley_variable_name])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_session_create(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   (void)argc;
   (void)argv;
-  return make_u64(env, (uint64_t)(uintptr_t)galley_session_create());
+  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_session_create_t)lib->fn[SLOT_galley_session_create])());
 }
 
 static bool options_arg(napi_env env, napi_value value, GalleyCOptions *out) {
@@ -772,22 +982,20 @@ static bool options_arg(napi_env env, napi_value value, GalleyCOptions *out) {
 
 static napi_value method_galley_session_create_ex(napi_env env, Lib *lib, size_t argc,
                                                  napi_value *argv) {
-  (void)lib;
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected options");
     return NULL;
   }
   GalleyCOptions options;
   if (!options_arg(env, argv[0], &options)) return NULL;
-  return make_u64(env, (uint64_t)(uintptr_t)galley_session_create_ex(&options));
+  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_session_create_ex_t)lib->fn[SLOT_galley_session_create_ex])(&options));
 }
 
 static napi_value method_galley_session_destroy(napi_env env, Lib *lib, size_t argc,
                                                napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  galley_session_destroy(session);
+  ((fn_galley_session_destroy_t)lib->fn[SLOT_galley_session_destroy])(session);
   napi_value undefined_value;
   if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
   return undefined_value;
@@ -795,7 +1003,6 @@ static napi_value method_galley_session_destroy(napi_env env, Lib *lib, size_t a
 
 static napi_value method_galley_session_set_message_override(napi_env env, Lib *lib, size_t argc,
                                                             napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -812,13 +1019,14 @@ static napi_value method_galley_session_set_message_override(napi_env env, Lib *
     return NULL;
   }
   long long status =
-      galley_session_set_message_override(session, name, name_len, message, message_len);
+      ((fn_galley_session_set_message_override_t)lib->fn[SLOT_galley_session_set_message_override])(session, name, name_len, message, message_len);
   free(name);
   free(message);
   return make_i64(env, status);
 }
 
 typedef struct ParseState {
+  Lib *lib;
   GalleySession *session;
   const char *data;
   size_t len;
@@ -826,7 +1034,8 @@ typedef struct ParseState {
 
 static long long parse_body(void *state) {
   ParseState *parse = (ParseState *)state;
-  return galley_parse(parse->session, parse->data, parse->len);
+  return ((fn_galley_parse_t)parse->lib->fn[SLOT_galley_parse])(parse->session, parse->data,
+                                                                parse->len);
 }
 
 static napi_value method_galley_parse(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
@@ -850,7 +1059,7 @@ static napi_value method_galley_parse(napi_env env, Lib *lib, size_t argc, napi_
     napi_throw_type_error(env, NULL, "expected input bytes");
     return NULL;
   }
-  ParseState state = {session, (const char *)data, length};
+  ParseState state = {lib, session, (const char *)data, length};
   return make_i64(env, with_parse_frame(env, lib, parse_body, &state));
 }
 
@@ -866,20 +1075,21 @@ static napi_value method_galley_parse_sentinel(napi_env env, Lib *lib, size_t ar
   size_t input_len = 0;
   if (!get_utf8(env, argv[1], &input, &input_len)) return NULL;
   // NUL-terminate: get_utf8 already reserves the terminator slot.
-  ParseState state = {session, input, input_len};
+  ParseState state = {lib, session, input, input_len};
   long long status = with_parse_frame(env, lib, parse_body, &state);
   free(input);
   return make_i64(env, status);
 }
 
 typedef struct FileState {
+  Lib *lib;
   GalleySession *session;
   const char *path;
 } FileState;
 
 static long long parse_file_body(void *state) {
   FileState *file = (FileState *)state;
-  return galley_parse_file(file->session, file->path);
+  return ((fn_galley_parse_file_t)file->lib->fn[SLOT_galley_parse_file])(file->session, file->path);
 }
 
 static napi_value method_galley_parse_file(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
@@ -892,7 +1102,7 @@ static napi_value method_galley_parse_file(napi_env env, Lib *lib, size_t argc, 
   char *path = NULL;
   size_t path_len = 0;
   if (!get_utf8(env, argv[1], &path, &path_len)) return NULL;
-  FileState state = {session, path};
+  FileState state = {lib, session, path};
   long long status = with_parse_frame(env, lib, parse_file_body, &state);
   free(path);
   (void)path_len;
@@ -901,17 +1111,15 @@ static napi_value method_galley_parse_file(napi_env env, Lib *lib, size_t argc, 
 
 static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t argc,
                                              napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = galley_last_position(session, &line, &column);
+  long long status = ((fn_galley_last_position_t)lib->fn[SLOT_galley_last_position])(session, &line, &column);
   return pair_u32_or_null(env, status, line, column);
 }
 
 static napi_value method_galley_node_span(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -922,13 +1130,12 @@ static napi_value method_galley_node_span(napi_env env, Lib *lib, size_t argc, n
   if (!get_u64(env, argv[1], &node)) return NULL;
   unsigned long long start = 0;
   unsigned long long len = 0;
-  long long status = galley_node_span(session, (GalleyNodeAddress)node, &start, &len);
+  long long status = ((fn_galley_node_span_t)lib->fn[SLOT_galley_node_span])(session, (GalleyNodeAddress)node, &start, &len);
   return pair_u64_or_null(env, status, (uint64_t)start, (uint64_t)len);
 }
 
 static napi_value method_galley_node_symbol_name(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -939,12 +1146,11 @@ static napi_value method_galley_node_symbol_name(napi_env env, Lib *lib, size_t 
   if (!get_u64(env, argv[1], &node)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_node_symbol_name(session, (GalleyNodeAddress)node, &data, &len);
+  long long status = ((fn_galley_node_symbol_name_t)lib->fn[SLOT_galley_node_symbol_name])(session, (GalleyNodeAddress)node, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_node_text(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -955,13 +1161,12 @@ static napi_value method_galley_node_text(napi_env env, Lib *lib, size_t argc, n
   if (!get_u64(env, argv[1], &node)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_node_text(session, (GalleyNodeAddress)node, &data, &len);
+  long long status = ((fn_galley_node_text_t)lib->fn[SLOT_galley_node_text])(session, (GalleyNodeAddress)node, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_node_line_column(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -972,7 +1177,7 @@ static napi_value method_galley_node_line_column(napi_env env, Lib *lib, size_t 
   if (!get_u64(env, argv[1], &node)) return NULL;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = galley_node_line_column(session, (GalleyNodeAddress)node, &line, &column);
+  long long status = ((fn_galley_node_line_column_t)lib->fn[SLOT_galley_node_line_column])(session, (GalleyNodeAddress)node, &line, &column);
   return pair_u32_or_null(env, status, line, column);
 }
 
@@ -994,7 +1199,6 @@ static bool typed_column(napi_env env, napi_value array, napi_typedarray_type wa
 
 static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t argc,
                                              napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 9) {
@@ -1017,7 +1221,7 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
   if (!typed_column(env, argv[7], napi_biguint64_array, &span_len)) return NULL;
   uint64_t capacity = 0;
   if (!get_u64(env, argv[8], &capacity)) return NULL;
-  long long status = galley_tree_snapshot(
+  long long status = ((fn_galley_tree_snapshot_t)lib->fn[SLOT_galley_tree_snapshot])(
       session, (GalleyNodeAddress *)parent, (GalleyNodeAddress *)first_child,
       (GalleyNodeAddress *)next, (unsigned int *)child_count, (long long *)variable,
       (unsigned long long *)span_start, (unsigned long long *)span_len,
@@ -1027,7 +1231,6 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
 
 static napi_value method_galley_walker_create(napi_env env, Lib *lib, size_t argc,
                                              napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -1038,12 +1241,11 @@ static napi_value method_galley_walker_create(napi_env env, Lib *lib, size_t arg
   int32_t skip = 0;
   if (!get_u64(env, argv[1], &node)) return NULL;
   if (!get_i32(env, argv[2], &skip)) return NULL;
-  return make_u64(env, (uint64_t)(uintptr_t)galley_walker_create(session, (GalleyNodeAddress)node,
+  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_walker_create_t)lib->fn[SLOT_galley_walker_create])(session, (GalleyNodeAddress)node,
                                                                 (int)skip));
 }
 
 static napi_value method_galley_walker_next(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)lib;
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected walker");
     return NULL;
@@ -1054,7 +1256,7 @@ static napi_value method_galley_walker_next(napi_env env, Lib *lib, size_t argc,
   GalleyNodeAddress node = 0;
   unsigned int depth = 0;
   int is_semantic_error = 0;
-  int yielded = galley_walker_next(walker, &node, &depth, &is_semantic_error);
+  int yielded = ((fn_galley_walker_next_t)lib->fn[SLOT_galley_walker_next])(walker, &node, &depth, &is_semantic_error);
   if (yielded == 0) return make_null(env);
   napi_value triple;
   napi_value node_value = make_u64(env, (uint64_t)node);
@@ -1070,14 +1272,13 @@ static napi_value method_galley_walker_next(napi_env env, Lib *lib, size_t argc,
 
 static napi_value method_galley_walker_skip_children(napi_env env, Lib *lib, size_t argc,
                                                     napi_value *argv) {
-  (void)lib;
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected walker");
     return NULL;
   }
   uint64_t address = 0;
   if (!get_u64(env, argv[0], &address)) return NULL;
-  galley_walker_skip_children((GalleyWalker *)(uintptr_t)address);
+  ((fn_galley_walker_skip_children_t)lib->fn[SLOT_galley_walker_skip_children])((GalleyWalker *)(uintptr_t)address);
   napi_value undefined_value;
   if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
   return undefined_value;
@@ -1085,14 +1286,13 @@ static napi_value method_galley_walker_skip_children(napi_env env, Lib *lib, siz
 
 static napi_value method_galley_walker_destroy(napi_env env, Lib *lib, size_t argc,
                                               napi_value *argv) {
-  (void)lib;
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected walker");
     return NULL;
   }
   uint64_t address = 0;
   if (!get_u64(env, argv[0], &address)) return NULL;
-  galley_walker_destroy((GalleyWalker *)(uintptr_t)address);
+  ((fn_galley_walker_destroy_t)lib->fn[SLOT_galley_walker_destroy])((GalleyWalker *)(uintptr_t)address);
   napi_value undefined_value;
   if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
   return undefined_value;
@@ -1100,49 +1300,44 @@ static napi_value method_galley_walker_destroy(napi_env env, Lib *lib, size_t ar
 
 static napi_value method_galley_diagnostic_message(napi_env env, Lib *lib, size_t argc,
                                                   napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *text = NULL;
-  long long status = galley_diagnostic_message(session, &text);
+  long long status = ((fn_galley_diagnostic_message_t)lib->fn[SLOT_galley_diagnostic_message])(session, &text);
   return message_or_null(env, status, text);
 }
 
 static napi_value method_galley_diagnostic_message_ansi(napi_env env, Lib *lib, size_t argc,
                                                        napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *text = NULL;
-  long long status = galley_diagnostic_message_ansi(session, &text);
+  long long status = ((fn_galley_diagnostic_message_ansi_t)lib->fn[SLOT_galley_diagnostic_message_ansi])(session, &text);
   return message_or_null(env, status, text);
 }
 
 static napi_value method_galley_diagnostic_position(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = galley_diagnostic_position(session, &line, &column);
+  long long status = ((fn_galley_diagnostic_position_t)lib->fn[SLOT_galley_diagnostic_position])(session, &line, &column);
   return pair_u32_or_null(env, status, line, column);
 }
 
 static napi_value method_galley_diagnostic_unexpected_token(napi_env env, Lib *lib, size_t argc,
                                                            napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_diagnostic_unexpected_token(session, &data, &len);
+  long long status = ((fn_galley_diagnostic_unexpected_token_t)lib->fn[SLOT_galley_diagnostic_unexpected_token])(session, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_diagnostic_expected_at(napi_env env, Lib *lib, size_t argc,
                                                       napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1153,13 +1348,12 @@ static napi_value method_galley_diagnostic_expected_at(napi_env env, Lib *lib, s
   if (!get_u64(env, argv[1], &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_diagnostic_expected_at(session, index, &data, &len);
+  long long status = ((fn_galley_diagnostic_expected_at_t)lib->fn[SLOT_galley_diagnostic_expected_at])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_diagnostic_context_at(napi_env env, Lib *lib, size_t argc,
                                                      napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1170,32 +1364,30 @@ static napi_value method_galley_diagnostic_context_at(napi_env env, Lib *lib, si
   if (!get_u64(env, argv[1], &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_diagnostic_context_at(session, index, &data, &len);
+  long long status = ((fn_galley_diagnostic_context_at_t)lib->fn[SLOT_galley_diagnostic_context_at])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_diagnostic_semantic(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *variable = NULL;
   size_t variable_len = 0;
   const char *message = NULL;
   size_t message_len = 0;
-  long long status = galley_diagnostic_semantic(session, &variable, &variable_len, &message,
+  long long status = ((fn_galley_diagnostic_semantic_t)lib->fn[SLOT_galley_diagnostic_semantic])(session, &variable, &variable_len, &message,
                                                 &message_len);
   return pair_string_or_null(env, status, variable, variable_len, message, message_len);
 }
 
 static napi_value method_galley_diagnostic_indentation(napi_env env, Lib *lib, size_t argc,
                                                       napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   unsigned int spaces = 0;
   unsigned int width = 0;
-  long long status = galley_diagnostic_indentation(session, &spaces, &width);
+  long long status = ((fn_galley_diagnostic_indentation_t)lib->fn[SLOT_galley_diagnostic_indentation])(session, &spaces, &width);
   // Indentation reports nonzero status without an indentation diagnostic.
   if (status != 0) return make_null(env);
   return pair_u32_or_null(env, 0, spaces, width);
@@ -1203,22 +1395,20 @@ static napi_value method_galley_diagnostic_indentation(napi_env env, Lib *lib, s
 
 static napi_value method_galley_diagnostic_recovery_terminal(napi_env env, Lib *lib, size_t argc,
                                                             napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_diagnostic_recovery_terminal(session, &data, &len);
+  long long status = ((fn_galley_diagnostic_recovery_terminal_t)lib->fn[SLOT_galley_diagnostic_recovery_terminal])(session, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_diagnostic_recovery_resume(napi_env env, Lib *lib, size_t argc,
                                                           napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   long long value = 0;
-  long long status = galley_diagnostic_recovery_resume(session, &value);
+  long long status = ((fn_galley_diagnostic_recovery_resume_t)lib->fn[SLOT_galley_diagnostic_recovery_resume])(session, &value);
   if (status != 0) return make_null(env);
   napi_value out;
   // Resume targets are 0/1; the port contract is number.
@@ -1228,25 +1418,23 @@ static napi_value method_galley_diagnostic_recovery_resume(napi_env env, Lib *li
 
 static napi_value method_galley_diagnostic_recovery_lhs_variable(napi_env env, Lib *lib,
                                                                 size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_diagnostic_recovery_lhs_variable(session, &data, &len);
+  long long status = ((fn_galley_diagnostic_recovery_lhs_variable_t)lib->fn[SLOT_galley_diagnostic_recovery_lhs_variable])(session, &data, &len);
   return out_string(env, status, data, len);
 }
 
 static napi_value method_galley_diagnostic_recovery_production(napi_env env, Lib *lib, size_t argc,
                                                               napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *variable = NULL;
   size_t variable_len = 0;
   unsigned int rhs_index = 0;
   long long status =
-      galley_diagnostic_recovery_production(session, &variable, &variable_len, &rhs_index);
+      ((fn_galley_diagnostic_recovery_production_t)lib->fn[SLOT_galley_diagnostic_recovery_production])(session, &variable, &variable_len, &rhs_index);
   if (status != 0 || variable == NULL) return make_null(env);
   napi_value pair;
   napi_value variable_value;
@@ -1282,7 +1470,6 @@ static napi_value quad_or_null(napi_env env, long long status, const char *paren
 
 static napi_value method_galley_diagnostic_recovery_occurrence(napi_env env, Lib *lib, size_t argc,
                                                               napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   const char *parent = NULL;
@@ -1291,7 +1478,7 @@ static napi_value method_galley_diagnostic_recovery_occurrence(napi_env env, Lib
   unsigned int sym = 0;
   const char *variable = NULL;
   size_t variable_len = 0;
-  long long status = galley_diagnostic_recovery_occurrence(session, &parent, &parent_len, &rhs,
+  long long status = ((fn_galley_diagnostic_recovery_occurrence_t)lib->fn[SLOT_galley_diagnostic_recovery_occurrence])(session, &parent, &parent_len, &rhs,
                                                            &sym, &variable, &variable_len);
   return quad_or_null(env, status, parent, parent_len, rhs, sym, variable, variable_len);
 }
@@ -1310,55 +1497,50 @@ static bool recorded_arg(napi_env env, size_t argc, napi_value *argv, GalleySess
 
 static napi_value method_galley_recorded_diagnostic_position(napi_env env, Lib *lib, size_t argc,
                                                             napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = galley_recorded_diagnostic_position(session, index, &line, &column);
+  long long status = ((fn_galley_recorded_diagnostic_position_t)lib->fn[SLOT_galley_recorded_diagnostic_position])(session, index, &line, &column);
   return pair_u32_or_null(env, status, line, column);
 }
 
 static napi_value method_galley_recorded_unexpected_token(napi_env env, Lib *lib, size_t argc,
                                                          napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_recorded_unexpected_token(session, index, &data, &len);
+  long long status = ((fn_galley_recorded_unexpected_token_t)lib->fn[SLOT_galley_recorded_unexpected_token])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_diagnostic_message(napi_env env, Lib *lib, size_t argc,
                                                            napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *text = NULL;
-  long long status = galley_recorded_diagnostic_message(session, index, &text);
+  long long status = ((fn_galley_recorded_diagnostic_message_t)lib->fn[SLOT_galley_recorded_diagnostic_message])(session, index, &text);
   return message_or_null(env, status, text);
 }
 
 static napi_value method_galley_recorded_indentation(napi_env env, Lib *lib, size_t argc,
                                                     napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   unsigned int spaces = 0;
   unsigned int width = 0;
-  long long status = galley_recorded_indentation(session, index, &spaces, &width);
+  long long status = ((fn_galley_recorded_indentation_t)lib->fn[SLOT_galley_recorded_indentation])(session, index, &spaces, &width);
   if (status != 0) return make_null(env);
   return pair_u32_or_null(env, 0, spaces, width);
 }
 
 static napi_value method_galley_recorded_semantic(napi_env env, Lib *lib, size_t argc,
                                                  napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
@@ -1367,13 +1549,12 @@ static napi_value method_galley_recorded_semantic(napi_env env, Lib *lib, size_t
   const char *message = NULL;
   size_t message_len = 0;
   long long status =
-      galley_recorded_semantic(session, index, &variable, &variable_len, &message, &message_len);
+      ((fn_galley_recorded_semantic_t)lib->fn[SLOT_galley_recorded_semantic])(session, index, &variable, &variable_len, &message, &message_len);
   return pair_string_or_null(env, status, variable, variable_len, message, message_len);
 }
 
 static napi_value method_galley_recorded_expected_token(napi_env env, Lib *lib, size_t argc,
                                                        napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
@@ -1385,13 +1566,12 @@ static napi_value method_galley_recorded_expected_token(napi_env env, Lib *lib, 
   if (!get_u64(env, argv[2], &token)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_recorded_expected_token(session, index, token, &data, &len);
+  long long status = ((fn_galley_recorded_expected_token_t)lib->fn[SLOT_galley_recorded_expected_token])(session, index, token, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_context_name(napi_env env, Lib *lib, size_t argc,
                                                      napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
@@ -1403,30 +1583,28 @@ static napi_value method_galley_recorded_context_name(napi_env env, Lib *lib, si
   if (!get_u64(env, argv[2], &context)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_recorded_context_name(session, index, context, &data, &len);
+  long long status = ((fn_galley_recorded_context_name_t)lib->fn[SLOT_galley_recorded_context_name])(session, index, context, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_terminal(napi_env env, Lib *lib, size_t argc,
                                                           napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_recorded_recovery_terminal(session, index, &data, &len);
+  long long status = ((fn_galley_recorded_recovery_terminal_t)lib->fn[SLOT_galley_recorded_recovery_terminal])(session, index, &data, &len);
   return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_resume(napi_env env, Lib *lib, size_t argc,
                                                         napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   long long value = 0;
-  long long status = galley_recorded_recovery_resume(session, index, &value);
+  long long status = ((fn_galley_recorded_recovery_resume_t)lib->fn[SLOT_galley_recorded_recovery_resume])(session, index, &value);
   if (status != 0) return make_null(env);
   napi_value out;
   if (napi_create_double(env, (double)value, &out) != napi_ok) return NULL;
@@ -1435,19 +1613,17 @@ static napi_value method_galley_recorded_recovery_resume(napi_env env, Lib *lib,
 
 static napi_value method_galley_recorded_recovery_lhs_variable(napi_env env, Lib *lib, size_t argc,
                                                               napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = galley_recorded_recovery_lhs_variable(session, index, &data, &len);
+  long long status = ((fn_galley_recorded_recovery_lhs_variable_t)lib->fn[SLOT_galley_recorded_recovery_lhs_variable])(session, index, &data, &len);
   return out_string(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_production(napi_env env, Lib *lib, size_t argc,
                                                             napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
@@ -1455,7 +1631,7 @@ static napi_value method_galley_recorded_recovery_production(napi_env env, Lib *
   size_t variable_len = 0;
   unsigned int rhs_index = 0;
   long long status =
-      galley_recorded_recovery_production(session, index, &variable, &variable_len, &rhs_index);
+      ((fn_galley_recorded_recovery_production_t)lib->fn[SLOT_galley_recorded_recovery_production])(session, index, &variable, &variable_len, &rhs_index);
   if (status != 0 || variable == NULL) return make_null(env);
   napi_value pair;
   napi_value variable_value;
@@ -1470,7 +1646,6 @@ static napi_value method_galley_recorded_recovery_production(napi_env env, Lib *
 
 static napi_value method_galley_recorded_recovery_occurrence(napi_env env, Lib *lib, size_t argc,
                                                             napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
@@ -1480,7 +1655,7 @@ static napi_value method_galley_recorded_recovery_occurrence(napi_env env, Lib *
   unsigned int sym = 0;
   const char *variable = NULL;
   size_t variable_len = 0;
-  long long status = galley_recorded_recovery_occurrence(session, index, &parent, &parent_len,
+  long long status = ((fn_galley_recorded_recovery_occurrence_t)lib->fn[SLOT_galley_recorded_recovery_occurrence])(session, index, &parent, &parent_len,
                                                          &rhs, &sym, &variable, &variable_len);
   return quad_or_null(env, status, parent, parent_len, rhs, sym, variable, variable_len);
 }
@@ -1489,7 +1664,6 @@ static napi_value method_galley_recorded_recovery_occurrence(napi_env env, Lib *
 
 static napi_value method_galley_tree_append_children(napi_env env, Lib *lib, size_t argc,
                                                     napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -1500,13 +1674,12 @@ static napi_value method_galley_tree_append_children(napi_env env, Lib *lib, siz
   uint64_t first = 0;
   if (!get_u64(env, argv[1], &parent)) return NULL;
   if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, galley_tree_append_children(session, (GalleyNodeAddress)parent,
+  return make_i64(env, ((fn_galley_tree_append_children_t)lib->fn[SLOT_galley_tree_append_children])(session, (GalleyNodeAddress)parent,
                                                    (GalleyNodeAddress)first));
 }
 
 static napi_value method_galley_tree_insert_before(napi_env env, Lib *lib, size_t argc,
                                                   napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -1517,13 +1690,12 @@ static napi_value method_galley_tree_insert_before(napi_env env, Lib *lib, size_
   uint64_t first = 0;
   if (!get_u64(env, argv[1], &target)) return NULL;
   if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, galley_tree_insert_before(session, (GalleyNodeAddress)target,
+  return make_i64(env, ((fn_galley_tree_insert_before_t)lib->fn[SLOT_galley_tree_insert_before])(session, (GalleyNodeAddress)target,
                                                  (GalleyNodeAddress)first));
 }
 
 static napi_value method_galley_tree_insert_after(napi_env env, Lib *lib, size_t argc,
                                                  napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -1534,7 +1706,7 @@ static napi_value method_galley_tree_insert_after(napi_env env, Lib *lib, size_t
   uint64_t first = 0;
   if (!get_u64(env, argv[1], &target)) return NULL;
   if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, galley_tree_insert_after(session, (GalleyNodeAddress)target,
+  return make_i64(env, ((fn_galley_tree_insert_after_t)lib->fn[SLOT_galley_tree_insert_after])(session, (GalleyNodeAddress)target,
                                                 (GalleyNodeAddress)first));
 }
 
@@ -1551,7 +1723,6 @@ static napi_value head_pair(napi_env env, long long status, GalleyNodeAddress he
 
 static napi_value method_galley_tree_remove_siblings(napi_env env, Lib *lib, size_t argc,
                                                     napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 3) {
@@ -1564,13 +1735,12 @@ static napi_value method_galley_tree_remove_siblings(napi_env env, Lib *lib, siz
   if (!get_u64(env, argv[2], &count)) return NULL;
   GalleyNodeAddress head = 0;
   long long status =
-      galley_tree_remove_siblings(session, (GalleyNodeAddress)node, (size_t)count, &head);
+      ((fn_galley_tree_remove_siblings_t)lib->fn[SLOT_galley_tree_remove_siblings])(session, (GalleyNodeAddress)node, (size_t)count, &head);
   return head_pair(env, status, head);
 }
 
 static napi_value method_galley_tree_remove_self(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1580,13 +1750,12 @@ static napi_value method_galley_tree_remove_self(napi_env env, Lib *lib, size_t 
   uint64_t node = 0;
   if (!get_u64(env, argv[1], &node)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = galley_tree_remove_self(session, (GalleyNodeAddress)node, &head);
+  long long status = ((fn_galley_tree_remove_self_t)lib->fn[SLOT_galley_tree_remove_self])(session, (GalleyNodeAddress)node, &head);
   return head_pair(env, status, head);
 }
 
 static napi_value method_galley_tree_promote_children_over_wrapper(napi_env env, Lib *lib,
                                                                   size_t argc, napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1597,13 +1766,12 @@ static napi_value method_galley_tree_promote_children_over_wrapper(napi_env env,
   if (!get_u64(env, argv[1], &wrapper)) return NULL;
   GalleyNodeAddress head = 0;
   long long status =
-      galley_tree_promote_children_over_wrapper(session, (GalleyNodeAddress)wrapper, &head);
+      ((fn_galley_tree_promote_children_over_wrapper_t)lib->fn[SLOT_galley_tree_promote_children_over_wrapper])(session, (GalleyNodeAddress)wrapper, &head);
   return head_pair(env, status, head);
 }
 
 static napi_value method_galley_tree_clean_children(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1613,13 +1781,12 @@ static napi_value method_galley_tree_clean_children(napi_env env, Lib *lib, size
   uint64_t node = 0;
   if (!get_u64(env, argv[1], &node)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = galley_tree_clean_children(session, (GalleyNodeAddress)node, &head);
+  long long status = ((fn_galley_tree_clean_children_t)lib->fn[SLOT_galley_tree_clean_children])(session, (GalleyNodeAddress)node, &head);
   return head_pair(env, status, head);
 }
 
 static napi_value method_galley_tree_unlink_wrapper(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1628,12 +1795,11 @@ static napi_value method_galley_tree_unlink_wrapper(napi_env env, Lib *lib, size
   }
   uint64_t wrapper = 0;
   if (!get_u64(env, argv[1], &wrapper)) return NULL;
-  return make_i64(env, galley_tree_unlink_wrapper(session, (GalleyNodeAddress)wrapper));
+  return make_i64(env, ((fn_galley_tree_unlink_wrapper_t)lib->fn[SLOT_galley_tree_unlink_wrapper])(session, (GalleyNodeAddress)wrapper));
 }
 
 static napi_value method_galley_tree_insert_children_at(napi_env env, Lib *lib, size_t argc,
                                                        napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 4) {
@@ -1646,13 +1812,12 @@ static napi_value method_galley_tree_insert_children_at(napi_env env, Lib *lib, 
   if (!get_u64(env, argv[1], &parent)) return NULL;
   if (!get_u64(env, argv[2], &index)) return NULL;
   if (!get_u64(env, argv[3], &first)) return NULL;
-  return make_i64(env, galley_tree_insert_children_at(session, (GalleyNodeAddress)parent,
+  return make_i64(env, ((fn_galley_tree_insert_children_at_t)lib->fn[SLOT_galley_tree_insert_children_at])(session, (GalleyNodeAddress)parent,
                                                       (size_t)index, (GalleyNodeAddress)first));
 }
 
 static napi_value method_galley_tree_remove_children_at(napi_env env, Lib *lib, size_t argc,
                                                        napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 4) {
@@ -1666,7 +1831,7 @@ static napi_value method_galley_tree_remove_children_at(napi_env env, Lib *lib, 
   if (!get_u64(env, argv[2], &index)) return NULL;
   if (!get_u64(env, argv[3], &count)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = galley_tree_remove_children_at(session, (GalleyNodeAddress)parent,
+  long long status = ((fn_galley_tree_remove_children_at_t)lib->fn[SLOT_galley_tree_remove_children_at])(session, (GalleyNodeAddress)parent,
                                                     (size_t)index, (size_t)count, &head);
   return head_pair(env, status, head);
 }
@@ -1675,7 +1840,6 @@ static napi_value method_galley_tree_remove_children_at(napi_env env, Lib *lib, 
 
 static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *lib, size_t argc,
                                                           napi_value *argv) {
-  (void)lib;
   void *args = NULL;
   if (!args_arg(env, argc, argv, &args)) return NULL;
   if (argc < 2) {
@@ -1684,7 +1848,7 @@ static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *li
   }
   uint64_t node = 0;
   if (!get_u64(env, argv[1], &node)) return NULL;
-  galley_procedure_set_current_node(args, (GalleyNodeAddress)node);
+  ((fn_galley_procedure_set_current_node_t)lib->fn[SLOT_galley_procedure_set_current_node])(args, (GalleyNodeAddress)node);
   napi_value undefined_value;
   if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
   return undefined_value;
@@ -1692,7 +1856,6 @@ static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *li
 
 static napi_value method_galley_procedure_report_semantic_error(napi_env env, Lib *lib, size_t argc,
                                                                napi_value *argv) {
-  (void)lib;
   void *args = NULL;
   if (!args_arg(env, argc, argv, &args)) return NULL;
   if (argc < 2) {
@@ -1702,7 +1865,7 @@ static napi_value method_galley_procedure_report_semantic_error(napi_env env, Li
   char *message = NULL;
   size_t message_len = 0;
   if (!get_utf8(env, argv[1], &message, &message_len)) return NULL;
-  long long status = galley_procedure_report_semantic_error(args, message, message_len);
+  long long status = ((fn_galley_procedure_report_semantic_error_t)lib->fn[SLOT_galley_procedure_report_semantic_error])(args, message, message_len);
   free(message);
   return make_i64(env, status);
 }
@@ -1806,7 +1969,6 @@ static napi_value method_galley_js_procedure_clear(napi_env env, Lib *lib, size_
 // function without an X-macro shape.
 static napi_value method_galley_reserve_nodes(napi_env env, Lib *lib, size_t argc,
                                              napi_value *argv) {
-  (void)lib;
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
   if (argc < 2) {
@@ -1815,7 +1977,7 @@ static napi_value method_galley_reserve_nodes(napi_env env, Lib *lib, size_t arg
   }
   uint64_t capacity = 0;
   if (!get_u64(env, argv[1], &capacity)) return NULL;
-  return make_i64(env, galley_reserve_nodes(session, (unsigned long long)capacity));
+  return make_i64(env, ((fn_galley_reserve_nodes_t)lib->fn[SLOT_galley_reserve_nodes])(session, (unsigned long long)capacity));
 }
 
 static void *probe_symbol(void *probe, const char *name) {
@@ -1828,12 +1990,7 @@ static void *probe_symbol(void *probe, const char *name) {
 
 #define BIND_OR_THROW(api, lib, cfn)                                   \
   do {                                                                 \
-    if (!bind(env, api, lib, #cfn, method_##cfn, NULL)) return NULL;   \
-  } while (0)
-
-#define BIND_SHIM_OR_THROW(api, lib, name, method, symbol)              \
-  do {                                                                  \
-    if (!bind(env, api, lib, name, method, symbol)) return NULL;       \
+    if (!bind(env, api, lib, #cfn, method_##cfn)) return NULL;         \
   } while (0)
 
 static napi_value method_load(napi_env env, napi_callback_info info) {
@@ -1983,47 +2140,53 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_procedure_report_semantic_error);
   // Reserve_nodes has no X-macro shape (session plus capacity).
   {
-    if (!bind(env, api, lib, "galley_reserve_nodes", method_galley_reserve_nodes, NULL)) return NULL;
+    if (!bind(env, api, lib, "galley_reserve_nodes", method_galley_reserve_nodes)) return NULL;
   }
   if (lib->install_id != NULL) {
-    if (!bind(env, api, lib, "install_id_dispatch", method_install_id_dispatch, "galley_install_js_dispatch_id")) return NULL;
+    // JS name differs from the probed export (galley_install_js_dispatch_id).
+    if (!bind(env, api, lib, "install_id_dispatch", method_install_id_dispatch)) return NULL;
   } else if (!bind_null(env, api, "install_id_dispatch")) {
     return NULL;
   }
   if (lib->install_name != NULL) {
-    if (!bind(env, api, lib, "install_name_dispatch", method_install_name_dispatch, "galley_install_js_dispatch")) return NULL;
+    // JS name differs from the probed export (galley_install_js_dispatch).
+    if (!bind(env, api, lib, "install_name_dispatch", method_install_name_dispatch)) return NULL;
   } else if (!bind_null(env, api, "install_name_dispatch")) {
     return NULL;
   }
   if (lib->procedure_count != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_count", method_galley_js_procedure_count, "galley_js_procedure_count"))
+    if (!bind(env, api, lib, "galley_js_procedure_count", method_galley_js_procedure_count))
       return NULL;
   } else if (!bind_null(env, api, "galley_js_procedure_count")) {
     return NULL;
   }
   if (lib->procedure_name_ptr != NULL && lib->procedure_name_len != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_name", method_galley_js_procedure_name, "galley_js_procedure_name_ptr"))
+    // Served by the galley_js_procedure_name_ptr/_len export pair.
+    if (!bind(env, api, lib, "galley_js_procedure_name", method_galley_js_procedure_name))
       return NULL;
   } else if (!bind_null(env, api, "galley_js_procedure_name")) {
     return NULL;
   }
   if (lib->procedure_enable != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_enable", method_galley_js_procedure_enable, "galley_js_procedure_enable"))
+    if (!bind(env, api, lib, "galley_js_procedure_enable", method_galley_js_procedure_enable))
       return NULL;
   } else if (!bind_null(env, api, "galley_js_procedure_enable")) {
     return NULL;
   }
   if (lib->procedure_clear != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_clear", method_galley_js_procedure_clear, "galley_js_procedure_clear"))
+    if (!bind(env, api, lib, "galley_js_procedure_clear", method_galley_js_procedure_clear))
       return NULL;
   } else if (!bind_null(env, api, "galley_js_procedure_clear")) {
     return NULL;
   }
-  for (int i = 0; i < lib->bound_count; i++) {
-    if (probe_symbol(probe, lib->bound_names[i]) == NULL) {
+  // Resolve every required symbol through this library's own probe
+  // handle, so a header/binary skew fails here naming the symbol.
+  for (int i = 0; i < SLOT_COUNT; i++) {
+    lib->fn[i] = probe_symbol(probe, fn_symbol[i]);
+    if (lib->fn[i] == NULL) {
       char message[256];
       snprintf(message, sizeof(message), "parser library is missing required symbol %s",
-               lib->bound_names[i]);
+               fn_symbol[i]);
       napi_throw_error(env, NULL, message);
       return NULL;
     }
