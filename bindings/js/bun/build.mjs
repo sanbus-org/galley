@@ -58,6 +58,14 @@ function refreshSnapshot(rootDirectory, bindingsDirectory) {
   const snapshotDirectory = path.join(rootDirectory, "node_modules", "@sanbus/galley-bun");
   const snapshotPackage = path.join(snapshotDirectory, "package.json");
   if (!fs.existsSync(snapshotPackage)) return;
+  // npm layouts symlink `file:` dependencies: the "snapshot" is the
+  // source directory itself, and refreshing it would delete the real
+  // dist through the symlink. Only materialized copies need refreshing.
+  try {
+    if (fs.realpathSync(snapshotDirectory) === fs.realpathSync(bindingsDirectory)) return;
+  } catch {
+    return;
+  }
   // Only touch our own snapshot copy, never an unrelated registry install.
   const bindingsPackage = JSON.parse(fs.readFileSync(path.join(bindingsDirectory, "package.json"), "utf-8"));
   const snapshotManifest = JSON.parse(fs.readFileSync(snapshotPackage, "utf-8"));

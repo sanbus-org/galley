@@ -13,10 +13,10 @@
  * realm serves only the cached wasm backend and rejects everything else,
  * proving browsers never touch FFI.
  *
- * What it proves: `await init({ wasmBytes })` serves the wasm backend with
- * the one-time notice, parses the shared probe to the same value as the
- * Node/Bun/Deno proofs (15), and bare `init()` fails loudly with the
- * bytes-or-url guidance instead of guessing.
+ * What it proves: `Session.fromBytes(bytes)` resolves a parsing
+ * session with the one-time notice, parses the shared probe to the
+ * same value as the Node/Bun/Deno proofs (15), and bad sources reject
+ * loudly instead of guessing.
  *
  * Run:
  *   GALLEY_CHECKOUT=/path/to/galley node --experimental-vm-modules bindings/js/universal/tests/test_loader_browser.mjs
@@ -38,12 +38,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 const universalDir = path.resolve(__dirname, "..");
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
-const wasmModule = ensureTestLibrary({
+const wasmDir = ensureTestLibrary({
   buildCommand: ["node", path.join(repoRoot, "bindings", "js", "wasm", "build.mjs")],
   libFileName: wasmArtifactFileName("galley-js-wasm"),
   scope: "wasm",
 });
-const wasmBytes = new Uint8Array(fs.readFileSync(wasmModule));
+const wasmBytes = new Uint8Array(
+  fs.readFileSync(path.join(wasmDir, wasmArtifactFileName("galley-js-wasm"))),
+);
 
 const UNIVERSAL_INDEX = pathToFileURL(path.join(universalDir, "dist", "index.js")).href;
 const WASM_INDEX = pathToFileURL(
@@ -63,29 +65,40 @@ const STUB_SOURCES = new Map([
 ]);
 
 const ENTRY_SOURCE = `
-import { init, backend, detectRuntime, Session, version } from ${JSON.stringify(UNIVERSAL_INDEX)};
+import { detectRuntime, Session } from ${JSON.stringify(UNIVERSAL_INDEX)};
 
 export async function prove(bytesInput, quiet) {
   const runtime = detectRuntime();
-  await init({ wasmBytes: bytesInput, quiet });
-  const selected = backend();
-  const session = new Session();
+  const session = await Session.fromBytes(bytesInput, { quiet });
   let parsed;
+  let version;
+  let backend;
   try {
     parsed = session.parse("alpha:12,beta:3");
+    version = session.version();
+    backend = session.backend;
   } finally {
     session.close();
   }
-  return { runtime, backend: selected, parsed, version: version() };
+  return { runtime, backend, parsed, version };
 }
 
-export async function proveEmptyInit() {
+export async function proveBadSource() {
   try {
-    await init({});
+    await Session.fromBytes("not-bytes");
   } catch (error) {
     return { name: error?.name ?? "unknown", message: String(error?.message ?? error) };
   }
-  return { name: "no-throw", message: "init({}) unexpectedly succeeded" };
+  return { name: "no-throw", message: "fromBytes(string) unexpectedly succeeded" };
+}
+
+export async function proveDirectoryFails() {
+  try {
+    await Session.fromDirectory("/parsers/language");
+  } catch (error) {
+    return { name: error?.name ?? "unknown", message: String(error?.message ?? error) };
+  }
+  return { name: "no-throw", message: "fromDirectory unexpectedly succeeded in a browser" };
 }
 `;
 
@@ -216,7 +229,7 @@ async function test(name, fn) {
   }
 }
 
-await test("detectRuntime reports browser with wasm backend from bytes", async (warnings) => {
+await test("detectRuntime reports browser and bytes sessions parse", async (warnings) => {
   const namespace = await loadRealm(warnings);
   const result = await namespace.prove(wasmBytes, false);
   assert.equal(result.runtime, "browser");
@@ -230,16 +243,18 @@ await test("detectRuntime reports browser with wasm backend from bytes", async (
 await test("quiet suppresses the fallback notice", async (warnings) => {
   const namespace = await loadRealm(warnings);
   const result = await namespace.prove(wasmBytes, true);
-  assert.equal(result.backend, "wasm");
   assert.equal(result.parsed, 15);
   assert.equal(warnings.length, 0);
 });
 
-await test("bare init fails loudly with bytes-or-url guidance", async () => {
+await test("bad sources reject loudly", async () => {
   const namespace = await loadRealm([]);
-  const result = await namespace.proveEmptyInit();
-  assert.equal(result.name, "NeedInitError");
-  assert.match(result.message, /bytes/);
+  const badBytes = await namespace.proveBadSource();
+  assert.equal(badBytes.name, "TypeError");
+  assert.match(badBytes.message, /bytes/);
+  const directory = await namespace.proveDirectoryFails();
+  assert.equal(directory.name, "Error");
+  assert.match(directory.message, /language directories/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -9,30 +9,26 @@ import * as path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
-  init,
-  installProcedures,
   Session,
   KIND_SYNTAX,
   KIND_INDENTATION,
-  artifactFileName,
-  wasmArtifactFileName,
 } from "@sanbus/galley";
+import { Session as WasmSession } from "@sanbus/galley-wasm";
 import * as procedures from "./procedures.ts";
 
-// The one parser file this demo runs: exact path, no searching.
-const LIBRARY_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  artifactFileName("galley-js-node", process.platform),
-);
+// The language directory this demo runs: the session loads the
+// standard-named parser artifact from it. Exact directory, no searching.
+const LANGUAGE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-// GALLEY_WASM=1 (or a path) runs the same demo through the WebAssembly
-// backend instead of native. Explicit choice, so the fallback notice
-// stays off and the output matches the native run byte for byte.
-function wasmPath(): string | null {
+// GALLEY_WASM=1 (or a path to a `.wasm` module file) runs the same demo
+// through the WebAssembly backend instead of native. Explicit choice, so
+// the fallback notice stays off and the output matches the native run
+// byte for byte.
+function wasmBytes(): Uint8Array | "dir" | null {
   const selected = process.env.GALLEY_WASM;
   if (!selected) return null;
-  if (selected !== "1") return selected;
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), wasmArtifactFileName("galley-js-wasm"));
+  if (selected === "1") return "dir";
+  return new Uint8Array(fs.readFileSync(selected));
 }
 
 const VALID_SAMPLE = "alpha:12,beta:3";
@@ -60,20 +56,16 @@ function printTree(node: import("@sanbus/galley").Node, depth: number): void {
 }
 
 async function main(): Promise<number> {
+  let session: Session | WasmSession;
   try {
-    const wasm = wasmPath();
-    await init(wasm ? { wasmPath: wasm, quiet: true } : { libraryPath: LIBRARY_PATH });
-  } catch {
-    console.error("failed to create a parser session");
-    return 1;
-  }
-  if (installProcedures(procedures as unknown as Record<string, unknown>) === 0) {
-    console.error("failed to register procedure hooks");
-    return 1;
-  }
-  let session: Session;
-  try {
-    session = new Session({ maxErrors: 10 });
+    const wasm = wasmBytes();
+    const hooks = procedures as unknown as Record<string, unknown>;
+    session =
+      wasm === null
+        ? await Session.fromDirectory(LANGUAGE_DIR, { procedures: hooks, maxErrors: 10 })
+        : wasm === "dir"
+          ? await WasmSession.fromDirectory(LANGUAGE_DIR, { procedures: hooks, maxErrors: 10 })
+          : await WasmSession.fromBytes(wasm, { procedures: hooks, maxErrors: 10 });
   } catch {
     console.error("failed to create a parser session");
     return 1;

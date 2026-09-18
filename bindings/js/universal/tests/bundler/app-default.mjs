@@ -1,11 +1,15 @@
-import { init, Session } from "@sanbus/galley";
+import { Session } from "@sanbus/galley";
 
-await init({ url: "http://127.0.0.1:8123/grammar.wasm" });
-const session = new Session();
+const [languageDir] = process.argv.slice(2);
+if (!languageDir) {
+  console.error("usage: node app.bundle.js <language-dir>");
+  process.exit(1);
+}
+const session = await Session.fromDirectory(languageDir);
 try {
   const parsed = session.parse("alpha:12,beta:3");
   if (parsed !== 15) throw new Error(`expected 15, got ${parsed}`);
-  console.log(`default-entry: parsed ${parsed} bytes`);
+  console.log(`default-entry: parsed ${parsed} bytes via ${session.backend}`);
 } finally {
   session.close();
 }

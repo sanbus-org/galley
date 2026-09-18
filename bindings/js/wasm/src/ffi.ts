@@ -7,40 +7,32 @@
  * in-TS `wasi_snapshot_preview1` stub (real `random_get`/`clock_time_get`,
  * filesystem calls report unavailable — the parse path never touches the
  * filesystem) plus an `env.galley_js_dispatch_id` import that forwards
- * procedure-hook IDs to the core registry. All memory copying and integer
- * normalization live here; all session logic lives in `@sanbus/galley-core`.
+ * procedure-hook IDs to the owning session's registry. All memory copying
+ * and integer normalization live here; all session logic lives in
+ * `@sanbus/galley-core`.
  *
- * Initialization is async (`await init()`), except under Node where the
- * file can be read and instantiated synchronously — `Session` and the
- * module-level queries auto-initialize there, so Node demos stay
- * synchronous. Elsewhere (browsers) the gate throws `NeedInitError` until
- * `await init()` completes. Views into wasm memory are never cached:
- * `malloc` may grow memory and detach old views.
+ * Port acquisition is synchronous (`getWasmPort`): file-backed modules
+ * read and instantiate under Node, byte-fed modules instantiate in every
+ * runtime. Fetching a module over the network (`url`) stays asynchronous
+ * and lives in the session factories, which are async on every entry.
+ * Views into wasm memory are never cached: `malloc` may grow memory and
+ * detach old views.
  */
 
 import type {
   FfiPort,
   Handle,
+  DispatchHandler,
   SessionCOptions,
   TreeSnapshot,
   WalkedStep,
 } from "@sanbus/galley-core";
-import { GalleyError, dispatchProcedure, resolveArtifact, wasmArtifactFileName } from "@sanbus/galley-core";
-import { ensureDispatch } from "./dispatch.ts";
+import { GalleyError, resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core";
+import { checkModuleBytes, checkModuleUrl, fetchModuleBytes } from "@sanbus/galley-core";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
 const WASI_BADF = 8;
-
-export class NeedInitError extends Error {
-  constructor(libraryPath?: string) {
-    super(
-      `galley-wasm: WebAssembly module${libraryPath ? ` for ${libraryPath}` : ""} is not initialized. ` +
-        `Call "await init()" (or "await init({ url })" / "init({ bytes })" in browsers) first.`,
-    );
-    this.name = "NeedInitError";
-  }
-}
 
 /** Callable view of the wasm exports (wasm32: pointers/i32 are `number`, i64/u64 are `bigint`). */
 interface GalleyWasmExports {
@@ -258,7 +250,6 @@ interface GalleyWasmExports {
 // --- instance cache (one module per grammar file) --------------------------
 
 const ports = new Map<string, WasmPort>();
-let seededDefault: string | null = null;
 
 interface ProcessGlobal {
   versions?: { node?: string };
@@ -276,29 +267,76 @@ function isNode(): boolean {
 
 /**
  * Host file access. The Node entry (`index.ts`) seeds the real
- * filesystem; the browser entry leaves it unset, where every leg that
- * needs files already throws `NeedInitError` first.
+ * filesystem; the browser entry leaves it unset, where file-backed
+ * loads throw loudly (browsers pass `bytes` or fetch a `url`).
  */
 export interface FileIo {
   existsSync(localPath: string): boolean;
   readFile(localPath: string): Uint8Array;
   resolvePath(candidate: string): string;
-  getenv(name: string): string | undefined;
 }
 
 let fileIo: FileIo | null = null;
+let fileIoUsed = false;
 
-/** Node entry wires the real filesystem; browsers never call this. */
+/** Node entry wires the real filesystem; browsers never call this. Reseeding after file-backed loads is a loud error. Byte-fed loads never touch file IO and never lock it. */
 export function seedFileIo(io: FileIo): void {
+  if (fileIoUsed) {
+    throw new Error("galley-wasm: file IO is already in use and cannot be reseeded");
+  }
   fileIo = io;
 }
 
+/**
+ * Procedure-hook scans seeded by the Node entry (`files.ts`): the
+ * language-directory scan and the explicit-file scan (the file's own
+ * directory). Browsers seed nothing and pass hooks explicitly through
+ * the session's `procedures` option.
+ */
+export interface ProceduresScan {
+  forDirectory(directory: string): Record<string, unknown> | null;
+  forFile(filePath: string): Record<string, unknown> | null;
+}
+
+let proceduresScan: ProceduresScan | null = null;
+let proceduresScanUsed = false;
+
+/** Node entry wires the scans; browsers never call this. Reseeding after a seeded scan ran is a loud error. */
+export function seedProceduresScan(scan: ProceduresScan): void {
+  if (proceduresScanUsed) {
+    throw new Error("galley-wasm: procedures scan is already in use and cannot be reseeded");
+  }
+  proceduresScan = scan;
+}
+
+/**
+ * The language directory's `procedures` module, if any and if scans are
+ * seeded. Returned for the session to install into its own registry.
+ */
+export function loadProcedures(directory: string): Record<string, unknown> | null {
+  if (proceduresScan === null) return null;
+  proceduresScanUsed = true;
+  return proceduresScan.forDirectory(directory);
+}
+
+/**
+ * The `procedures` module beside an explicit artifact file, if any and
+ * if scans are seeded. For `Session.fromFile`; same rule as the
+ * directory scan.
+ */
+export function loadProceduresForFile(filePath: string): Record<string, unknown> | null {
+  if (proceduresScan === null) return null;
+  proceduresScanUsed = true;
+  return proceduresScan.forFile(filePath);
+}
+
 // --- library discovery -----------
-// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// One place, named up front: the language directory must hold the
+// adapter's standard-named module file.
 
 const BUILD_HINT =
   `Build it first: npx galley-js-wasm <language-dir>\n` +
-  `or set GALLEY_LIBRARY_PATH=/path/to/${wasmFileName()}`;
+  `That leaves ${wasmFileName()} in the directory.`;
 
 export function wasmFileName(base = LIBRARY_BASE): string {
   return wasmArtifactFileName(base);
@@ -312,13 +350,25 @@ function exists(localPath: string): boolean {
   }
 }
 
-export function findLibrary(explicit?: string): string {
-  return resolveArtifact(explicit, {
-    getEnv: (name) => fileIo?.getenv(name),
+export function findLibrary(languagePath: string): string {
+  return resolveArtifact(languagePath, wasmFileName(), joinPath, {
     resolvePath: (candidate) => fileIo?.resolvePath(candidate) ?? candidate,
     existsSync: exists,
     buildHint: BUILD_HINT,
   });
+}
+
+/** Explicit-file twin of {@link findLibrary}: names the module itself. */
+export function findLibraryFile(filePath: string): string {
+  return resolveArtifactFile(filePath, {
+    resolvePath: (candidate) => fileIo?.resolvePath(candidate) ?? candidate,
+    existsSync: exists,
+    buildHint: BUILD_HINT,
+  });
+}
+
+function joinPath(directory: string, file: string): string {
+  return directory.endsWith("/") ? directory + file : `${directory}/${file}`;
 }
 
 // --- minimal WASI stub ------------------------------------------------------
@@ -402,13 +452,13 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
 
 // --- loader -----------------------------------------------------------------
 
-export interface InitOptions {
-  /** Grammar module path. Defaults to discovery (`findLibrary()` under Node). */
-  libraryPath?: string;
-  /** Raw module bytes (browsers, tests). Wins over `libraryPath`/`url`. */
+export interface WasmPortSource {
+  /** Language directory holding the standard-named module file. */
+  languagePath?: string;
+  /** Explicit module file. The file's own directory is scanned for `procedures`. */
+  filePath?: string;
+  /** Raw module bytes. Instantiates synchronously in every runtime. */
   bytes?: Uint8Array;
-  /** Module URL for `fetch` (browsers). Wins over `libraryPath`. */
-  url?: string | URL;
 }
 
 interface PendingInstance {
@@ -443,6 +493,7 @@ function adoptInstance(
   instance: WebAssembly.Instance,
   wasmPath: string,
   pending: PendingInstance,
+  cache: boolean,
 ): WasmPort {
   pending.memory = (instance.exports.memory as WebAssembly.Memory).buffer;
   if (typeof instance.exports._initialize === "function") {
@@ -450,182 +501,160 @@ function adoptInstance(
   }
   const port = new WasmPort(instance.exports as unknown as GalleyWasmExports, wasmPath);
   pending.port = port;
-  ports.set(wasmPath, port);
+  if (cache) ports.set(wasmPath, port);
   return port;
 }
 
-function instantiate(bytes: Uint8Array<ArrayBuffer>, wasmPath: string): WasmPort {
+function instantiate(bytes: Uint8Array<ArrayBuffer>, wasmPath: string, cache: boolean): WasmPort {
   const pending: PendingInstance = { port: null, memory: null };
-  const instance = new WebAssembly.Instance(new WebAssembly.Module(bytes), makeImports(pending));
-  return adoptInstance(instance, wasmPath, pending);
+  const instance = new WebAssembly.Instance(compileModuleSync(bytes), makeImports(pending));
+  return adoptInstance(instance, wasmPath, pending, cache);
 }
 
-function loadBytesSync(options: InitOptions): { bytes: Uint8Array<ArrayBuffer>; wasmPath: string } {
-  if (options.bytes) {
-    return {
-      bytes: Uint8Array.from(options.bytes),
-      wasmPath: options.libraryPath ?? seededDefault ?? "<bytes>",
-    };
-  }
-  if (options.url !== undefined) {
-    throw new NeedInitError(options.libraryPath);
-  }
-  if (!isNode()) throw new NeedInitError(options.libraryPath);
-  // findLibrary throws MissingArtifactError naming the exact place.
-  const wasmPath = options.libraryPath ?? seededDefault ?? findLibrary();
-  if (!fileIo) throw new Error("galley-wasm: file access is unavailable in this build");
-  return { bytes: Uint8Array.from(fileIo.readFile(wasmPath)), wasmPath };
+async function instantiateAsync(bytes: Uint8Array<ArrayBuffer>, wasmPath: string): Promise<WasmPort> {
+  const module = await compileModule(bytes);
+  const pending: PendingInstance = { port: null, memory: null };
+  const instance = new WebAssembly.Instance(module, makeImports(pending));
+  return adoptInstance(instance, wasmPath, pending, false);
 }
 
-/** Async entry point; the only way to initialize in browsers. */
-export async function init(options: InitOptions = {}): Promise<void> {
-  if (options.bytes) {
-    const wasmPath = options.libraryPath ?? seededDefault ?? "<bytes>";
-    instantiate(Uint8Array.from(options.bytes), wasmPath);
-    if (options.libraryPath === undefined) seededDefault = wasmPath;
-    return;
+// --- compiled-module cache (one Module per distinct bytes) -----------------
+// Compilation dominates instantiation cost, so compiled modules are shared
+// while instances stay per session (session state lives in the instance:
+// sharing one would merge sessions). Unbounded like the port cache, by the
+// same documented policy.
+
+function moduleKey(bytes: Uint8Array): string {
+  // cyrb53 over content plus length: fast number ops, no dependencies
+  // (node:crypto would poison the browser import graph).
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (const byte of bytes) {
+    h1 = Math.imul(h1 ^ byte, 2654435761);
+    h2 = Math.imul(h2 ^ byte, 1597334677);
   }
-  if (options.url !== undefined) {
-    const response = await fetch(options.url);
-    if (!response.ok) throw new Error(`galley-wasm: failed to fetch ${options.url}: ${response.status}`);
-    const wasmPath = options.libraryPath ?? seededDefault ?? String(options.url);
-    instantiate(new Uint8Array(await response.arrayBuffer()), wasmPath);
-    if (options.libraryPath === undefined) seededDefault = wasmPath;
-    return;
-  }
-  if (!isNode()) throw new NeedInitError(options.libraryPath);
-  const { bytes, wasmPath } = loadBytesSync(options);
-  // Asynchronous compile for streaming-friendly startup.
-  const pending: PendingInstance = { port: null, memory: null };
-  const instance = await WebAssembly.instantiate(
-    await WebAssembly.compile(bytes),
-    makeImports(pending),
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${bytes.length}:${(h2 >>> 0).toString(16)}${(h1 >>> 0).toString(16)}`;
+}
+
+const compiledModules = new Map<string, WebAssembly.Module>();
+const compilingModules = new Map<string, Promise<WebAssembly.Module>>();
+
+function compileModuleSync(bytes: Uint8Array<ArrayBuffer>): WebAssembly.Module {
+  const key = moduleKey(bytes);
+  const hit = compiledModules.get(key);
+  if (hit !== undefined) return hit;
+  const module = new WebAssembly.Module(bytes);
+  compiledModules.set(key, module);
+  return module;
+}
+
+function compileModule(bytes: Uint8Array<ArrayBuffer>): Promise<WebAssembly.Module> {
+  const key = moduleKey(bytes);
+  const hit = compiledModules.get(key);
+  if (hit !== undefined) return Promise.resolve(hit);
+  // Concurrent compiles of the same bytes share one job.
+  const pending = compilingModules.get(key);
+  if (pending !== undefined) return pending;
+  const job = WebAssembly.compile(bytes).then(
+    (module) => {
+      compiledModules.set(key, module);
+      compilingModules.delete(key);
+      return module;
+    },
+    (error) => {
+      compilingModules.delete(key);
+      throw error;
+    },
   );
-  adoptInstance(instance, wasmPath, pending);
+  compilingModules.set(key, job);
+  return job;
 }
 
-/** Synchronous entry point; Node only (file read + `WebAssembly.Module`). */
-export function initSync(options: InitOptions = {}): void {
-  const { bytes, wasmPath } = loadBytesSync(options);
-  instantiate(bytes, wasmPath);
-  if (options.libraryPath === undefined) seededDefault = wasmPath;
+/** Test-only: clear the compiled-module cache. */
+export function __resetModuleCache(): void {
+  compiledModules.clear();
+  compilingModules.clear();
 }
 
-/** Seed the default cache key (used by `init({ bytes })` without a path). */
-export function seedDefault(wasmPath: string): void {
-  seededDefault = wasmPath;
-}
-
-function resolveKey(explicit?: string): string {
-  if (explicit) return explicit;
-  if (seededDefault !== null) return seededDefault;
-  if (!isNode()) throw new NeedInitError();
-  return findLibrary();
+/** Test-only: clear the file-IO and scan consumption flags (mirrors `__resetLoader`). */
+export function __resetWasmAcquisition(): void {
+  fileIoUsed = false;
+  proceduresScanUsed = false;
 }
 
 /**
- * Single gate for every consumer: returns the initialized port for a
- * grammar, auto-initializing synchronously under Node. Throws
- * `NeedInitError` anywhere synchronous initialization is impossible.
+ * Synchronously instantiates raw module bytes. Compiled modules are
+ * shared through the cache above, but every call gets a fresh instance:
+ * session state lives in the instance, so sharing one would merge
+ * sessions. Async factories prefer {@link portFromBytes}, which compiles
+ * off-thread; this stays for synchronous consumers (`getWasmPort` and
+ * older adapters behind the universal loader).
  */
-export function getWasmPort(libraryPath?: string): WasmPort {
-  const key = libraryPath ?? resolveKey();
-  const cached = ports.get(key);
+export function instantiateWasm(bytes: Uint8Array): WasmPort {
+  return instantiate(Uint8Array.from(bytes), "<bytes>", false);
+}
+
+/**
+ * Single gate for byte-fed ports: validates raw module bytes under
+ * `prefix` labels, compiles off-thread (shared through the module
+ * cache), and instantiates a fresh port. Every `fromBytes` factory
+ * delegates here, so validation wording and the fresh-instance rule
+ * live in one place.
+ */
+export async function portFromBytes(bytes: Uint8Array, prefix = "galley-wasm"): Promise<WasmPort> {
+  // Copy: callers may hand over shared or resizable buffers, which the
+  // compiler rejects; the copy is ArrayBuffer-backed.
+  const owned = Uint8Array.from(checkModuleBytes(bytes, `${prefix}: Session.fromBytes`));
+  return instantiateAsync(owned, "<bytes>");
+}
+
+/**
+ * Single gate for fetched ports: validates the url under `prefix`
+ * labels, fetches, compiles off-thread, and instantiates a fresh port.
+ * Every `fromUrl` factory delegates here.
+ */
+export async function portFromUrl(url: string | URL, prefix = "galley-wasm"): Promise<WasmPort> {
+  const source = checkModuleUrl(url, `${prefix}: Session.fromUrl`);
+  const owned = Uint8Array.from(await fetchModuleBytes(source, prefix));
+  return instantiateAsync(owned, "<bytes>");
+}
+
+/**
+ * Single gate for synchronous consumers: returns the port for a
+ * language directory or an explicit module file (file-backed, cached
+ * per resolved path) or for raw bytes (fresh per call). Network fetch
+ * stays asynchronous and lives in the session.
+ */
+export function getWasmPort(source: WasmPortSource): WasmPort {
+  if (source.bytes) {
+    return instantiateWasm(source.bytes);
+  }
+  if (source.filePath === undefined && source.languagePath === undefined) {
+    throw new TypeError("galley-wasm: pass languagePath, filePath, or bytes");
+  }
+  if (!fileIo) {
+    throw new Error("galley-wasm: artifact files need file access; pass bytes or url instead");
+  }
+  if (source.filePath !== undefined && !source.filePath.toLowerCase().endsWith(".wasm")) {
+    throw new Error(`galley-wasm: not a WebAssembly module: ${source.filePath}`);
+  }
+  // findLibrary{,File} throws MissingArtifactError naming the exact place.
+  // Only a successful resolution counts as consuming file IO: failed
+  // probes must not block a later legitimate seed.
+  const wasmPath =
+    source.filePath !== undefined ? findLibraryFile(source.filePath) : findLibrary(source.languagePath as string);
+  fileIoUsed = true;
+  const cached = ports.get(wasmPath);
   if (cached) {
     // Dispatch rides with the port, not the Session: every consumer of
-    // the port gets working procedure hooks (a no-op where the file
-    // scanner is unseeded, so browsers still register explicitly).
-    try {
-      ensureDispatch(libraryPath ?? cached.libraryPath);
-    } catch {
-      // Missing installer — stays no-op.
-    }
+    // the port gets working procedure hooks.
     return cached;
   }
-  if (!isNode()) throw new NeedInitError(libraryPath);
-  const resolved = libraryPath ?? findLibrary();
-  const direct = ports.get(resolved);
-  if (direct) {
-    try {
-      ensureDispatch(libraryPath ?? direct.libraryPath);
-    } catch {
-      // Missing installer — stays no-op.
-    }
-    return direct;
-  }
-  initSync(libraryPath ? { libraryPath: resolved } : {});
-  const port = ports.get(resolved) ?? ports.get(key);
-  if (!port) throw new NeedInitError(libraryPath);
-  try {
-    ensureDispatch(libraryPath ?? port.libraryPath);
-  } catch {
-    // Missing installer — stays no-op.
-  }
-  return port;
+  const bytes = Uint8Array.from(fileIo.readFile(wasmPath));
+  return instantiate(bytes, wasmPath, true);
 }
-
-// --- module-level queries (mirror galley.h) ---------------------------------
-
-export function version(): string {
-  return getWasmPort().version();
-}
-
-export function parserType(): number {
-  return getWasmPort().parserType();
-}
-
-export function errorRecoveryMode(): number {
-  return getWasmPort().errorRecoveryMode();
-}
-
-export function hasAst(): boolean {
-  return getWasmPort().hasAst();
-}
-
-export function hasProcedures(): boolean {
-  return getWasmPort().hasProcedures();
-}
-
-export function allowsNoAstTreeProcedures(): boolean {
-  return getWasmPort().allowsNoAstTreeProcedures();
-}
-
-export function sourceRetentionEnabled(): boolean {
-  return getWasmPort().sourceRetentionEnabled();
-}
-
-export function hasPositionTracking(): boolean {
-  return getWasmPort().hasPositionTracking();
-}
-
-export function hasInputStreaming(): boolean {
-  return getWasmPort().hasInputStreaming();
-}
-
-export function usesVerbatim(): boolean {
-  return getWasmPort().usesVerbatim();
-}
-
-export function stackOverflowRecoveryAvailable(): boolean {
-  return getWasmPort().stackOverflowRecoveryAvailable();
-}
-
-export function symbolCount(): number {
-  return getWasmPort().symbolCount();
-}
-
-export function variableCount(): number {
-  return getWasmPort().variableCount();
-}
-
-export function statusString(status: number): string | null {
-  return getWasmPort().statusString(status);
-}
-
-// Preserve original Python naming aliases for docs parity
-export const has_ast = hasAst;
-export const has_procedures = hasProcedures;
-export const has_position_tracking = hasPositionTracking;
 
 // --- helpers ----------------------------------------------------------------
 
@@ -659,13 +688,14 @@ const textDecoder = new TextDecoder();
 export class WasmPort implements FfiPort {
   readonly wasm: GalleyWasmExports;
   readonly libraryPath: string;
+  activeDispatch: DispatchHandler | null = null;
 
   constructor(wasm: GalleyWasmExports, libraryPath: string) {
     this.wasm = wasm;
     this.libraryPath = libraryPath;
   }
 
-  /** Guest hook entry: decode the name and forward to the core registry. */
+  /** Guest hook entry: decode the name and forward to the parsing session's slot. */
   dispatchFromGuest(namePtr: number, nameLen: number, argsPtr: number): void {
     let name: string;
     try {
@@ -674,14 +704,14 @@ export class WasmPort implements FfiPort {
       console.error("galley procedure dispatch: failed to decode name", error);
       return;
     }
-    dispatchProcedure(name, argsPtr, this);
+    this.activeDispatch?.(name, argsPtr);
   }
 
   /** Guest hook entry (current builds): integer hook ID, no strings cross. */
   dispatchFromGuestById(id: number, argsPtr: number): void {
     const name = this.procedureNames()[id];
     if (name === undefined) return;
-    dispatchProcedure(name, argsPtr, this);
+    this.activeDispatch?.(name, argsPtr);
   }
 
   #procedureNameTable: string[] | null = null;
@@ -881,6 +911,8 @@ export class WasmPort implements FfiPort {
     } catch {
       return -11;
     }
+    // A successful host read consumes the seed like port resolution does.
+    fileIoUsed = true;
     return this.parse(handle, data);
   }
 

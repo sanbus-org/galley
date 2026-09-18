@@ -2,13 +2,14 @@
 /**
  * Behavioral tests for the Galley Deno bindings.
  * Mirrors `bindings/js/node/tests/test_bindings.mjs` (same behaviors,
- * Deno runtime). The Deno adapter has no require()-based auto-scan, so
- * procedure tests register hooks explicitly.
+ * Deno runtime). Hook modules arrive explicitly through the session's
+ * `procedures` option.
  *
  * Run:
  *   deno task test
- * or with explicit library:
- *   GALLEY_LIBRARY_PATH=/tmp/libgalley-js-deno.dylib deno task test
+ *
+ * Uses the shared fixture (bindings/js/test-fixture), built on demand
+ * into a temp workdir; sessions open it through fromDirectory.
  *
  * Note: the suite runs with --no-check (mirroring bindings/js/node, whose
  * tests are excluded from tsconfig.json); `deno task test` typechecks the
@@ -25,7 +26,7 @@ import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-deno", process.platform);
 // Self-built shared fixture (bindings/js/test-fixture); never examples/.
-const libPath = ensureTestLibrary({
+const languageDir = ensureTestLibrary({
   buildCommand: [
     "deno",
     "run",
@@ -39,26 +40,9 @@ const libPath = ensureTestLibrary({
   scope: "deno",
 });
 
-// Must set before import if using env-based discovery
-if (!process.env.GALLEY_LIBRARY_PATH) process.env.GALLEY_LIBRARY_PATH = libPath;
-
 const {
   Session,
   Node,
-  version,
-  parserType,
-  hasAst,
-  hasProcedures,
-  allowsNoAstTreeProcedures,
-  sourceRetentionEnabled,
-  hasPositionTracking,
-  hasInputStreaming,
-  usesVerbatim,
-  stackOverflowRecoveryAvailable,
-  errorRecoveryMode,
-  symbolCount,
-  variableCount,
-  statusString,
   PARSER_TYPE_LL,
   PARSER_TYPE_LR,
   RECOVERY_MODE_DISABLED,
@@ -69,16 +53,10 @@ const {
   KIND_SEMANTIC,
   STATUS_ERROR_SEMANTIC,
   INVALID_NODE,
-  installProcedure,
-  installProcedures,
-  clearProcedures,
-  listProcedures,
 } = await import("../src/index.ts");
 
-// Helper to create session with library path
-function newSession(opts = {}) {
-  if (libPath) return new Session({ libraryPath: libPath, ...opts });
-  return new Session(opts);
+async function newSession(opts = {}) {
+  return Session.fromDirectory(languageDir, opts);
 }
 
 let passed = 0;
@@ -100,38 +78,110 @@ function assertIn(value, arr, msg) {
   assert.ok(arr.includes(value), msg ?? `${value} not in ${arr}`);
 }
 
-// ---- ModuleSurfaceTests ----
+// ---- SessionSurfaceTests (grammar queries live on the session) ----
 
-await test("version returns non-empty string", () => {
-  const v = version();
-  assert.equal(typeof v, "string");
-  assert.notEqual(v, "");
+await test("fromDirectory requires languagePath", async () => {
+  assert.throws(() => Session.fromDirectory(""), /languagePath/);
+  assert.throws(() => Session.fromDirectory(), /languagePath/);
 });
 
-await test("parser metadata flags are consistent", () => {
-  assertIn(parserType(), [PARSER_TYPE_LL, PARSER_TYPE_LR]);
-  assert.equal(hasAst(), true);
-  assert.equal(typeof hasProcedures(), "boolean");
-  assert.equal(typeof allowsNoAstTreeProcedures(), "boolean");
-  assert.equal(typeof sourceRetentionEnabled(), "boolean");
-  assert.equal(typeof hasPositionTracking(), "boolean");
-  assert.equal(typeof hasInputStreaming(), "boolean");
-  assert.equal(typeof usesVerbatim(), "boolean");
-  assert.equal(typeof stackOverflowRecoveryAvailable(), "boolean");
-  assertIn(errorRecoveryMode(), [RECOVERY_MODE_DISABLED, RECOVERY_MODE_AUTOMATIC, RECOVERY_MODE_EXPLICIT]);
+await test("fromDirectory resolves a usable session", async () => {
+  await using s = await Session.fromDirectory(languageDir);
+  assert.ok(s.version().length > 0);
 });
 
-await test("status_string renders known codes", () => {
-  const rendered = statusString(-2);
-  assert.equal(typeof rendered, "string");
-  assert.ok(rendered.toLowerCase().includes("syntax"));
-  assert.equal(statusString(999999), null);
+await test("missing artifact names the directory", async () => {
+  assert.throws(
+    () => Session.fromDirectory(path.join(languageDir, "no-such-dir")),
+    /no-such-dir/,
+  );
+});
+
+await test("fromFile requires filePath", async () => {
+  assert.throws(() => Session.fromFile(""), /filePath/);
+  assert.throws(() => Session.fromFile(), /filePath/);
+});
+
+await test("fromFile missing artifact names the file", async () => {
+  assert.throws(
+    () => Session.fromFile(path.join(languageDir, "no-such-lib")),
+    /no-such-lib/,
+  );
+});
+
+await test("fromFile opens an explicit artifact file", async () => {
+  const fileDir = `${languageDir}-file`;
+  fs.rmSync(fileDir, { recursive: true, force: true });
+  fs.cpSync(languageDir, fileDir, { recursive: true });
+  const customLib = path.join(fileDir, `custom-name${path.extname(exampleLib)}`);
+  fs.renameSync(path.join(fileDir, exampleLib), customLib);
+  try {
+    // No synchronous scan on this runtime: hooks arrive explicitly.
+    const s = Session.fromFile(customLib);
+    try {
+      assert.deepEqual(s.listProcedures(), []);
+      assert.equal(s.parse("alpha:12,beta:3"), 15);
+    } finally {
+      s.close();
+    }
+    let called = 0;
+    const s2 = Session.fromFile(customLib, { procedures: { reduction_Pair: () => { called++; } } });
+    try {
+      s2.parse("alpha:12,beta:3");
+      assert.equal(called, 2);
+    } finally {
+      s2.close();
+    }
+  } finally {
+    fs.rmSync(fileDir, { recursive: true, force: true });
+  }
+});
+
+await test("version returns non-empty string", async () => {
+  const s = await newSession();
+  try {
+    const v = s.version();
+    assert.equal(typeof v, "string");
+    assert.notEqual(v, "");
+  } finally {
+    s.close();
+  }
+});
+
+await test("parser metadata flags are consistent", async () => {
+  const s = await newSession();
+  try {
+    assertIn(s.parserType(), [PARSER_TYPE_LL, PARSER_TYPE_LR]);
+    assert.equal(s.hasAst(), true);
+    assert.equal(typeof s.hasProcedures(), "boolean");
+    assert.equal(typeof s.allowsNoAstTreeProcedures(), "boolean");
+    assert.equal(typeof s.sourceRetentionEnabled(), "boolean");
+    assert.equal(typeof s.hasPositionTracking(), "boolean");
+    assert.equal(typeof s.hasInputStreaming(), "boolean");
+    assert.equal(typeof s.usesVerbatim(), "boolean");
+    assert.equal(typeof s.stackOverflowRecoveryAvailable(), "boolean");
+    assertIn(s.errorRecoveryMode(), [RECOVERY_MODE_DISABLED, RECOVERY_MODE_AUTOMATIC, RECOVERY_MODE_EXPLICIT]);
+  } finally {
+    s.close();
+  }
+});
+
+await test("status_string renders known codes", async () => {
+  const s = await newSession();
+  try {
+    const rendered = s.statusString(-2);
+    assert.equal(typeof rendered, "string");
+    assert.ok(rendered.toLowerCase().includes("syntax"));
+    assert.equal(s.statusString(999999), null);
+  } finally {
+    s.close();
+  }
 });
 
 // ---- SessionTests ----
 
-await test("parse accepts string and buffers", () => {
-  const s = newSession();
+await test("parse accepts string and buffers", async () => {
+  const s = await newSession();
   try {
     const sample = "alpha:12,beta:3";
     assert.equal(s.parse(sample), sample.length);
@@ -142,8 +192,8 @@ await test("parse accepts string and buffers", () => {
   }
 });
 
-await test("parseSentinel matches parse for nul-free input", () => {
-  const s = newSession();
+await test("parseSentinel matches parse for nul-free input", async () => {
+  const s = await newSession();
   try {
     const sample = "alpha:12,beta:3";
     const a = s.parseSentinel(sample);
@@ -154,8 +204,8 @@ await test("parseSentinel matches parse for nul-free input", () => {
   }
 });
 
-await test("syntax error raises error with code and diagnostic", () => {
-  const s = newSession();
+await test("syntax error raises error with code and diagnostic", async () => {
+  const s = await newSession();
   try {
     try {
       s.parse("alpha:");
@@ -184,8 +234,8 @@ await test("syntax error raises error with code and diagnostic", () => {
   }
 });
 
-await test("diagnostic resets after successful parse", () => {
-  const s = newSession();
+await test("diagnostic resets after successful parse", async () => {
+  const s = await newSession();
   try {
     try {
       s.parse("alpha:");
@@ -199,8 +249,8 @@ await test("diagnostic resets after successful parse", () => {
   }
 });
 
-await test("file parsing reports end position", () => {
-  const s = newSession();
+await test("file parsing reports end position", async () => {
+  const s = await newSession();
   try {
     const p = "/tmp/galley-js-deno-test.kv";
     fs.writeFileSync(p, "alpha:12,beta:3");
@@ -215,8 +265,8 @@ await test("file parsing reports end position", () => {
 
 // ---- WalkTests ----
 
-await test("root and navigation links", () => {
-  const s = newSession();
+await test("root and navigation links", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -242,8 +292,8 @@ await test("root and navigation links", () => {
   }
 });
 
-await test("symbol names text spans and positions", () => {
-  const s = newSession();
+await test("symbol names text spans and positions", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -264,8 +314,8 @@ await test("symbol names text spans and positions", () => {
   }
 });
 
-await test("snapshot matches per-node accessors in one crossing", () => {
-  const s = newSession();
+await test("snapshot matches per-node accessors in one crossing", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const snap = s.snapshot();
@@ -323,8 +373,8 @@ await test("snapshot matches per-node accessors in one crossing", () => {
   }
 });
 
-await test("Node object mirrors Session navigation", () => {
-  const s = newSession();
+await test("Node object mirrors Session navigation", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -356,8 +406,8 @@ await test("Node object mirrors Session navigation", () => {
   }
 });
 
-await test("terminal-only nodes have empty symbol names", () => {
-  const s = newSession();
+await test("terminal-only nodes have empty symbol names", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     function containsTerminal(n) {
@@ -377,8 +427,8 @@ await test("terminal-only nodes have empty symbol names", () => {
   }
 });
 
-await test("walk matches hand-rolled recursion", () => {
-  const s = newSession();
+await test("walk matches hand-rolled recursion", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -411,8 +461,8 @@ await test("walk matches hand-rolled recursion", () => {
   }
 });
 
-await test("walk skipChildren prunes the subtree", () => {
-  const s = newSession();
+await test("walk skipChildren prunes the subtree", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -434,8 +484,8 @@ await test("walk skipChildren prunes the subtree", () => {
   }
 });
 
-await test("invalid node accessors return null", () => {
-  const s = newSession();
+await test("invalid node accessors return null", async () => {
+  const s = await newSession();
   try {
     const invalid = INVALID_NODE;
     assert.equal(s.symbolName(invalid), null);
@@ -451,8 +501,8 @@ await test("invalid node accessors return null", () => {
 
 // ---- EditTests ----
 
-await test("clean and append round-trip", () => {
-  const s = newSession();
+await test("clean and append round-trip", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -467,8 +517,8 @@ await test("clean and append round-trip", () => {
   }
 });
 
-await test("Node clean/append round-trip", () => {
-  const s = newSession();
+await test("Node clean/append round-trip", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -483,8 +533,8 @@ await test("Node clean/append round-trip", () => {
   }
 });
 
-await test("insertBefore reorders siblings", () => {
-  const s = newSession();
+await test("insertBefore reorders siblings", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -502,8 +552,8 @@ await test("insertBefore reorders siblings", () => {
   }
 });
 
-await test("removeSelf detaches single node", () => {
-  const s = newSession();
+await test("removeSelf detaches single node", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -516,8 +566,8 @@ await test("removeSelf detaches single node", () => {
   }
 });
 
-await test("insert and remove children at", () => {
-  const s = newSession();
+await test("insert and remove children at", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -533,8 +583,8 @@ await test("insert and remove children at", () => {
   }
 });
 
-await test("promote and unlink wrapper", () => {
-  const s = newSession();
+await test("promote and unlink wrapper", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -556,8 +606,8 @@ await test("promote and unlink wrapper", () => {
   }
 });
 
-await test("unlink wrapper detaches without touching children", () => {
-  const s = newSession();
+await test("unlink wrapper detaches without touching children", async () => {
+  const s = await newSession();
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
@@ -573,11 +623,11 @@ await test("unlink wrapper detaches without touching children", () => {
 
 // ---- SymbolTableTests ----
 
-await test("symbol and variable tables", () => {
-  const s = newSession();
+await test("symbol and variable tables", async () => {
+  const s = await newSession();
   try {
-    assert.ok(symbolCount() > 0);
-    assert.ok(variableCount() > 0);
+    assert.ok(s.symbolCount() > 0);
+    assert.ok(s.variableCount() > 0);
     const firstName = s.symbolNameAt(0);
     assert.ok(firstName instanceof Uint8Array);
     assert.equal(typeof s.symbolIsTerminal(0), "boolean");
@@ -592,8 +642,8 @@ await test("symbol and variable tables", () => {
 
 // ---- ReservationTests ----
 
-await test("reserve and report capacity", () => {
-  const s = newSession();
+await test("reserve and report capacity", async () => {
+  const s = await newSession();
   try {
     const cap = s.nodeCapacity();
     s.reserveNodes(cap + 1024);
@@ -605,8 +655,8 @@ await test("reserve and report capacity", () => {
 
 // ---- LifetimeTests ----
 
-await test("close is idempotent and closed sessions throw", () => {
-  const s = newSession();
+await test("close is idempotent and closed sessions throw", async () => {
+  const s = await newSession();
   s.parse("alpha:12");
   s.close();
   s.close();
@@ -614,8 +664,8 @@ await test("close is idempotent and closed sessions throw", () => {
   assert.throws(() => s.rootNode(), /closed/);
 });
 
-await test("Node after close throws", () => {
-  const s = newSession();
+await test("Node after close throws", async () => {
+  const s = await newSession();
   s.parse("alpha:12,beta:3");
   const root = s.rootNode();
   s.close();
@@ -623,8 +673,8 @@ await test("Node after close throws", () => {
   assert.throws(() => root.text(), /closed/);
 });
 
-await test("using-like dispose", () => {
-  let s = newSession();
+await test("using-like dispose", async () => {
+  let s = await newSession();
   const addr = (() => {
     s.parse("alpha:12");
     return s.rootNode()?.address;
@@ -633,13 +683,15 @@ await test("using-like dispose", () => {
   assert.throws(() => s.parse("alpha:12"));
   // Symbol.dispose path if available (Node 24+ supports using)
   // We test manual dispose
-  const s2 = newSession();
+  const s2 = await newSession();
   s2[Symbol.dispose]();
   assert.equal(s2.isClosed, true);
+  await using s3 = await newSession();
+  assert.equal(s3.isClosed, false);
 });
 
-await test("options round-trip", () => {
-  const s = newSession({
+await test("options round-trip", async () => {
+  const s = await newSession({
     maxErrors: 3,
     recoveryWindow: 100,
     stackOverflowRecovery: false,
@@ -655,8 +707,8 @@ await test("options round-trip", () => {
   }
 });
 
-await test("message override", () => {
-  const s = newSession({ messageOverrides: { Number: "custom at line {line}" } });
+await test("message override", async () => {
+  const s = await newSession({ messageOverrides: { Number: "custom at line {line}" } });
   try {
     try {
       s.parse("alpha:");
@@ -664,7 +716,7 @@ await test("message override", () => {
       assert.ok(err.diagnostic.message.includes("custom at line 1"));
     }
     // also via method
-    const s2 = newSession();
+    const s2 = await newSession();
     try {
       s2.setMessageOverride("Number", "override2 {line}:{column}");
       try {
@@ -680,10 +732,10 @@ await test("message override", () => {
   }
 });
 
-await test("procedure hook can read node text", () => {
-  clearProcedures();
+await test("procedure hook can read node text", async () => {
   const seen = [];
-  installProcedure("reduction_Pair", (args) => {
+  const s = await newSession();
+  s.installProcedure("reduction_Pair", (args) => {
     const node = args.currentNode();
     assert.ok(node);
     const text = node.text();
@@ -691,26 +743,23 @@ await test("procedure hook can read node text", () => {
     assert.ok(text.length > 0);
     seen.push(text);
   });
-  const s = newSession();
   try {
     s.parse("alpha:12,beta:3");
     assert.equal(seen.length, 2);
   } finally {
     s.close();
-    clearProcedures();
   }
 });
 
-await test("hook-reported semantic errors aggregate and fail", () => {
-  clearProcedures();
+await test("hook-reported semantic errors aggregate and fail", async () => {
   const counts = [];
-  installProcedure("reduction_Number", (args) => {
+  const s = await newSession();
+  s.installProcedure("reduction_Number", (args) => {
     const node = args.currentNode();
     assert.ok(node);
     const value = Number.parseInt(Buffer.from(node.text()).toString("utf-8"), 10);
     if (value > 99) counts.push(args.reportSemanticError("value out of range"));
   });
-  const s = newSession();
   try {
     assert.throws(() => s.parse("alpha:12,beta:300,gamma:400"), (err) => {
       assert.equal(err.code, STATUS_ERROR_SEMANTIC);
@@ -731,56 +780,182 @@ await test("hook-reported semantic errors aggregate and fail", () => {
     assert.equal(s.diagnostic(), null);
   } finally {
     s.close();
-    clearProcedures();
   }
 });
 
-await test("installProcedure dispatches host hooks", () => {
-  clearProcedures();
+await test("installProcedure dispatches host hooks", async () => {
+  const s = await newSession();
+  s.clearProcedures();
   let called = 0;
-  installProcedure("reduction", () => { called++; });
-  installProcedure("reduction_Pair", () => { called++; });
-  assert.deepEqual(listProcedures().sort(), ["reduction", "reduction_Pair"].sort());
-  const s = newSession();
+  s.installProcedure("reduction", () => { called++; });
+  s.installProcedure("reduction_Pair", () => { called++; });
+  assert.deepEqual(s.listProcedures().sort(), ["reduction", "reduction_Pair"].sort());
   try {
     s.parse("alpha:12,beta:3");
     assert.ok(called > 0, "hooks should have fired");
     const before = called;
-    clearProcedures();
-    assert.equal(listProcedures().length, 0);
+    s.clearProcedures();
+    assert.equal(s.listProcedures().length, 0);
     s.parse("alpha:12");
     assert.equal(called, before, "hooks should not fire after clear");
   } finally {
     s.close();
-    clearProcedures();
   }
 });
 
-await test("installProcedures bulk registers", () => {
-  clearProcedures();
-  const mod = {
-    reduction_Document: () => {},
-    hook_print: () => {},
-    notAHook: () => {},
-    reduction_Key: "not a function",
-  };
-  const n = installProcedures(mod);
-  assert.equal(n, 2);
-  assert.deepEqual(listProcedures().sort(), ["hook_print", "reduction_Document"].sort());
-  clearProcedures();
+await test("installProcedures bulk registers", async () => {
+  const s = await newSession();
+  try {
+    s.clearProcedures();
+    const mod = {
+      reduction_Document: () => {},
+      hook_print: () => {},
+      notAHook: () => {},
+      reduction_Key: "not a function",
+    };
+    const n = s.installProcedures(mod);
+    assert.equal(n, 2);
+    assert.deepEqual(s.listProcedures().sort(), ["hook_print", "reduction_Document"].sort());
+    s.clearProcedures();
+  } finally {
+    s.close();
+  }
 });
 
-await test("hook throwing does not abort parse", () => {
-  clearProcedures();
-  installProcedure("reduction_Pair", () => { throw new Error("boom"); });
-  const s = newSession();
+await test("procedures option installs at construction", async () => {
+  let called = 0;
+  const s = await newSession({ procedures: { reduction_Pair: () => { called++; } } });
+  try {
+    s.parse("alpha:12,beta:3");
+    assert.equal(called, 2);
+    assert.ok(s.listProcedures().includes("reduction_Pair"));
+  } finally {
+    s.close();
+  }
+});
+
+await test("hook throwing does not abort parse", async () => {
+  const s = await newSession();
+  s.installProcedure("reduction_Pair", () => { throw new Error("boom"); });
   try {
     // should not throw despite hook throwing; parse still succeeds
     const parsed = s.parse("alpha:12,beta:3");
     assert.ok(parsed > 0);
   } finally {
     s.close();
-    clearProcedures();
+  }
+});
+
+await test("same-named hooks resolve per session", async () => {
+  const a = await newSession();
+  const b = await newSession();
+  const fired = [];
+  a.installProcedure("reduction_Pair", () => { fired.push("a"); });
+  b.installProcedure("reduction_Pair", () => { fired.push("b"); });
+  try {
+    a.parse("alpha:12,beta:3");
+    assert.ok(fired.length === 2 && fired.every((x) => x === "a"));
+    fired.length = 0;
+    b.parse("alpha:12,beta:3");
+    assert.ok(fired.length === 2 && fired.every((x) => x === "b"));
+    // interleaved parses re-sync each session's hooks in turn
+    fired.length = 0;
+    a.parse("alpha:12");
+    b.parse("alpha:12");
+    a.parse("alpha:12");
+    assert.deepEqual(fired, ["a", "b", "a"]);
+  } finally {
+    a.close();
+    b.close();
+  }
+});
+
+await test("nested parse restores the outer session's hooks", async () => {
+  const a = await newSession();
+  const b = await newSession();
+  a.clearProcedures();
+  b.clearProcedures();
+  let outerCalls = 0;
+  let nested = false;
+  a.installProcedure("reduction_Pair", () => {
+    outerCalls++;
+    if (!nested) {
+      nested = true;
+      // The inner session holds no hooks, so its parse clears every
+      // native gate. The outer parse must re-enable its own gates on
+      // unwind: all three pairs fire, not just the first.
+      b.parse("zeta:9");
+    }
+  });
+  try {
+    assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
+    assert.equal(outerCalls, 3);
+  } finally {
+    a.close();
+    b.close();
+  }
+});
+
+await test("nested parse across symlinked paths keeps hooks", async () => {
+  const linkDir = `${languageDir}-link`;
+  fs.rmSync(linkDir, { force: true });
+  fs.symlinkSync(languageDir, linkDir, "junction");
+  try {
+    // Same file through two spellings: one shared port, so the inner
+    // parse must restore the outer session's gates on unwind.
+    const a = await Session.fromDirectory(languageDir);
+    const b = await Session.fromDirectory(linkDir);
+    a.clearProcedures();
+    b.clearProcedures();
+    let outerCalls = 0;
+    let nested = false;
+    a.installProcedure("reduction_Pair", () => {
+      outerCalls++;
+      if (!nested) {
+        nested = true;
+        b.parse("zeta:9");
+      }
+    });
+    try {
+      assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
+      assert.equal(outerCalls, 3);
+    } finally {
+      a.close();
+      b.close();
+    }
+  } finally {
+    fs.rmSync(linkDir, { force: true });
+  }
+});
+
+await test("two language directories parse independently", async () => {
+  const secondDir = `${languageDir}-second`;
+  fs.rmSync(secondDir, { recursive: true, force: true });
+  fs.cpSync(languageDir, secondDir, { recursive: true });
+  try {
+    const fired = [];
+    const a = await Session.fromDirectory(languageDir);
+    a.installProcedure("reduction_Pair", () => { fired.push("a-pair"); });
+    const b = await Session.fromDirectory(secondDir);
+    // Divergent hook sets: each session enables only its own gates, so
+    // interleaved parses never fire the other session's hooks.
+    b.installProcedure("reduction_Number", () => { fired.push("b-number"); });
+    try {
+      assert.equal(a.parse("alpha:12,beta:3"), 15);
+      assert.ok(fired.length === 2 && fired.every((x) => x === "a-pair"));
+      fired.length = 0;
+      assert.equal(b.parse("alpha:12,beta:3"), 15);
+      assert.ok(fired.length === 2 && fired.every((x) => x === "b-number"));
+      fired.length = 0;
+      a.parse("alpha:12");
+      b.parse("alpha:12");
+      assert.deepEqual(fired, ["a-pair", "b-number"]);
+    } finally {
+      a.close();
+      b.close();
+    }
+  } finally {
+    fs.rmSync(secondDir, { recursive: true, force: true });
   }
 });
 

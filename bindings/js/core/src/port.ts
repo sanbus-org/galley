@@ -54,7 +54,7 @@ export interface TreeSnapshot {
 export type DispatchHandler = (name: string, args: Handle) => void;
 
 export interface FfiPort {
-  // -- module-level queries (mirror galley.h) --------------------------
+  // -- parser metadata (mirror galley.h; sessions expose these per artifact) --
   version(): string;
   parserType(): number;
   errorRecoveryMode(): number;
@@ -202,6 +202,17 @@ export interface FfiPort {
    * name. Missing symbols (C-procedure or stale libraries) are no-ops.
    */
   syncProcedures(names: string[]): void;
+  /**
+   * Parse-time dispatch slot, or null. The session whose parse is in
+   * flight sets this to a closure over its own hook registry around
+   * each parse (restoring the previous value after); adapter callbacks
+   * forward decoded hook names here. Anchored on the port — not on
+   * module state — so dispatch survives duplicated module installs
+   * (bundler copies, transforming loaders): both sides of the native
+   * boundary already share the port object. The port never names the
+   * session type; it just holds the function.
+   */
+  activeDispatch: DispatchHandler | null;
   /**
    * Hook names in integer-ID order for the ID dispatch path. Queried once
    * from the library (`galley_js_procedure_count` /

@@ -4,77 +4,64 @@
  * Imported exclusively by the Node entry (`index.ts`), never by the
  * browser entry (`browser.ts`): every `node:` specifier in this package
  * lives in this one module, so a bundler resolving the `browser` export
- * condition never sees them. `ffi.ts` and `dispatch.ts` reach this
- * module only through the seeds wired in `index.ts`.
+ * condition never sees them. `ffi.ts` reaches this module only through
+ * the seed wired in `index.ts`.
  */
 
 import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import process from "node:process";
 
-import { installProcedures } from "@sanbus/galley-core";
+import { loadProceduresModule, canonicalResolvePath } from "@sanbus/galley-core";
 import type { FileIo } from "./ffi.ts";
 
-/** `FileIo` over the real filesystem and process environment. */
+/** `FileIo` over the real filesystem. */
 export const nodeFileIo: FileIo = {
   existsSync(localPath: string): boolean {
-    try {
-      fs.accessSync(localPath);
-      return true;
-    } catch {
-      return false;
-    }
+    // fs.existsSync (not accessSync): under Deno, accessSync demands
+    // --allow-sys ("uid") while existsSync needs only --allow-read,
+    // and this entry also serves Deno through the universal loader.
+    return fs.existsSync(localPath);
   },
   readFile(localPath: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(localPath));
   },
   resolvePath(candidate: string): string {
-    return path.resolve(candidate);
-  },
-  getenv(name: string): string | undefined {
-    return process.env[name];
+    // Shared canonicalization (see core artifact.ts): symlinked
+    // spellings share one cached port; absent files keep the lexical
+    // spelling so missing artifacts still report MissingArtifactError.
+    return canonicalResolvePath(candidate, path.resolve, fs.realpathSync);
   },
 };
 
-function isProcedureName(name: string): boolean {
-  return name === "reduction" || name.startsWith("reduction_") || name.startsWith("hook_");
-}
-
-function tryLoadModule(
-  require: (modulePath: string) => unknown,
-  modulePath: string,
-): boolean {
-  try {
-    const loadedModule = require(modulePath) as Record<string, unknown>;
-    let hasHook = false;
-    for (const [name, value] of Object.entries(loadedModule)) {
-      if (typeof value !== "function" || !isProcedureName(name)) continue;
-      hasHook = true;
-      break;
-    }
-    if (hasHook) return installProcedures(loadedModule) > 0;
-    const defaultExport = (loadedModule as Record<string, unknown>).default as
-      | Record<string, unknown>
-      | undefined;
-    if (defaultExport && typeof defaultExport === "object") {
-      return installProcedures(defaultExport) > 0;
-    }
-  } catch {}
-  return false;
+/**
+ * `require()`-based load of `procedures.*` in a language directory.
+ * Returns the module for the session to install into its own registry,
+ * or null when nothing loadable is there. Anything found beside the
+ * grammar belongs to this session; nothing else is even looked at.
+ * Byte-fed modules have no directory: nothing to scan.
+ */
+export function scanLanguageDir(directory: string | undefined): Record<string, unknown> | null {
+  if (!directory) return null;
+  const require = createRequire(import.meta.url);
+  return loadProceduresModule(
+    (specifier) => require(specifier) as unknown,
+    path.join,
+    path.resolve(directory),
+  );
 }
 
 /**
- * `require()`-based auto-scan of `procedures.*` in the directory holding
- * the loaded module. Anything found there belongs to this grammar;
- * nothing else is even looked at. Byte-fed modules ("<bytes>") have no
- * directory: nothing to scan.
+ * `require()`-based load of `procedures.*` beside an explicit module
+ * file (the file's own directory), for `Session.fromFile`. Same rule as
+ * {@link scanLanguageDir}.
  */
-export function scanLanguageDir(wasmPath: string | undefined): void {
-  if (!wasmPath || wasmPath === "<bytes>") return;
+export function scanLanguageFile(filePath: string | undefined): Record<string, unknown> | null {
+  if (!filePath) return null;
   const require = createRequire(import.meta.url);
-  const baseDirectory = path.dirname(path.resolve(wasmPath));
-  for (const extension of ["", ".js", ".ts"]) {
-    if (tryLoadModule(require, path.join(baseDirectory, `procedures${extension}`))) return;
-  }
+  return loadProceduresModule(
+    (specifier) => require(specifier) as unknown,
+    path.join,
+    path.dirname(path.resolve(filePath)),
+  );
 }

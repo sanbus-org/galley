@@ -9,22 +9,28 @@ import { Session, Walker } from "./session.ts";
 import type { SessionOptions, WalkStep } from "./session.ts";
 import { Node } from "./node.ts";
 import { GalleyError, MissingArtifactError } from "./errors.ts";
-import { resolveArtifact, artifactFileName, wasmArtifactFileName } from "./artifact.ts";
+import { resolveArtifact, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, wasmArtifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "./artifact.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { displayTokenName } from "./diagnostic.ts";
 import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler } from "./port.ts";
 import {
-  installProcedure,
-  installProcedures,
-  clearProcedures,
-  listProcedures,
   ProcedureArguments,
-  dispatchProcedure,
-  setParsingSession,
-  getParsingSession,
+  ProcedureRegistry,
+  isProcedureName,
+  loadProceduresModule,
 } from "./procedures.ts";
-import type { HookFn } from "./procedures.ts";
+import type { HookFn, ProceduresOption } from "./procedures.ts";
+import {
+  checkLanguagePath,
+  checkArtifactPath,
+  checkModuleBytes,
+  checkModuleUrl,
+  fetchModuleBytes,
+  skippedScanMessage,
+  noteSkippedScan,
+  __resetSkippedScan,
+} from "./sources.ts";
 import { encodeUtf8, decodeUtf8, byteLengthUtf8 } from "./text.ts";
 
 export {
@@ -34,20 +40,28 @@ export {
   GalleyError,
   MissingArtifactError,
   resolveArtifact,
+  resolveArtifactFile,
+  resolveAdapterArtifact,
   artifactFileName,
   wasmArtifactFileName,
+  canonicalResolvePath,
+  SHARED_NATIVE_LIBRARY_BASE,
   displayTokenName,
   ProcedureArguments,
-  installProcedure,
-  installProcedures,
-  clearProcedures,
-  listProcedures,
-  dispatchProcedure,
-  setParsingSession,
-  getParsingSession,
+  ProcedureRegistry,
+  isProcedureName,
+  loadProceduresModule,
+  checkLanguagePath,
+  checkArtifactPath,
+  checkModuleBytes,
+  checkModuleUrl,
+  fetchModuleBytes,
+  skippedScanMessage,
+  noteSkippedScan,
+  __resetSkippedScan,
   encodeUtf8,
   decodeUtf8,
   byteLengthUtf8,
 };
-export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ArtifactHost };
+export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ProceduresOption, ArtifactHost };
 export * from "./constants.ts";

@@ -12,8 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, resolveArtifact, artifactFileName } from "@sanbus/galley-core";
+import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
+import { GalleyError, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core";
 import { ensureDispatchFor } from "./dispatch.ts";
 
 /** Native handles are addresses; 0 is null. */
@@ -144,11 +144,15 @@ interface GalleySymbols {
 }
 
 // --- library discovery -------------------------------------------------
-// One place, named up front: an explicit path or GALLEY_LIBRARY_PATH.
+// One place, named up front: the language directory must hold the
+// adapter's standard-named library file or the shared native library
+// `galley build` leaves (it serves every native adapter). Anything else
+// is a loud error naming both tried paths, never a search.
 
 const BUILD_HINT =
-  `Build it first: bunx galley-js-bun <language-dir>\n` +
-  `or set GALLEY_LIBRARY_PATH=/path/to/${libFileName()}`;
+  `Build it first: npx galley build <language-dir>\n` +
+  `That leaves ${artifactFileName(SHARED_NATIVE_LIBRARY_BASE, process.platform)} in the directory ` +
+  `(or bunx galley-js-bun <language-dir> for the adapter-named ${libFileName()}).`;
 
 export function libFileName(base = "galley-js-bun"): string {
   return artifactFileName(base, process.platform);
@@ -163,10 +167,24 @@ function exists(candidate: string): boolean {
   }
 }
 
-export function findLibrary(explicit?: string): string {
-  return resolveArtifact(explicit, {
-    getEnv: (name) => process.env[name],
-    resolvePath: (candidate) => path.resolve(candidate),
+export function findLibrary(languagePath: string): string {
+  return resolveAdapterArtifact(
+    languagePath,
+    libFileName(),
+    artifactFileName(SHARED_NATIVE_LIBRARY_BASE, process.platform),
+    path.join,
+    {
+      resolvePath: (candidate) => canonicalResolvePath(candidate, path.resolve, fs.realpathSync),
+      existsSync: exists,
+      buildHint: BUILD_HINT,
+    },
+  );
+}
+
+/** Explicit-file twin of {@link findLibrary}: names the library itself. */
+export function findLibraryFile(filePath: string): string {
+  return resolveArtifactFile(filePath, {
+    resolvePath: (candidate) => canonicalResolvePath(candidate, path.resolve, fs.realpathSync),
     existsSync: exists,
     buildHint: BUILD_HINT,
   });
@@ -338,6 +356,7 @@ function i64Out(): BigInt64Array {
 // --- FfiPort implementation ----------------------------------------------
 
 export class BunPort implements FfiPort {
+  activeDispatch: DispatchHandler | null = null;
   readonly native: GalleySymbols;
   readonly libraryPath: string;
   readonly supportsDispatch: boolean;
@@ -1005,9 +1024,17 @@ export class BunPort implements FfiPort {
 
 const portCache = new Map<string, BunPort>();
 
-/** Port for the library at `explicitPath` (or default discovery), cached per path. */
-export function getBunPort(explicitPath?: string): BunPort {
-  const libPath = findLibrary(explicitPath);
+/** Port for the language directory's library, cached per resolved path. */
+export function getBunPort(languagePath: string): BunPort {
+  return portForLibrary(findLibrary(languagePath));
+}
+
+/** Port for an explicit library file, cached per resolved path. */
+export function getBunPortFromFile(filePath: string): BunPort {
+  return portForLibrary(findLibraryFile(filePath));
+}
+
+function portForLibrary(libPath: string): BunPort {
   const cached = portCache.get(libPath);
   if (cached) return cached;
   // Fall back to fewer symbols when dispatch is unavailable.

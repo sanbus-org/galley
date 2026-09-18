@@ -8,36 +8,40 @@ binds the runtime-neutral
 one loads (Node, Bun, Deno) and to WebAssembly otherwise, with no native
 dependencies beyond the built parser artifacts.
 
-Call `await init()` once, then use the synchronous `Session` API. Under
-Node and Bun the backend also resolves synchronously on first use, so
-scripts keep working with no changes. When no native library is found the
-WebAssembly backend serves instead, with a one-time performance notice
-(opt out with `{ quiet: true }`); when nothing is found at all, `init()`
-explains how to build an artifact. A `.wasm` `libraryPath` pins the wasm
-backend explicitly.
+Construct a `Session` on a language directory and parse. The session
+loads the standard-named parser artifact from the directory and resolves
+native-first per runtime inside `fromDirectory`, so there is nothing to
+initialize up front. When no native library is found the WebAssembly
+backend serves instead, with a one-time performance notice (opt out with
+`{ quiet: true }`); when nothing is found at all, construction explains
+how to build an artifact. `session.backend` reports the serving leg
+(`"native"` or `"wasm"`).
 
 ```ts
-import { Session, init, backend } from "@sanbus/galley";
+import { Session } from "@sanbus/galley";
 
-await init();
-console.log(backend()); // "native" or "wasm"
-const session = new Session();
+const session = await Session.fromDirectory("./my-language");
+console.log(session.backend); // "native" or "wasm"
 ```
 
-`init()` accepts `{ libraryPath, wasmPath, url, wasmBytes, quiet }`.
-Sessions accept the same options per instance; `new Session()` with no
-options uses the initialized backend (or resolves synchronously under
-Node and Bun).
+Sessions come from async factories: `fromDirectory` (a language
+directory), `fromFile` (an explicit artifact file, with the file's own
+directory scanned for `procedures`), `fromBytes` (raw wasm module
+bytes), or `fromUrl` (fetched).
+A factory either resolves a usable session or rejects — there is no
+unready state. Native adapters offer `fromDirectory` and `fromFile`;
+wasm-capable entries (wasm adapter, universal, browser entries) offer
+`fromBytes` and `fromUrl`; browser entries omit `fromDirectory` and
+`fromFile`.
 
 Browsers use the wasm-only entry, resolved automatically through the
 `browser` export condition (verified under vite and webpack with no
 shims), or imported explicitly:
 
 ```ts
-import { Session, init } from "@sanbus/galley/browser";
+import { Session } from "@sanbus/galley/browser";
 
-await init({ url: "/parsers/language.wasm" });
-const session = new Session();
+const session = await Session.fromUrl("/parsers/language.wasm");
 ```
 
 ## Build
@@ -79,8 +83,12 @@ nothing the command generates. One shared library embeds one parser —
 split grammars across language directories exactly like the other
 bindings.
 
-Pass the built file with `libraryPath`, or name it once with
-`GALLEY_LIBRARY_PATH`. Nothing is searched: a missing file is a loud error.
+Pass the built directory to `fromDirectory`, or a renamed artifact to
+`fromFile` (versioned names, staging dirs, caches — anything that is
+not the standard file in a language directory). The Bun and Deno adapters
+first try their adapter-named file, then this shared file; either resolves
+silently to native. Nothing else is searched: a missing artifact is a
+loud error naming the directory or file.
 
 Two ways to install, depending on what you are doing:
 
@@ -116,6 +124,14 @@ The FFI boundary is the only overhead over the C API:
   into its own storage so node text stays valid after return.
 - All calls are synchronous and hold no additional threads; sessions are not
   thread-safe. Use one session per thread or guard externally.
+- One artifact file loads one backend port shared by every session opened
+  from it (spellings included: symlinks resolve to the same port).
+  `close()` destroys the session only; ports stay cached for the process
+  lifetime, so opening many distinct artifacts accumulates one loaded
+  library or module instance each.
+- A missing artifact reports `MissingArtifactError` with a build hint.
+  An artifact that exists but cannot be read surfaces the underlying I/O
+  error instead; it is never misreported as missing.
 
 Node text, diagnostics, and expected-token data remain valid only until the
 next parse on the same session; every accessor copies before returning.
@@ -167,33 +183,38 @@ export function hook_print(args: ProcedureArguments): void {
 }
 ```
 
-Native backends load `procedures.*` from the directory holding the shared
-library at first `Session` construction, registering any
-`reduction`/`reduction_*`/`hook_*` exports, exactly like Python's
-`import procedures` at extension load. Explicit registration composes
-with that and takes precedence (required on Deno and browsers, which
-have no auto-discovery):
+Every session owns its hooks: construction loads the language
+directory's `procedures` module into that session's registry (where the
+runtime can load modules synchronously), and the `procedures` option
+adds explicit modules on top — later entries win per hook name.
+`fromFile` scans the artifact file's own directory. Which entries scan:
+
+| Entry | Auto-scan | Without a scan |
+|---|---|---|
+| Node, Bun, wasm (Node) | `procedures.*` beside the artifact | — |
+| Deno | none (no synchronous loader) | warns once when a file is present; pass `procedures` explicitly |
+| Browsers, `fromBytes`, `fromUrl` | none (no filesystem) | pass `procedures` explicitly |
 
 ```ts
 import * as procedures from "./procedures.js";
-import { Session, installProcedures } from "@sanbus/galley";
+import { Session } from "@sanbus/galley";
 
-// explicit registration, e.g. for hooks living elsewhere:
-installProcedures(procedures);
+const session = await Session.fromDirectory("./my-language", { procedures });
 // or for a single hook:
-// installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
+// session.installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
 ```
 
 The build detects `procedures.ts` / `procedures.js` and generates a
 shim that routes every grammar hook through one callback, exactly like
 Python's `procedures_python.zig` and Go's `procedures_go.zig`.
-Unregistered hooks are silent no-ops. You can also manage hooks at runtime:
+Unregistered hooks are silent no-ops. Hooks never cross sessions: two
+sessions — even on two grammars in one process — resolve same-named
+hooks independently. Manage them per session at runtime:
 
 ```ts
-import { installProcedure, installProcedures, clearProcedures, listProcedures } from "@sanbus/galley";
-installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
-listProcedures(); // ["reduction_Pair", ...]
-clearProcedures();
+session.installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
+session.listProcedures(); // ["reduction_Pair", ...]
+session.clearProcedures();
 ```
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
@@ -250,7 +271,10 @@ built-in generic renderer. LR grammars use `lr_error_messages.zig`.
 ```ts
 import { Session, GalleyError } from "@sanbus/galley";
 
-using session = new Session({ maxErrors: 10, recoveryWindow: 500 });
+await using session = await Session.fromDirectory("./my-language", {
+  maxErrors: 10,
+  recoveryWindow: 500,
+});
 try {
   const parsed = session.parse("alpha:12,beta:3");
 } catch (err) {
@@ -266,7 +290,7 @@ Options mirror the runtime defaults: `maxErrors: 10`,
 `messageOverrides` registers per-session overrides:
 
 ```ts
-const session = new Session({
+const session = await Session.fromDirectory("./my-language", {
   messageOverrides: { Number: "expected a number after ':' (digits only) at line {line}" },
 });
 // or later:
@@ -322,7 +346,11 @@ npx galley-js-node <language-dir>
 ```
 
 ```ts
-import { Session, version, hasAst } from "@sanbus/galley-node";
+import { Session } from "@sanbus/galley-node";
+
+const session = await Session.fromDirectory("./my-language");
+session.version(); // every grammar query lives on the session
+session.hasAst();
 ```
 
 `ZIG_EXECUTABLE` selects zig (else `zig` on `PATH`, else `uvx`
@@ -355,15 +383,17 @@ bunx galley-js-bun .
 ```
 
 ```ts
-import { Session, version, hasAst } from "@sanbus/galley-bun";
+import { Session } from "@sanbus/galley-bun";
+
+const session = await Session.fromDirectory("./my-language");
 ```
 
 `ZIG_EXECUTABLE` selects zig. Bun runs TypeScript directly — the adapter
 itself needs no build step to run, though `bun run build` typechecks (and
 emits `dist/` for publishing) via `tsc`. Hook files work exactly like
 Node; Bun loads TypeScript synchronously, so `procedures.*` next to the
-shared library loads at first `Session` — no explicit registration
-needed. The suite mirrors the Node suite behavior by behavior:
+shared library loads into each `Session` — explicit `procedures` composes
+on top. The suite mirrors the Node suite behavior by behavior:
 
 ```sh
 cd examples/js
@@ -375,9 +405,8 @@ bun ../../bindings/js/bun/tests/test_bindings.mjs
 
 [`@sanbus/galley-deno`](https://github.com/sanbus-org/galley/tree/main/bindings/js/deno)
 over zero-dependency `Deno.dlopen`, with no subprocess or code-generation
-at runtime. Requires Deno 2. Three permissions: `--allow-ffi` (loading
-the library), `--allow-read` (library discovery, `parseFile`),
-`--allow-env` (library discovery). A complete consumer lives in
+at runtime. Requires Deno 2. Two permissions: `--allow-ffi` (loading
+the library) and `--allow-read` (library discovery, `parseFile`). A complete consumer lives in
 [`examples/js`](https://github.com/sanbus-org/galley/tree/main/examples/js),
 built and executed by CI on every push, byte-for-byte identical in output
 to every other example.
@@ -388,21 +417,23 @@ deno task build
 ```
 
 ```ts
-import { Session, version, hasAst } from "@sanbus/galley-deno";
+import { Session } from "@sanbus/galley-deno";
+
+const session = await Session.fromDirectory("./my-language", { procedures });
 ```
 
 `ZIG_EXECUTABLE` selects zig. Deno runs the adapter's TypeScript sources
 directly — no build step. Sources use explicit `.ts` import specifiers, so
 plain strict `deno run` / `deno check` work with no extra flags (already
 wired into the `deno task` entries). One difference from Node: Deno has
-no synchronous module load, so there is no `require()`-based
-auto-discovery — register explicitly:
+no synchronous module load, so there is no directory scan — pass hooks
+explicitly through `procedures`:
 
 ```ts
-import { installProcedures } from "@sanbus/galley-deno";
+import { Session } from "@sanbus/galley-deno";
 import * as procedures from "./procedures.ts";
 
-installProcedures(procedures);
+const session = await Session.fromDirectory("./my-language", { procedures });
 ```
 
 The suite mirrors the Node suite behavior by behavior. It typechecks the
@@ -433,16 +464,16 @@ npx galley-js-wasm .
 ```
 
 ```ts
-import { Session, version, hasAst } from "@sanbus/galley-wasm";
+import { Session } from "@sanbus/galley-wasm";
+
+const session = await Session.fromDirectory("./my-language");
 ```
 
-`ZIG_EXECUTABLE` selects zig. Under Node the module auto-initializes
-synchronously on first use; elsewhere (browsers) call `await init()` first
-— `await init({ url })` or `await init({ bytes })` — then use the
-synchronous `Session` API. `initSync()` is available for Node-only scripts.
-Under Node `procedures.*` next to the shared library loads via
-`require()`; elsewhere register explicitly with `installProcedures` from
-`@sanbus/galley-core` before parsing. The suite mirrors the Node suite
+`ZIG_EXECUTABLE` selects zig. Sessions come from async factories:
+`fromDirectory` (a directory), `fromBytes` (raw module bytes), or
+`fromUrl` (fetched).
+Under Node `procedures.*` next to the module loads into each session;
+elsewhere pass `procedures` explicitly. The suite mirrors the Node suite
 behavior by behavior:
 
 ```sh
@@ -454,22 +485,19 @@ node ../../bindings/js/wasm/tests/test_bindings.mjs
 ### Browsers (wasm only)
 
 No FFI exists in browsers, so the browser entry is a separate wasm-only
-surface (same `Session` API, its own `init` since it never attempts
-native legs) with no `node:` specifier anywhere in its graph, so vite
+surface (same `Session` API, minus `fromDirectory`) with no `node:` specifier anywhere in its graph, so vite
 and webpack resolve it with no shims (verified: both bundlers pick the
 browser file for the default import too). `@sanbus/galley-wasm` ships
 the matching `@sanbus/galley-wasm/browser` entry.
 
 ```ts
-import { Session, init } from "@sanbus/galley/browser";
+import { Session } from "@sanbus/galley/browser";
 
-await init({ url: "/parsers/language.wasm" });
-const session = new Session();
+const session = await Session.fromUrl("/parsers/language.wasm", { procedures });
 ```
 
-`init()` accepts `{ libraryPath, wasmPath, url, wasmBytes, quiet }` —
-the same names as the default entry. Hooks register explicitly with
-`installProcedures` before parsing.
+`fromBytes` works the same way; hooks arrive through the session's
+`procedures` option.
 
 ## Development builds
 

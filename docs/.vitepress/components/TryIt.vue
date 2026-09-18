@@ -317,12 +317,13 @@ async function ensureChecker(checker) {
   loading.add(checker.id);
   try {
     const url = `${import.meta.env.BASE_URL}try-it/${checker.id}.wasm`;
-    await galley.init({ url, libraryPath: checker.id });
-    sessions[checker.id] = new galley.Session({ libraryPath: checker.id });
+    sessions[checker.id] = await galley.Session.fromUrl(url, {
+      procedures: checker.id === "json" ? jsonHooks : undefined,
+      quiet: true,
+    });
     if (checker.id === "json") {
       const snapshotUrl = `${import.meta.env.BASE_URL}try-it/json-ast.wasm`;
-      await galley.init({ url: snapshotUrl, libraryPath: "json-snapshot" });
-      sessions["json-snapshot"] = new galley.Session({ libraryPath: "json-snapshot" });
+      sessions["json-snapshot"] = await galley.Session.fromUrl(snapshotUrl, { quiet: true });
     }
     checker.ready = true;
     runCheck(checker);
@@ -337,7 +338,6 @@ async function ensureChecker(checker) {
 onMounted(async () => {
   try {
     galley = await import("@sanbus/galley/browser");
-    galley.installProcedures(jsonHooks);
   } catch (error) {
     for (const checker of checkers) {
       checker.statusClass = "bad";

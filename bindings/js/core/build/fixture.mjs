@@ -9,8 +9,6 @@
  * directory and built there with the adapter's own builder, so test runs
  * never read or write `examples/`.
  *
- * - `GALLEY_LIBRARY_PATH`, when set, wins outright (explicit user artifact,
- *   no build). Otherwise the fixture is built and its path returned.
  * - `GALLEY_CHECKOUT` must name the Galley checkout to build against
  *   (CI sets it). Unset is a loud error, never a guess.
  * - The workdir path is stable per `scope`, so the builders' content-hash
@@ -40,12 +38,11 @@ function requireGalleyCheckout() {
 }
 
 /**
- * Return the parser artifact at `GALLEY_LIBRARY_PATH`, or build the shared
- * fixture with `buildCommand` (argv prefix, workdir appended) and return
- * `<workdir>/<libFileName>`. Throws loudly when the build fails.
+ * Build the shared fixture with `buildCommand` (argv prefix, workdir
+ * appended) and return the workdir — the language directory sessions
+ * open through `languagePath`. Throws loudly when the build fails.
  */
 export function ensureTestLibrary({ buildCommand, libFileName, scope }) {
-  if (process.env.GALLEY_LIBRARY_PATH) return process.env.GALLEY_LIBRARY_PATH;
   if (!Array.isArray(buildCommand) || buildCommand.length === 0) {
     throw new Error("galley test fixture: buildCommand must be a non-empty argv array");
   }
@@ -81,5 +78,5 @@ export function ensureTestLibrary({ buildCommand, libFileName, scope }) {
   if (!fs.existsSync(libPath)) {
     throw new Error(`galley test fixture: expected library not found at ${libPath}`);
   }
-  return libPath;
+  return workDir;
 }
