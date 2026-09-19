@@ -102,15 +102,15 @@ await test("fromFile opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(exampleLib)}`);
   fs.renameSync(path.join(fileDir, exampleLib), customLib);
   try {
+    // Bare file loads never scan: hooks arrive explicitly only.
     const s = Session.fromFile(customLib);
     try {
-      // Sibling scan: the file's own directory provides hooks.
-      assert.ok(s.listProcedures().includes("reduction_Pair"));
+      assert.deepEqual(s.listProcedures(), []);
       assert.equal(s.parse("alpha:12,beta:3"), 15);
     } finally {
       s.close();
     }
-    // Explicit procedures win over the sibling scan.
+    // Explicit procedures still fire on a bare-loaded session.
     let called = 0;
     const s2 = Session.fromFile(customLib, { procedures: { reduction_Pair: () => { called++; } } });
     try {

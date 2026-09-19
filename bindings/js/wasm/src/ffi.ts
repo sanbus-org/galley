@@ -289,13 +289,12 @@ export function seedFileIo(io: FileIo): void {
 
 /**
  * Procedure-hook scans seeded by the Node entry (`files.ts`): the
- * language-directory scan and the explicit-file scan (the file's own
- * directory). Browsers seed nothing and pass hooks explicitly through
- * the session's `procedures` option.
+ * language-directory scan only. Bare file loads never scan; browsers
+ * seed nothing and pass hooks explicitly through the session's
+ * `procedures` option.
  */
 export interface ProceduresScan {
   forDirectory(directory: string): Record<string, unknown> | null;
-  forFile(filePath: string): Record<string, unknown> | null;
 }
 
 let proceduresScan: ProceduresScan | null = null;
@@ -317,17 +316,6 @@ export function loadProcedures(directory: string): Record<string, unknown> | nul
   if (proceduresScan === null) return null;
   proceduresScanUsed = true;
   return proceduresScan.forDirectory(directory);
-}
-
-/**
- * The `procedures` module beside an explicit artifact file, if any and
- * if scans are seeded. For `Session.fromFile`; same rule as the
- * directory scan.
- */
-export function loadProceduresForFile(filePath: string): Record<string, unknown> | null {
-  if (proceduresScan === null) return null;
-  proceduresScanUsed = true;
-  return proceduresScan.forFile(filePath);
 }
 
 // --- library discovery -----------
@@ -455,7 +443,7 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
 export interface WasmPortSource {
   /** Language directory holding the standard-named module file. */
   languagePath?: string;
-  /** Explicit module file. The file's own directory is scanned for `procedures`. */
+  /** Explicit module file. Never scanned; pass `procedures` explicitly. */
   filePath?: string;
   /** Raw module bytes. Instantiates synchronously in every runtime. */
   bytes?: Uint8Array;

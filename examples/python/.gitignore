@@ -7,15 +7,15 @@
 /kv/__init__.pyi
 /kv/galley_impl.*.so
 /kv/libgalley-python.*
-/mini_json/_ll-parser.zig
-/mini_json/_lr-parser.zig
-/mini_json/procedures.zig
-/mini_json/procedures_python.zig
-/mini_json/metadata.json
-/mini_json/__init__.py
-/mini_json/__init__.pyi
-/mini_json/galley_impl.*.so
-/mini_json/libgalley-python.*
+/json/_ll-parser.zig
+/json/_lr-parser.zig
+/json/procedures.zig
+/json/procedures_python.zig
+/json/metadata.json
+/json/__init__.py
+/json/__init__.pyi
+/json/galley_impl.*.so
+/json/libgalley-python.*
 
 /compile_commands.json
 /build

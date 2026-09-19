@@ -38,13 +38,6 @@ export function loadProcedures(_languagePath: string): Record<string, unknown> |
   return null;
 }
 
-/**
- * File twin of {@link loadProcedures}: still null, for the same reason.
- */
-export function loadProceduresForFile(_filePath: string): Record<string, unknown> | null {
-  return null;
-}
-
 function scanJoin(directory: string, file: string): string {
   return directory.endsWith("/") ? directory + file : `${directory}/${file}`;
 }
@@ -72,20 +65,9 @@ export function findProceduresFile(directory: string): string | null {
   return probeProceduresFile(directory);
 }
 
-/** Procedures file beside an explicit artifact file, if one is there. */
-export function findProceduresFileForFile(filePath: string): string | null {
-  const slash = filePath.lastIndexOf("/");
-  return probeProceduresFile(slash < 0 ? "." : filePath.slice(0, slash) || "/");
-}
-
 /** Warn for `Session.fromDirectory` without explicit `procedures`. */
 export function warnIfProceduresSkipped(directory: string, explicit: unknown): void {
   noteSkippedScan(findProceduresFile(directory), explicit);
-}
-
-/** Warn for `Session.fromFile` without explicit `procedures`. */
-export function warnIfProceduresSkippedForFile(filePath: string, explicit: unknown): void {
-  noteSkippedScan(findProceduresFileForFile(filePath), explicit);
 }
 
 export function ensureDispatchFor(port: DenoPort & FfiPort): void {

@@ -14,7 +14,7 @@ the `galley` loader (manual hooks only).
 
 A complete, runnable consumer lives in
 [`examples/python`](https://github.com/sanbus-org/galley/tree/main/examples/python):
-the `kv` keyvalue package behind `demo.py` and the `mini_json` JSON
+the `kv` keyvalue package behind `demo.py` and the `json` JSON
 package behind `benchmark.py`.
 It is built and executed by CI on every push, byte-for-byte identical in
 output to the C, C++, Rust, and Go examples.

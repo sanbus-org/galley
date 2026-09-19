@@ -14,7 +14,7 @@
 import { Session as CoreSession, checkArtifactPath, checkLanguagePath } from "@sanbus/galley-core";
 import type { SessionOptions } from "@sanbus/galley-core";
 import { getDenoPort, getDenoPortFromFile } from "./ffi.ts";
-import { warnIfProceduresSkipped, warnIfProceduresSkippedForFile } from "./dispatch.ts";
+import { warnIfProceduresSkipped } from "./dispatch.ts";
 
 export type { SessionOptions };
 
@@ -33,7 +33,6 @@ export class Session extends CoreSession {
   static fromFile(filePath: string, options: SessionOptions = {}): Session {
     const file = checkArtifactPath(filePath, "galley: Session.fromFile");
     const port = getDenoPortFromFile(file);
-    warnIfProceduresSkippedForFile(file, options.procedures);
     return new Session(port, options);
   }
 }

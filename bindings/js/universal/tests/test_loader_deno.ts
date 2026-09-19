@@ -166,8 +166,10 @@ await test("fromFile opens an explicit artifact file", async () => {
     const { result: session, lines } = await silenceWarnAsync(() => Session.fromFile(customLib));
     try {
       assert.equal(session.backend, "native");
-      assert.equal(lines.length, 1);
-      assert.match(lines[0], /procedures/);
+      // Bare file loads never scan and never warn: hooks arrive
+      // explicitly only.
+      assert.equal(lines.length, 0);
+      assert.deepEqual(session.listProcedures(), []);
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
       session.close();

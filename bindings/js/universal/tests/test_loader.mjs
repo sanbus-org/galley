@@ -134,7 +134,8 @@ await test("fromFile opens an explicit artifact file", async () => {
     try {
       assert.equal(session.backend, "native");
       assert.equal(lines.length, 0);
-      assert.ok(session.listProcedures().includes("reduction_Pair"));
+      // Bare file loads never scan: hooks arrive explicitly only.
+      assert.deepEqual(session.listProcedures(), []);
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
       session.close();

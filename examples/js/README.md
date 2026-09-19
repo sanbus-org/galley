@@ -5,11 +5,11 @@ script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
 npm install --install-links
-GALLEY_CHECKOUT=/path/to/galley npx galley build .
+GALLEY_CHECKOUT=/path/to/galley npx galley build kv
 npx tsx demo.ts
 bun demo.ts
 deno task demo
-GALLEY_CHECKOUT=/path/to/galley npx galley build benchmark
+GALLEY_CHECKOUT=/path/to/galley npx galley build json
 npx tsx benchmark.ts ../../languages/json/samples/code-02.json
 bun benchmark.ts ../../languages/json/samples/code-02.json
 deno task benchmark

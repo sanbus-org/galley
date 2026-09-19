@@ -11,7 +11,7 @@ import {
   KIND_INDENTATION,
   type Node,
 } from "@sanbus/galley/browser";
-import * as procedures from "./procedures.ts";
+import * as procedures from "./kv/procedures.ts";
 
 const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";

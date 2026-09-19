@@ -50,18 +50,3 @@ export function scanLanguageDir(directory: string | undefined): Record<string, u
     path.resolve(directory),
   );
 }
-
-/**
- * `require()`-based load of `procedures.*` beside an explicit module
- * file (the file's own directory), for `Session.fromFile`. Same rule as
- * {@link scanLanguageDir}.
- */
-export function scanLanguageFile(filePath: string | undefined): Record<string, unknown> | null {
-  if (!filePath) return null;
-  const require = createRequire(import.meta.url);
-  return loadProceduresModule(
-    (specifier) => require(specifier) as unknown,
-    path.join,
-    path.dirname(path.resolve(filePath)),
-  );
-}

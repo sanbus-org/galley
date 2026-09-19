@@ -6,7 +6,7 @@ Requires `python3` and `zig` (only the fetch script uses `git`; the build itself
 pip install -e .
 GALLEY_CHECKOUT=/path/to/galley python -m galley kv
 python demo.py
-GALLEY_CHECKOUT=/path/to/galley python -m galley mini_json
+GALLEY_CHECKOUT=/path/to/galley python -m galley json
 python benchmark.py
 ```
 

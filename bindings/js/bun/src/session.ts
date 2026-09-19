@@ -4,15 +4,16 @@
  * Created through `Session.fromDirectory`: the adapter loads its
  * standard-named library from the language directory, and the
  * directory's `procedures` module — if any — into the new session's
- * own hook registry, ahead of explicit `procedures`. The constructor
- * is private; the factory is synchronous (only the universal entry
- * and `fromUrl` need `async`).
+ * own hook registry, ahead of explicit `procedures`. `Session.fromFile`
+ * opens an explicit library file instead and never scans: hooks arrive
+ * explicitly only. The constructor is private; the factory is
+ * synchronous (only the universal entry and `fromUrl` need `async`).
  */
 
 import { Session as CoreSession, checkArtifactPath, checkLanguagePath } from "@sanbus/galley-core";
 import type { SessionOptions } from "@sanbus/galley-core";
 import { getBunPort, getBunPortFromFile } from "./ffi.ts";
-import { loadProcedures, loadProceduresForFile } from "./dispatch.ts";
+import { loadProcedures } from "./dispatch.ts";
 
 export type { SessionOptions };
 
@@ -28,6 +29,6 @@ export class Session extends CoreSession {
 
   static fromFile(filePath: string, options: SessionOptions = {}): Session {
     const file = checkArtifactPath(filePath, "galley: Session.fromFile");
-    return new Session(getBunPortFromFile(file), options, loadProceduresForFile(file));
+    return new Session(getBunPortFromFile(file), options, null);
   }
 }
