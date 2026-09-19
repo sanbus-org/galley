@@ -4,7 +4,8 @@
   "description": "Galley JavaScript bindings for Deno (@sanbus/galley-core over Deno.dlopen and bindings/c/galley.h)",
   "type": "module",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./build": "./build.ts"
   },
   "files": ["dist", "src", "build.ts", "README.md"],
   "scripts": {
