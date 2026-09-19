@@ -4,9 +4,7 @@
 // and source position, plus dropIfEmpty on empty tails. Author-defined
 // grammar hooks arrive as hook_<name> — Key is annotated @print.
 //
-// This file is the Java counterpart of examples/python/procedures.py,
-// examples/go/demo/procedures.go, examples/rust/procedures.rs, and
-// examples/js/node/procedures.ts. Hooks are registered at runtime via
+// Hooks are registered at runtime via
 // org.sanbus.galley.Procedures.installProcedure; the file's existence
 // next to the grammar triggers the build tool to generate the Zig shim
 // (procedures_java.zig) that dispatches through those registrations.

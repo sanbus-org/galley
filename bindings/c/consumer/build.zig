@@ -104,6 +104,7 @@ pub fn build(b: *std.Build) !void {
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig (default: {ll,lr}_error_messages.zig next to parser when present, otherwise template)");
     const output = b.option([]const u8, "output", "Bare filename to install the library as directly under --prefix (e.g. libgalley-python.dylib); --prefix is then the grammar dir");
     const install_header = b.option(bool, "install-header", "Install include/galley.h under --prefix") orelse false;
+    const linkage_option = b.option([]const u8, "linkage", "Library linkage: dynamic or static (default dynamic; static links the parser into the consumer, e.g. a self-contained Python extension)") orelse "dynamic";
 
     if (procedures_c_source != null and procedures_object != null) {
         std.log.err("pass either -Dprocedures-c-source or -Dprocedures-object, not both: one implementation owns the procedure entry points", .{});
@@ -114,6 +115,15 @@ pub fn build(b: *std.Build) !void {
         std.log.err("invalid -Dparser-type '{s}': expected ll or lr", .{parser_type});
         return error.InvalidParserType;
     }
+
+    const linkage: std.builtin.LinkMode = if (std.mem.eql(u8, linkage_option, "static"))
+        .static
+    else if (std.mem.eql(u8, linkage_option, "dynamic"))
+        .dynamic
+    else {
+        std.log.err("invalid -Dlinkage '{s}': expected static or dynamic", .{linkage_option});
+        return error.InvalidLinkage;
+    };
 
     const galley_dep = b.dependency("galley", .{
         .target = target,
@@ -187,7 +197,7 @@ pub fn build(b: *std.Build) !void {
     } else {
         artifact = b.addLibrary(.{
             .name = lib_name,
-            .linkage = .dynamic,
+            .linkage = linkage,
             .root_module = capi_mod,
         });
     }

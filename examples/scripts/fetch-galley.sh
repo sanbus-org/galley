@@ -6,7 +6,7 @@
 # output outside the language dir.
 #
 # Usage:
-#   GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh) python -m galley_bindings examples/python
+#   GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh) python -m galley examples/python/kv
 #   GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh) cargo build --manifest-path examples/rust/Cargo.toml
 #
 # Environment: GALLEY_REPOSITORY (default https://github.com/sanbus-org/galley.git),

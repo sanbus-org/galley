@@ -6,15 +6,18 @@ byte-for-byte in output."""
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-import galley
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import kv as parser
 
 VALID_SAMPLE = "alpha:12,beta:3"
 BROKEN_SAMPLE = "alpha:"
 SAMPLE_PATH = "/tmp/galley-python-example.json"
 
 
-def print_tree(node: galley.Node, depth: int) -> None:
+def print_tree(node: parser.Node, depth: int) -> None:
     """Prints one node and recurses into its children."""
     name = node.symbol_name()
     text = node.text()
@@ -30,11 +33,11 @@ def print_tree(node: galley.Node, depth: int) -> None:
 
 
 def main() -> int:
-    print(f"galley version: {galley.version()}")
+    print(f"galley version: {parser.version()}")
     try:
         # max_errors is explicit; zero would select the same default.
-        session = galley.Session(max_errors=10)
-    except galley.Error:
+        session = parser.Session(max_errors=10)
+    except parser.Error:
         print("failed to create a parser session", file=sys.stderr)
         return 1
     with session:
@@ -42,7 +45,7 @@ def main() -> int:
             session.set_message_override(
                 "Number", "expected a number after ':' (digits only) at line {line}"
             )
-        except galley.Error:
+        except parser.Error:
             print("failed to register the message override", file=sys.stderr)
             return 1
 
@@ -51,7 +54,7 @@ def main() -> int:
         if len(arguments) > 0:
             try:
                 parsed = session.parse_file(arguments[0])
-            except galley.Error as error:
+            except parser.Error as error:
                 diagnostic = error.diagnostic
                 line = diagnostic.line if diagnostic else 0
                 column = diagnostic.column if diagnostic else 0
@@ -64,11 +67,11 @@ def main() -> int:
         # Successful parse: walk the tree.
         try:
             parsed = session.parse_sentinel(VALID_SAMPLE)
-        except galley.Error as error:
+        except parser.Error as error:
             print(f"unexpected failure: {error} ({error.code})", file=sys.stderr)
             return 1
         print(f"parsed {parsed} bytes, {session.node_count()} AST nodes")
-        if not galley.has_ast():
+        if not parser.has_ast():
             print("AST construction disabled; skipping tree walk")
         else:
             root = session.root_node()
@@ -80,7 +83,7 @@ def main() -> int:
             session.parse_sentinel(BROKEN_SAMPLE)
             print("expected the broken sample to fail", file=sys.stderr)
             return 1
-        except galley.Error as error:
+        except parser.Error as error:
             diagnostic = error.diagnostic
         if diagnostic is None:
             print("expected a diagnostic for the broken sample", file=sys.stderr)
@@ -106,16 +109,16 @@ def main() -> int:
             session.parse_sentinel("alpha:13x,beta:,gamma:q")
             print("expected the multi-error sample to fail", file=sys.stderr)
             return 1
-        except galley.Error:
+        except parser.Error:
             pass
         recorded = session.diagnostics()
         print(f"recorded diagnostics: {len(recorded)}")
         for index, diag in enumerate(recorded):
             kind_name = (
                 "syntax"
-                if diag.kind == galley.KIND_SYNTAX
+                if diag.kind == parser.KIND_SYNTAX
                 else "indentation"
-                if diag.kind == galley.KIND_INDENTATION
+                if diag.kind == parser.KIND_INDENTATION
                 else "none"
             )
             unexpected = diag.unexpected_token.decode() if diag.unexpected_token else ""
@@ -132,7 +135,7 @@ def main() -> int:
             return 1
         try:
             parsed = session.parse_file(SAMPLE_PATH)
-        except galley.Error as error:
+        except parser.Error as error:
             print(f"file parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
         position = session.last_position()
@@ -143,7 +146,7 @@ def main() -> int:
         print(f"file parse: {parsed} bytes, ended at {end_line}:{end_column}")
 
         # Tree editing: detach the root's children, then reattach them.
-        if galley.has_ast():
+        if parser.has_ast():
             root = session.root_node()
             if root is None:
                 print("expected the root to have children", file=sys.stderr)

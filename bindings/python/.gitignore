@@ -1,15 +1,16 @@
 *.egg-info/
 dist/
 build/
-/test-fixture/_ll-parser.zig
-/test-fixture/_lr-parser.zig
-/test-fixture/procedures.zig
-/test-fixture/procedures_python.zig
-/test-fixture/metadata.json
-/test-fixture/galley.*.so
-/test-fixture/galley.pyi
-/test-fixture/libgalley-python.*
+/test_fixture/_ll-parser.zig
+/test_fixture/_lr-parser.zig
+/test_fixture/procedures.zig
+/test_fixture/procedures_python.zig
+/test_fixture/metadata.json
+/test_fixture/__init__.py
+/test_fixture/__init__.pyi
+/test_fixture/galley_impl.*.so
+/test_fixture/libgalley-python.*
 # Assembled on demand by scripts/js/assemble_compile_kit.sh, never tracked.
-/galley_bindings/compile-kit/
+/galley/compile-kit/
 # Staged at publish from the shared CLI artifacts, never tracked.
-/galley_bindings/generator/
+/galley/generator/
