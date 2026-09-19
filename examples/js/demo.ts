@@ -14,11 +14,11 @@ import {
   KIND_INDENTATION,
 } from "@sanbus/galley";
 import { Session as WasmSession } from "@sanbus/galley-wasm";
-import * as procedures from "./procedures.ts";
+import * as procedures from "./kv/procedures.ts";
 
 // The language directory this demo runs: the session loads the
 // standard-named parser artifact from it. Exact directory, no searching.
-const LANGUAGE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const LANGUAGE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "kv");
 
 // GALLEY_WASM=1 (or a path to a `.wasm` module file) runs the same demo
 // through the WebAssembly backend instead of native. Explicit choice, so

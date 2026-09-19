@@ -45,19 +45,6 @@ export function loadProcedures(languagePath: string): Record<string, unknown> | 
   );
 }
 
-/**
- * Loads the `procedures` module beside an explicit artifact file (the
- * file's own directory), for `Session.fromFile`. Same rule as the
- * directory scan; never touches another session's hooks.
- */
-export function loadProceduresForFile(filePath: string): Record<string, unknown> | null {
-  return loadProceduresModule(
-    (specifier) => require(specifier) as unknown,
-    path.join,
-    path.dirname(filePath),
-  );
-}
-
 export function ensureDispatchFor(port: BunPort & FfiPort): void {
   if (!port.supportsDispatch) {
     // No dispatch — installs stay no-ops.

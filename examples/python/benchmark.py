@@ -42,7 +42,8 @@ def main() -> int:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    import mini_json as parser
+    # Deliberate stdlib shadowing: this script never uses stdlib json.
+    import json as parser
 
     path = resolve_input(explicit)
     try:

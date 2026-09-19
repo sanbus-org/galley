@@ -335,7 +335,7 @@ jobs:
         run: |
           npm install
           npm --prefix ../../bindings/js install
-          npx galley-js-node .
+          npx galley-js-node kv
 
       - name: Test bindings (typescript)
         if: ${{ matrix.language == 'typescript' }}
@@ -368,7 +368,7 @@ jobs:
         run: |
           bun install
           (cd ../../bindings/js && rm -f package-lock.json bun.lock && bun install)
-          bunx galley-js-bun .
+          bunx galley-js-bun kv
 
       - name: Test bindings (bun)
         if: ${{ matrix.language == 'bun' }}
@@ -386,7 +386,7 @@ jobs:
         run: |
           npm install
           npm --prefix ../../bindings/js install
-          npx galley-js-wasm .
+          npx galley-js-wasm kv
 
       - name: Test bindings (wasm)
         if: ${{ matrix.language == 'wasm' }}
@@ -475,11 +475,11 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,zig,java}/ll.grm examples/python/kv/ll.grm examples/js/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,zig,java}/config.zig examples/python/kv/config.zig examples/js/config.zig examples/go/demo/config.zig
-          same benchmark/ll.grm examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/mini_json/ll.grm examples/js/benchmark/ll.grm
-          same benchmark/config.zig examples/{c,cpp,rust,zig,java}/benchmark/config.zig examples/python/mini_json/config.zig examples/js/benchmark/config.zig
-          for f in examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/mini_json/ll.grm examples/js/benchmark/ll.grm; do
+          same ll.grm examples/{c,cpp,rust,zig,java}/ll.grm examples/python/kv/ll.grm examples/js/kv/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,zig,java}/config.zig examples/python/kv/config.zig examples/js/kv/config.zig examples/go/demo/config.zig
+          same json/ll.grm examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/json/ll.grm examples/js/json/ll.grm
+          same json/config.zig examples/{c,cpp,rust,zig,java}/benchmark/config.zig examples/python/json/config.zig examples/js/json/config.zig
+          for f in examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/json/ll.grm examples/js/json/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -562,13 +562,13 @@ jobs:
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
           ./zig-out/bin/galley --emit-metadata "examples/python/kv" >/dev/null
-          ./zig-out/bin/galley --emit-metadata "examples/js" >/dev/null
+          ./zig-out/bin/galley --emit-metadata "examples/js/kv" >/dev/null
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,zig,java}/_ll-parser.zig examples/python/kv/_ll-parser.zig examples/js/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,zig,java}/_ll-parser.zig examples/python/kv/_ll-parser.zig examples/js/kv/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,java}/procedures.zig examples/python/kv/procedures.zig examples/js/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,java}/procedures.zig examples/python/kv/procedures.zig examples/js/kv/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -583,7 +583,7 @@ jobs:
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/demo/procedures.go > /tmp/names-go.txt
           names examples/python/kv/procedures.py > /tmp/names-python.txt
-          names examples/js/procedures.ts > /tmp/names-js.txt
+          names examples/js/kv/procedures.ts > /tmp/names-js.txt
           names examples/java/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
@@ -659,7 +659,7 @@ jobs:
           npm install >/dev/null 2>&1
           npm --prefix ../../bindings/js install >/dev/null 2>&1
           npm --prefix ../../bindings/js/universal install >/dev/null 2>&1
-          GALLEY_CHECKOUT="$PWD/../.." npx galley build . >/dev/null
+          GALLEY_CHECKOUT="$PWD/../.." npx galley build kv >/dev/null
           npx tsx demo.ts >/tmp/out-js-universal.txt 2>/tmp/err-js-universal.txt
           bun demo.ts >/tmp/out-js-universal-bun.txt 2>/tmp/err-js-universal-bun.txt
           deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-js-universal-deno.txt 2>/tmp/err-js-universal-deno.txt
@@ -773,20 +773,20 @@ jobs:
           go build -o /tmp/galley-go-benchmark ./benchmark
           cd ../python
           pip install -e .
-          python -m galley mini_json
+          python -m galley json
           cd ../js
           npm install
           npm --prefix ../../bindings/js install
           npm --prefix ../../bindings/js/universal install
-          npx galley-js-node benchmark
-          deno run --allow-read --allow-write --allow-run --allow-env ../../bindings/js/deno/build.ts benchmark
+          npx galley-js-node json
+          deno run --allow-read --allow-write --allow-run --allow-env ../../bindings/js/deno/build.ts json
           bun install
           (cd ../../bindings/js && rm -f package-lock.json bun.lock && bun install)
-          bunx galley-js-bun benchmark
+          bunx galley-js-bun json
           npm install
           npm --prefix ../../bindings/js install
           npm --prefix ../../bindings/js/universal install
-          npx galley-js-wasm benchmark
+          npx galley-js-wasm json
           cd ../zig
           zig build -Doptimize=ReleaseFast
           cd ../..
@@ -936,7 +936,7 @@ jobs:
         run: |
           cd examples/js
           npm install --install-links --no-audit --no-fund
-          npx galley build .
+          npx galley build kv
           npx tsx demo.ts >/tmp/out-universal-node.txt 2>/tmp/err-universal-node.txt
           bun demo.ts >/tmp/out-universal-bun.txt 2>/tmp/err-universal-bun.txt
           deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-universal-deno.txt 2>/tmp/err-universal-deno.txt
@@ -960,7 +960,7 @@ jobs:
           # an `if`: under `bash -e` a failed `! grep` never exits.
           npm run build
           ./node_modules/.bin/vite build
-          cp index.html libgalley-js-wasm.wasm dist-browser/
+          cp index.html kv/libgalley-js-wasm.wasm dist-browser/
           ./node_modules/.bin/playwright install --only-shell chromium
           python3 -m http.server 8123 -d dist-browser &
           SERVER_PID=$!

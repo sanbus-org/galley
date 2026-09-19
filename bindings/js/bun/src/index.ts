@@ -12,5 +12,5 @@ import { Session } from "./session.ts";
 export * from "@sanbus/galley-core";
 export { Session };
 export { getBunPort, getBunPortFromFile, libFileName } from "./ffi.ts";
-export { loadProcedures, loadProceduresForFile } from "./dispatch.ts";
+export { loadProcedures } from "./dispatch.ts";
 export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

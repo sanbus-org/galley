@@ -30,7 +30,7 @@ function resolveInput(explicit: string | undefined): string {
 
 // The language directory this benchmark runs: the session loads the
 // standard-named parser artifact from it. Exact directory, no searching.
-const BENCHMARK_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "benchmark");
+const BENCHMARK_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "json");
 
 // GALLEY_WASM=1 (or a path to a `.wasm` module file) benchmarks the
 // WebAssembly backend instead of native, mirroring demo.ts.

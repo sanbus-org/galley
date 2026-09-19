@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { artifactFileName } from "@sanbus/galley-core";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
@@ -101,15 +101,15 @@ await test("fromFile opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(exampleLib)}`);
   fs.renameSync(path.join(fileDir, exampleLib), customLib);
   try {
+    // Bare file loads never scan: hooks arrive explicitly only.
     const s = Session.fromFile(customLib);
     try {
-      // Sibling scan: the file's own directory provides hooks.
-      assert.ok(s.listProcedures().includes("reduction_Pair"));
+      assert.deepEqual(s.listProcedures(), []);
       assert.equal(s.parse("alpha:12,beta:3"), 15);
     } finally {
       s.close();
     }
-    // Explicit procedures win over the sibling scan.
+    // Explicit procedures still fire on a bare-loaded session.
     let called = 0;
     const s2 = Session.fromFile(customLib, { procedures: { reduction_Pair: () => { called++; } } });
     try {
@@ -120,6 +120,28 @@ await test("fromFile opens an explicit artifact file", async () => {
     }
   } finally {
     fs.rmSync(fileDir, { recursive: true, force: true });
+  }
+});
+
+await test("direct package import wires bundled hooks", async () => {
+  // The generated entry imports @sanbus/galley by specifier: link the
+  // workspace universal package into the temp fixture directory so the
+  // import resolves exactly as in a consumer project.
+  const universalLink = path.join(languageDir, "node_modules", "@sanbus", "galley");
+  fs.mkdirSync(path.dirname(universalLink), { recursive: true });
+  try {
+    fs.unlinkSync(universalLink);
+  } catch {
+    // Absent on first run; stale on repeats.
+  }
+  fs.symlinkSync(path.join(__dirname, "..", "..", "universal"), universalLink);
+  const pkg = await import(pathToFileURL(path.join(languageDir, "index.mjs")).href);
+  const s = await pkg.openSession();
+  try {
+    assert.ok(s.listProcedures().includes("reduction_Pair"));
+    assert.equal(s.parse("alpha:12,beta:3"), 15);
+  } finally {
+    s.close();
   }
 });
 

@@ -12,8 +12,8 @@
  *
  * There is no `init()`: the universal `Session` factories resolve their
  * backend before returning — `fromDirectory` (a directory holding the
- * standard-named artifact), `fromFile` (an explicit artifact file, with
- * the file's own directory scanned for `procedures`), `fromBytes` (raw
+ * standard-named artifact, with `procedures` scanned), `fromFile` (an
+ * explicit artifact file, never scanned), `fromBytes` (raw
  * wasm), or `fromUrl` (fetched). A factory either resolves a usable
  * session or rejects: there is no unready state.
  *
@@ -48,7 +48,7 @@ export type NativeRuntime = "node" | "bun" | "deno";
 export interface SessionSource {
   /** Language directory holding the standard-named artifact file. */
   languagePath?: string;
-  /** Explicit artifact file. The file's own directory is scanned for `procedures`. */
+  /** Explicit artifact file. Never scanned; pass `procedures` explicitly. */
   filePath?: string;
   /** Module URL for `fetch`. */
   url?: string | URL;
@@ -78,7 +78,6 @@ interface WasmAdapter {
   instantiateWasm(bytes: Uint8Array): FfiPort;
   portFromBytes?(bytes: Uint8Array): Promise<FfiPort>;
   loadProcedures?(languagePath: string): Record<string, unknown> | null;
-  loadProceduresForFile?(filePath: string): Record<string, unknown> | null;
 }
 
 const NATIVE_ADAPTERS: Record<NativeRuntime, { module: string; getPort: string; getPortFromFile: string }> = {
@@ -205,15 +204,19 @@ function useNativeModule(
   const artifact = (fromFile ? source.filePath : source.languagePath) as string;
   try {
     const port = (getPortFn as (artifact: string) => FfiPort)(artifact);
-    const loadProcedures = loaded[fromFile ? "loadProceduresForFile" : "loadProcedures"];
+    // Bare file loads never scan: only directory opens consult the
+    // adapter's scan export. The find-probe below still runs for
+    // adapters that report present-but-unscanned files (Deno).
+    const loadProcedures = fromFile ? null : loaded["loadProcedures"];
     const procedures =
       typeof loadProcedures === "function"
         ? (loadProcedures as (artifact: string) => Record<string, unknown> | null)(artifact)
         : null;
-    // Detection without loading (Deno): a present-but-unscanned file is
-    // reported for the session to warn about. Legs that load (or throw
-    // on failure) never produce one.
-    const findScan = loaded[fromFile ? "findProceduresFileForFile" : "findProceduresFile"];
+    // Detection without loading (Deno directory opens): a
+    // present-but-unscanned file is reported for the session to warn
+    // about. Bare file loads never scan and never warn. Legs that load
+    // (or throw on failure) never produce one.
+    const findScan = fromFile ? undefined : loaded["findProceduresFile"];
     const unscannedProcedures =
       typeof findScan === "function" && procedures === null
         ? (findScan as (artifact: string) => string | null)(artifact)
@@ -248,7 +251,7 @@ function resolveWasmFile(wasm: WasmAdapter, source: SessionSource): ResolvedBack
       return {
         port: wasm.getWasmPort({ filePath: source.filePath }),
         backend: "wasm",
-        procedures: wasm.loadProceduresForFile?.(source.filePath) ?? null,
+        procedures: null,
         unscannedProcedures: null,
       };
     }

@@ -6,7 +6,7 @@
  * language directory, and the directory's `procedures` module — if
  * any — into the new session's own hook registry, ahead of explicit
  * `procedures`. `Session.fromFile` opens an explicit library file
- * instead, scanning the file's own directory for `procedures`. The
+ * instead and never scans: hooks arrive explicitly only. The
  * constructor is private; the factories are synchronous (only the
  * universal entry and `fromUrl` need `async`).
  */
@@ -14,7 +14,7 @@
 import { Session as CoreSession, checkArtifactPath, checkLanguagePath } from "@sanbus/galley-core";
 import type { SessionOptions } from "@sanbus/galley-core";
 import { getNodePort, getNodePortFromFile } from "./ffi.ts";
-import { loadProcedures, loadProceduresForFile } from "./dispatch.ts";
+import { loadProcedures } from "./dispatch.ts";
 
 export type { SessionOptions };
 
@@ -30,6 +30,6 @@ export class Session extends CoreSession {
 
   static fromFile(filePath: string, options: SessionOptions = {}): Session {
     const file = checkArtifactPath(filePath, "galley: Session.fromFile");
-    return new Session(getNodePortFromFile(file), options, loadProceduresForFile(file));
+    return new Session(getNodePortFromFile(file), options, null);
   }
 }

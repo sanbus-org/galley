@@ -12,5 +12,5 @@ import { Session } from "./session.ts";
 export * from "@sanbus/galley-core";
 export { Session };
 export { getDenoPort, getDenoPortFromFile, libFileName } from "./ffi.ts";
-export { findProceduresFile, findProceduresFileForFile, loadProcedures, loadProceduresForFile } from "./dispatch.ts";
+export { findProceduresFile, loadProcedures } from "./dispatch.ts";
 export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

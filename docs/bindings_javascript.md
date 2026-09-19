@@ -25,9 +25,9 @@ console.log(session.backend); // "native" or "wasm"
 ```
 
 Sessions come from async factories: `fromDirectory` (a language
-directory), `fromFile` (an explicit artifact file, with the file's own
-directory scanned for `procedures`), `fromBytes` (raw wasm module
-bytes), or `fromUrl` (fetched).
+directory, with `procedures` scanned where the runtime allows),
+`fromFile` (an explicit artifact file, never scanned), `fromBytes`
+(raw wasm module bytes), or `fromUrl` (fetched).
 A factory either resolves a usable session or rejects — there is no
 unready state. Native adapters offer `fromDirectory` and `fromFile`;
 wasm-capable entries (wasm adapter, universal, browser entries) offer
@@ -89,6 +89,20 @@ not the standard file in a language directory). The Bun and Deno adapters
 first try their adapter-named file, then this shared file; either resolves
 silently to native. Nothing else is searched: a missing artifact is a
 loud error naming the directory or file.
+
+The Node build also writes a package entry (`package.json` +
+`index.mjs`) so the directory imports directly, with bundled hooks,
+instead of opening it by path:
+
+```ts
+import { openSession } from "./kv/index.mjs";
+
+const session = await openSession();
+```
+
+Direct import is a Node-only prototype: Deno, Bun, and browsers keep
+`fromDirectory` / explicit `procedures`. `fromFile` never scans on any
+adapter.
 
 Two ways to install, depending on what you are doing:
 
@@ -183,16 +197,17 @@ export function hook_print(args: ProcedureArguments): void {
 }
 ```
 
-Every session owns its hooks: construction loads the language
+Every session owns its hooks: `fromDirectory` loads the language
 directory's `procedures` module into that session's registry (where the
 runtime can load modules synchronously), and the `procedures` option
 adds explicit modules on top — later entries win per hook name.
-`fromFile` scans the artifact file's own directory. Which entries scan:
+`fromFile` never scans: hooks arrive explicitly only. Which entries scan:
 
 | Entry | Auto-scan | Without a scan |
 |---|---|---|
-| Node, Bun, wasm (Node) | `procedures.*` beside the artifact | — |
-| Deno | none (no synchronous loader) | warns once when a file is present; pass `procedures` explicitly |
+| `fromDirectory` (Node, Bun, wasm on Node) | `procedures.*` beside the artifact | — |
+| `fromFile` (all adapters) | none (bare loads never scan) | pass `procedures` explicitly |
+| Deno `fromDirectory` | none (no synchronous loader) | warns once when a file is present; pass `procedures` explicitly |
 | Browsers, `fromBytes`, `fromUrl` | none (no filesystem) | pass `procedures` explicitly |
 
 ```ts

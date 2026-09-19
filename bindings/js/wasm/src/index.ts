@@ -14,19 +14,19 @@
 import { Session as CoreSession } from "@sanbus/galley-core";
 import type { FfiPort, SessionOptions } from "@sanbus/galley-core";
 import { checkArtifactPath, checkLanguagePath } from "@sanbus/galley-core";
-import { getWasmPort, portFromBytes, portFromUrl, loadProcedures, loadProceduresForFile } from "./ffi.ts";
+import { getWasmPort, portFromBytes, portFromUrl, loadProcedures } from "./ffi.ts";
 import { seedFileIo, seedProceduresScan } from "./ffi.ts";
-import { nodeFileIo, scanLanguageDir, scanLanguageFile } from "./files.ts";
+import { nodeFileIo, scanLanguageDir } from "./files.ts";
 
 // Node entry owns the Node capabilities: the real filesystem plus the
-// procedure scans. The browser entry (`browser.ts`) never imports this
-// module.
+// language-directory procedure scan. The browser entry (`browser.ts`)
+// never imports this module.
 seedFileIo(nodeFileIo);
-seedProceduresScan({ forDirectory: scanLanguageDir, forFile: scanLanguageFile });
+seedProceduresScan({ forDirectory: scanLanguageDir });
 
 // Core surface (Session base is shadowed by the adapter subclass below).
 export * from "@sanbus/galley-core";
-export { getWasmPort, instantiateWasm, portFromBytes, portFromUrl, __resetModuleCache, __resetWasmAcquisition, loadProcedures, loadProceduresForFile, wasmFileName } from "./ffi.ts";
+export { getWasmPort, instantiateWasm, portFromBytes, portFromUrl, __resetModuleCache, __resetWasmAcquisition, loadProcedures, wasmFileName } from "./ffi.ts";
 export type { WasmPortSource } from "./ffi.ts";
 export type { SessionOptions };
 export type { WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
@@ -48,7 +48,7 @@ export class Session extends CoreSession {
 
   static fromFile(filePath: string, options: SessionOptions = {}): Session {
     const file = checkArtifactPath(filePath, "galley-wasm: Session.fromFile");
-    return new Session(getWasmPort({ filePath: file }), options, loadProceduresForFile(file));
+    return new Session(getWasmPort({ filePath: file }), options, null);
   }
 
   static async fromBytes(bytes: Uint8Array, options: SessionOptions = {}): Promise<Session> {

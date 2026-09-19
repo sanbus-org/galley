@@ -210,8 +210,11 @@ function warnOnNearMissHook(name: string): void {
 
 /**
  * Synchronously loads a `procedures` module from a language directory:
- * tries `procedures`, `procedures.js`, `procedures.ts` in order and
- * returns the first that loads as an object. Only named exports
+ * tries `procedures`, `procedures.ts` in order and returns the first
+ * that loads as an object. Bare `procedures` covers `.js` under
+ * `require` resolution (mirrored by the build gate's explicit
+ * `procedures.ts`/`procedures.js` existence probe, which cannot rely
+ * on resolution). Only named exports
  * (`reduction`, `reduction_*`, `hook_*`) install as hooks — a `default`
  * export is never read, and a loud warning names the file when it looks
  * like hooks were left there. Returns null when nothing loadable is
@@ -226,7 +229,11 @@ export function loadProceduresModule(
   directory: string,
 ): Record<string, unknown> | null {
   if (!requireModule) return null;
-  for (const file of ["procedures", "procedures.js", "procedures.ts"]) {
+  // Bare `procedures` covers `.js` under `require` resolution; the
+  // explicit `.ts` spelling is the only one that reaches TypeScript
+  // hook files. (ESM `import()` would need every spelling explicit —
+  // revisit if any leg leaves `require`.)
+  for (const file of ["procedures", "procedures.ts"]) {
     const specifier = joinPath(directory, file);
     let loaded: unknown;
     try {
