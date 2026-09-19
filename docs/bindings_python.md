@@ -27,7 +27,7 @@ checkout:
 ```toml
 [project]
 dependencies = [
-    "galley-bindings @ file:../../bindings/python",
+    "galley @ file:../../bindings/python",
 ]
 ```
 
@@ -294,10 +294,20 @@ PYTHONPATH=bindings/python python3 bindings/python/tests/test_bindings.py
 
 ## Development builds
 
-Every green CI run uploads the built sdist and
+Every green `main` push publishes dev versions to the static registry.
+Dev versions look like
+`0.1.3.dev42` (the PEP 440 form of `0.1.3-dev.42.gabc123456789`):
+
+```sh
+pip install --extra-index-url https://<R2_PACKAGES_HOSTNAME>/simple/ galley==0.1.3.dev42
+```
+
+Dev versions are ephemeral: they expire after about 48 hours, and only
+the newest ~20 are kept.
+Stable releases stay on PyPI; pin a stable release for anything durable.
+Every CI run also uploads the built sdist and
 wheel as workflow artifacts (Actions → the run → Artifacts →
-`pkg-python`), carrying that commit's generator and compile kit. Download and
-`pip install` the wheel directly. Versioned releases go to PyPI as usual.
+`pkg-python`), carrying that commit's generator and compile kit.
 
 ## Related Pages
 

@@ -2,13 +2,15 @@
   "imports": {
     "@sanbus/galley": "../../bindings/js/universal/src/index.ts",
     "@sanbus/galley-core": "../../bindings/js/core/src/index.ts",
+    "@sanbus/galley-core/": "../../bindings/js/core/",
     "@sanbus/galley-node": "../../bindings/js/node/src/index.ts",
     "@sanbus/galley-bun": "../../bindings/js/bun/src/index.ts",
     "@sanbus/galley-deno": "../../bindings/js/deno/src/index.ts",
+    "@sanbus/galley-deno/build": "../../bindings/js/deno/build.ts",
     "@sanbus/galley-wasm": "../../bindings/js/wasm/src/index.ts"
   },
   "tasks": {
-    "build": "deno run --allow-read --allow-write --allow-run --allow-env ../../bindings/js/deno/build.ts kv",
+    "build": "deno run --allow-read --allow-write --allow-run --allow-env @sanbus/galley-deno/build kv",
     "demo": "deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts",
     "benchmark": "deno run --allow-ffi --allow-read --allow-env benchmark.ts ../../languages/json/samples/code-02.json"
   }

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Assembles the dependency-less compile kit shipped inside @sanbus/galley-core
-# and the galley-bindings Python wheel.
+# and the galley Python wheel.
 #
 # The kit is the consumer build plus every source it reads, copied from this
 # checkout: the consumer build.zig verbatim, and under sources/ a slim

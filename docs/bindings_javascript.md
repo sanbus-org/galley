@@ -521,8 +521,8 @@ Dev versions look like
 `0.1.3-dev.42.gabc123456789`:
 
 ```
-// .npmrc (replace <R2_NPM_HOSTNAME> with the registry's public host)
-@sanbus:registry=https://<R2_NPM_HOSTNAME>/
+// .npmrc — points the @sanbus scope at the registry
+@sanbus:registry=https://<R2_PACKAGES_HOSTNAME>/
 ```
 
 ```sh

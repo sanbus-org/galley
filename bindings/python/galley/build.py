@@ -435,15 +435,21 @@ def compile_extension(
 
 def main() -> None:
     usage = "usage: python -m galley <language-dir> [generator flags...]"
-    if len(sys.argv) < 2:
+    arguments = sys.argv[1:]
+    # `galley build <language-dir>` spells the same build as
+    # `galley <language-dir>`; a lone `build` still names a language
+    # directory called build.
+    if len(arguments) > 1 and arguments[0] == "build":
+        arguments = arguments[1:]
+    if len(arguments) < 1:
         fatal(usage)
     if os.name == "nt":
         fatal("the python bindings target POSIX platforms")
-    language_dir = Path(sys.argv[1]).resolve()
+    language_dir = Path(arguments[0]).resolve()
     generator_flags: list[str] = []
-    index = 2
-    while index < len(sys.argv):
-        flag = sys.argv[index]
+    index = 1
+    while index < len(arguments):
+        flag = arguments[index]
         if flag in ("-h", "--help"):
             print(usage)
             raise SystemExit(0)
@@ -454,9 +460,9 @@ def main() -> None:
             )
         if flag == "--parser-type":
             index += 1
-            if index >= len(sys.argv):
+            if index >= len(arguments):
                 fatal(f"--parser-type needs ll or lr; {usage}")
-            generator_flags += [flag, sys.argv[index]]
+            generator_flags += [flag, arguments[index]]
         elif flag.startswith("-"):
             generator_flags.append(flag)
         else:

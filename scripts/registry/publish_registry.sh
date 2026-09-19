@@ -20,7 +20,7 @@
 # stops advertising versions the bucket lifecycle already deleted.
 # One-time bucket setup (needs a Workers R2 Storage Write token, not the
 # CI object-scoped keys — managing lifecycles is a bucket-level action):
-#   npx wrangler r2 bucket lifecycle add "$R2_NPM_BUCKET_NAME" \
+#   npx wrangler r2 bucket lifecycle add "$R2_PACKAGES_BUCKET_NAME" \
 #     expire-dev-tarballs tarballs/ --expire-days 2
 #
 # Auth is S3 API keys (CI secrets); the endpoint derives from the
@@ -45,7 +45,7 @@ KEEP_DEV_VERSIONS="${KEEP_DEV_VERSIONS:-20}"
 DEV_TTL_HOURS="${DEV_TTL_HOURS:-48}"
 DRY_RUN="${DRY_RUN:-0}"
 
-for secret in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_NPM_BUCKET_NAME R2_NPM_HOSTNAME; do
+for secret in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PACKAGES_BUCKET_NAME R2_PACKAGES_HOSTNAME; do
 	test -n "${!secret:-}" || {
 		echo "publish_registry: $secret is unset" >&2
 		exit 1
@@ -75,7 +75,7 @@ with_scheme() {
 	*) printf 'https://%s' "$1" ;;
 	esac
 }
-HOST="$(with_scheme "$R2_NPM_HOSTNAME")"
+HOST="$(with_scheme "$R2_PACKAGES_HOSTNAME")"
 HOST="${HOST%/}"
 NPMJS_REGISTRY="$(with_scheme "$NPMJS_REGISTRY")"
 # Origin only, no path prefix: tarball URLs append /tarballs/..., and the
@@ -198,7 +198,7 @@ for key in plan["deletes"]:
                    check=True)
 n_up, n_del = len(plan["uploads"]), len(plan["deletes"])
 print(f"publish_registry: {n_up} uploads, {n_del} deletes")
-' "$plan" "$R2_NPM_BUCKET_NAME" "$ENDPOINT"
+' "$plan" "$R2_PACKAGES_BUCKET_NAME" "$ENDPOINT"
 trap - EXIT
 rm -rf "$work"
 echo "publish_registry: done"

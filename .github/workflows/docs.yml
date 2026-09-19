@@ -58,6 +58,19 @@ jobs:
           npm run build --prefix bindings/js
           npm --prefix bindings/js/universal install --no-audit --no-fund
 
+      - name: Inject packages hostname
+        # The dev-install snippets name <R2_PACKAGES_HOSTNAME>; the
+        # published site spells the real host so commands copy-paste.
+        # Local builds keep the placeholder. Needs a repo-level var:
+        # environment vars are invisible to this job (it sets none).
+        env:
+          R2_PACKAGES_HOSTNAME: ${{ vars.R2_PACKAGES_HOSTNAME }}
+        run: |
+          if [ -n "$R2_PACKAGES_HOSTNAME" ]; then
+            sed -i "s|<R2_PACKAGES_HOSTNAME>|$R2_PACKAGES_HOSTNAME|g" \
+              docs/bindings_javascript.md docs/bindings_python.md
+          fi
+
       - name: Build site
         working-directory: docs
         env:

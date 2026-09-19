@@ -1526,15 +1526,15 @@ jobs:
       actions: read
     runs-on: ubuntu-latest
     # Registry writes must serialize: concurrent runs would read the same
-    # base packuments and clobber each other's versions. Never cancel one
-    # mid-publish either (tarballs upload before the packuments that
-    # reference them).
+    # base packuments or index pages and clobber each other's versions.
+    # Never cancel one mid-publish either (files upload before the
+    # packuments or index pages that reference them).
     concurrency:
       group: npm-registry
       cancel-in-progress: false
     environment:
       name: npm-registry
-      url: https://${{ vars.R2_NPM_HOSTNAME }}/@sanbus%2Fgalley
+      url: https://${{ vars.R2_PACKAGES_HOSTNAME }}/@sanbus%2Fgalley
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -1550,9 +1550,24 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_NPM_BUCKET_NAME: ${{ vars.R2_NPM_BUCKET_NAME }}
-          R2_NPM_HOSTNAME: ${{ vars.R2_NPM_HOSTNAME }}
+          R2_PACKAGES_BUCKET_NAME: ${{ vars.R2_PACKAGES_BUCKET_NAME }}
+          R2_PACKAGES_HOSTNAME: ${{ vars.R2_PACKAGES_HOSTNAME }}
         run: ./scripts/registry/publish_registry.sh "${{ runner.temp }}/pkg-js"
+
+      - name: Download Python distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: pkg-python
+          path: ${{ runner.temp }}/pkg-python
+
+      - name: Publish Python dev index
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PACKAGES_BUCKET_NAME: ${{ vars.R2_PACKAGES_BUCKET_NAME }}
+          R2_PACKAGES_HOSTNAME: ${{ vars.R2_PACKAGES_HOSTNAME }}
+        run: ./scripts/registry/publish_python_registry.sh "${{ runner.temp }}/pkg-python"
 
   test:
     name: test

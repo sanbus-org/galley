@@ -12,7 +12,7 @@
 # with the CI package job.
 #
 # Auth is a PyPI API token (one-time setup: create one at
-# https://pypi.org/manage/account/token/scope with the galley-bindings
+# https://pypi.org/manage/account/token/scope with the galley
 # project scope, store it as the PYPI_API_TOKEN CI secret). The token is
 # only required when a publish is actually needed; pure skip runs stay
 # green without it.
@@ -39,7 +39,7 @@ PACKAGE_DIR="$ROOT/bindings/python"
 VERSION="${PACKAGE_VERSION:-"$(python3 "$ROOT/scripts/product_version.py")"}"
 
 name="$(sed -n 's/^name = "\(.*\)"/\1/p' "$PACKAGE_DIR/pyproject.toml" | head -n 1)"
-test "$name" = "galley-bindings" || {
+test "$name" = "galley" || {
 	echo "publish_python: unexpected package name $name" >&2
 	exit 1
 }
