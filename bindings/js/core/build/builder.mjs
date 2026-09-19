@@ -607,6 +607,11 @@ function emitPackageEntry(languageDir) {
         ...previous,
         name,
         type: "module",
+        // "main" serves CJS require("./<dir>") (directory resolution
+        // ignores "exports"); ESM still needs the file: import
+        // "./<dir>/index.mjs". Bare "l1" works either way once the
+        // directory is installed under node_modules.
+        main: "./index.mjs",
         exports: { ".": "./index.mjs" },
         // Unpinned on purpose: the builder cannot know the consumer's
         // pin; presence (not version) is what the entry needs.

@@ -5,9 +5,10 @@
  *
  * Usage (from a language directory, e.g. examples/js):
  *   deno task build
- * which runs:
+ * which runs this file from the checkout, or against the installed
+ * package with no checkout at all:
  *   deno run --allow-read --allow-write --allow-run --allow-env \
- *     ../../bindings/js/deno/build.ts .
+ *     npm:@sanbus/galley-deno/build <language-dir>
  *
  * Thin wrapper over the shared gate (`../core/build/builder.mjs`), which
  * documents the accepted grammar files and owns the build. For both legs
@@ -15,8 +16,8 @@
  * from `@sanbus/galley`.
  */
 
-import { buildParserArtifact } from "../core/build/builder.mjs";
-import { artifactFileName, wasmArtifactFileName } from "../core/src/artifact.ts";
+import { buildParserArtifact } from "@sanbus/galley-core/build/builder.mjs";
+import { artifactFileName, wasmArtifactFileName } from "@sanbus/galley-core/internal";
 
 const LIBRARY_NAME = "galley-js-deno";
 

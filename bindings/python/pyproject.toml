@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "galley-bindings"
+name = "galley"
 version = "0.0.0"
 description = "Python bindings for Galley-generated parsers"
 license = { text = "MIT" }

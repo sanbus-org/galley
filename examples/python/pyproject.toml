@@ -8,7 +8,7 @@ version = "0.0.0"
 description = "Galley Python example"
 requires-python = ">=3.8"
 dependencies = [
-    "galley-bindings @ file:../../bindings/python",
+    "galley @ file:../../bindings/python",
 ]
 
 [tool.setuptools]
