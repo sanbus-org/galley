@@ -1,18 +1,18 @@
 """
-Type stubs for the Galley CPython extension (``galley``).
+Type stubs for a Galley language package.
 
-The extension is compiled per grammar via ``python -m galley_bindings`` and
+The package is compiled per grammar via ``python -m galley`` and
 wraps the C ABI in ``bindings/c/galley.h``.  This stub is the single
 source of truth for type checkers (``ty``, ``mypy``, ``pyright``) and
-editor auto-complete.  It is shipped alongside ``galley.*.so`` by
-the build command so ``import galley`` resolves without inline hints.
+editor auto-complete.  It is shipped as ``__init__.pyi`` by
+the build command so the language package resolves without inline hints.
 
 Sessions are not thread-safe; every call holds the GIL.  Node handles are
-``galley.Node`` objects bound to their owning ``Session`` – plain ``int``
-addresses are still accepted wherever a node is expected for backward
-compatibility, and ``int(node)`` / ``operator.index(node)`` recover the
+``galley_impl.Node`` objects bound to their owning ``Session`` – plain ``int``
+addresses are still accepted wherever a node is expected, and
+``int(node)`` / ``operator.index(node)`` recover the
 address.  Procedure hooks are registered module-globally and shared by
-every session, so guard installs with the session.  All text/diagnostic
+every session of the artifact, so guard installs with the session.  All text/diagnostic
 accessors copy before returning.
 """
 
@@ -281,7 +281,7 @@ class ProcedureArguments:
 class Session:
     """Parsing session bound to this library's parser.
 
-    Usable as a context manager (``with galley.Session() as s:``); ``close()``
+    Usable as a context manager (``with parser.Session() as s:``); ``close()``
     is idempotent and also runs from ``__del__``.  Use one session per
     thread or guard externally.  Node handles remain valid across edits until
     the next successful parse.
@@ -584,3 +584,11 @@ def clear_procedures() -> None:
 def list_procedures() -> dict[str, Any]:
     """Return a copy of currently registered Python procedure hooks."""
     ...
+
+procedures: Any | None
+"""Namespace of the auto-scanned ``procedures.py`` hooks.
+
+Set by the generated package init; ``None`` when no bundled hooks
+were found. Bare ``galley.load()`` never scans, so bare modules carry
+no such attribute.
+"""

@@ -2,7 +2,7 @@
  * CPython extension module exposing generated Galley parsers.
  *
  * The module is compiled per consumer project against the shared library
- * Galley produces for one grammar (see python -m galley_bindings), and wraps
+ * Galley produces for one grammar (see python -m galley), and wraps
  * its C ABI (bindings/c/galley.h) without an intermediate marshalling layer:
  *
  * - every method is METH_O or METH_FASTCALL, so calls carry no argument
@@ -31,9 +31,39 @@
 #include <string.h>
 
 #include <galley.h>
-#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-#include <dlfcn.h>
+
+/* Baked module name: the inner extension is always built with
+ * -DGALLEY_MODULE_NAME=galley_impl and imported relatively by the
+ * generated package init, so the language directory keeps its own name.
+ * The name sets the module object, Error's qualified name, and the
+ * PyInit entry importlib resolves. */
+#ifndef GALLEY_MODULE_NAME
+#define GALLEY_MODULE_NAME galley_impl
 #endif
+#define GALLEY_STRING_OF_IMPL(name) #name
+#define GALLEY_STRING_OF(name) GALLEY_STRING_OF_IMPL(name)
+#define GALLEY_MODULE_STRING GALLEY_STRING_OF(GALLEY_MODULE_NAME)
+#define GALLEY_CONCAT_IMPL(left, right) left##right
+#define GALLEY_CONCAT(left, right) GALLEY_CONCAT_IMPL(left, right)
+#define GALLEY_INIT_FUNCTION GALLEY_CONCAT(PyInit_, GALLEY_MODULE_NAME)
+
+/* Python-shim entry points (see galley/build.py shim): present
+ * exactly when the linked library was built with Python procedure support.
+ * Weak references so libraries built for C procedures (symbols absent)
+ * link and load with hooks as silent no-ops instead of failing. */
+#if defined(__has_attribute)
+#if __has_attribute(weak)
+#define GALLEY_WEAK __attribute__((weak))
+#else
+#define GALLEY_WEAK
+#endif
+#else
+#define GALLEY_WEAK
+#endif
+
+GALLEY_WEAK extern void galley_install_python_dispatch(void (*)(const char *, size_t, void *));
+GALLEY_WEAK extern int galley_python_procedure_enable(const char *, size_t);
+GALLEY_WEAK extern void galley_python_procedure_clear(void);
 
 /* ------------------------------------------------------------------ */
 /* Error type                                                          */
@@ -150,35 +180,17 @@ static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
     }
 }
 
-/* Try to register the dispatch target in the shared library. The library
- * is already loaded as a DT_NEEDED dependency of this extension, so
- * RTLD_DEFAULT finds it when it was built with Python support; when it
- * was built for C procedures the symbol is absent and we remain no-ops. */
+/* Try to register the dispatch target in the linked archive. The grammar
+ * links statically into this extension, so a direct weak call reaches
+ * exactly this artifact's shim; when the shim is absent the symbols are
+ * NULL and hooks remain no-ops. */
 static void try_install_python_dispatch(void) {
-#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-    typedef void (*install_fn)(void (*)(const char *, size_t, void *));
-    dlerror();
-    install_fn installer = (install_fn)dlsym(RTLD_DEFAULT, "galley_install_python_dispatch");
-    const char *error = dlerror();
-    if (error == NULL && installer != NULL) {
-        installer(py_dispatch_impl);
-    }
-#else
-    /* Fallback weak linkage where dlfcn is unavailable. */
-    extern void galley_install_python_dispatch(void (*)(const char *, size_t, void *));
-    /* If the symbol is missing at load time, this call would have already
-     * trapped on platforms without RTLD_DEFAULT; the dlfcn path above
-     * handles POSIX. */
-    #ifdef __has_attribute
-    #if __has_attribute(weak)
-    if (galley_install_python_dispatch)  /* weak reference */
+    if (galley_install_python_dispatch != NULL) {
         galley_install_python_dispatch(py_dispatch_impl);
-    #endif
-    #endif
-#endif
+    }
 }
 
-/* Selective dispatch gates (see galley_bindings/build.py shim): only
+/* Selective dispatch gates (see galley/build.py shim): only
  * enabled hooks cross into Python; unenabled slots return after one
  * boolean check. Each parse level snapshots the hook table on entry and
  * syncs from the snapshot, so installs and clears take effect on the
@@ -196,16 +208,10 @@ static void probe_selective_dispatch(void) {
     if (py_selective_probed)
         return;
     py_selective_probed = 1;
-#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-    dlerror();
-    py_procedure_enable = (proc_enable_fn)dlsym(RTLD_DEFAULT, "galley_python_procedure_enable");
-    if (dlerror() != NULL)
-        py_procedure_enable = NULL;
-    dlerror();
-    py_procedure_clear = (proc_clear_fn)dlsym(RTLD_DEFAULT, "galley_python_procedure_clear");
-    if (dlerror() != NULL)
-        py_procedure_clear = NULL;
-#endif
+    if (galley_python_procedure_enable != NULL)
+        py_procedure_enable = galley_python_procedure_enable;
+    if (galley_python_procedure_clear != NULL)
+        py_procedure_clear = galley_python_procedure_clear;
 }
 
 static void sync_procedure_gates_from(PyObject *table) {
@@ -293,57 +299,6 @@ static void exit_parse_gates(PyObject *session_obj, PyObject *enclosing_session)
     }
     if (enclosing_session != NULL)
         sync_procedure_gates_from(dispatch_table_for(enclosing_session));
-}
-
-static int auto_register_python_procedures(void) {
-    /* Attempt to import `procedures` if it is on sys.path (the language dir
-     * is typically on PYTHONPATH). Hooks are `reduction_*`, `reduction`, and
-     * `hook_*` callables. This is best-effort: missing modules are ignored. */
-    const char *candidates[] = {"procedures", NULL};
-    for (int i = 0; candidates[i] != NULL; ++i) {
-        PyObject *module = PyImport_ImportModule(candidates[i]);
-        if (module == NULL) {
-            PyErr_Clear();
-            continue;
-        }
-        PyObject *dict = PyModule_GetDict(module);
-        if (dict != NULL) {
-            PyObject *key, *value;
-            Py_ssize_t pos = 0;
-            while (PyDict_Next(dict, &pos, &key, &value)) {
-                if (!PyUnicode_Check(key) || !PyCallable_Check(value))
-                    continue;
-                const char *name = PyUnicode_AsUTF8(key);
-                if (name == NULL) {
-                    PyErr_Clear();
-                    continue;
-                }
-                int is_procedure = 0;
-                if (strcmp(name, "reduction") == 0)
-                    is_procedure = 1;
-                else if (strncmp(name, "reduction_", 10) == 0)
-                    is_procedure = 1;
-                else if (strncmp(name, "hook_", 5) == 0)
-                    is_procedure = 1;
-                if (!is_procedure)
-                    continue;
-                if (py_procedure_table == NULL) {
-                    py_procedure_table = PyDict_New();
-                    if (py_procedure_table == NULL) {
-                        Py_DECREF(module);
-                        return -1;
-                    }
-                }
-                if (PyDict_SetItem(py_procedure_table, key, value) < 0) {
-                    PyErr_Clear();
-                }
-            }
-        }
-        Py_DECREF(module);
-        if (py_procedure_table != NULL && PyDict_Size(py_procedure_table) > 0)
-            break;
-    }
-    return 0;
 }
 
 /* Sets ErrorException from a negative galley status code. The instance
@@ -1489,7 +1444,7 @@ static PyMemberDef Diagnostic_members[] = {
 
 static PyTypeObject Diagnostic_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "galley.Diagnostic",
+    .tp_name = GALLEY_MODULE_STRING ".Diagnostic",
     .tp_basicsize = sizeof(DiagnosticObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT,
@@ -2384,7 +2339,7 @@ PyDoc_STRVAR(session_doc,
 
 static PyTypeObject Session_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "galley.Session",
+    .tp_name = GALLEY_MODULE_STRING ".Session",
     .tp_basicsize = sizeof(SessionObject),
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Session_dealloc,
@@ -2729,7 +2684,7 @@ static PyNumberMethods Node_number_methods = {
 
 static PyTypeObject Node_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "galley.Node",
+    .tp_name = GALLEY_MODULE_STRING ".Node",
     .tp_basicsize = sizeof(NodeObject),
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Node_dealloc,
@@ -2830,7 +2785,7 @@ static PyMethodDef Walker_methods[] = {
 
 static PyTypeObject Walker_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "galley.Walker",
+    .tp_name = GALLEY_MODULE_STRING ".Walker",
     .tp_basicsize = sizeof(WalkerObject),
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Walker_dealloc,
@@ -2973,7 +2928,7 @@ static PyGetSetDef ProcedureArgs_getset[] = {
 
 static PyTypeObject ProcedureArgs_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "galley.ProcedureArguments",
+    .tp_name = GALLEY_MODULE_STRING ".ProcedureArguments",
     .tp_basicsize = sizeof(ProcedureArgsObject),
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)ProcedureArgs_dealloc,
@@ -3260,31 +3215,25 @@ static PyMethodDef module_methods[] = {
 };
 
 PyDoc_STRVAR(module_doc,
-"Bindings over a Galley-generated parser shared library.\n"
+"Bindings over a Galley-generated parser archive.\n"
 "\n"
-"One module embeds one parser: build it alongside your grammar with\n"
-"python -m galley_bindings, then import it from that directory.\n"
+"One inner module embeds one parser: the generated package init imports\n"
+"it relatively, so build the language directory with\n"
+"python -m galley, then import the directory or bind it by path.\n"
 "See Session for the parsing surface and the module constants for\n"
 "classification enums.");
 
 static struct PyModuleDef module_definition = {
     PyModuleDef_HEAD_INIT,
-    .m_name = "galley",
+    .m_name = GALLEY_MODULE_STRING,
     .m_doc = module_doc,
     .m_size = -1,
     .m_methods = module_methods,
 };
 
-static PyObject *galley_module = NULL;
-
-PyMODINIT_FUNC PyInit_galley(void)
+PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
 {
     PyObject *module;
-
-    if (galley_module != NULL) {
-        Py_INCREF(galley_module);
-        return galley_module;
-    }
 
     if (PyType_Ready(&Session_Type) < 0)
         return NULL;
@@ -3302,7 +3251,7 @@ PyMODINIT_FUNC PyInit_galley(void)
         return NULL;
 
     ErrorException = PyErr_NewExceptionWithDoc(
-        "galley.Error",
+        GALLEY_MODULE_STRING ".Error",
         "Failure reported by a Galley operation. The raw status code is\n"
         "available as the `code` attribute.",
         NULL, NULL);
@@ -3376,41 +3325,14 @@ PyMODINIT_FUNC PyInit_galley(void)
                                 galley_resume_after) < 0)
         goto fail;
 
-    /* Single-phase init does not put this module in sys.modules until we
-     * return. Auto-importing procedures.py first would re-enter
-     * PyInit_galley on `import galley` and replace ErrorException with a
-     * second class, so `except galley.Error` would miss parse failures.
-     * Publish now so a nested import finds this module. */
-    galley_module = module;
-    {
-        PyObject *modules = PyImport_GetModuleDict();
-        if (modules == NULL)
-            goto fail;
-        if (PyDict_SetItemString(modules, "galley", module) < 0)
-            goto fail;
-    }
-
     /* Python procedure hooks: install the dispatch callback into the
-     * shared library (when built with Python support) and auto-import
-     * any `procedures` module on sys.path. Missing libraries or modules
-     * are silently ignored — hooks are simply no-ops. */
+     * linked archive. Hook callables arrive through generated package
+     * init or explicit registration, which own procedures.py scanning. */
     try_install_python_dispatch();
-    if (auto_register_python_procedures() < 0) {
-        PyErr_Clear();
-    }
 
     return module;
 
 fail:
-    {
-        PyObject *type, *value, *traceback;
-        PyObject *modules = PyImport_GetModuleDict();
-        PyErr_Fetch(&type, &value, &traceback);
-        if (modules != NULL)
-            (void)PyDict_DelItemString(modules, "galley");
-        PyErr_Restore(type, value, traceback);
-    }
-    galley_module = NULL;
     Py_DECREF(module);
     return NULL;
 }

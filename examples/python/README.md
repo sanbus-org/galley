@@ -4,9 +4,9 @@ Requires `python3` and `zig` (only the fetch script uses `git`; the build itself
 
 ```sh
 pip install -e .
-GALLEY_CHECKOUT=/path/to/galley python -m galley_bindings .
+GALLEY_CHECKOUT=/path/to/galley python -m galley kv
 python demo.py
-GALLEY_CHECKOUT=/path/to/galley python -m galley_bindings benchmark
+GALLEY_CHECKOUT=/path/to/galley python -m galley mini_json
 python benchmark.py
 ```
 

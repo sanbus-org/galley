@@ -7,7 +7,7 @@ directory links these two files in and adds its own `procedures.*`
 
 - `bindings/c/test-fixture/`
 - `bindings/go/testfixture/`
-- `bindings/python/test-fixture/`
+- `bindings/python/test_fixture/`
 - `bindings/java/test-fixture/`
 - `bindings/rust/test-fixture/`
 - `bindings/js/test-fixture/`

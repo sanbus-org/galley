@@ -280,7 +280,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           pip install -e .
-          python -m galley_bindings .
+          python -m galley kv
           python demo.py
 
       - name: Test bindings (python)
@@ -289,8 +289,8 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           pip install -e bindings/python
-          python -m galley_bindings bindings/python/test-fixture
-          PYTHONPATH="$GITHUB_WORKSPACE/bindings/python/test-fixture" python bindings/python/tests/test_bindings.py
+          python -m galley bindings/python/test_fixture
+          python bindings/python/tests/test_bindings.py
 
       - name: Prove no-checkout generate and compile (python)
         if: ${{ matrix.language == 'python' }}
@@ -299,33 +299,33 @@ jobs:
           # publish does (the repo never tracks it). The host generator
           # binary stands in for the staged platform package (linux-x64 on
           # this runner).
-          ./scripts/js/assemble_compile_kit.sh bindings/python/galley_bindings/compile-kit
+          ./scripts/js/assemble_compile_kit.sh bindings/python/galley/compile-kit
           zig build -Doptimize=ReleaseFast galley
-          mkdir -p bindings/python/galley_bindings/generator/cli-linux-x64/bin
-          cp zig-out/bin/galley bindings/python/galley_bindings/generator/cli-linux-x64/bin/galley
+          mkdir -p bindings/python/galley/generator/cli-linux-x64/bin
+          cp zig-out/bin/galley bindings/python/galley/generator/cli-linux-x64/bin/galley
           rm -rf /tmp/py-proof && mkdir -p /tmp/py-proof
-          cp bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/python/test-fixture/procedures.py /tmp/py-proof/
+          cp bindings/python/test_fixture/ll.grm bindings/python/test_fixture/config.zig bindings/python/test_fixture/procedures.py /tmp/py-proof/
           # The real entry point, not the gate directly: generation must
           # use the shipped binary, and compiling (library plus extension)
           # must succeed with no checkout.
-          env -u GALLEY_CHECKOUT python -m galley_bindings /tmp/py-proof
-          ls /tmp/py-proof/libgalley-python.* /tmp/py-proof/galley*.so /tmp/py-proof/galley.pyi
+          env -u GALLEY_CHECKOUT python -m galley /tmp/py-proof
+          ls /tmp/py-proof/libgalley-python.a /tmp/py-proof/__init__.py /tmp/py-proof/galley_impl*.so /tmp/py-proof/__init__.pyi
           for generated in _ll-parser.zig _lr-parser.zig metadata.json; do
-            if [ -f bindings/python/test-fixture/$generated ]; then
-              cmp bindings/python/test-fixture/$generated /tmp/py-proof/$generated || exit 1
+            if [ -f bindings/python/test_fixture/$generated ]; then
+              cmp bindings/python/test_fixture/$generated /tmp/py-proof/$generated || exit 1
             fi
           done
           # Determinism: with the kit hidden, generation (via the shipped
           # binary) succeeds but the build must fail loudly naming what it
           # needs instead of guessing.
-          mv bindings/python/galley_bindings/compile-kit /tmp/py-proof/kit-hidden
-          if env -u GALLEY_CHECKOUT GALLEY_CLI="$PWD/bindings/python/galley_bindings/generator/cli-linux-x64/bin/galley" python -m galley_bindings /tmp/py-proof 2>/tmp/py-proof/stderr.txt; then
+          mv bindings/python/galley/compile-kit /tmp/py-proof/kit-hidden
+          if env -u GALLEY_CHECKOUT GALLEY_CLI="$PWD/bindings/python/galley/generator/cli-linux-x64/bin/galley" python -m galley /tmp/py-proof 2>/tmp/py-proof/stderr.txt; then
             echo "python build without compile inputs unexpectedly succeeded"
             exit 1
           fi
           grep -q 'compile-kit' /tmp/py-proof/stderr.txt || exit 1
-          mv /tmp/py-proof/kit-hidden bindings/python/galley_bindings/compile-kit
-          rm -rf bindings/python/galley_bindings/compile-kit bindings/python/galley_bindings/generator
+          mv /tmp/py-proof/kit-hidden bindings/python/galley/compile-kit
+          rm -rf bindings/python/galley/compile-kit bindings/python/galley/generator
 
       - name: Build example (typescript)
         if: ${{ matrix.language == 'typescript' }}
@@ -475,11 +475,11 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,python,zig,java}/ll.grm examples/js/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,python,zig,java}/config.zig examples/js/config.zig examples/go/demo/config.zig
-          same benchmark/ll.grm examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/benchmark/ll.grm
-          same benchmark/config.zig examples/{c,cpp,rust,python,zig,java}/benchmark/config.zig examples/js/benchmark/config.zig
-          for f in examples/{c,cpp,rust,python,zig,java}/benchmark/ll.grm examples/js/benchmark/ll.grm; do
+          same ll.grm examples/{c,cpp,rust,zig,java}/ll.grm examples/python/kv/ll.grm examples/js/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,zig,java}/config.zig examples/python/kv/config.zig examples/js/config.zig examples/go/demo/config.zig
+          same benchmark/ll.grm examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/mini_json/ll.grm examples/js/benchmark/ll.grm
+          same benchmark/config.zig examples/{c,cpp,rust,zig,java}/benchmark/config.zig examples/python/mini_json/config.zig examples/js/benchmark/config.zig
+          for f in examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/mini_json/ll.grm examples/js/benchmark/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -489,7 +489,7 @@ jobs:
             echo "::error::examples/*/benchmark/ll.grm must match languages/json/ll.grm"
             exit 1
           }
-          for f in bindings/c/test-fixture/ll.grm bindings/c/test-fixture/config.zig bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test-fixture/ll.grm bindings/python/test-fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
+          for f in bindings/c/test-fixture/ll.grm bindings/c/test-fixture/config.zig bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test_fixture/ll.grm bindings/python/test_fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to bindings/test-fixture"
               exit 1
@@ -532,7 +532,7 @@ jobs:
           }
           check_core bindings/go/cmd/galley/main.go
           check_core bindings/rust/src/build_helper.rs
-          check_core bindings/python/galley_bindings/build.py
+          check_core bindings/python/galley/build.py
           # The per-adapter builders are thin wrappers delegating to one
           # shared gate, so the contract is policed there and at the single
           # `galley build` entry — not once per wrapper.
@@ -558,16 +558,17 @@ jobs:
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust python java; do
+          for lang in c cpp rust java; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
+          ./zig-out/bin/galley --emit-metadata "examples/python/kv" >/dev/null
           ./zig-out/bin/galley --emit-metadata "examples/js" >/dev/null
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,python,zig,java}/_ll-parser.zig examples/js/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,zig,java}/_ll-parser.zig examples/python/kv/_ll-parser.zig examples/js/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,python,java}/procedures.zig examples/js/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,java}/procedures.zig examples/python/kv/procedures.zig examples/js/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -581,7 +582,7 @@ jobs:
           names examples/cpp/procedures.cpp > /tmp/names-cpp.txt
           names examples/rust/procedures.rs > /tmp/names-rust.txt
           names examples/go/demo/procedures.go > /tmp/names-go.txt
-          names examples/python/procedures.py > /tmp/names-python.txt
+          names examples/python/kv/procedures.py > /tmp/names-python.txt
           names examples/js/procedures.ts > /tmp/names-js.txt
           names examples/java/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
@@ -647,7 +648,7 @@ jobs:
           cd ../..
           cd examples/python
           pip install -e . >/dev/null
-          GALLEY_CHECKOUT="$PWD/../.." python -m galley_bindings . >/dev/null
+          GALLEY_CHECKOUT="$PWD/../.." python -m galley kv >/dev/null
           python demo.py >/tmp/out-python.txt 2>/tmp/err-python.txt
           cd ../..
           # JavaScript runs on the one canonical example: a single build,
@@ -772,7 +773,7 @@ jobs:
           go build -o /tmp/galley-go-benchmark ./benchmark
           cd ../python
           pip install -e .
-          python -m galley_bindings benchmark
+          python -m galley mini_json
           cd ../js
           npm install
           npm --prefix ../../bindings/js install

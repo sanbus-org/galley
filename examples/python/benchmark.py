@@ -40,9 +40,9 @@ def main() -> int:
             print("iterations must be >= 1", file=sys.stderr)
             return 1
 
-    language_dir = Path(__file__).resolve().parent / "benchmark"
-    sys.path.insert(0, str(language_dir))
-    import galley
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+    import mini_json as parser
 
     path = resolve_input(explicit)
     try:
@@ -52,15 +52,15 @@ def main() -> int:
         return 1
 
     try:
-        session = galley.Session()
-    except galley.Error:
+        session = parser.Session()
+    except parser.Error:
         print("failed to create a parser session", file=sys.stderr)
         return 1
 
     with session:
         try:
             parsed = session.parse(data)
-        except galley.Error as error:
+        except parser.Error as error:
             print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
         if parsed != len(data):
@@ -74,7 +74,7 @@ def main() -> int:
         for index in range(iterations):
             try:
                 parsed = session.parse(data)
-            except galley.Error as error:
+            except parser.Error as error:
                 print(
                     f"parse failed at iteration {index}: {error} ({error.code})",
                     file=sys.stderr,

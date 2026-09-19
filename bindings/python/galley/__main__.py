@@ -1,4 +1,4 @@
-from galley_bindings.build import main
+from galley.build import main
 
 if __name__ == "__main__":
     main()

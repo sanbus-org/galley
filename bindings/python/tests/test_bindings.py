@@ -1,18 +1,39 @@
 """Behavioral tests for the Galley Python bindings.
 
-The suite imports the built extension module as `galley`; point PYTHONPATH
-at the binding's own test fixture (built on demand, never examples/):
+The suite imports the built fixture package directly (built on demand,
+never examples/):
 
-    GALLEY_CHECKOUT=$PWD python -m galley_bindings bindings/python/test-fixture
-    PYTHONPATH=bindings/python/test-fixture python3 bindings/python/tests/test_bindings.py
+    GALLEY_CHECKOUT=$PWD python -m galley bindings/python/test_fixture
+    PYTHONPATH=bindings/python python3 bindings/python/tests/test_bindings.py
 """
 
 from __future__ import annotations
 
+import shutil
+import sys
+import sysconfig
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 import galley
+
+BINDINGS_DIRECTORY = Path(__file__).resolve().parent.parent
+if str(BINDINGS_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(BINDINGS_DIRECTORY))
+
+# The grammar-bound package under test; every `grammar.` below is one
+# artifact's surface (Session, Error, hooks registry), imported directly
+# so bundled `procedures.py` hooks wire automatically.
+import test_fixture as grammar
+
+FIXTURE_DIRECTORY = BINDINGS_DIRECTORY / "test_fixture"
+
+
+def _fixture_impl_file() -> Path:
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    return FIXTURE_DIRECTORY / f"galley_impl{suffix}"
 
 
 def _restore_procedures(saved: dict[str, Any]) -> None:
@@ -21,20 +42,20 @@ def _restore_procedures(saved: dict[str, Any]) -> None:
     Procedure hooks are module-global, so a test that installs or clears
     must not leak into the next one: snapshot in setUp, restore here.
     """
-    galley.clear_procedures()
+    grammar.clear_procedures()
     if saved:
-        galley.install_procedures(saved)
+        grammar.install_procedures(saved)
 
 
 class ModuleSurfaceTests(unittest.TestCase):
     def test_stub_matches_extension_surface(self):
-        # galley.pyi is a hand-kept mirror of the extension API: it must
+        # __init__.pyi is a hand-kept mirror of the package API: it must
         # name exactly what the module exposes, in either direction, or
         # type-checked code and runtime drift apart silently.
         import ast
         import pathlib
 
-        stub_path = pathlib.Path(galley.__file__).parent / "galley.pyi"
+        stub_path = pathlib.Path(grammar.__file__).parent / "__init__.pyi"
         self.assertTrue(stub_path.is_file(), f"missing {stub_path}")
         names: list[str] = []
         for node in ast.parse(stub_path.read_text(encoding="utf-8")).body:
@@ -44,65 +65,64 @@ class ModuleSurfaceTests(unittest.TestCase):
                 names += [t.id for t in node.targets if isinstance(t, ast.Name)]
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 names.append(node.target.id)
-        module_names = [n for n in dir(galley) if not n.startswith("_")]
+        module_names = [n for n in dir(grammar) if not n.startswith("_")]
         self.assertEqual(sorted(set(names)), sorted(set(module_names)))
 
     def test_version_returns_non_empty_string(self):
-        self.assertIsInstance(galley.version(), str)
-        self.assertNotEqual(galley.version(), "")
+        self.assertIsInstance(grammar.version(), str)
+        self.assertNotEqual(grammar.version(), "")
 
     def test_parser_metadata_flags_are_consistent(self):
         self.assertIn(
-            galley.parser_type(), (galley.PARSER_TYPE_LL, galley.PARSER_TYPE_LR)
+            grammar.parser_type(), (grammar.PARSER_TYPE_LL, grammar.PARSER_TYPE_LR)
         )
-        self.assertTrue(galley.has_ast())
-        self.assertIsInstance(galley.has_procedures(), bool)
-        self.assertIsInstance(galley.allows_no_ast_tree_procedures(), bool)
-        self.assertIsInstance(galley.source_retention_enabled(), bool)
-        self.assertIsInstance(galley.has_position_tracking(), bool)
-        self.assertIsInstance(galley.has_input_streaming(), bool)
-        self.assertIsInstance(galley.uses_verbatim(), bool)
-        self.assertIsInstance(galley.stack_overflow_recovery_available(), bool)
+        self.assertTrue(grammar.has_ast())
+        self.assertIsInstance(grammar.has_procedures(), bool)
+        self.assertIsInstance(grammar.allows_no_ast_tree_procedures(), bool)
+        self.assertIsInstance(grammar.source_retention_enabled(), bool)
+        self.assertIsInstance(grammar.has_position_tracking(), bool)
+        self.assertIsInstance(grammar.has_input_streaming(), bool)
+        self.assertIsInstance(grammar.uses_verbatim(), bool)
+        self.assertIsInstance(grammar.stack_overflow_recovery_available(), bool)
         self.assertIn(
-            galley.error_recovery_mode(),
+            grammar.error_recovery_mode(),
             (
-                galley.RECOVERY_MODE_DISABLED,
-                galley.RECOVERY_MODE_AUTOMATIC,
-                galley.RECOVERY_MODE_EXPLICIT,
+                grammar.RECOVERY_MODE_DISABLED,
+                grammar.RECOVERY_MODE_AUTOMATIC,
+                grammar.RECOVERY_MODE_EXPLICIT,
             ),
         )
 
     def test_status_string_renders_known_codes(self):
-        rendered = galley.status_string(-2)
+        rendered = grammar.status_string(-2)
         self.assertIsInstance(rendered, str)
         assert rendered is not None
         self.assertIn("syntax", rendered.lower())
-        self.assertIsNone(galley.status_string(999999))
+        self.assertIsNone(grammar.status_string(999999))
 
     def test_diagnostic_type_is_not_directly_constructible(self):
         with self.assertRaises(TypeError):
-            galley.Diagnostic()
+            grammar.Diagnostic()
 
-    def test_error_class_survives_procedures_importing_galley(self):
-        # procedures.py does `import galley` while the extension auto-loads
-        # it during PyInit_galley. That must be the same module, or
-        # `except galley.Error` misses parse failures.
-        import procedures
-
-        self.assertIs(procedures.galley.Error, galley.Error)
-        with galley.Session() as session:
-            with self.assertRaises(galley.Error) as raised:
+    def test_scanned_hooks_share_error_class(self):
+        # The bundled procedures.py wires into the grammar's own registry:
+        # hooks fire, and the raised error is the package's Error class.
+        procedures = grammar.procedures
+        self.assertIsNotNone(procedures)
+        self.assertTrue(grammar.list_procedures())
+        with grammar.Session() as session:
+            with self.assertRaises(grammar.Error) as raised:
                 session.parse("alpha:")
-            self.assertIs(type(raised.exception), galley.Error)
+            self.assertIs(type(raised.exception), grammar.Error)
 
 
 class SessionTests(unittest.TestCase):
-    session: galley.Session
+    session: grammar.Session
     saved_procedures: dict[str, Any]
 
     def setUp(self) -> None:
-        self.session = galley.Session(max_errors=10)
-        self.saved_procedures = galley.list_procedures()
+        self.session = grammar.Session(max_errors=10)
+        self.saved_procedures = grammar.list_procedures()
 
     def tearDown(self) -> None:
         self.session.close()
@@ -111,7 +131,7 @@ class SessionTests(unittest.TestCase):
     def test_procedure_hook_can_read_node_text(self) -> None:
         seen: list[bytes] = []
 
-        def reduction_Pair(args: galley.ProcedureArguments) -> None:
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             self.assertIsNotNone(node)
             assert node is not None
@@ -122,11 +142,11 @@ class SessionTests(unittest.TestCase):
             self.assertGreater(len(text), 0)
             seen.append(text)
 
-        galley.install_procedure("reduction_Pair", reduction_Pair)
+        grammar.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            galley.clear_procedures()
+            grammar.clear_procedures()
         self.assertEqual(len(seen), 2)
 
     def test_nested_parse_restores_outer_gates(self) -> None:
@@ -137,7 +157,7 @@ class SessionTests(unittest.TestCase):
         inner_seen: list[bytes] = []
         nested = False
 
-        def outer_pair(args: galley.ProcedureArguments) -> None:
+        def outer_pair(args: grammar.ProcedureArguments) -> None:
             nonlocal nested
             node = args.current_node()
             assert node is not None
@@ -146,30 +166,30 @@ class SessionTests(unittest.TestCase):
             outer_seen.append(text)
             if not nested:
                 nested = True
-                inner_session = galley.Session()
+                inner_session = grammar.Session()
                 try:
-                    galley.clear_procedures()
-                    galley.install_procedure("reduction_Number", inner_number)
+                    grammar.clear_procedures()
+                    grammar.install_procedure("reduction_Number", inner_number)
                     try:
                         inner_session.parse("alpha:9")
                     finally:
-                        galley.clear_procedures()
-                        galley.install_procedure("reduction_Pair", outer_pair)
+                        grammar.clear_procedures()
+                        grammar.install_procedure("reduction_Pair", outer_pair)
                 finally:
                     inner_session.close()
 
-        def inner_number(args: galley.ProcedureArguments) -> None:
+        def inner_number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
             text = node.text()
             assert text is not None
             inner_seen.append(text)
 
-        galley.install_procedure("reduction_Pair", outer_pair)
+        grammar.install_procedure("reduction_Pair", outer_pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            galley.clear_procedures()
+            grammar.clear_procedures()
         self.assertEqual(outer_seen, [b"alpha:12", b"beta:3"])
         self.assertEqual(inner_seen, [b"9"])
 
@@ -180,7 +200,7 @@ class SessionTests(unittest.TestCase):
         seen: list[bytes] = []
         cleared = False
 
-        def outer_pair(args: galley.ProcedureArguments) -> None:
+        def outer_pair(args: grammar.ProcedureArguments) -> None:
             nonlocal cleared
             node = args.current_node()
             assert node is not None
@@ -189,20 +209,20 @@ class SessionTests(unittest.TestCase):
             seen.append(text)
             if not cleared:
                 cleared = True
-                galley.clear_procedures()
-                inner_session = galley.Session()
+                grammar.clear_procedures()
+                inner_session = grammar.Session()
                 try:
                     inner_session.parse("alpha:9")
                 finally:
                     inner_session.close()
 
-        galley.install_procedure("reduction_Pair", outer_pair)
+        grammar.install_procedure("reduction_Pair", outer_pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            galley.clear_procedures()
+            grammar.clear_procedures()
         self.assertEqual(seen, [b"alpha:12", b"beta:3"])
-        self.assertEqual(galley.list_procedures(), {})
+        self.assertEqual(grammar.list_procedures(), {})
 
     def test_parse_accepts_str_bytes_and_buffers(self):
         sample = "alpha:12,beta:3"
@@ -223,10 +243,10 @@ class SessionTests(unittest.TestCase):
             self.session.parse_sentinel(bytearray(b"alpha:12"))
 
     def test_syntax_error_raises_error_with_code_and_diagnostic(self):
-        diagnostic: galley.Diagnostic | None = None
+        diagnostic: grammar.Diagnostic | None = None
         try:
             self.session.parse("alpha:")
-        except galley.Error as error:
+        except grammar.Error as error:
             self.assertEqual(error.code, -2)  # galley_error_syntax
             diagnostic = error.diagnostic
         else:
@@ -235,7 +255,7 @@ class SessionTests(unittest.TestCase):
         self.assertIsNotNone(self.session.diagnostic())
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, galley.KIND_SYNTAX)
+        self.assertEqual(diagnostic.kind, grammar.KIND_SYNTAX)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.column, 7)
         self.assertIn("parse failed", diagnostic.message)
@@ -248,9 +268,9 @@ class SessionTests(unittest.TestCase):
         self.assertIsInstance(diagnostic.syntax_error_count, int)
 
     def test_diagnostic_resets_after_successful_parse(self):
-        session = galley.Session()
+        session = grammar.Session()
         try:
-            with self.assertRaises(galley.Error):
+            with self.assertRaises(grammar.Error):
                 session.parse("alpha:")
             self.assertIsNotNone(session.diagnostic())
             session.parse("alpha:1")
@@ -273,12 +293,12 @@ class SessionTests(unittest.TestCase):
 
 
 class SemanticErrorTests(unittest.TestCase):
-    session: galley.Session
+    session: grammar.Session
     saved_procedures: dict[str, Any]
 
     def setUp(self) -> None:
-        self.session = galley.Session(max_errors=10)
-        self.saved_procedures = galley.list_procedures()
+        self.session = grammar.Session(max_errors=10)
+        self.saved_procedures = grammar.list_procedures()
 
     def tearDown(self) -> None:
         self.session.close()
@@ -287,7 +307,7 @@ class SemanticErrorTests(unittest.TestCase):
     def test_hook_reported_semantic_errors_aggregate_and_fail(self) -> None:
         seen_counts: list[int] = []
 
-        def reduction_Number(args: galley.ProcedureArguments) -> None:
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
             text = node.text()
@@ -295,32 +315,32 @@ class SemanticErrorTests(unittest.TestCase):
             if int(text) > 99:
                 seen_counts.append(args.report_semantic_error("value out of range"))
 
-        galley.install_procedure("reduction_Number", reduction_Number)
+        grammar.install_procedure("reduction_Number", reduction_Number)
         try:
-            with self.assertRaises(galley.Error) as raised:
+            with self.assertRaises(grammar.Error) as raised:
                 self.session.parse("alpha:12,beta:300,gamma:400")
         finally:
-            galley.clear_procedures()
+            grammar.clear_procedures()
         self.assertEqual(raised.exception.code, -12)  # galley_error_semantic
         self.assertIn("value out of range", str(raised.exception))
         self.assertEqual(seen_counts, [1, 2])
         diagnostic = self.session.diagnostic()
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, galley.KIND_SEMANTIC)
+        self.assertEqual(diagnostic.kind, grammar.KIND_SEMANTIC)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.semantic_error_count, 2)
         self.assertEqual(diagnostic.semantic, ("Number", "value out of range"))
         self.assertIn("SemanticError", diagnostic.message)
         recorded = self.session.diagnostics()
         self.assertEqual(len(recorded), 2)
-        self.assertTrue(all(item.kind == galley.KIND_SEMANTIC for item in recorded))
+        self.assertTrue(all(item.kind == grammar.KIND_SEMANTIC for item in recorded))
         self.assertTrue(
             all(item.semantic == ("Number", "value out of range") for item in recorded)
         )
 
     def test_counts_reset_after_successful_parse(self) -> None:
-        def reduction_Number(args: galley.ProcedureArguments) -> None:
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
             text = node.text()
@@ -328,23 +348,23 @@ class SemanticErrorTests(unittest.TestCase):
             if int(text) > 99:
                 args.report_semantic_error("value out of range")
 
-        galley.install_procedure("reduction_Number", reduction_Number)
+        grammar.install_procedure("reduction_Number", reduction_Number)
         try:
-            with self.assertRaises(galley.Error):
+            with self.assertRaises(grammar.Error):
                 self.session.parse("alpha:300")
             self.session.parse("alpha:12")
             self.assertFalse(self.session.has_diagnostic())
             self.assertIsNone(self.session.diagnostic())
             self.assertEqual(len(self.session.diagnostics()), 0)
         finally:
-            galley.clear_procedures()
+            grammar.clear_procedures()
 
 
 class WalkTests(unittest.TestCase):
-    session: galley.Session
+    session: grammar.Session
 
     def setUp(self) -> None:
-        self.session = galley.Session()
+        self.session = grammar.Session()
         self.session.parse("alpha:12,beta:3")
 
     def tearDown(self) -> None:
@@ -368,7 +388,7 @@ class WalkTests(unittest.TestCase):
         self.assertIsNone(self.session.prior_sibling(first))
         self.assertEqual(self.session.parent(first), root)
 
-        visited: list[galley.Node] = []
+        visited: list[grammar.Node] = []
         child = first
         while child is not None:
             visited.append(child)
@@ -397,7 +417,7 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(self.session.node_count() > 0, True)
 
     def test_terminal_only_nodes_have_empty_symbol_names(self):
-        def contains_terminal_only(node: galley.Node) -> galley.Node | None:
+        def contains_terminal_only(node: grammar.Node) -> grammar.Node | None:
             if self.session.symbol_name(node) == b"":
                 return node
             child = self.session.first_child(node)
@@ -423,13 +443,13 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(self.session.child_count(invalid), 0)
 
     def test_walk_matches_hand_rolled_recursion(self) -> None:
-        if not galley.has_ast():
+        if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
         self.assertIsNotNone(root)
         assert root is not None
 
-        def recurse(node: galley.Node, depth: int, out: list[tuple[int, int]]) -> None:
+        def recurse(node: grammar.Node, depth: int, out: list[tuple[int, int]]) -> None:
             out.append((int(node), depth))
             child = self.session.first_child(node)
             while child is not None:
@@ -449,7 +469,7 @@ class WalkTests(unittest.TestCase):
         self.assertFalse(is_error)
 
     def test_snapshot_matches_per_node_accessors(self) -> None:
-        if not galley.has_ast():
+        if not grammar.has_ast():
             self.skipTest("no AST build")
         snap = self.session.snapshot()
         count = self.session.node_count()
@@ -512,7 +532,7 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(data[start : start + length], b"alpha:12,beta:3")
 
     def test_walk_skip_children_prunes_subtree(self) -> None:
-        if not galley.has_ast():
+        if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
@@ -525,7 +545,7 @@ class WalkTests(unittest.TestCase):
             self.session.walk(0xFFFFFFFFFFFFFFFF)
 
     def test_walk_reports_no_error_flags_on_a_clean_tree(self) -> None:
-        if not galley.has_ast():
+        if not grammar.has_ast():
             self.skipTest("no AST build")
         # Failed parses keep the previous successful tree, so error-marked
         # nodes are only reachable through the Zig-native session; bindings
@@ -544,11 +564,11 @@ class WalkTests(unittest.TestCase):
 
 
 class EditTests(unittest.TestCase):
-    session: galley.Session
-    root: galley.Node
+    session: grammar.Session
+    root: grammar.Node
 
     def setUp(self) -> None:
-        self.session = galley.Session()
+        self.session = grammar.Session()
         self.session.parse("alpha:12,beta:3")
         root = self.session.root_node()
         assert root is not None
@@ -619,7 +639,7 @@ class EditTests(unittest.TestCase):
         promoted = self.session.promote_children_over_wrapper(wrapper)
         self.assertIsNotNone(promoted)
         assert promoted is not None
-        active: list[galley.Node] = []
+        active: list[grammar.Node] = []
         child = self.session.first_child(self.root)
         while child is not None:
             active.append(child)
@@ -640,17 +660,17 @@ class EditTests(unittest.TestCase):
 
 
 class SymbolTableTests(unittest.TestCase):
-    session: galley.Session
+    session: grammar.Session
 
     def setUp(self) -> None:
-        self.session = galley.Session()
+        self.session = grammar.Session()
 
     def tearDown(self) -> None:
         self.session.close()
 
     def test_symbol_and_variable_tables(self):
-        self.assertGreater(galley.symbol_count(), 0)
-        self.assertGreater(galley.variable_count(), 0)
+        self.assertGreater(grammar.symbol_count(), 0)
+        self.assertGreater(grammar.variable_count(), 0)
         first_name = self.session.symbol_name_at(0)
         self.assertIsInstance(first_name, bytes)
         self.assertIsInstance(self.session.symbol_is_terminal(0), bool)
@@ -662,7 +682,7 @@ class SymbolTableTests(unittest.TestCase):
 
 class ReservationTests(unittest.TestCase):
     def test_reserve_and_report_capacity(self):
-        session = galley.Session()
+        session = grammar.Session()
         try:
             capacity = session.node_capacity()
             session.reserve_nodes(capacity + 1024)
@@ -673,7 +693,7 @@ class ReservationTests(unittest.TestCase):
 
 class LifetimeTests(unittest.TestCase):
     def test_close_is_idempotent_and_closed_sessions_raise(self):
-        session = galley.Session()
+        session = grammar.Session()
         session.parse("alpha:12")
         session.close()
         session.close()
@@ -683,13 +703,13 @@ class LifetimeTests(unittest.TestCase):
             session.root_node()
 
     def test_context_manager_closes_session(self):
-        with galley.Session() as session:
+        with grammar.Session() as session:
             self.assertGreater(session.parse("alpha:12"), 0)
         with self.assertRaises(ValueError):
             session.parse("alpha:12")
 
     def test_options_round_trip(self):
-        session = galley.Session(
+        session = grammar.Session(
             max_errors=3,
             recovery_window=100,
             stack_overflow_recovery=False,
@@ -702,6 +722,201 @@ class LifetimeTests(unittest.TestCase):
             self.assertGreater(session.parse("alpha:12"), 0)
         finally:
             session.close()
+
+
+def _package_files() -> list[str]:
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    return ["__init__.py", "__init__.pyi", f"galley_impl{suffix}"]
+
+
+class LoaderTests(unittest.TestCase):
+    """Contracts of the bare-file loader.
+
+    Copies of the already-built fixture extension stand in for distinct
+    grammars: same content, separate module objects — which is exactly
+    what per-artifact isolation rests on. No rebuilds, no examples.
+    Bare loads never scan: a `procedures.py` next to the file is
+    ignored, and hooks arrive only through explicit installs.
+    """
+
+    def setUp(self) -> None:
+        self.directory = Path(tempfile.mkdtemp(prefix="galley-loader-test-"))
+        self.addCleanup(shutil.rmtree, self.directory, True)
+
+    def _copy_impl(self, name: str | None = None) -> Path:
+        suffix = sysconfig.get_config_var("EXT_SUFFIX")
+        if name is None:
+            target = self.directory / f"galley_impl_copy{suffix}"
+        elif Path(name).suffix:
+            target = self.directory / name
+        else:
+            target = self.directory / f"{name}{suffix}"
+        shutil.copy2(_fixture_impl_file(), target)
+        return target
+
+    def test_missing_file_names_path_and_build(self) -> None:
+        suffix = sysconfig.get_config_var("EXT_SUFFIX")
+        missing = self.directory / f"no-such-grammar{suffix}"
+        with self.assertRaises(galley.MissingArtifactError) as raised:
+            galley.load(missing)
+        self.assertIn(str(missing), str(raised.exception))
+        self.assertIn("python -m galley", str(raised.exception))
+        self.assertIsInstance(raised.exception, FileNotFoundError)
+
+    def test_same_path_returns_same_module(self) -> None:
+        impl = self._copy_impl()
+        first = galley.load(impl)
+        second = galley.load(impl)
+        self.assertIs(first, second)
+
+    def test_two_files_hold_independent_tables(self) -> None:
+        first = galley.load(self._copy_impl("first"))
+        second = galley.load(self._copy_impl("second"))
+        self.assertIsNot(first, second)
+
+        calls: list[bool] = []
+
+        def probe(args: Any) -> None:
+            calls.append(True)
+
+        first.install_procedure("reduction_Number", probe)
+        try:
+            self.assertIs(first.list_procedures()["reduction_Number"], probe)
+            self.assertNotIn("reduction_Number", second.list_procedures())
+            with first.Session() as session:
+                session.parse("alpha:12")
+            self.assertEqual(len(calls), 1)
+            with second.Session() as session:
+                session.parse("alpha:12")
+            self.assertEqual(len(calls), 1)
+        finally:
+            first.clear_procedures()
+
+    def test_bare_load_installs_nothing(self) -> None:
+        package = self.directory / "hookless"
+        package.mkdir(parents=True, exist_ok=True)
+        suffix = sysconfig.get_config_var("EXT_SUFFIX")
+        impl = package / f"galley_impl{suffix}"
+        shutil.copy2(_fixture_impl_file(), impl)
+        (package / "procedures.py").write_text(
+            "seen: list[bytes] = []\n"
+            "def reduction_Number(args) -> None:\n"
+            "    node = args.current_node()\n"
+            "    assert node is not None\n"
+            "    text = node.text()\n"
+            "    assert text is not None\n"
+            "    seen.append(text)\n",
+            encoding="utf-8",
+        )
+        module = galley.load(impl)
+        self.assertFalse(hasattr(module, "procedures"))
+        self.assertEqual(module.list_procedures(), {})
+        with module.Session() as session:
+            session.parse("alpha:12")
+        self.assertEqual(module.list_procedures(), {})
+
+    def test_manual_dict_install_fires(self) -> None:
+        module = galley.load(self._copy_impl())
+        fired: list[bytes] = []
+
+        def reduction_Number(args: Any) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            fired.append(text)
+
+        module.install_procedures({"reduction_Number": reduction_Number})
+        try:
+            self.assertIn("reduction_Number", module.list_procedures())
+            with module.Session() as session:
+                session.parse("alpha:12")
+            self.assertEqual(fired, [b"12"])
+        finally:
+            module.clear_procedures()
+
+    def test_failed_load_preserves_previous_entry(self) -> None:
+        import importlib.machinery
+        import importlib.util
+        from unittest import mock
+
+        first_path = self._copy_impl("first")
+        first = galley.load(first_path)
+        self.assertIs(sys.modules[galley.STEM], first)
+
+        marker = object()
+        saved = sys.modules.get(galley.STEM, marker)
+
+        def restore_stem():
+            if saved is marker:
+                sys.modules.pop(galley.STEM, None)
+            else:
+                sys.modules[galley.STEM] = saved
+
+        self.addCleanup(restore_stem)
+
+        class _FailingLoader:
+            def create_module(self, spec):
+                return None
+
+            def exec_module(self, module):
+                raise ImportError("simulated exec failure")
+
+        other = self.directory / "other.so"
+        other.write_bytes(b"not an extension")
+
+        def fake_factory(name, path):
+            return importlib.machinery.ModuleSpec(
+                name, _FailingLoader(), origin=str(path)
+            )
+
+        with (
+            mock.patch.object(importlib.util, "spec_from_file_location", fake_factory),
+            self.assertRaises(ImportError),
+        ):
+            galley.load(other)
+        self.assertIs(sys.modules[galley.STEM], first)
+        self.assertNotIn(str(other.resolve()), galley._artifact_cache)
+
+    def _copy_package(self, target: Path) -> Path:
+        target.mkdir(parents=True, exist_ok=True)
+        for name in _package_files():
+            shutil.copy2(FIXTURE_DIRECTORY / name, target / name)
+        return target
+
+    def _write_procedures(self, package: Path, body: str) -> None:
+        (package / "procedures.py").write_text(body, encoding="utf-8")
+
+    def test_direct_import_wires_bundled_hooks(self) -> None:
+        # No loader: an identifier-named copy imports as an ordinary
+        # package, hooks bundled.
+        package = self.directory / "directlang"
+        self._copy_package(package)
+        self._write_procedures(
+            package,
+            "seen: list[bytes] = []\n"
+            "def reduction_Number(args) -> None:\n"
+            "    node = args.current_node()\n"
+            "    assert node is not None\n"
+            "    text = node.text()\n"
+            "    assert text is not None\n"
+            "    seen.append(text)\n",
+        )
+        sys.path.insert(0, str(self.directory))
+        self.addCleanup(sys.path.remove, str(self.directory))
+        for key in (
+            "directlang",
+            "directlang.procedures",
+            "directlang.galley_impl",
+        ):
+            self.addCleanup(sys.modules.pop, key, None)
+        import directlang  # noqa: E402
+
+        with directlang.Session() as session:
+            session.parse("alpha:12")
+        namespace = directlang.procedures
+        assert namespace is not None
+        self.assertEqual(namespace.seen, [b"12"])
 
 
 if __name__ == "__main__":
