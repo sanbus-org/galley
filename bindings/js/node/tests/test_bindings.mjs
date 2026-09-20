@@ -6,14 +6,18 @@
  *   node bindings/js/node/tests/test_bindings.mjs
  *
  * Uses the shared fixture (bindings/js/test-fixture), built on demand
- * into a temp workdir; sessions open it through languagePath.
+ * into a temp workdir; sessions open it through the universal entry
+ * pinned to the native leg (plus the generated package entry once).
+ *
+ * The universal dist must be built first:
+ *   npm --prefix bindings/js/universal install
  */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { artifactFileName } from "@sanbus/galley-core";
+import { artifactFileName } from "@sanbus/galley-core/internal";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,28 +30,31 @@ const languageDir = ensureTestLibrary({
 });
 
 const {
-  Session,
   Node,
-  PARSER_TYPE_LL,
-  PARSER_TYPE_LR,
-  RECOVERY_MODE_DISABLED,
-  RECOVERY_MODE_AUTOMATIC,
-  RECOVERY_MODE_EXPLICIT,
-  KIND_SYNTAX,
-  KIND_NONE,
-  KIND_SEMANTIC,
-  STATUS_ERROR_SEMANTIC,
+  SessionClosedError,
+  ParserType,
+  RecoveryMode,
+  Kind,
+  Status,
   INVALID_NODE,
 } = await import("../dist/index.js");
 
+const { galley, openLanguageDirectory, __resetLanguageCache } = await import("../../universal/dist/index.js");
+
+async function newLanguage(opts = {}) {
+  return openLanguageDirectory(languageDir, { backend: "native", ...opts });
+}
+
 async function newSession(opts = {}) {
-  return Session.fromDirectory(languageDir, opts);
+  const lang = await newLanguage();
+  return lang.openSession(opts);
 }
 
 let passed = 0;
 let failed = 0;
 
 async function test(name, fn) {
+  __resetLanguageCache();
   try {
     await fn();
     console.log(`✓ ${name}`);
@@ -63,38 +70,44 @@ function assertIn(value, arr, msg) {
   assert.ok(arr.includes(value), msg ?? `${value} not in ${arr}`);
 }
 
-// ---- SessionSurfaceTests (grammar queries live on the session) ----
+// ---- LanguageSurfaceTests (grammar queries live on the language) ----
 
-await test("fromDirectory requires languagePath", async () => {
-  assert.throws(() => Session.fromDirectory(""), /languagePath/);
-  assert.throws(() => Session.fromDirectory(), /languagePath/);
+await test("openLanguageDirectory requires languagePath", async () => {
+  await assert.rejects(openLanguageDirectory(""), /languagePath/);
+  await assert.rejects(openLanguageDirectory(), /languagePath/);
 });
 
-await test("fromDirectory resolves a usable session", async () => {
-  await using s = await Session.fromDirectory(languageDir);
-  assert.ok(s.version().length > 0);
+await test("openLanguageDirectory resolves a usable language", async () => {
+  const lang = await openLanguageDirectory(languageDir, { backend: "native" });
+  assert.ok(lang.version().length > 0);
+  const s = await lang.openSession();
+  try {
+    assert.equal(s.parse("alpha:12,beta:3"), 15);
+  } finally {
+    s.close();
+  }
 });
 
 await test("missing artifact names the directory", async () => {
-  assert.throws(
-    () => Session.fromDirectory(path.join(languageDir, "no-such-dir")),
+  await assert.rejects(
+    openLanguageDirectory(path.join(languageDir, "no-such-dir"), { backend: "native" }),
     /no-such-dir/,
   );
 });
 
-await test("fromFile requires filePath", async () => {
-  assert.throws(() => Session.fromFile(""), /filePath/);
-  assert.throws(() => Session.fromFile(), /filePath/);
+await test("galley.load requires filePath", async () => {
+  await assert.rejects(galley.load(""), /filePath/);
+  await assert.rejects(galley.load(), /filePath/);
 });
 
-await test("fromFile missing artifact names the file", async () => {
-  assert.throws(
-    () => Session.fromFile(path.join(languageDir, "no-such-lib")),
+await test("galley.load missing artifact names the file", async () => {
+  await assert.rejects(
+    galley.load(path.join(languageDir, "no-such-lib"), { backend: "native" }),
     /no-such-lib/,
   );
 });
 
-await test("fromFile opens an explicit artifact file", async () => {
+await test("galley.load opens an explicit artifact file", async () => {
   const fileDir = `${languageDir}-file`;
   fs.rmSync(fileDir, { recursive: true, force: true });
   fs.cpSync(languageDir, fileDir, { recursive: true });
@@ -102,16 +115,18 @@ await test("fromFile opens an explicit artifact file", async () => {
   fs.renameSync(path.join(fileDir, exampleLib), customLib);
   try {
     // Bare file loads never scan: hooks arrive explicitly only.
-    const s = Session.fromFile(customLib);
+    const lang = await galley.load(customLib, { backend: "native" });
+    assert.deepEqual(lang.listProcedures(), {});
+    const s = await lang.openSession();
     try {
-      assert.deepEqual(s.listProcedures(), []);
       assert.equal(s.parse("alpha:12,beta:3"), 15);
     } finally {
       s.close();
     }
-    // Explicit procedures still fire on a bare-loaded session.
+    // Explicit procedures still fire on bare-loaded handles.
     let called = 0;
-    const s2 = Session.fromFile(customLib, { procedures: { reduction_Pair: () => { called++; } } });
+    lang.installProcedures({ reduction_Pair: () => { called++; } });
+    const s2 = await lang.openSession();
     try {
       s2.parse("alpha:12,beta:3");
       assert.equal(called, 2);
@@ -128,17 +143,49 @@ await test("direct package import wires bundled hooks", async () => {
   // workspace universal package into the temp fixture directory so the
   // import resolves exactly as in a consumer project.
   const universalLink = path.join(languageDir, "node_modules", "@sanbus", "galley");
+  const coreLink = path.join(languageDir, "node_modules", "@sanbus", "galley-core");
   fs.mkdirSync(path.dirname(universalLink), { recursive: true });
-  try {
-    fs.unlinkSync(universalLink);
-  } catch {
-    // Absent on first run; stale on repeats.
+  for (const link of [universalLink, coreLink]) {
+    try {
+      fs.unlinkSync(link);
+    } catch {
+      // Absent on first run; stale on repeats.
+    }
   }
   fs.symlinkSync(path.join(__dirname, "..", "..", "universal"), universalLink);
-  const pkg = await import(pathToFileURL(path.join(languageDir, "index.mjs")).href);
-  const s = await pkg.openSession();
+  fs.symlinkSync(path.join(__dirname, "..", "..", "core"), coreLink);
+  const kv = await import(pathToFileURL(path.join(languageDir, "index.mjs")).href);
+  await kv.initialize();
+  // Hook namespaces are imported from their hook file; the entry binds
+  // none, and named exports are the sole spelling.
+  assert.equal("procedures" in kv, false);
+  assert.equal("default" in kv, false);
+  // Parity pin with the built Python package namespace: every type and
+  // constant the grammar module exposes, with hook and query functions
+  // living on the language handle like the module, not the session.
+  const surface = [
+    "Session",
+    "Node",
+    "Walker",
+    "ProcedureArguments",
+    "Language",
+    "GalleyError",
+    "Kind",
+    "ParserType",
+    "RecoveryMode",
+    "RecoveryTarget",
+    "Resume",
+  ];
+  assert.deepEqual(
+    Object.keys(kv).sort(),
+    ["initialize", "openSession", "language", ...surface].sort(),
+  );
+  // Construction stays async-only: the bare class needs a bound port.
+  assert.throws(() => new kv.Session(), /bound port/);
+  const lang = await kv.language();
+  const s = await kv.openSession();
   try {
-    assert.ok(s.listProcedures().includes("reduction_Pair"));
+    assert.ok("reduction_Pair" in lang.listProcedures());
     assert.equal(s.parse("alpha:12,beta:3"), 15);
   } finally {
     s.close();
@@ -146,43 +193,46 @@ await test("direct package import wires bundled hooks", async () => {
 });
 
 await test("version returns non-empty string", async () => {
-  const s = await newSession();
-  try {
-    const v = s.version();
-    assert.equal(typeof v, "string");
-    assert.notEqual(v, "");
-  } finally {
-    s.close();
-  }
+  const lang = await newLanguage();
+  const v = lang.version();
+  assert.equal(typeof v, "string");
+  assert.notEqual(v, "");
 });
 
 await test("parser metadata flags are consistent", async () => {
-  const s = await newSession();
-  try {
-    assertIn(s.parserType(), [PARSER_TYPE_LL, PARSER_TYPE_LR]);
-    assert.equal(s.hasAst(), true);
-    assert.equal(typeof s.hasProcedures(), "boolean");
-    assert.equal(typeof s.allowsNoAstTreeProcedures(), "boolean");
-    assert.equal(typeof s.sourceRetentionEnabled(), "boolean");
-    assert.equal(typeof s.hasPositionTracking(), "boolean");
-    assert.equal(typeof s.hasInputStreaming(), "boolean");
-    assert.equal(typeof s.usesVerbatim(), "boolean");
-    assert.equal(typeof s.stackOverflowRecoveryAvailable(), "boolean");
-    assertIn(s.errorRecoveryMode(), [RECOVERY_MODE_DISABLED, RECOVERY_MODE_AUTOMATIC, RECOVERY_MODE_EXPLICIT]);
-  } finally {
-    s.close();
-  }
+  const lang = await newLanguage();
+  assertIn(lang.parserType(), [ParserType.Ll, ParserType.Lr]);
+  assert.equal(lang.hasAst(), true);
+  assert.equal(typeof lang.hasProcedures(), "boolean");
+  assert.equal(typeof lang.allowsNoAstTreeProcedures(), "boolean");
+  assert.equal(typeof lang.sourceRetentionEnabled(), "boolean");
+  assert.equal(typeof lang.hasPositionTracking(), "boolean");
+  assert.equal(typeof lang.hasInputStreaming(), "boolean");
+  assert.equal(typeof lang.usesVerbatim(), "boolean");
+  assert.equal(typeof lang.stackOverflowRecoveryAvailable(), "boolean");
+  assertIn(lang.errorRecoveryMode(), [RecoveryMode.Disabled, RecoveryMode.Automatic, RecoveryMode.Explicit]);
 });
 
 await test("status_string renders known codes", async () => {
-  const s = await newSession();
-  try {
-    const rendered = s.statusString(-2);
-    assert.equal(typeof rendered, "string");
-    assert.ok(rendered.toLowerCase().includes("syntax"));
-    assert.equal(s.statusString(999999), null);
-  } finally {
-    s.close();
+  const lang = await newLanguage();
+  const rendered = lang.statusString(-2);
+  assert.equal(typeof rendered, "string");
+  assert.ok(rendered.toLowerCase().includes("syntax"));
+  assert.equal(lang.statusString(999999), null);
+});
+
+
+await test("entry hides the base Session value", async () => {
+  const ns = await import("../dist/index.js");
+  assert.equal("Session" in ns, false);
+  assert.equal(typeof ns.Language, "function");
+  assert.equal(typeof ns.SessionClosedError, "function");
+});
+
+await test("entry keeps loader internals off the public surface", async () => {
+  const ns = await import("../dist/index.js");
+  for (const name of ["resolveArtifact", "checkModuleBytes", "encodeUtf8", "noteSkippedScan"]) {
+    assert.equal(name in ns, false);
   }
 });
 
@@ -195,18 +245,39 @@ await test("parse accepts string and buffers", async () => {
     assert.equal(s.parse(sample), sample.length);
     assert.equal(s.parse(Buffer.from(sample, "utf-8")), sample.length);
     assert.equal(s.parse(new Uint8Array(Buffer.from(sample))), sample.length);
+    const encoded = new TextEncoder().encode(sample);
+    assert.equal(s.parse(new DataView(encoded.buffer)), sample.length);
+    assert.equal(s.parse(encoded.buffer.slice(0)), sample.length);
+    assert.throws(() => s.parse(123), TypeError);
+    assert.throws(() => s.parseFile(123), TypeError);
+    // File paths accept file URLs and byte content alike.
+    const p = "/tmp/galley-js-test-parse.kv";
+    fs.writeFileSync(p, sample);
+    assert.equal(s.parseFile(pathToFileURL(p)), sample.length);
+    assert.equal(s.parseFile(Buffer.from(p)), sample.length);
   } finally {
     s.close();
   }
 });
 
-await test("parseSentinel matches parse for nul-free input", async () => {
-  const s = await newSession();
+await test("message inputs accept bytes", async () => {
+  const encode = new TextEncoder().encode.bind(new TextEncoder());
+  const lang = await newLanguage();
+  lang.installProcedure("reduction_Number", (args) => {
+    args.reportSemanticError(encode("bad number"));
+  });
+  const s = await lang.openSession();
   try {
-    const sample = "alpha:12,beta:3";
-    const a = s.parseSentinel(sample);
-    const b = s.parse(sample);
-    assert.equal(a, b);
+    s.setMessageOverride("Number", encode("custom at line {line}"));
+    try {
+      s.parse("alpha:");
+    } catch (err) {
+      assert.ok(err.diagnostic.message.includes("custom at line 1"));
+    }
+    assert.throws(() => s.parse("alpha:999"), (err) => {
+      assert.ok(String(err.message).includes("bad number"));
+      return true;
+    });
   } finally {
     s.close();
   }
@@ -222,7 +293,7 @@ await test("syntax error raises error with code and diagnostic", async () => {
       assert.equal(err.code, -2);
       assert.ok(err.diagnostic);
       const d = err.diagnostic;
-      assert.equal(d.kind, KIND_SYNTAX);
+      assert.equal(d.kind, Kind.Syntax);
       assert.equal(d.line, 1);
       assert.equal(d.column, 7);
       assert.ok(d.message.includes("parse failed"));
@@ -376,6 +447,33 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
       walker.close();
     }
     assert.deepEqual(preorder, walked);
+  } finally {
+    s.close();
+  }
+});
+
+await test("lastInput buffers snapshot spans and starts empty", async () => {
+  const fresh = await newSession();
+  try {
+    assert.equal(fresh.lastInput().length, 0);
+  } finally {
+    fresh.close();
+  }
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const input = s.lastInput();
+    assert.ok(input instanceof Uint8Array);
+    assert.deepEqual(Buffer.from(input), Buffer.from("alpha:12,beta:3"));
+    const snap = s.snapshot();
+    assert.ok(snap.count > 0);
+    for (let i = 0; i < snap.count; i++) {
+      const text = s.text(BigInt(i));
+      assert.ok(text !== null);
+      const start = Number(snap.spanStart[i]);
+      const end = start + Number(snap.spanLen[i]);
+      assert.deepEqual(Buffer.from(input.subarray(start, end)), Buffer.from(text));
+    }
   } finally {
     s.close();
   }
@@ -632,10 +730,11 @@ await test("unlink wrapper detaches without touching children", async () => {
 // ---- SymbolTableTests ----
 
 await test("symbol and variable tables", async () => {
-  const s = await newSession();
+  const lang = await newLanguage();
+  assert.ok(lang.symbolCount() > 0);
+  assert.ok(lang.variableCount() > 0);
+  const s = await lang.openSession();
   try {
-    assert.ok(s.symbolCount() > 0);
-    assert.ok(s.variableCount() > 0);
     const firstName = s.symbolNameAt(0);
     assert.ok(firstName instanceof Uint8Array);
     assert.equal(typeof s.symbolIsTerminal(0), "boolean");
@@ -668,8 +767,8 @@ await test("close is idempotent and closed sessions throw", async () => {
   s.parse("alpha:12");
   s.close();
   s.close();
-  assert.throws(() => s.parse("alpha:12"), /closed/);
-  assert.throws(() => s.rootNode(), /closed/);
+  assert.throws(() => s.parse("alpha:12"), SessionClosedError);
+  assert.throws(() => s.rootNode(), SessionClosedError);
 });
 
 await test("Node after close throws", async () => {
@@ -677,8 +776,8 @@ await test("Node after close throws", async () => {
   s.parse("alpha:12,beta:3");
   const root = s.rootNode();
   s.close();
-  assert.throws(() => root.children(), /closed/);
-  assert.throws(() => root.text(), /closed/);
+  assert.throws(() => root.children(), SessionClosedError);
+  assert.throws(() => root.text(), SessionClosedError);
 });
 
 await test("using-like dispose", async () => {
@@ -688,7 +787,7 @@ await test("using-like dispose", async () => {
     return s.rootNode()?.address;
   })();
   s.close();
-  assert.throws(() => s.parse("alpha:12"));
+  assert.throws(() => s.parse("alpha:12"), SessionClosedError);
   // Symbol.dispose path if available (Node 24+ supports using)
   // We test manual dispose
   const s2 = await newSession();
@@ -716,15 +815,17 @@ await test("options round-trip", async () => {
 });
 
 await test("message override", async () => {
-  const s = await newSession({ messageOverrides: { Number: "custom at line {line}" } });
+  const s = await newSession();
   try {
+    s.setMessageOverride("Number", "custom at line {line}");
     try {
       s.parse("alpha:");
     } catch (err) {
       assert.ok(err.diagnostic.message.includes("custom at line 1"));
     }
-    // also via method
-    const s2 = await newSession();
+    // also via a second session on the same handle
+    const lang = await newLanguage();
+    const s2 = await lang.openSession();
     try {
       s2.setMessageOverride("Number", "override2 {line}:{column}");
       try {
@@ -742,8 +843,8 @@ await test("message override", async () => {
 
 await test("procedure hook can read node text", async () => {
   const seen = [];
-  const s = await newSession();
-  s.installProcedure("reduction_Pair", (args) => {
+  const lang = await newLanguage();
+  lang.installProcedure("reduction_Pair", (args) => {
     const node = args.currentNode();
     assert.ok(node);
     const text = node.text();
@@ -751,6 +852,7 @@ await test("procedure hook can read node text", async () => {
     assert.ok(text.length > 0);
     seen.push(text);
   });
+  const s = await lang.openSession();
   try {
     s.parse("alpha:12,beta:3");
     assert.equal(seen.length, 2);
@@ -761,29 +863,30 @@ await test("procedure hook can read node text", async () => {
 
 await test("hook-reported semantic errors aggregate and fail", async () => {
   const counts = [];
-  const s = await newSession();
-  s.installProcedure("reduction_Number", (args) => {
+  const lang = await newLanguage();
+  lang.installProcedure("reduction_Number", (args) => {
     const node = args.currentNode();
     assert.ok(node);
     const value = Number.parseInt(Buffer.from(node.text()).toString("utf-8"), 10);
     if (value > 99) counts.push(args.reportSemanticError("value out of range"));
   });
+  const s = await lang.openSession();
   try {
     assert.throws(() => s.parse("alpha:12,beta:300,gamma:400"), (err) => {
-      assert.equal(err.code, STATUS_ERROR_SEMANTIC);
+      assert.equal(err.code, Status.ErrorSemantic);
       assert.ok(String(err.message).includes("value out of range"));
       return true;
     });
     assert.deepEqual(counts, [1, 2]);
     const d = s.diagnostic();
     assert.ok(d);
-    assert.equal(d.kind, KIND_SEMANTIC);
+    assert.equal(d.kind, Kind.Semantic);
     assert.equal(d.semanticErrorCount, 2);
     assert.deepEqual(d.semantic, ["Number", "value out of range"]);
     assert.ok(d.message.includes("SemanticError"));
     const recorded = s.diagnostics();
     assert.equal(recorded.length, 2);
-    assert.ok(recorded.every((item) => item.kind === KIND_SEMANTIC));
+    assert.ok(recorded.every((item) => item.kind === Kind.Semantic));
     s.parse("alpha:12");
     assert.equal(s.diagnostic(), null);
   } finally {
@@ -792,18 +895,19 @@ await test("hook-reported semantic errors aggregate and fail", async () => {
 });
 
 await test("installProcedure dispatches host hooks", async () => {
-  const s = await newSession();
-  s.clearProcedures();
+  const lang = await newLanguage();
+  lang.clearProcedures();
   let called = 0;
-  s.installProcedure("reduction", () => { called++; });
-  s.installProcedure("reduction_Pair", () => { called++; });
-  assert.deepEqual(s.listProcedures().sort(), ["reduction", "reduction_Pair"].sort());
+  lang.installProcedure("reduction", () => { called++; });
+  lang.installProcedure("reduction_Pair", () => { called++; });
+  assert.deepEqual(Object.keys(lang.listProcedures()).sort(), ["reduction", "reduction_Pair"]);
+  const s = await lang.openSession();
   try {
     s.parse("alpha:12,beta:3");
     assert.ok(called > 0, "hooks should have fired");
     const before = called;
-    s.clearProcedures();
-    assert.equal(s.listProcedures().length, 0);
+    lang.clearProcedures();
+    assert.equal(Object.keys(lang.listProcedures()).length, 0);
     s.parse("alpha:12");
     assert.equal(called, before, "hooks should not fire after clear");
   } finally {
@@ -811,40 +915,67 @@ await test("installProcedure dispatches host hooks", async () => {
   }
 });
 
-await test("installProcedures bulk registers", async () => {
-  const s = await newSession();
-  try {
-    s.clearProcedures();
-    const mod = {
-      reduction_Document: () => {},
-      hook_print: () => {},
-      notAHook: () => {},
-      reduction_Key: "not a function",
-    };
-    const n = s.installProcedures(mod);
-    assert.equal(n, 2);
-    assert.deepEqual(s.listProcedures().sort(), ["hook_print", "reduction_Document"].sort());
-    s.clearProcedures();
-  } finally {
-    s.close();
-  }
+await test("procedureHook returns the installed callable", async () => {
+  const lang = await newLanguage();
+  lang.clearProcedures();
+  assert.equal(lang.procedureHook("reduction_Pair"), undefined);
+  const hook = () => {};
+  lang.installProcedure("reduction_Pair", hook);
+  assert.equal(lang.procedureHook("reduction_Pair"), hook);
+  assert.equal(lang.listProcedures()["reduction_Pair"], hook);
 });
 
-await test("procedures option installs at construction", async () => {
+await test("installProcedures bulk registers", async () => {
+  const lang = await newLanguage();
+  lang.clearProcedures();
+  const mod = {
+    reduction_Document: () => {},
+    hook_print: () => {},
+    notAHook: () => {},
+    reduction_Key: "not a function",
+  };
+  const n = lang.installProcedures(mod);
+  assert.equal(n, 2);
+  assert.deepEqual(Object.keys(lang.listProcedures()).sort(), ["hook_print", "reduction_Document"]);
+  lang.clearProcedures();
+});
+
+await test("language installs serve later sessions", async () => {
   let called = 0;
-  const s = await newSession({ procedures: { reduction_Pair: () => { called++; } } });
+  const lang = await newLanguage();
+  lang.installProcedures({ reduction_Pair: () => { called++; } });
+  const a = await lang.openSession();
   try {
-    s.parse("alpha:12,beta:3");
+    a.parse("alpha:12,beta:3");
     assert.equal(called, 2);
-    assert.ok(s.listProcedures().includes("reduction_Pair"));
+    assert.equal(typeof lang.listProcedures()["reduction_Pair"], "function");
   } finally {
-    s.close();
+    a.close();
+  }
+  const b = await lang.openSession();
+  try {
+    b.parse("alpha:12");
+    assert.equal(called, 3);
+  } finally {
+    b.close();
+  }
+  // Reinstalling replaces the hook for every session of the handle.
+  let replaced = 0;
+  lang.installProcedure("reduction_Pair", () => { replaced++; });
+  const c = await lang.openSession();
+  try {
+    c.parse("alpha:12");
+    assert.equal(replaced, 1);
+    assert.equal(called, 3);
+  } finally {
+    c.close();
   }
 });
 
 await test("hook throwing does not abort parse", async () => {
-  const s = await newSession();
-  s.installProcedure("reduction_Pair", () => { throw new Error("boom"); });
+  const lang = await newLanguage();
+  lang.installProcedure("reduction_Pair", () => { throw new Error("boom"); });
+  const s = await lang.openSession();
   try {
     // should not throw despite hook throwing; parse still succeeds
     const parsed = s.parse("alpha:12,beta:3");
@@ -854,24 +985,25 @@ await test("hook throwing does not abort parse", async () => {
   }
 });
 
-await test("same-named hooks resolve per session", async () => {
-  const a = await newSession();
-  const b = await newSession();
+await test("one table serves every session of the handle", async () => {
+  const lang = await newLanguage();
+  const a = await lang.openSession();
+  const b = await lang.openSession();
   const fired = [];
-  a.installProcedure("reduction_Pair", () => { fired.push("a"); });
-  b.installProcedure("reduction_Pair", () => { fired.push("b"); });
+  lang.installProcedure("reduction_Pair", () => { fired.push("shared"); });
   try {
     a.parse("alpha:12,beta:3");
-    assert.ok(fired.length === 2 && fired.every((x) => x === "a"));
+    assert.ok(fired.length === 2 && fired.every((x) => x === "shared"));
     fired.length = 0;
     b.parse("alpha:12,beta:3");
-    assert.ok(fired.length === 2 && fired.every((x) => x === "b"));
-    // interleaved parses re-sync each session's hooks in turn
+    assert.ok(fired.length === 2 && fired.every((x) => x === "shared"));
+    // Reinstalling replaces the hook for both sessions at once.
     fired.length = 0;
+    lang.installProcedure("reduction_Pair", () => { fired.push("replaced"); });
     a.parse("alpha:12");
     b.parse("alpha:12");
     a.parse("alpha:12");
-    assert.deepEqual(fired, ["a", "b", "a"]);
+    assert.deepEqual(fired, ["replaced", "replaced", "replaced"]);
   } finally {
     a.close();
     b.close();
@@ -879,28 +1011,40 @@ await test("same-named hooks resolve per session", async () => {
 });
 
 await test("nested parse restores the outer session's hooks", async () => {
-  const a = await newSession();
-  const b = await newSession();
-  a.clearProcedures();
-  b.clearProcedures();
-  let outerCalls = 0;
+  const lang = await newLanguage();
+  const outerSeen = [];
+  const innerSeen = [];
   let nested = false;
-  a.installProcedure("reduction_Pair", () => {
-    outerCalls++;
+  function outerPair(args) {
+    const node = args.currentNode();
+    outerSeen.push(Buffer.from(node.text()).toString());
     if (!nested) {
       nested = true;
-      // The inner session holds no hooks, so its parse clears every
-      // native gate. The outer parse must re-enable its own gates on
-      // unwind: all three pairs fire, not just the first.
-      b.parse("zeta:9");
+      const inner = lang.openSession();
+      try {
+        lang.clearProcedures();
+        lang.installProcedure("reduction_Number", (innerArgs) => {
+          innerSeen.push(Buffer.from(innerArgs.currentNode().text()).toString());
+        });
+        try {
+          inner.parse("alpha:9");
+        } finally {
+          lang.clearProcedures();
+          lang.installProcedure("reduction_Pair", outerPair);
+        }
+      } finally {
+        inner.close();
+      }
     }
-  });
+  }
+  const s = await lang.openSession();
   try {
-    assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
-    assert.equal(outerCalls, 3);
+    lang.installProcedure("reduction_Pair", outerPair);
+    s.parse("alpha:12,beta:3");
+    assert.deepEqual(outerSeen, ["alpha:12", "beta:3"]);
+    assert.deepEqual(innerSeen, ["9"]);
   } finally {
-    a.close();
-    b.close();
+    s.close();
   }
 });
 
@@ -909,24 +1053,27 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
   fs.rmSync(linkDir, { force: true });
   fs.symlinkSync(languageDir, linkDir, "junction");
   try {
-    // Same file through two spellings: one shared port, so the inner
-    // parse must restore the outer session's gates on unwind.
-    const a = await Session.fromDirectory(languageDir);
-    const b = await Session.fromDirectory(linkDir);
-    a.clearProcedures();
-    b.clearProcedures();
+    // Same file through two spellings: one shared port and one shared
+    // language handle, so the inner parse must restore the outer
+    // session's gates on unwind.
+    const lang = await openLanguageDirectory(languageDir, { backend: "native" });
+    const alias = await openLanguageDirectory(linkDir, { backend: "native" });
+    assert.equal(alias, lang);
+    const a = await lang.openSession();
+    const b = await lang.openSession();
     let outerCalls = 0;
     let nested = false;
-    a.installProcedure("reduction_Pair", () => {
+    lang.installProcedure("reduction_Pair", () => {
       outerCalls++;
       if (!nested) {
         nested = true;
-        b.parse("zeta:9");
+        b.parse("alpha:9");
       }
     });
     try {
       assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
-      assert.equal(outerCalls, 3);
+      // The inner parse shares the table, so its pair fires the hook too.
+      assert.equal(outerCalls, 4);
     } finally {
       a.close();
       b.close();
@@ -948,24 +1095,25 @@ await test("nested parse across symlinked file keeps hooks", async () => {
   fs.symlinkSync(path.join(languageDir, exampleLib), linkFile);
   try {
     // Same library through directory and symlinked-file spellings:
-    // one shared port, so the inner parse must restore the outer
-    // session's gates on unwind. Covers findLibraryFile's half.
-    const a = await Session.fromDirectory(languageDir);
-    const b = await Session.fromFile(linkFile);
-    a.clearProcedures();
-    b.clearProcedures();
+    // one shared port and one shared language handle. Covers
+    // findLibraryFile's half.
+    const lang = await openLanguageDirectory(languageDir, { backend: "native" });
+    const alias = await galley.load(linkFile, { backend: "native" });
+    assert.equal(alias, lang);
+    const a = await lang.openSession();
+    const b = await lang.openSession();
     let outerCalls = 0;
     let nested = false;
-    a.installProcedure("reduction_Pair", () => {
+    lang.installProcedure("reduction_Pair", () => {
       outerCalls++;
       if (!nested) {
         nested = true;
-        b.parse("zeta:9");
+        b.parse("alpha:9");
       }
     });
     try {
       assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
-      assert.equal(outerCalls, 3);
+      assert.equal(outerCalls, 4);
     } finally {
       a.close();
       b.close();
@@ -981,12 +1129,14 @@ await test("two language directories parse independently", async () => {
   fs.cpSync(languageDir, secondDir, { recursive: true });
   try {
     const fired = [];
-    const a = await Session.fromDirectory(languageDir);
-    a.installProcedure("reduction_Pair", () => { fired.push("a-pair"); });
-    const b = await Session.fromDirectory(secondDir);
-    // Divergent hook sets: each session enables only its own gates, so
-    // interleaved parses never fire the other session's hooks.
-    b.installProcedure("reduction_Number", () => { fired.push("b-number"); });
+    const langA = await openLanguageDirectory(languageDir, { backend: "native" });
+    langA.installProcedure("reduction_Pair", () => { fired.push("a-pair"); });
+    const langB = await openLanguageDirectory(secondDir, { backend: "native" });
+    // Divergent hook tables: each handle gates only its own hooks, so
+    // interleaved parses never fire the other handle's hooks.
+    langB.installProcedure("reduction_Number", () => { fired.push("b-number"); });
+    const a = await langA.openSession();
+    const b = await langB.openSession();
     try {
       assert.equal(a.parse("alpha:12,beta:3"), 15);
       assert.ok(fired.length === 2 && fired.every((x) => x === "a-pair"));

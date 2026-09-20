@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js",
+      "default": "./dist/internal.js"
+    },
     "./build/shim.mjs": "./build/shim.mjs",
     "./build/builder.mjs": "./build/builder.mjs",
     "./build/fixture.mjs": "./build/fixture.mjs"

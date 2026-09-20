@@ -37,7 +37,7 @@ def main() -> int:
     try:
         # max_errors is explicit; zero would select the same default.
         session = parser.Session(max_errors=10)
-    except parser.Error:
+    except parser.GalleyError:
         print("failed to create a parser session", file=sys.stderr)
         return 1
     with session:
@@ -45,7 +45,7 @@ def main() -> int:
             session.set_message_override(
                 "Number", "expected a number after ':' (digits only) at line {line}"
             )
-        except parser.Error:
+        except parser.GalleyError:
             print("failed to register the message override", file=sys.stderr)
             return 1
 
@@ -54,7 +54,7 @@ def main() -> int:
         if len(arguments) > 0:
             try:
                 parsed = session.parse_file(arguments[0])
-            except parser.Error as error:
+            except parser.GalleyError as error:
                 diagnostic = error.diagnostic
                 line = diagnostic.line if diagnostic else 0
                 column = diagnostic.column if diagnostic else 0
@@ -66,8 +66,8 @@ def main() -> int:
 
         # Successful parse: walk the tree.
         try:
-            parsed = session.parse_sentinel(VALID_SAMPLE)
-        except parser.Error as error:
+            parsed = session.parse(VALID_SAMPLE)
+        except parser.GalleyError as error:
             print(f"unexpected failure: {error} ({error.code})", file=sys.stderr)
             return 1
         print(f"parsed {parsed} bytes, {session.node_count()} AST nodes")
@@ -80,10 +80,10 @@ def main() -> int:
 
         # Failed parse: inspect the diagnostic.
         try:
-            session.parse_sentinel(BROKEN_SAMPLE)
+            session.parse(BROKEN_SAMPLE)
             print("expected the broken sample to fail", file=sys.stderr)
             return 1
-        except parser.Error as error:
+        except parser.GalleyError as error:
             diagnostic = error.diagnostic
         if diagnostic is None:
             print("expected a diagnostic for the broken sample", file=sys.stderr)
@@ -106,19 +106,19 @@ def main() -> int:
 
         # Multi-error parse: every recorded diagnostic stays addressable.
         try:
-            session.parse_sentinel("alpha:13x,beta:,gamma:q")
+            session.parse("alpha:13x,beta:,gamma:q")
             print("expected the multi-error sample to fail", file=sys.stderr)
             return 1
-        except parser.Error:
+        except parser.GalleyError:
             pass
         recorded = session.diagnostics()
         print(f"recorded diagnostics: {len(recorded)}")
         for index, diag in enumerate(recorded):
             kind_name = (
                 "syntax"
-                if diag.kind == parser.KIND_SYNTAX
+                if diag.kind == parser.Kind.SYNTAX
                 else "indentation"
-                if diag.kind == parser.KIND_INDENTATION
+                if diag.kind == parser.Kind.INDENTATION
                 else "none"
             )
             unexpected = diag.unexpected_token.decode() if diag.unexpected_token else ""
@@ -135,7 +135,7 @@ def main() -> int:
             return 1
         try:
             parsed = session.parse_file(SAMPLE_PATH)
-        except parser.Error as error:
+        except parser.GalleyError as error:
             print(f"file parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
         position = session.last_position()

@@ -4,26 +4,91 @@
  * Factories take exactly one source — a language directory, an explicit
  * artifact file, raw module bytes, or a module URL — and each entry only
  * offers the factories it can serve. These helpers keep that validation
- * in one place so the five session implementations cannot drift. `what`
- * names the calling factory (e.g. `"galley: Session.fromDirectory"`)
- * for error messages.
+ * in one place so entries cannot drift. `what` names the calling
+ * factory (e.g. `"galley: galley.load"`) for error messages.
  */
 
+import { decodeUtf8, encodeUtf8 } from "./text.ts";
+
 export function checkLanguagePath(languagePath: unknown, what: string): string {
-  if (typeof languagePath !== "string" || languagePath.length === 0) {
-    throw new TypeError(`${what} requires languagePath naming the language directory`);
-  }
-  return languagePath;
+  return checkPath(languagePath, what, "languagePath naming the language directory");
 }
 
 /** An explicit artifact file path, resolved and existence-checked by the adapter. */
 export function checkArtifactPath(filePath: unknown, what: string): string {
-  if (typeof filePath !== "string" || filePath.length === 0) {
-    throw new TypeError(`${what} requires filePath naming the artifact file`);
-  }
-  return filePath;
+  return checkPath(filePath, what, "filePath naming the artifact file");
 }
 
+/**
+ * A filesystem path in host-idiomatic form: a string, a `file:` URL, or
+ * byte content decoding to a path. Anything else is a loud error naming
+ * the expected shape. Deliberately dependency-free: no `node:` imports,
+ * so browser graphs stay clean.
+ */
+function checkPath(value: unknown, what: string, expectation: string): string {
+  if (typeof value === "string") {
+    if (value.length === 0) throw new TypeError(`${what} requires ${expectation}`);
+    return value;
+  }
+  if (typeof value === "object" && value !== null && typeof (value as { href?: unknown }).href === "string") {
+    return fileUrlToPath(value as { href: string }, what, expectation);
+  }
+  if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(value)) {
+    const view = value as unknown as { buffer: ArrayBufferLike; byteOffset: number; byteLength: number };
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    const decoded = decodeUtf8(bytes);
+    if (decoded.length === 0) throw new TypeError(`${what} requires ${expectation}`);
+    return decoded;
+  }
+  throw new TypeError(`${what} requires ${expectation}`);
+}
+
+/** Decodes a `file:` URL to a filesystem path without `node:` imports. */
+function fileUrlToPath(url: { href: string }, what: string, expectation: string): string {
+  const match = /^file:\/\/([^/]*)([\s\S]*)$/.exec(url.href);
+  if (match === null || (match[1] !== "" && match[1] !== "localhost")) {
+    throw new TypeError(`${what} requires ${expectation}`);
+  }
+  let path = decodeURIComponent(match[2]);
+  if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1);
+  if (path.length === 0) throw new TypeError(`${what} requires ${expectation}`);
+  return path;
+}
+
+/**
+ * Parse input in host-idiomatic form: a string (encoded once), any
+ * `Uint8Array`, any other buffer view (normalized through the
+ * underlying buffer), or a bare `ArrayBuffer` / `SharedArrayBuffer`.
+ * Anything else is a loud error. `instanceof` fast paths stay ahead of
+ * the cross-realm `isView` normalization, exactly like
+ * {@link checkModuleBytes}.
+ */
+export function checkParseInput(input: unknown, what: string): Uint8Array {
+  if (typeof input === "string") return encodeUtf8(input);
+  if (input instanceof Uint8Array) return input;
+  if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(input)) {
+    const view = input as unknown as { buffer: ArrayBufferLike; byteOffset: number; byteLength: number };
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+  if (
+    (typeof ArrayBuffer !== "undefined" && input instanceof ArrayBuffer) ||
+    (typeof SharedArrayBuffer !== "undefined" && input instanceof SharedArrayBuffer)
+  ) {
+    return new Uint8Array(input as ArrayBuffer);
+  }
+  throw new TypeError(`${what} requires a string or binary input`);
+}
+
+/**
+ * Message text in host-idiomatic form: a string (encoded once) or raw
+ * bytes. Branching here instead of encoding unconditionally closes the
+ * silent-corruption hole where an encoder would stringify a byte array
+ * into digit text.
+ */
+export function checkMessageBytes(value: unknown, what: string): Uint8Array {
+  if (typeof value === "string") return encodeUtf8(value);
+  return checkModuleBytes(value, what);
+}
 /**
  * Raw module bytes. `ArrayBuffer.isView`, not `instanceof`: bytes cross
  * realm boundaries (workers, vm sandboxes) where the constructor

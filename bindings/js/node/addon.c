@@ -215,6 +215,7 @@ typedef int (*fn_galley_has_diagnostic_t)(GalleySession *session);
 typedef int (*fn_galley_has_input_streaming_t)(void);
 typedef int (*fn_galley_has_position_tracking_t)(void);
 typedef int (*fn_galley_has_procedures_t)(void);
+typedef long long (*fn_galley_last_input_t)(GalleySession *session, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_last_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
 typedef unsigned long long (*fn_galley_node_capacity_t)(GalleySession *session);
 typedef unsigned int (*fn_galley_node_child_count_t)(GalleySession *session, GalleyNodeAddress node);
@@ -299,8 +300,7 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
  * two can never skew (a skewed slot would call the wrong function through
  * the wrong type). The `fn_<name>_t` typedefs above stay manual —
  * signatures are not derivable from names — and method_load binds each
- * name through BIND_OR_THROW. `galley_parse_sentinel` is a JS-level alias
- * over `galley_parse` and intentionally has no slot.
+ * name through BIND_OR_THROW.
  */
 #define GALLEY_FN_LIST(X) \
   X(galley_allows_no_ast_tree_procedures) \
@@ -327,6 +327,7 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_has_input_streaming) \
   X(galley_has_position_tracking) \
   X(galley_has_procedures) \
+  X(galley_last_input) \
   X(galley_last_position) \
   X(galley_node_capacity) \
   X(galley_node_child_count) \
@@ -1063,24 +1064,6 @@ static napi_value method_galley_parse(napi_env env, Lib *lib, size_t argc, napi_
   return make_i64(env, with_parse_frame(env, lib, parse_body, &state));
 }
 
-static napi_value method_galley_parse_sentinel(napi_env env, Lib *lib, size_t argc,
-                                              napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected input");
-    return NULL;
-  }
-  char *input = NULL;
-  size_t input_len = 0;
-  if (!get_utf8(env, argv[1], &input, &input_len)) return NULL;
-  // NUL-terminate: get_utf8 already reserves the terminator slot.
-  ParseState state = {lib, session, input, input_len};
-  long long status = with_parse_frame(env, lib, parse_body, &state);
-  free(input);
-  return make_i64(env, status);
-}
-
 typedef struct FileState {
   Lib *lib;
   GalleySession *session;
@@ -1107,6 +1090,16 @@ static napi_value method_galley_parse_file(napi_env env, Lib *lib, size_t argc, 
   free(path);
   (void)path_len;
   return make_i64(env, status);
+}
+
+static napi_value method_galley_last_input(napi_env env, Lib *lib, size_t argc,
+                                           napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  const char *data = NULL;
+  size_t len = 0;
+  long long status = ((fn_galley_last_input_t)lib->fn[SLOT_galley_last_input])(session, &data, &len);
+  return out_bytes(env, status, data, len);
 }
 
 static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t argc,
@@ -2057,9 +2050,9 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_session_create_ex);
   BIND_OR_THROW(api, lib, galley_session_destroy);
   BIND_OR_THROW(api, lib, galley_session_set_message_override);
-  BIND_OR_THROW(api, lib, galley_parse_sentinel);
   BIND_OR_THROW(api, lib, galley_parse);
   BIND_OR_THROW(api, lib, galley_parse_file);
+  BIND_OR_THROW(api, lib, galley_last_input);
   BIND_OR_THROW(api, lib, galley_last_position);
   BIND_OR_THROW(api, lib, galley_node_count);
   BIND_OR_THROW(api, lib, galley_node_capacity);

@@ -54,14 +54,14 @@ def main() -> int:
 
     try:
         session = parser.Session()
-    except parser.Error:
+    except parser.GalleyError:
         print("failed to create a parser session", file=sys.stderr)
         return 1
 
     with session:
         try:
             parsed = session.parse(data)
-        except parser.Error as error:
+        except parser.GalleyError as error:
             print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
         if parsed != len(data):
@@ -75,7 +75,7 @@ def main() -> int:
         for index in range(iterations):
             try:
                 parsed = session.parse(data)
-            except parser.Error as error:
+            except parser.GalleyError as error:
                 print(
                     f"parse failed at iteration {index}: {error} ({error.code})",
                     file=sys.stderr,

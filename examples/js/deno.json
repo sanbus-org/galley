@@ -2,6 +2,7 @@
   "imports": {
     "@sanbus/galley": "../../bindings/js/universal/src/index.ts",
     "@sanbus/galley-core": "../../bindings/js/core/src/index.ts",
+    "@sanbus/galley-core/internal": "../../bindings/js/core/src/internal.ts",
     "@sanbus/galley-node": "../../bindings/js/node/src/index.ts",
     "@sanbus/galley-bun": "../../bindings/js/bun/src/index.ts",
     "@sanbus/galley-deno": "../../bindings/js/deno/src/index.ts",

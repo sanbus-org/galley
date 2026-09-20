@@ -10,7 +10,8 @@
  */
 
 import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core";
+import { GalleyError } from "@sanbus/galley-core";
+import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { ensureDispatchFor } from "./dispatch.ts";
 
 const textEncoder = new TextEncoder();
@@ -43,6 +44,7 @@ interface GalleySymbols {
   galley_session_set_message_override(session: Deno.PointerValue, name: FfiOut, nameLen: number, message: FfiOut, messageLen: number): bigint;
   galley_parse(session: Deno.PointerValue, data: FfiOut, len: number): bigint;
   galley_parse_file(session: Deno.PointerValue, path: FfiOut): bigint;
+  galley_last_input(session: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
   galley_last_position(session: Deno.PointerValue, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_node_count(session: Deno.PointerValue): bigint;
   galley_reserve_nodes(session: Deno.PointerValue, capacity: bigint): bigint;
@@ -223,6 +225,7 @@ const BASE_SYMBOLS = {
   galley_session_set_message_override: { parameters: ["pointer", "buffer", "usize", "buffer", "usize"], result: "i64" },
   galley_parse: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
   galley_parse_file: { parameters: ["pointer", "buffer"], result: "i64" },
+  galley_last_input: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_last_position: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_node_count: { parameters: ["pointer"], result: "u64" },
   galley_reserve_nodes: { parameters: ["pointer", "u64"], result: "i64" },
@@ -525,6 +528,14 @@ export class DenoPort implements FfiPort {
     const outCol = u32Out();
     if (this.native.galley_last_position(handle as Deno.PointerValue, outLine, outCol) < 0n) return null;
     return [outLine[0], outCol[0]];
+  }
+
+  lastInput(handle: Handle): Uint8Array | null {
+    const h = handle as Deno.PointerValue;
+    const outData = ptrOut();
+    const outLen = lenOut();
+    if (this.native.galley_last_input(h, outData, outLen) < 0n) return null;
+    return readBytes(outData[0], outLen[0]);
   }
 
   // -- arena and navigation ----------------------------------------------

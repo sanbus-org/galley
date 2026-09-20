@@ -27,8 +27,9 @@ import type {
   TreeSnapshot,
   WalkedStep,
 } from "@sanbus/galley-core";
-import { GalleyError, resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core";
-import { checkModuleBytes, checkModuleUrl, fetchModuleBytes } from "@sanbus/galley-core";
+import { GalleyError } from "@sanbus/galley-core";
+import { resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
+import { checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -100,6 +101,7 @@ interface GalleyWasmExports {
   galley_node_line_column(session: number, node: bigint, outLine: number, outCol: number): bigint;
   galley_node_variable_index(session: number, node: bigint): bigint;
   galley_last_position(session: number, outLine: number, outCol: number): bigint;
+  galley_last_input(session: number, outData: number, outLen: number): bigint;
   galley_has_diagnostic(session: number): number;
   galley_diagnostic_kind(session: number): bigint;
   galley_diagnostic_message(session: number, out: number): bigint;
@@ -512,25 +514,11 @@ async function instantiateAsync(bytes: Uint8Array<ArrayBuffer>, wasmPath: string
 // sharing one would merge sessions). Unbounded like the port cache, by the
 // same documented policy.
 
-function moduleKey(bytes: Uint8Array): string {
-  // cyrb53 over content plus length: fast number ops, no dependencies
-  // (node:crypto would poison the browser import graph).
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (const byte of bytes) {
-    h1 = Math.imul(h1 ^ byte, 2654435761);
-    h2 = Math.imul(h2 ^ byte, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return `${bytes.length}:${(h2 >>> 0).toString(16)}${(h1 >>> 0).toString(16)}`;
-}
-
 const compiledModules = new Map<string, WebAssembly.Module>();
 const compilingModules = new Map<string, Promise<WebAssembly.Module>>();
 
 function compileModuleSync(bytes: Uint8Array<ArrayBuffer>): WebAssembly.Module {
-  const key = moduleKey(bytes);
+  const key = hashModuleBytes(bytes);
   const hit = compiledModules.get(key);
   if (hit !== undefined) return hit;
   const module = new WebAssembly.Module(bytes);
@@ -539,7 +527,7 @@ function compileModuleSync(bytes: Uint8Array<ArrayBuffer>): WebAssembly.Module {
 }
 
 function compileModule(bytes: Uint8Array<ArrayBuffer>): Promise<WebAssembly.Module> {
-  const key = moduleKey(bytes);
+  const key = hashModuleBytes(bytes);
   const hit = compiledModules.get(key);
   if (hit !== undefined) return Promise.resolve(hit);
   // Concurrent compiles of the same bytes share one job.
@@ -594,7 +582,7 @@ export function instantiateWasm(bytes: Uint8Array): WasmPort {
 export async function portFromBytes(bytes: Uint8Array, prefix = "galley-wasm"): Promise<WasmPort> {
   // Copy: callers may hand over shared or resizable buffers, which the
   // compiler rejects; the copy is ArrayBuffer-backed.
-  const owned = Uint8Array.from(checkModuleBytes(bytes, `${prefix}: Session.fromBytes`));
+  const owned = Uint8Array.from(checkModuleBytes(bytes, `${prefix}: galley.loadBytes`));
   return instantiateAsync(owned, "<bytes>");
 }
 
@@ -604,7 +592,7 @@ export async function portFromBytes(bytes: Uint8Array, prefix = "galley-wasm"): 
  * Every `fromUrl` factory delegates here.
  */
 export async function portFromUrl(url: string | URL, prefix = "galley-wasm"): Promise<WasmPort> {
-  const source = checkModuleUrl(url, `${prefix}: Session.fromUrl`);
+  const source = checkModuleUrl(url, `${prefix}: galley.loadUrl`);
   const owned = Uint8Array.from(await fetchModuleBytes(source, prefix));
   return instantiateAsync(owned, "<bytes>");
 }
@@ -914,6 +902,11 @@ export class WasmPort implements FfiPort {
     } finally {
       this.free(out, 8);
     }
+  }
+
+  lastInput(handle: Handle): Uint8Array | null {
+    const session = handle as number;
+    return this.tryCopyBytes((data, len) => this.wasm.galley_last_input(session, data, len));
   }
 
   // -- arena and navigation ---------------------------------------------------

@@ -20,6 +20,28 @@ export class GalleyError extends Error {
   }
 }
 
+/**
+ * Use after close: the session, or a node bound to it, is already
+ * closed. Thrown instead of a generic error so catch sites can name
+ * the failure instead of matching message text.
+ */
+export class SessionClosedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SessionClosedError";
+  }
+
+  /** True for closed-session failures even across duplicated installs. */
+  static is(error: unknown): error is SessionClosedError {
+    if (error instanceof SessionClosedError) return true;
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (error as { name?: unknown }).name === "SessionClosedError"
+    );
+  }
+}
+
 const MISSING_ARTIFACT_CODE = "galley:missing-artifact";
 
 /**

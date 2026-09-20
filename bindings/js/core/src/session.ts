@@ -3,19 +3,20 @@
  * Mirrors Python/Rust/Go sessions over `bindings/c/galley.h`.
  *
  * Runtime-neutral: all native calls go through the injected {@link FfiPort}.
- * Each adapter (`bindings/js/node`, `../bun`, `../deno`, `../wasm`,
- * `../universal`) resolves its port first and hands a bound port to this
- * constructor through its async `Session.fromX` factories.
+ * Factories (`galley` on the universal entry, `openSession` on generated
+ * package entries) resolve the backend first and hand a bound port to
+ * this constructor.
  */
 
 import { INVALID_NODE } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
-import { GalleyError } from "./errors.ts";
+import { GalleyError, SessionClosedError } from "./errors.ts";
 import type { FfiPort, Handle, SessionCOptions, TreeSnapshot } from "./port.ts";
-import { decodeUtf8, encodeUtf8 } from "./text.ts";
+import { decodeUtf8 } from "./text.ts";
+import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { Node } from "./node.ts";
-import { ProcedureArguments, ProcedureRegistry, installSessionProcedures } from "./procedures.ts";
-import type { HookFn, ProceduresOption } from "./procedures.ts";
+import { ProcedureArguments, ProcedureRegistry, registryFor } from "./procedures.ts";
+import type { HookFn } from "./procedures.ts";
 
 export interface SessionOptions {
   maxErrors?: number; // default 10
@@ -25,13 +26,9 @@ export interface SessionOptions {
   verbosity?: number; // default 0
   astPreallocationRatio?: number; // default -1.0 (selects library default)
   astPreallocationCap?: number | bigint; // default 0
-  messageOverrides?: Record<string, string>; // name -> message
-  procedures?: ProceduresOption; // explicit hook modules, installed after the factory's scan
 }
 
-function defaultOptions(): Required<Omit<SessionOptions, "messageOverrides" | "procedures">> & {
-  messageOverrides: Record<string, string>;
-} {
+function defaultOptions(): Required<SessionOptions> {
   return {
     maxErrors: 10,
     recoveryWindow: 500,
@@ -40,7 +37,6 @@ function defaultOptions(): Required<Omit<SessionOptions, "messageOverrides" | "p
     verbosity: 0,
     astPreallocationRatio: -1.0,
     astPreallocationCap: 0,
-    messageOverrides: {},
   };
 }
 
@@ -135,22 +131,25 @@ export class Session {
   #handle: Handle | null = null;
   #port: FfiPort;
   #closed = false;
-  #procedures = new ProcedureRegistry();
+  #procedures: ProcedureRegistry;
 
   /**
    * Takes a bound port: factories resolve the backend first, so a
    * constructed session is always usable. There is no unready state.
-   * `scannedProcedures` carries the factory's language-directory scan
-   * (or null where the runtime has none); it installs ahead of
-   * `options.procedures` through the shared composition gate.
+   * Hooks come from the port's shared table, so every session on one
+   * port reads one registry.
    */
-  constructor(port: FfiPort, options: SessionOptions = {}, scannedProcedures: unknown = null) {
+  constructor(port: FfiPort, options: SessionOptions = {}) {
     if (!port) throw new TypeError("galley: Session needs a bound port");
+    if ("procedures" in options || "messageOverrides" in options) {
+      throw new TypeError(
+        "galley: Session takes only parser tunables; install hooks on the language handle " +
+          "and set message overrides through setMessageOverride",
+      );
+    }
     const merged = { ...defaultOptions(), ...options };
-    const overrides = options.messageOverrides ?? merged.messageOverrides;
     this.#port = port;
-
-    installSessionProcedures(this.#procedures, scannedProcedures, options.procedures);
+    this.#procedures = registryFor(port);
 
     const hasNonDefault =
       options.maxErrors !== undefined ||
@@ -182,14 +181,6 @@ export class Session {
       throw new GalleyError("out of memory", -7, null);
     }
     this.#handle = handle;
-    for (const [name, message] of Object.entries(overrides)) {
-      const st = port.setMessageOverride(this.#handle, encodeUtf8(name), encodeUtf8(message));
-      if (st < 0) {
-        const err = this.#errorFromStatus(st, "failed to register message override");
-        this.close();
-        throw err;
-      }
-    }
   }
 
   get isClosed(): boolean {
@@ -197,7 +188,7 @@ export class Session {
   }
 
   #requirePort(): FfiPort {
-    if (this.#closed) throw new Error("session is closed");
+    if (this.#closed) throw new SessionClosedError("session is closed");
     return this.#port;
   }
 
@@ -212,7 +203,7 @@ export class Session {
 
   #requireHandle(): Handle {
     this.#requirePort();
-    if (this.#closed || this.#handle === null) throw new Error("session is closed");
+    if (this.#closed || this.#handle === null) throw new SessionClosedError("session is closed");
     return this.#handle;
   }
 
@@ -238,107 +229,17 @@ export class Session {
     if (status < 0) throw this.#errorFromStatus(status, fallback);
   }
 
-  // -- parser metadata (mirror galley.h; bound to this session's artifact) --
-
-  version(): string {
-    return this.#requirePort().version();
-  }
-
-  parserType(): number {
-    return this.#requirePort().parserType();
-  }
-
-  errorRecoveryMode(): number {
-    return this.#requirePort().errorRecoveryMode();
-  }
-
-  hasAst(): boolean {
-    return this.#requirePort().hasAst();
-  }
-
-  hasProcedures(): boolean {
-    return this.#requirePort().hasProcedures();
-  }
-
-  allowsNoAstTreeProcedures(): boolean {
-    return this.#requirePort().allowsNoAstTreeProcedures();
-  }
-
-  sourceRetentionEnabled(): boolean {
-    return this.#requirePort().sourceRetentionEnabled();
-  }
-
-  hasPositionTracking(): boolean {
-    return this.#requirePort().hasPositionTracking();
-  }
-
-  hasInputStreaming(): boolean {
-    return this.#requirePort().hasInputStreaming();
-  }
-
-  usesVerbatim(): boolean {
-    return this.#requirePort().usesVerbatim();
-  }
-
-  stackOverflowRecoveryAvailable(): boolean {
-    return this.#requirePort().stackOverflowRecoveryAvailable();
-  }
-
-  symbolCount(): number {
-    return this.#requirePort().symbolCount();
-  }
-
-  variableCount(): number {
-    return this.#requirePort().variableCount();
-  }
-
-  statusString(status: number): string | null {
-    return this.#requirePort().statusString(status);
-  }
-
-  // -- procedures (this session's registry; hooks never cross sessions) --
+  // -- procedures (this session reads its language's shared registry) --
 
   /**
-   * Installs a single procedure hook into this session.
-   * Overwrites any existing entry for `name`.
-   */
-  installProcedure(name: string, fn: HookFn | (() => void)): void {
-    this.#procedures.install(name, fn);
-  }
-
-  /**
-   * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each function into this
-   * session. Returns the number installed.
-   */
-  installProcedures(module: Record<string, unknown>): number {
-    return this.#procedures.installModule(module);
-  }
-
-  /** Removes all hooks from this session; subsequent parses are no-ops. */
-  clearProcedures(): void {
-    this.#procedures.clear();
-  }
-
-  /** Returns this session's registered procedure names. */
-  listProcedures(): string[] {
-    return this.#procedures.names();
-  }
-
-  /** The hook for `name`, if this session registered one. */
-  procedureHook(name: string): HookFn | undefined {
-    return this.#procedures.get(name);
-  }
-
-  /**
-   * Runs this session's hook for `name` (silent no-op when unregistered).
+   * Runs the shared hook for `name` (silent no-op when unregistered).
    * Published on the port as `activeDispatch` for the duration of each
-   * parse so native callbacks reach the parsing session's own registry.
+   * parse so native callbacks reach the language's shared registry.
    * Hook exceptions are logged and swallowed so a throwing hook never
    * aborts the parse (mirrors Python's PyErr_Print behavior).
    */
-  #dispatchProcedure(name: string, args: Handle): void {
-    const fn = this.#procedures.get(name);
+  #dispatchProcedure(name: string, args: Handle, table: Map<string, HookFn>): void {
+    const fn = table.get(name);
     if (!fn) return;
     try {
       if (fn.length === 0) {
@@ -366,21 +267,24 @@ export class Session {
     this.close();
   }
 
-  /** For `await using session = await Session.fromX(...)`. */
+  /** For `await using session = await openSession(...)`. */
   async [Symbol.asyncDispose](): Promise<void> {
     this.close();
   }
 
   // -- parsing ---------------------------------------------------------
 
-  parse(input: string | Uint8Array): number {
+  parse(input: string | ArrayBufferView | ArrayBuffer | SharedArrayBuffer): number {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
-    const buf = typeof input === "string" ? encodeUtf8(input) : input;
-    const names = this.#procedures.names();
-    pushGates(port, names);
+    const buf = checkParseInput(input, "galley: session.parse");
+    // Snapshot isolation: installs and clears made mid-parse apply to
+    // later parses only, so dispatch reads the entry table, not the
+    // live one.
+    const table = this.#procedures.snapshot();
+    pushGates(port, [...table.keys()]);
     const previous = port.activeDispatch;
-    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args);
+    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args, table);
     let status: number;
     try {
       status = port.parse(handle, buf);
@@ -389,7 +293,7 @@ export class Session {
       // gate sync must not leak this session's dispatch into the
       // enclosing parse.
       try {
-        popGates(port, names);
+        popGates(port, [...table.keys()]);
       } finally {
         port.activeDispatch = previous;
       }
@@ -400,25 +304,23 @@ export class Session {
     return status;
   }
 
-  parseSentinel(input: string | Uint8Array): number {
-    return this.parse(input);
-  }
-
-  parseFile(filePath: string): number {
+  parseFile(filePath: string | URL | Uint8Array): number {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
-    const names = this.#procedures.names();
-    pushGates(port, names);
+    const file = checkArtifactPath(filePath, "galley: session.parseFile");
+    // Snapshot isolation, same as parse: dispatch reads the entry table.
+    const table = this.#procedures.snapshot();
+    pushGates(port, [...table.keys()]);
     const previous = port.activeDispatch;
-    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args);
+    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args, table);
     let status: number;
     try {
-      status = port.parseFile(handle, filePath);
+      status = port.parseFile(handle, file);
     } finally {
       // Same nesting as parse: dispatch always restores even when the
       // gate sync throws.
       try {
-        popGates(port, names);
+        popGates(port, [...table.keys()]);
       } finally {
         port.activeDispatch = previous;
       }
@@ -563,14 +465,27 @@ export class Session {
     return this.port.lastPosition(h);
   }
 
+  /**
+   * Retained input of the most recent parse as bytes: the buffer that
+   * snapshot spans index. Empty before the first parse.
+   */
+  lastInput(): Uint8Array {
+    const h = this.#requireHandle();
+    return this.port.lastInput(h) ?? new Uint8Array(0);
+  }
+
   hasDiagnostic(): boolean {
     const h = this.#requireHandle();
     return this.port.hasDiagnostic(h);
   }
 
-  setMessageOverride(name: string, message: string): void {
+  setMessageOverride(name: string | Uint8Array, message: string | Uint8Array): void {
     const h = this.#requireHandle();
-    const st = this.port.setMessageOverride(h, encodeUtf8(name), encodeUtf8(message));
+    const st = this.port.setMessageOverride(
+      h,
+      checkMessageBytes(name, "galley: session.setMessageOverride"),
+      checkMessageBytes(message, "galley: session.setMessageOverride"),
+    );
     this.#checkStatus(st);
   }
 

@@ -84,6 +84,11 @@ export interface FfiPort {
   parseFile(handle: Handle, path: string): number;
   /** End position of the most recent successful parse; null on failure. */
   lastPosition(handle: Handle): [number, number] | null;
+  /**
+   * Retained input of the most recent parse: the buffer snapshot spans
+   * index. Empty before the first parse; null only on native failure.
+   */
+  lastInput(handle: Handle): Uint8Array | null;
 
   // -- arena and navigation ----------------------------------------------
   nodeCount(handle: Handle): number;

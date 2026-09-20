@@ -80,3 +80,58 @@ export function ensureTestLibrary({ buildCommand, libFileName, scope }) {
   }
   return workDir;
 }
+
+/**
+ * Make the fixture workdir a real installed Bun consumer so generated
+ * entries resolve their `@sanbus` imports through a manager layout.
+ * Bun-only: runs `bun install` and the layout it writes is only honored
+ * by Bun's resolver. `packages` maps a scope to the workspace directory
+ * to pin; each entry becomes a `file:` dependency of the fixture manifest
+ * (every other field, including the generated peer declaration, is
+ * preserved), then `bun install --linker hoisted` runs in the workdir and
+ * writes its lockfile. Stale install output is purged first so repeats
+ * never merge with a previous manager layout. The lockfile is the trust
+ * anchor: without it Bun bypasses a hand-linked `node_modules` for the
+ * global cache. Hoisted with the default backend keeps `file:` resolution
+ * on the workspace source, so the entry shares the suite's single adapter
+ * realm.
+ */
+export function installBunFixturePackages({ languageDir, packages }) {
+  if (!languageDir) {
+    throw new Error("galley test fixture: languageDir is required");
+  }
+  if (!packages || typeof packages !== "object" || Object.keys(packages).length === 0) {
+    throw new Error("galley test fixture: packages must be a non-empty scope-to-directory map");
+  }
+  fs.rmSync(path.join(languageDir, "node_modules"), { recursive: true, force: true });
+  for (const lockfile of ["bun.lock", "package-lock.json"]) {
+    fs.rmSync(path.join(languageDir, lockfile), { force: true });
+  }
+  const manifestPath = path.join(languageDir, "package.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`galley test fixture: no package.json in ${languageDir}; build the fixture first`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  manifest.dependencies = {
+    ...(manifest.dependencies ?? {}),
+    ...Object.fromEntries(
+      Object.entries(packages).map(([scope, sourceDirectory]) => [
+        `@sanbus/${scope}`,
+        `file:${sourceDirectory}`,
+      ]),
+    ),
+  };
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  const installed = spawnSync("bun", ["install", "--linker", "hoisted"], {
+    cwd: languageDir,
+    encoding: "utf-8",
+  });
+  if (installed.error) {
+    throw new Error(`galley test fixture: cannot run bun install: ${installed.error.message}`);
+  }
+  if (installed.status !== 0) {
+    throw new Error(
+      `galley test fixture: install failed for ${languageDir} (exit ${installed.status})\n${installed.stdout ?? ""}${installed.stderr ?? ""}`,
+    );
+  }
+}

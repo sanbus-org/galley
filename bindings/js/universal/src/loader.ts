@@ -10,12 +10,13 @@
  * - Deno: `Deno.dlopen` native → wasm.
  * - Browser: wasm only.
  *
- * There is no `init()`: the universal `Session` factories resolve their
- * backend before returning — `fromDirectory` (a directory holding the
- * standard-named artifact, with `procedures` scanned), `fromFile` (an
- * explicit artifact file, never scanned), `fromBytes` (raw
- * wasm), or `fromUrl` (fetched). A factory either resolves a usable
- * session or rejects: there is no unready state.
+ * There is no `init()`: the universal factories resolve their
+ * backend before returning — `openLanguageDirectory` (a directory
+ * holding the standard-named artifact, with `procedures` scanned),
+ * `galley.load` (an explicit artifact file, never scanned),
+ * `galley.loadBytes` (raw wasm), or `galley.loadUrl` (fetched).
+ * A factory either resolves a usable session or rejects: there is no
+ * unready state.
  *
  * Adapter acquisition is injected (`seedEngineLegs`): the loader names
  * backend specifiers but never imports them, so no backend — present or
@@ -28,12 +29,12 @@
  */
 
 import type { FfiPort } from "@sanbus/galley-core";
+import { MissingArtifactError } from "@sanbus/galley-core";
 import {
-  MissingArtifactError,
   fetchModuleBytes,
   noteSkippedScan,
   __resetSkippedScan,
-} from "@sanbus/galley-core";
+} from "@sanbus/galley-core/internal";
 
 // Re-exported so sessions keep one import: the loader owns backend
 // resolution, and the skipped-scan notice rides with it. The once-flag
@@ -48,7 +49,7 @@ export type NativeRuntime = "node" | "bun" | "deno";
 export interface SessionSource {
   /** Language directory holding the standard-named artifact file. */
   languagePath?: string;
-  /** Explicit artifact file. Never scanned; pass `procedures` explicitly. */
+  /** Explicit artifact file. Never scanned; install explicitly on the language. */
   filePath?: string;
   /** Module URL for `fetch`. */
   url?: string | URL;
@@ -56,8 +57,6 @@ export interface SessionSource {
   bytes?: Uint8Array;
   /** Pin one backend instead of the native-first probe. */
   backend?: Backend;
-  /** Suppress the one-time WebAssembly performance notice. */
-  quiet?: boolean;
 }
 
 /** Detect the current JavaScript runtime. Bun and Deno are checked before
@@ -135,13 +134,41 @@ function compileGuidance(directory: string | undefined): Error {
   );
 }
 
-export function noteWasmFallback(quiet: boolean | undefined): void {
-  if (quiet || warnedWasm) return;
+/**
+ * Whether the process opts out of the one-time WebAssembly performance
+ * notice (`GALLEY_QUIET=1`). Reads `process.env` where it exists and
+ * `Deno.env` where that exists; denied permissions and missing globals
+ * count as unset, so warnings stay on by default.
+ */
+function envQuiet(): boolean {
+  try {
+    const proc = (globalThis as Record<string, unknown>).process as
+      | { env?: Record<string, string | undefined> }
+      | undefined;
+    const value = proc?.env?.GALLEY_QUIET;
+    if (value === "1" || value === "true") return true;
+  } catch {
+    // Unreachable globals count as unset.
+  }
+  try {
+    const deno = (globalThis as Record<string, unknown>).Deno as
+      | { env?: { get(key: string): string | undefined } }
+      | undefined;
+    const value = deno?.env?.get("GALLEY_QUIET");
+    if (value === "1" || value === "true") return true;
+  } catch {
+    // Denied permissions count as unset.
+  }
+  return false;
+}
+
+export function noteWasmFallback(): void {
+  if (envQuiet() || warnedWasm) return;
   warnedWasm = true;
   console.warn(
     "galley: using the WebAssembly backend (no native library found); " +
       "throughput trails native codegen (roughly three quarters). " +
-      "Build a native library for full speed. Silence with { quiet: true }.",
+      "Build a native library for full speed. Silence with GALLEY_QUIET=1.",
   );
 }
 

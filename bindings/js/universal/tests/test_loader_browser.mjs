@@ -13,10 +13,10 @@
  * realm serves only the cached wasm backend and rejects everything else,
  * proving browsers never touch FFI.
  *
- * What it proves: `Session.fromBytes(bytes)` resolves a parsing
- * session with the one-time notice, parses the shared probe to the
- * same value as the Node/Bun/Deno proofs (15), and bad sources reject
- * loudly instead of guessing.
+ * What it proves: `galley.loadBytes(bytes)` resolves a language whose
+ * sessions parse the shared probe to the same value as the
+ * Node/Bun/Deno proofs (15), with the one-time notice, and bad sources
+ * reject loudly instead of guessing.
  *
  * Run:
  *   GALLEY_CHECKOUT=/path/to/galley node --experimental-vm-modules bindings/js/universal/tests/test_loader_browser.mjs
@@ -31,7 +31,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { TextDecoder, TextEncoder } from "node:util";
-import { wasmArtifactFileName } from "@sanbus/galley-core";
+import { wasmArtifactFileName } from "@sanbus/galley-core/internal";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,7 @@ const WASM_INDEX = pathToFileURL(
 
 const BARE_MODULES = new Map([
   ["@sanbus/galley-core", pathToFileURL(path.join(universalDir, "node_modules", "@sanbus/galley-core", "dist", "index.js")).href],
+  ["@sanbus/galley-core/internal", pathToFileURL(path.join(universalDir, "node_modules", "@sanbus/galley-core", "dist", "internal.js")).href],
   ["@sanbus/galley-wasm", WASM_INDEX],
 ]);
 
@@ -65,27 +66,30 @@ const STUB_SOURCES = new Map([
 ]);
 
 const ENTRY_SOURCE = `
-import { detectRuntime, Session } from ${JSON.stringify(UNIVERSAL_INDEX)};
+import { detectRuntime, galley, openLanguageDirectory } from ${JSON.stringify(UNIVERSAL_INDEX)};
 
-export async function prove(bytesInput, quiet) {
+export async function prove(bytesInput) {
   const runtime = detectRuntime();
-  const session = await Session.fromBytes(bytesInput, { quiet });
+  const language = await galley.loadBytes(bytesInput);
+  const session = await language.openSession();
   let parsed;
   let version;
   let backend;
+  let sessionBackend;
   try {
     parsed = session.parse("alpha:12,beta:3");
-    version = session.version();
-    backend = session.backend;
+    version = language.version();
+    backend = language.backend;
+    sessionBackend = session.backend;
   } finally {
     session.close();
   }
-  return { runtime, backend, parsed, version };
+  return { runtime, backend, sessionBackend, parsed, version };
 }
 
 export async function proveBadSource() {
   try {
-    await Session.fromBytes("not-bytes");
+    await galley.loadBytes("not-bytes");
   } catch (error) {
     return { name: error?.name ?? "unknown", message: String(error?.message ?? error) };
   }
@@ -94,7 +98,7 @@ export async function proveBadSource() {
 
 export async function proveDirectoryFails() {
   try {
-    await Session.fromDirectory("/parsers/language");
+    await openLanguageDirectory("/parsers/language");
   } catch (error) {
     return { name: error?.name ?? "unknown", message: String(error?.message ?? error) };
   }
@@ -231,20 +235,14 @@ async function test(name, fn) {
 
 await test("detectRuntime reports browser and bytes sessions parse", async (warnings) => {
   const namespace = await loadRealm(warnings);
-  const result = await namespace.prove(wasmBytes, false);
+  const result = await namespace.prove(wasmBytes);
   assert.equal(result.runtime, "browser");
   assert.equal(result.backend, "wasm");
+  assert.equal(result.sessionBackend, "wasm");
   assert.equal(result.parsed, 15);
   assert.ok(result.version.length > 0);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /WebAssembly/);
-});
-
-await test("quiet suppresses the fallback notice", async (warnings) => {
-  const namespace = await loadRealm(warnings);
-  const result = await namespace.prove(wasmBytes, true);
-  assert.equal(result.parsed, 15);
-  assert.equal(warnings.length, 0);
 });
 
 await test("bad sources reject loudly", async () => {

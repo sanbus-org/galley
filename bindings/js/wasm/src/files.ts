@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { loadProceduresModule, canonicalResolvePath } from "@sanbus/galley-core";
+import { loadProceduresModule, canonicalResolvePath } from "@sanbus/galley-core/internal";
 import type { FileIo } from "./ffi.ts";
 
 /** `FileIo` over the real filesystem. */

@@ -3,7 +3,9 @@
 ``python -m galley <language-dir>`` builds a language package
 whose inner extension (``galley_impl``) links the grammar statically.
 This loader binds that file directly: ``.so`` in, module out. No scan,
-no hook wiring, no merging.
+no hook wiring, no merging. Prefer the returned module over importing
+``galley_impl``: the ``sys.modules`` key aliases the most recent load
+while every loaded object stays alive in the cache.
 
 ```python
 import galley
@@ -30,16 +32,15 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-from galley._constants import IMPL_MODULE_NAME
+from galley._constants import IMPL_MODULE_NAME as _IMPL_MODULE_NAME
 
-#: ``sys.modules`` key for bare loads. Alias of the shared inner
-#: extension name (filename and baked ``PyInit`` entry): one value,
-#: one source in galley._constants.
-STEM = IMPL_MODULE_NAME
+__all__ = ["MissingArtifactError", "load"]
 
 
 class MissingArtifactError(FileNotFoundError):
     """No compiled grammar where one was expected."""
+
+    code = "galley:missing-artifact"
 
 
 _artifact_cache: dict[str, ModuleType] = {}
@@ -47,19 +48,19 @@ _artifact_cache: dict[str, ModuleType] = {}
 
 def _load_extension(path: Path) -> ModuleType:
     """Exec the extension file at ``path`` under the constant stem."""
-    spec = importlib.util.spec_from_file_location(STEM, path)
+    spec = importlib.util.spec_from_file_location(_IMPL_MODULE_NAME, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"not a loadable grammar extension: {path}")
     module = importlib.util.module_from_spec(spec)
-    previous = sys.modules.get(STEM)
-    sys.modules[STEM] = module
+    previous = sys.modules.get(_IMPL_MODULE_NAME)
+    sys.modules[_IMPL_MODULE_NAME] = module
     try:
         spec.loader.exec_module(module)
     except BaseException:
         if previous is None:
-            sys.modules.pop(STEM, None)
+            sys.modules.pop(_IMPL_MODULE_NAME, None)
         else:
-            sys.modules[STEM] = previous
+            sys.modules[_IMPL_MODULE_NAME] = previous
         raise
     return module
 
@@ -80,7 +81,7 @@ def load(path: str | Path) -> ModuleType:
     key = str(candidate.resolve())
     if key in _artifact_cache:
         module = _artifact_cache[key]
-        sys.modules[STEM] = module
+        sys.modules[_IMPL_MODULE_NAME] = module
         return module
     module = _load_extension(candidate)
     _artifact_cache[key] = module

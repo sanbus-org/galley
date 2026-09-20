@@ -58,7 +58,7 @@ hooks automatically:
 import my_language
 
 with my_language.Session(max_errors=10) as session:
-    parsed = session.parse_sentinel("alpha:12,beta:3")
+    parsed = session.parse("alpha:12,beta:3")
     root = session.root_node()
 ```
 
@@ -70,7 +70,7 @@ import galley
 
 parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 with parser.Session(max_errors=10) as session:
-    parsed = session.parse_sentinel("alpha:12,beta:3")
+    parsed = session.parse("alpha:12,beta:3")
     root = session.root_node()
 ```
 
@@ -114,8 +114,8 @@ The module is designed so the FFI boundary adds as little as possible:
 - Text accessors (`text`, `symbol_name`, diagnostic tokens) return `bytes`
   with no UTF-8 decoding step; decode on demand.
 - `parse()` reads `str` input zero-copy through the interpreter's cached
-  UTF-8 buffer. `parse_sentinel()` additionally avoids the session's input
-  copy — keep the input object alive until the next parse on the session.
+  UTF-8 buffer. The session retains a copy, so node text stays valid
+  after return regardless of the input object's lifetime.
 - All calls hold the GIL; sessions are not thread-safe. Use one session
   per thread or guard it externally.
 
@@ -169,7 +169,7 @@ the generated init registers the Python callables into that slot from
 visible (later installs win per hook name).
 `procedures.py` uses relative imports: it always executes as a submodule
 of the language package, so hook code sees the right `Session` and the
-same `Error` class the parser raises. The parser calls through the slot
+same `GalleyError` class the parser raises. The parser calls through the slot
 directly, so hook code executes in the host's Python interpreter.
 Unregistered slots are no-ops.
 
@@ -183,6 +183,7 @@ parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 parser.install_procedure("reduction_Pair", lambda args: print("Pair"))
 parser.install_procedures(my_hooks)  # all reduction_*/hook_* in module
 parser.list_procedures()   # {name: callable}
+parser.procedure_hook("reduction_Pair")   # the callable, or None
 parser.clear_procedures()
 ```
 
@@ -200,15 +201,15 @@ payloads are unavailable through bindings.
 ## Tree Walking
 
 `session.walk(root)` returns a pre-order `Walker` over the last successful
-parse, yielding `(node, depth, is_semantic_error)` tuples with the root at
-depth 0 — the shared runtime walker, so order and depths match every other
-binding. `walker.skip_children()` prunes the last yielded node's children;
-`session.walk(root, skip_semantic_errors=True)` prunes subtrees rooted at
-semantic-error nodes:
+parse, yielding `{"node", "depth", "is_semantic_error"}` dicts with the
+root at depth 0 — the shared runtime walker, so order and depths match
+every other binding. `walker.skip_children()` prunes the last yielded
+node's children; `session.walk(root, skip_semantic_errors=True)` prunes
+subtrees rooted at semantic-error nodes:
 
 ```python
-for node, depth, is_error in session.walk(session.root_node()):
-    print("  " * depth, session.symbol_name(node))
+for step in session.walk(session.root_node()):
+    print("  " * step["depth"], session.symbol_name(step["node"]))
 ```
 
 ## Error Messages
@@ -227,7 +228,7 @@ parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 with parser.Session(max_errors=10, recovery_window=500) as session:
     try:
         parsed = session.parse("alpha:12,beta:3")
-    except parser.Error as error:
+    except parser.GalleyError as error:
         diagnostic = error.diagnostic
         print(f"{diagnostic.line}:{diagnostic.column}: {diagnostic.message}")
 ```
@@ -236,7 +237,7 @@ Options mirror the runtime defaults: `max_errors=10`,
 `recovery_window=500`, `stack_overflow_recovery=False`,
 `syntax_error_stack_depth=0`, `verbosity=0`,
 `ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`.
-Failures raise `parser.Error`, whose `code` and `diagnostic` attributes carry the raw
+Failures raise `parser.GalleyError`, whose `code` and `diagnostic` attributes carry the raw
 status code and the snapshot for that failure (`error.diagnostic` is `None` when no diagnostic, otherwise a `parser.Diagnostic`; `session.diagnostic()` remains for the last diagnostic).
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
@@ -270,7 +271,7 @@ indentation details, and the full structured recovery information — or
 A hook reports a semantic error through `args.report_semantic_error(message)`,
 which returns the running total so hooks can limit themselves. Parsing
 continues and a syntax-clean parse with any semantic error raises
-`parser.Error` with code `-12` (`KIND_SEMANTIC` diagnostics):
+`parser.GalleyError` with code `Status.ERROR_SEMANTIC` (`Kind.SEMANTIC` diagnostics):
 
 ```python
 def reduction_Number(args: ProcedureArguments) -> None:

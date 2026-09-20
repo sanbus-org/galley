@@ -1,16 +1,27 @@
 /**
- * Browser entry for the WebAssembly adapter: the wasm-only surface with
- * zero `node:` specifiers anywhere in its import graph.
- *
- * Sessions come from async factories: `Session.fromBytes` (raw module
- * bytes) or `Session.fromUrl` (fetched). There is no `fromDirectory`:
- * browsers have no filesystem. Register procedure hooks through the
- * session's `procedures` option.
+ * Browser entry for the WebAssembly adapter: the wasm-only port helpers
+ * with zero `node:` specifiers anywhere in the import graph. Sessions
+ * come from `@sanbus/galley/browser` (`galley.loadBytes` /
+ * `galley.loadUrl`).
  */
 
-export * from "@sanbus/galley-core";
-export { Session } from "./session.ts";
+export {
+  Walker,
+  Node,
+  Language,
+  GalleyError,
+  MissingArtifactError,
+  SessionClosedError,
+  ProcedureArguments,
+  INVALID_NODE,
+  Status,
+  ParserType,
+  RecoveryMode,
+  Kind,
+  RecoveryTarget,
+  Resume,
+} from "@sanbus/galley-core";
 export { getWasmPort, instantiateWasm, portFromBytes, portFromUrl, __resetModuleCache, __resetWasmAcquisition, wasmFileName } from "./ffi.ts";
 export type { WasmPortSource } from "./ffi.ts";
-export type { SessionOptions } from "./session.ts";
+export type { Session, SessionOptions } from "@sanbus/galley-core";
 export type { WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
