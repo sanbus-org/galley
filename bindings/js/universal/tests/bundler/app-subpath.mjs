@@ -1,6 +1,7 @@
-import { Session } from "@sanbus/galley/browser";
+import { galley } from "@sanbus/galley/browser";
 
-const session = await Session.fromUrl("http://127.0.0.1:8123/grammar.wasm");
+const language = await galley.loadUrl("http://127.0.0.1:8123/grammar.wasm");
+const session = await language.openSession();
 try {
   const parsed = session.parse("alpha:12,beta:3");
   if (parsed !== 15) throw new Error(`expected 15, got ${parsed}`);

@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
-import { loadProceduresModule } from "@sanbus/galley-core";
+import { loadProceduresModule } from "@sanbus/galley-core/internal";
 import type { FfiPort } from "@sanbus/galley-core";
 import type { GalleyFFI } from "./ffi.ts";
 

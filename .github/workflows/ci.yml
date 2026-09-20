@@ -343,6 +343,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm --prefix bindings/js install --no-audit --no-fund
+          npm --prefix bindings/js/universal install --no-audit --no-fund
           node bindings/js/node/tests/test_bindings.mjs
 
       - name: Build example (deno)
@@ -351,6 +352,12 @@ jobs:
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: deno task build
+
+      - name: Build JavaScript bindings
+        if: ${{ matrix.language == 'deno' }}
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
 
       - name: Test bindings (deno)
         if: ${{ matrix.language == 'deno' }}
@@ -370,12 +377,19 @@ jobs:
           (cd ../../bindings/js && rm -f package-lock.json bun.lock && bun install)
           bunx galley-js-bun kv
 
+      - name: Build JavaScript bindings
+        if: ${{ matrix.language == 'bun' }}
+        run: |
+          npm --prefix bindings/js install --no-audit --no-fund
+          npm run build --prefix bindings/js
+
       - name: Test bindings (bun)
         if: ${{ matrix.language == 'bun' }}
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           (cd bindings/js && rm -f package-lock.json bun.lock && bun install)
+          npm --prefix bindings/js/universal install --no-audit --no-fund
           bun bindings/js/bun/tests/test_bindings.mjs
 
       - name: Build example (wasm)
@@ -394,6 +408,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           npm --prefix bindings/js install --no-audit --no-fund
+          npm --prefix bindings/js/universal install --no-audit --no-fund
           node bindings/js/wasm/tests/test_bindings.mjs
 
       - name: Build and run example (zig)
@@ -937,6 +952,9 @@ jobs:
           cd examples/js
           npm install --install-links --no-audit --no-fund
           npx galley build kv
+          # benchmark.ts imports the generated json entry, which tsc
+          # typechecks below with the rest of the example.
+          npx galley build json
           npx tsx demo.ts >/tmp/out-universal-node.txt 2>/tmp/err-universal-node.txt
           bun demo.ts >/tmp/out-universal-bun.txt 2>/tmp/err-universal-bun.txt
           deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-universal-deno.txt 2>/tmp/err-universal-deno.txt

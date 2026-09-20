@@ -13,7 +13,7 @@
  * fallback.
  */
 
-import { noteSkippedScan } from "@sanbus/galley-core";
+import { noteSkippedScan } from "@sanbus/galley-core/internal";
 import type { FfiPort } from "@sanbus/galley-core";
 import type { DenoPort } from "./ffi.ts";
 
@@ -65,7 +65,7 @@ export function findProceduresFile(directory: string): string | null {
   return probeProceduresFile(directory);
 }
 
-/** Warn for `Session.fromDirectory` without explicit `procedures`. */
+/** Warn for a directory open without explicit `procedures`. */
 export function warnIfProceduresSkipped(directory: string, explicit: unknown): void {
   noteSkippedScan(findProceduresFile(directory), explicit);
 }

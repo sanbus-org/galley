@@ -24,7 +24,7 @@ if str(BINDINGS_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(BINDINGS_DIRECTORY))
 
 # The grammar-bound package under test; every `grammar.` below is one
-# artifact's surface (Session, Error, hooks registry), imported directly
+# artifact's surface (Session, GalleyError, hooks registry), imported directly
 # so bundled `procedures.py` hooks wire automatically.
 import test_fixture as grammar
 
@@ -74,7 +74,7 @@ class ModuleSurfaceTests(unittest.TestCase):
 
     def test_parser_metadata_flags_are_consistent(self):
         self.assertIn(
-            grammar.parser_type(), (grammar.PARSER_TYPE_LL, grammar.PARSER_TYPE_LR)
+            grammar.parser_type(), (grammar.ParserType.LL, grammar.ParserType.LR)
         )
         self.assertTrue(grammar.has_ast())
         self.assertIsInstance(grammar.has_procedures(), bool)
@@ -87,14 +87,14 @@ class ModuleSurfaceTests(unittest.TestCase):
         self.assertIn(
             grammar.error_recovery_mode(),
             (
-                grammar.RECOVERY_MODE_DISABLED,
-                grammar.RECOVERY_MODE_AUTOMATIC,
-                grammar.RECOVERY_MODE_EXPLICIT,
+                grammar.RecoveryMode.DISABLED,
+                grammar.RecoveryMode.AUTOMATIC,
+                grammar.RecoveryMode.EXPLICIT,
             ),
         )
 
     def test_status_string_renders_known_codes(self):
-        rendered = grammar.status_string(-2)
+        rendered = grammar.status_string(grammar.Status.ERROR_SYNTAX)
         self.assertIsInstance(rendered, str)
         assert rendered is not None
         self.assertIn("syntax", rendered.lower())
@@ -107,13 +107,14 @@ class ModuleSurfaceTests(unittest.TestCase):
     def test_scanned_hooks_share_error_class(self):
         # The bundled procedures.py wires into the grammar's own registry:
         # hooks fire, and the raised error is the package's Error class.
-        procedures = grammar.procedures
-        self.assertIsNotNone(procedures)
+        from test_fixture import procedures
+
+        self.assertIs(sys.modules["test_fixture.procedures"], procedures)
         self.assertTrue(grammar.list_procedures())
         with grammar.Session() as session:
-            with self.assertRaises(grammar.Error) as raised:
+            with self.assertRaises(grammar.GalleyError) as raised:
                 session.parse("alpha:")
-            self.assertIs(type(raised.exception), grammar.Error)
+            self.assertIs(type(raised.exception), grammar.GalleyError)
 
 
 class SessionTests(unittest.TestCase):
@@ -232,22 +233,12 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(self.session.parse(bytearray(sample.encode())), len(sample))
         self.assertEqual(self.session.parse(memoryview(sample.encode())), len(sample))
 
-    def test_parse_sentinel_matches_parse_for_nul_free_input(self):
-        sample = "alpha:12,beta:3"
-        sentinel = self.session.parse_sentinel(sample)
-        direct = self.session.parse(sample)
-        self.assertEqual(sentinel, direct)
-
-    def test_parse_sentinel_rejects_other_types(self):
-        with self.assertRaises(TypeError):
-            self.session.parse_sentinel(bytearray(b"alpha:12"))
-
     def test_syntax_error_raises_error_with_code_and_diagnostic(self):
         diagnostic: grammar.Diagnostic | None = None
         try:
             self.session.parse("alpha:")
-        except grammar.Error as error:
-            self.assertEqual(error.code, -2)  # galley_error_syntax
+        except grammar.GalleyError as error:
+            self.assertEqual(error.code, grammar.Status.ERROR_SYNTAX)
             diagnostic = error.diagnostic
         else:
             self.fail("expected the broken sample to raise")
@@ -255,7 +246,7 @@ class SessionTests(unittest.TestCase):
         self.assertIsNotNone(self.session.diagnostic())
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.KIND_SYNTAX)
+        self.assertEqual(diagnostic.kind, grammar.Kind.SYNTAX)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.column, 7)
         self.assertIn("parse failed", diagnostic.message)
@@ -270,7 +261,7 @@ class SessionTests(unittest.TestCase):
     def test_diagnostic_resets_after_successful_parse(self):
         session = grammar.Session()
         try:
-            with self.assertRaises(grammar.Error):
+            with self.assertRaises(grammar.GalleyError):
                 session.parse("alpha:")
             self.assertIsNotNone(session.diagnostic())
             session.parse("alpha:1")
@@ -317,24 +308,24 @@ class SemanticErrorTests(unittest.TestCase):
 
         grammar.install_procedure("reduction_Number", reduction_Number)
         try:
-            with self.assertRaises(grammar.Error) as raised:
+            with self.assertRaises(grammar.GalleyError) as raised:
                 self.session.parse("alpha:12,beta:300,gamma:400")
         finally:
             grammar.clear_procedures()
-        self.assertEqual(raised.exception.code, -12)  # galley_error_semantic
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_SEMANTIC)
         self.assertIn("value out of range", str(raised.exception))
         self.assertEqual(seen_counts, [1, 2])
         diagnostic = self.session.diagnostic()
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.KIND_SEMANTIC)
+        self.assertEqual(diagnostic.kind, grammar.Kind.SEMANTIC)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.semantic_error_count, 2)
         self.assertEqual(diagnostic.semantic, ("Number", "value out of range"))
         self.assertIn("SemanticError", diagnostic.message)
         recorded = self.session.diagnostics()
         self.assertEqual(len(recorded), 2)
-        self.assertTrue(all(item.kind == grammar.KIND_SEMANTIC for item in recorded))
+        self.assertTrue(all(item.kind == grammar.Kind.SEMANTIC for item in recorded))
         self.assertTrue(
             all(item.semantic == ("Number", "value out of range") for item in recorded)
         )
@@ -350,7 +341,7 @@ class SemanticErrorTests(unittest.TestCase):
 
         grammar.install_procedure("reduction_Number", reduction_Number)
         try:
-            with self.assertRaises(grammar.Error):
+            with self.assertRaises(grammar.GalleyError):
                 self.session.parse("alpha:300")
             self.session.parse("alpha:12")
             self.assertFalse(self.session.has_diagnostic())
@@ -358,6 +349,64 @@ class SemanticErrorTests(unittest.TestCase):
             self.assertEqual(len(self.session.diagnostics()), 0)
         finally:
             grammar.clear_procedures()
+
+
+class ProcedureChannelTests(unittest.TestCase):
+    session: grammar.Session
+    saved_procedures: dict[str, Any]
+
+    def setUp(self) -> None:
+        self.session = grammar.Session(max_errors=10)
+        self.saved_procedures = grammar.list_procedures()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        _restore_procedures(self.saved_procedures)
+
+    def test_is_closed_tracks_close(self) -> None:
+        self.assertFalse(self.session.is_closed())
+        self.session.close()
+        self.assertTrue(self.session.is_closed())
+
+    def test_procedure_hook_returns_installed_callable(self) -> None:
+        self.assertIs(
+            grammar.procedure_hook("reduction_Pair"),
+            self.saved_procedures.get("reduction_Pair"),
+        )
+
+        def hook(args: grammar.ProcedureArguments) -> None:
+            pass
+
+        grammar.install_procedure("hook_channel_probe", hook)
+        try:
+            self.assertIs(grammar.procedure_hook("hook_channel_probe"), hook)
+        finally:
+            grammar.clear_procedures()
+        self.assertIsNone(grammar.procedure_hook("hook_channel_probe"))
+
+    def test_current_node_channel_round_trip(self) -> None:
+        detached: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            args.set_current_node(int(node))
+            current = args.current_node()
+            assert current is not None
+            self.assertEqual(int(current), int(node))
+            session = args.session
+            assert session is not None
+            head = session.clean_children(current)
+            assert head is not None
+            detached.append(int(head))
+            session.append_children(current, head)
+
+        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            grammar.clear_procedures()
+        self.assertEqual(len(detached), 2)
 
 
 class WalkTests(unittest.TestCase):
@@ -376,7 +425,7 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         self.assertTrue(self.session.node_valid(root))
         self.assertIsNone(self.session.parent(root))
-        self.assertFalse(self.session.node_valid(0xFFFFFFFFFFFFFFFF))
+        self.assertFalse(self.session.node_valid(grammar.INVALID_NODE))
 
         first = self.session.first_child(root)
         last = self.session.last_child(root)
@@ -394,6 +443,14 @@ class WalkTests(unittest.TestCase):
             visited.append(child)
             child = self.session.next_sibling(child)
         self.assertEqual(len(visited), self.session.child_count(root))
+
+    def test_address_matches_int_conversion(self) -> None:
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(root.address, int(root))
+        again = self.session.root_node()
+        assert again is not None
+        self.assertEqual(again.address, root.address)
 
     def test_symbol_names_text_spans_and_positions(self) -> None:
         root = self.session.root_node()
@@ -434,7 +491,7 @@ class WalkTests(unittest.TestCase):
         self.assertIsNotNone(contains_terminal_only(root))
 
     def test_invalid_node_accessors_return_none(self):
-        invalid = 0xFFFFFFFFFFFFFFFF
+        invalid = grammar.INVALID_NODE
         self.assertIsNone(self.session.symbol_name(invalid))
         self.assertIsNone(self.session.text(invalid))
         self.assertIsNone(self.session.span(invalid))
@@ -460,13 +517,14 @@ class WalkTests(unittest.TestCase):
         recurse(root, 0, expected)
         self.assertGreater(len(expected), 1)
 
-        walked = [(int(node), depth) for node, depth, _ in self.session.walk(root)]
+        walked = [
+            (int(step["node"]), step["depth"]) for step in self.session.walk(root)
+        ]
         self.assertEqual(expected, walked)
         first = next(iter(self.session.walk(root)))
-        node, depth, is_error = first
-        self.assertEqual(node, root)
-        self.assertEqual(depth, 0)
-        self.assertFalse(is_error)
+        self.assertEqual(first["node"], root)
+        self.assertEqual(first["depth"], 0)
+        self.assertFalse(first["is_semantic_error"])
 
     def test_snapshot_matches_per_node_accessors(self) -> None:
         if not grammar.has_ast():
@@ -506,6 +564,16 @@ class WalkTests(unittest.TestCase):
                 (snap["span_start"][address], snap["span_len"][address]),
                 self.session.span(address),
             )
+        # Spans index last_input.
+        data = self.session.last_input()
+        self.assertEqual(data, b"alpha:12,beta:3")
+        for address in range(count):
+            start = snap["span_start"][address]
+            length = snap["span_len"][address]
+            assert isinstance(start, int) and isinstance(length, int)
+            text = self.session.text(address)
+            assert text is not None
+            self.assertEqual(data[start : start + length], text)
         # The snapshot alone drives the same preorder walk as the walker.
         root = self.session.root_node()
         assert root is not None
@@ -521,15 +589,8 @@ class WalkTests(unittest.TestCase):
                 child = snap["next"][child]
             self.assertEqual(len(chain), snap["child_count"][node])
             stack.extend(reversed(chain))
-        walked = [int(node) for node, _, _ in self.session.walk(root)]
+        walked = [int(step["node"]) for step in self.session.walk(root)]
         self.assertEqual(preorder, walked)
-        # Spans index last_input.
-        data = self.session.last_input()
-        self.assertEqual(data, b"alpha:12,beta:3")
-        start = snap["span_start"][int(root)]
-        length = snap["span_len"][int(root)]
-        assert isinstance(start, int) and isinstance(length, int)
-        self.assertEqual(data[start : start + length], b"alpha:12,beta:3")
 
     def test_walk_skip_children_prunes_subtree(self) -> None:
         if not grammar.has_ast():
@@ -538,11 +599,22 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         walker = self.session.walk(root)
         first = next(walker)
-        self.assertEqual(first[0], root)
+        self.assertEqual(first["node"], root)
         walker.skip_children()
         self.assertEqual(list(walker), [])
+        self.assertIsNone(self.session.walk(grammar.INVALID_NODE))
+
+    def test_walker_close_is_idempotent_and_scoped(self) -> None:
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        next(walker)
+        walker.close()
+        walker.close()
         with self.assertRaises(ValueError):
-            self.session.walk(0xFFFFFFFFFFFFFFFF)
+            next(walker)
+        with self.session.walk(root) as scoped:
+            self.assertIsNotNone(next(scoped))
 
     def test_walk_reports_no_error_flags_on_a_clean_tree(self) -> None:
         if not grammar.has_ast():
@@ -553,13 +625,17 @@ class WalkTests(unittest.TestCase):
         # pruning itself is covered by the runtime fixture tests.
         root = self.session.root_node()
         assert root is not None
-        flagged = [node for node, _, is_error in self.session.walk(root) if is_error]
+        flagged = [
+            step["node"]
+            for step in self.session.walk(root)
+            if step["is_semantic_error"]
+        ]
         self.assertEqual(flagged, [])
         pruned = [
-            int(node)
-            for node, _, _ in self.session.walk(root, skip_semantic_errors=True)
+            int(step["node"])
+            for step in self.session.walk(root, skip_semantic_errors=True)
         ]
-        full = [int(node) for node, _, _ in self.session.walk(root)]
+        full = [int(step["node"]) for step in self.session.walk(root)]
         self.assertEqual(pruned, full)
 
 
@@ -762,6 +838,7 @@ class LoaderTests(unittest.TestCase):
         self.assertIn(str(missing), str(raised.exception))
         self.assertIn("python -m galley", str(raised.exception))
         self.assertIsInstance(raised.exception, FileNotFoundError)
+        self.assertEqual(raised.exception.code, "galley:missing-artifact")
 
     def test_same_path_returns_same_module(self) -> None:
         impl = self._copy_impl()
@@ -835,6 +912,20 @@ class LoaderTests(unittest.TestCase):
         finally:
             module.clear_procedures()
 
+    def test_near_miss_hook_names_warn(self) -> None:
+        module = galley.load(self._copy_impl())
+
+        def reductionPair(args: Any) -> None:
+            pass
+
+        try:
+            with self.assertWarns(RuntimeWarning):
+                installed = module.install_procedures({"reductionPair": reductionPair})
+            self.assertEqual(installed, 0)
+            self.assertNotIn("reductionPair", module.list_procedures())
+        finally:
+            module.clear_procedures()
+
     def test_failed_load_preserves_previous_entry(self) -> None:
         import importlib.machinery
         import importlib.util
@@ -842,16 +933,16 @@ class LoaderTests(unittest.TestCase):
 
         first_path = self._copy_impl("first")
         first = galley.load(first_path)
-        self.assertIs(sys.modules[galley.STEM], first)
+        self.assertIs(sys.modules[galley._constants.IMPL_MODULE_NAME], first)
 
         marker = object()
-        saved = sys.modules.get(galley.STEM, marker)
+        saved = sys.modules.get(galley._constants.IMPL_MODULE_NAME, marker)
 
         def restore_stem():
             if saved is marker:
-                sys.modules.pop(galley.STEM, None)
+                sys.modules.pop(galley._constants.IMPL_MODULE_NAME, None)
             else:
-                sys.modules[galley.STEM] = saved
+                sys.modules[galley._constants.IMPL_MODULE_NAME] = saved
 
         self.addCleanup(restore_stem)
 
@@ -875,7 +966,7 @@ class LoaderTests(unittest.TestCase):
             self.assertRaises(ImportError),
         ):
             galley.load(other)
-        self.assertIs(sys.modules[galley.STEM], first)
+        self.assertIs(sys.modules[galley._constants.IMPL_MODULE_NAME], first)
         self.assertNotIn(str(other.resolve()), galley._artifact_cache)
 
     def _copy_package(self, target: Path) -> Path:
@@ -914,8 +1005,8 @@ class LoaderTests(unittest.TestCase):
 
         with directlang.Session() as session:
             session.parse("alpha:12")
-        namespace = directlang.procedures
-        assert namespace is not None
+        from directlang import procedures as namespace
+
         self.assertEqual(namespace.seen, [b"12"])
 
 

@@ -7,10 +7,9 @@
  * forwarder decodes the hook name and calls the port's `activeDispatch`
  * slot, which the parsing session set around its parse.
  *
- * Registries are per session: every `Session` owns a `ProcedureRegistry`
- * and publishes its dispatch closure on the port for the duration of
- * each parse (see `FfiPort.activeDispatch`). Two sessions — even on two
- * grammars in one process — never share hooks. There is no global table.
+ * Registries live on the language handle: every `Language` owns one
+ * table shared by all of its sessions, and publishes per-parse dispatch
+ * through the session's gate brackets. There is no per-session table.
  *
  * Hooks receive a `ProcedureArguments` object. Tree queries use
  * `currentNode()` plus the ordinary `Node` methods (which call the port's
@@ -19,9 +18,9 @@
 
 import { INVALID_NODE } from "./constants.ts";
 import type { Handle, FfiPort } from "./port.ts";
-import { encodeUtf8 } from "./text.ts";
 import { Node } from "./node.ts";
 import type { Session } from "./session.ts";
+import { checkMessageBytes } from "./sources.ts";
 
 export class ProcedureArguments {
   readonly #args: Handle;
@@ -87,8 +86,11 @@ export class ProcedureArguments {
    * total. Parsing continues; a syntax-clean parse with any semantic
    * error fails with status -12.
    */
-  reportSemanticError(message: string): number {
-    const status = this.#port.procReportSemanticError(this.#args, encodeUtf8(message));
+  reportSemanticError(message: string | Uint8Array): number {
+    const status = this.#port.procReportSemanticError(
+      this.#args,
+      checkMessageBytes(message, "galley: reportSemanticError"),
+    );
     if (status < 0) throw new Error("galley_procedure_report_semantic_error failed");
     return status;
   }
@@ -104,13 +106,11 @@ export function isProcedureName(name: string): boolean {
 }
 
 /**
- * One session's procedure hooks. Sessions build theirs from the
- * `procedures` option (plus the adapter's language-directory scan where
- * the runtime allows it); hooks never cross sessions.
+ * One artifact's procedure hooks. Languages build one from the
+ * directory scan; hooks never cross artifacts.
  */
 export class ProcedureRegistry {
   readonly #hooks = new Map<string, HookFn>();
-
   /**
    * Installs a single procedure hook. `fn` may be
    * `(args: ProcedureArguments)=>void` or `()=>void`.
@@ -125,8 +125,8 @@ export class ProcedureRegistry {
   /**
    * Installs hooks from one module, an array of modules, or nested
    * arrays; nullish entries are skipped. Later entries win per hook
-   * name, so adapters pass scanned defaults ahead of explicit user
-   * modules. This is the single entry behind the `procedures` option.
+   * name, so factories pass scanned defaults ahead of explicit user
+   * modules.
    */
   installAll(value: unknown): void {
     if (value === null || value === undefined) return;
@@ -158,6 +158,11 @@ export class ProcedureRegistry {
     return count;
   }
 
+  /** Copies the table for one parse's dispatch snapshot. */
+  snapshot(): Map<string, HookFn> {
+    return new Map(this.#hooks);
+  }
+
   /** Removes all registered hooks; subsequent parses will be no-ops. */
   clear(): void {
     this.#hooks.clear();
@@ -174,19 +179,25 @@ export class ProcedureRegistry {
   }
 }
 
+let sharedRegistries = new WeakMap<object, ProcedureRegistry>();
+
 /**
- * Installs one session's hooks: the language-directory scan first, then
- * explicit user modules — later wins per hook name. The single gate
- * behind every factory's composition, so the precedence lives here
- * instead of array ordering at each call site.
+ * The one hook table for a port: every handle and session built on the
+ * port shares it, so separately constructed objects can never diverge
+ * onto two tables over one native gate set.
  */
-export function installSessionProcedures(
-  registry: ProcedureRegistry,
-  scanned: unknown,
-  explicit: unknown,
-): void {
-  registry.installAll(scanned);
-  registry.installAll(explicit);
+export function registryFor(port: FfiPort): ProcedureRegistry {
+  let registry = sharedRegistries.get(port);
+  if (registry === undefined) {
+    registry = new ProcedureRegistry();
+    sharedRegistries.set(port, registry);
+  }
+  return registry;
+}
+
+/** Test-only: drop shared tables so suites isolate hook state. */
+export function __resetSharedRegistries(): void {
+  sharedRegistries = new WeakMap<object, ProcedureRegistry>();
 }
 
 /**

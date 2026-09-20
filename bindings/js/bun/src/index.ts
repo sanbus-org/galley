@@ -6,11 +6,24 @@
  * `bindings/c/galley.h`.
  */
 
-import { Session } from "./session.ts";
-
-// Core surface (Session base is shadowed by the adapter subclass below).
-export * from "@sanbus/galley-core";
-export { Session };
+// Core surface: sessions come from the universal entry or the generated
+// package entry; the adapter binds ports only.
+export {
+  Walker,
+  Node,
+  Language,
+  GalleyError,
+  MissingArtifactError,
+  SessionClosedError,
+  ProcedureArguments,
+  INVALID_NODE,
+  Status,
+  ParserType,
+  RecoveryMode,
+  Kind,
+  RecoveryTarget,
+  Resume,
+} from "@sanbus/galley-core";
 export { getBunPort, getBunPortFromFile, libFileName } from "./ffi.ts";
 export { loadProcedures } from "./dispatch.ts";
-export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
+export type { Session, SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

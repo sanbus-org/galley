@@ -18,40 +18,75 @@ accessors copy before returning.
 
 from __future__ import annotations
 
+import enum
 import os
 from collections.abc import Iterator
 from typing import Any, Final
 
 # ---------------------------------------------------------------------------
-# Module-level constants (from galley.h, exposed via PyModule_AddIntConstant)
+# Module-level enums (from galley.h, exposed as IntEnum classes)
 # ---------------------------------------------------------------------------
 
-PARSER_TYPE_LL: Final[int]
-"""LL parser family."""
-PARSER_TYPE_LR: Final[int]
-"""LR parser family."""
-RECOVERY_MODE_DISABLED: Final[int]
-"""No error recovery."""
-RECOVERY_MODE_AUTOMATIC: Final[int]
-"""Automatic recovery."""
-RECOVERY_MODE_EXPLICIT: Final[int]
-"""Explicit ``@recovery``-directed recovery."""
-KIND_NONE: Final[int]
-KIND_SYNTAX: Final[int]
-KIND_INDENTATION: Final[int]
-KIND_SEMANTIC: Final[int]
-RECOVERY_TARGET_NONE: Final[int]
-RECOVERY_TARGET_LHS_VARIABLE: Final[int]
-RECOVERY_TARGET_PRODUCTION: Final[int]
-RECOVERY_TARGET_OCCURRENCE: Final[int]
-RESUME_BEFORE: Final[int]
-RESUME_AFTER: Final[int]
+class ParserType(enum.IntEnum):
+    """Parser families."""
+
+    LL = 0
+    LR = 1
+
+class RecoveryMode(enum.IntEnum):
+    """Error recovery modes."""
+
+    DISABLED = 0
+    AUTOMATIC = 1
+    EXPLICIT = 2
+
+class Kind(enum.IntEnum):
+    """Diagnostic kinds."""
+
+    NONE = 0
+    SYNTAX = 1
+    INDENTATION = 2
+    SEMANTIC = 3
+
+class RecoveryTarget(enum.IntEnum):
+    """Recovery targets."""
+
+    NONE = 0
+    LHS_VARIABLE = 1
+    PRODUCTION = 2
+    OCCURRENCE = 3
+
+class Resume(enum.IntEnum):
+    """Resume sides."""
+
+    BEFORE = 0
+    AFTER = 1
+
+class Status(enum.IntEnum):
+    """Status codes (negative on failure)."""
+
+    OK = 0
+    ERROR_NULL_ARGUMENT = -1
+    ERROR_SYNTAX = -2
+    ERROR_INDENTATION = -3
+    ERROR_STACK_OVERFLOW = -4
+    ERROR_AST_CAPACITY_EXCEEDED = -5
+    ERROR_UNTERMINATED_RAW_STRING = -6
+    ERROR_OUT_OF_MEMORY = -7
+    ERROR_INTERNAL = -8
+    ERROR_NO_DIAGNOSTIC = -9
+    ERROR_INVALID_NODE = -10
+    ERROR_IO = -11
+    ERROR_SEMANTIC = -12
+
+INVALID_NODE: Final[int]
+"""All-ones address marking an absent node link."""
 
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
 
-class Error(Exception):
+class GalleyError(Exception):
     """Failure reported by a Galley operation.
 
     Attributes:
@@ -126,6 +161,9 @@ class Node:
     expected.
     """
 
+    address: int
+    """Raw address (stable index in the session's node storage)."""
+
     def children(self) -> tuple[Node, ...]:
         """Tuple of direct children, from first to last (empty when leaf)."""
         ...
@@ -193,7 +231,6 @@ class Node:
     def __index__(self) -> int:
         """Raw address for ``operator.index`` / slicing."""
         ...
-
     def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool:
         """Equal when same session and same address."""
@@ -203,16 +240,16 @@ class Node:
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
-class Walker(Iterator[tuple[Node, int, bool]]):
-    """Pre-order tree walker over ``(node, depth, is_semantic_error)`` tuples.
+class Walker(Iterator[dict[str, Any]]):
+    """Pre-order tree walker over ``{"node", "depth", "is_semantic_error"}`` dicts.
 
-    Returned by ``Session.walk``; the root yields at depth 0. Destroy the
-    walker (or let it go out of scope) before closing the session or
-    parsing again.
+    Returned by ``Session.walk``; the root yields at depth 0. Close the
+    walker (or use it as a context manager, or let it go out of scope)
+    before closing the session or parsing again.
     """
 
-    def __next__(self) -> tuple[Node, int, bool]:
-        """Next ``(node, depth, is_semantic_error)`` tuple in pre-order."""
+    def __next__(self) -> dict[str, Any]:
+        """Next ``{"node", "depth", "is_semantic_error"}`` dict in pre-order."""
         ...
 
     def __iter__(self) -> Walker:
@@ -221,6 +258,20 @@ class Walker(Iterator[tuple[Node, int, bool]]):
 
     def skip_children(self) -> None:
         """Prune the children of the last yielded node."""
+        ...
+
+    def close(self) -> None:
+        """Destroy the walker; safe to call more than once."""
+        ...
+
+    def __enter__(self) -> Walker: ...
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: Any | None,
+    ) -> None:
+        """Close the walker even when the ``with`` block raises."""
         ...
 
 class ProcedureArguments:
@@ -236,6 +287,10 @@ class ProcedureArguments:
 
     def current_node(self) -> Node | None:
         """The node being reduced, or ``None``."""
+        ...
+
+    def set_current_node(self, node: Node | int) -> None:
+        """Redirect the current-node channel to ``node``."""
         ...
 
     def drop_self(self) -> None:
@@ -264,14 +319,6 @@ class ProcedureArguments:
 
     def report_semantic_error(self, message: str | bytes) -> int:
         """Record a semantic error on the current node; return the total count."""
-        ...
-
-    def clean_children(self) -> Node | None:
-        """Detach all children and return the detached chain head, or ``None``."""
-        ...
-
-    def append_children(self, chain: Node | int) -> None:
-        """Append a detached ``chain`` as children of this node."""
         ...
 
 # ---------------------------------------------------------------------------
@@ -311,6 +358,10 @@ class Session:
         """Release the underlying session; safe to call more than once."""
         ...
 
+    def is_closed(self) -> bool:
+        """Whether the session is closed."""
+        ...
+
     def __enter__(self) -> Session: ...
     def __exit__(
         self,
@@ -327,16 +378,7 @@ class Session:
         """Parse ``data`` (may contain NUL bytes) and return bytes parsed.
 
         Copies ``data`` so node text stays valid after the call regardless
-        of the input object's lifetime. Raises ``Error`` on failure.
-        """
-        ...
-
-    def parse_sentinel(self, data: str | bytes) -> int:
-        """Parse ``data`` and return bytes parsed.
-
-        Passes pointer+length into the C ABI with no extra binding copy.
-        Interior NUL bytes are data, matching ``parse``. Raises ``Error``
-        on failure.
+        of the input object's lifetime. Raises ``GalleyError`` on failure.
         """
         ...
 
@@ -347,6 +389,14 @@ class Session:
         ...
 
     # -- arena --
+
+    def snapshot(self) -> dict[str, Any]:
+        """Flat bulk read of the most recent successful parse: ``count`` plus per-node-address ``parent``, ``first_child``, ``next``, ``child_count``, ``variable``, ``span_start`` and ``span_len`` entries."""
+        ...
+
+    def last_input(self) -> bytes:
+        """Retained input of the most recent parse as bytes: the buffer that snapshot spans index. Empty before the first parse."""
+        ...
 
     def node_count(self) -> int:
         """Number of AST nodes allocated by the last successful parse (0 when ``has_ast`` is false)."""
@@ -384,7 +434,7 @@ class Session:
     def prior_sibling(self, node: Node | int) -> Node | None: ...
     def parent(self, node: Node | int) -> Node | None: ...
     def walk(self, root: Node | int, skip_semantic_errors: bool = False) -> Walker:
-        """Pre-order walker over ``root`` yielding ``(node, depth, is_semantic_error)``.
+        """Pre-order walker over ``root`` yielding step dicts.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
         semantic-error nodes. Raises ``ValueError`` for an invalid root.
@@ -501,11 +551,11 @@ def version() -> str:
     ...
 
 def parser_type() -> int:
-    """Parser family: ``PARSER_TYPE_LL`` or ``PARSER_TYPE_LR``."""
+    """Parser family: ``ParserType.LL`` or ``ParserType.LR``."""
     ...
 
 def error_recovery_mode() -> int:
-    """Recovery mode: ``RECOVERY_MODE_DISABLED`` / ``AUTOMATIC`` / ``EXPLICIT``."""
+    """Recovery mode: ``RecoveryMode.DISABLED`` / ``AUTOMATIC`` / ``EXPLICIT``."""
     ...
 
 def has_ast() -> bool:
@@ -556,8 +606,8 @@ def install_procedure(name: str | bytes, callable: Any) -> None:
     """Register a Python procedure hook.
 
     ``name`` is the hook name (e.g. ``"reduction_Pair"`` or ``"hook_print"``)
-    and ``callable`` is invoked with the opaque ``ProcedureArguments`` pointer
-    as an ``int``. Hooks are no-ops until installed; reinstalling replaces
+    and ``callable`` is invoked with a ``ProcedureArguments`` object (or
+    with no args for compatibility). Hooks are no-ops until installed; reinstalling replaces
     the previous callable. An install made while a parse is active applies
     to parses entered after it, never to the in-flight one (clears behave
     the same). Mirrors Go's ``hooks/procedures.go`` and Rust's
@@ -573,6 +623,10 @@ def install_procedures(source: Any) -> int:
     """
     ...
 
+def procedure_hook(name: str | bytes) -> Any | None:
+    """Return the callable registered for hook ``name``, or ``None``."""
+    ...
+
 def clear_procedures() -> None:
     """Clear all registered Python procedure hooks.
 
@@ -584,11 +638,3 @@ def clear_procedures() -> None:
 def list_procedures() -> dict[str, Any]:
     """Return a copy of currently registered Python procedure hooks."""
     ...
-
-procedures: Any | None
-"""Namespace of the auto-scanned ``procedures.py`` hooks.
-
-Set by the generated package init; ``None`` when no bundled hooks
-were found. Bare ``galley.load()`` never scans, so bare modules carry
-no such attribute.
-"""

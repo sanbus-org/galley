@@ -1,5 +1,6 @@
 import type { Session } from "./session.ts";
 import { decodeUtf8 } from "./text.ts";
+import { SessionClosedError } from "./errors.ts";
 
 /**
  * Session-bound handle for a node in the non-relocating AST storage.
@@ -20,14 +21,9 @@ export class Node {
     return this.#address;
   }
 
-  /** Owning session. */
-  get session(): Session {
-    return this.#session;
-  }
-
   private ensureAlive(): void {
     if (this.#session.isClosed) {
-      throw new Error("node's session is closed");
+      throw new SessionClosedError("node's session is closed");
     }
   }
 

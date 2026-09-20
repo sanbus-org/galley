@@ -140,7 +140,7 @@ export function resolveAdapterArtifact(
  * Explicit-file twin of {@link resolveArtifact}: `filePath` names the
  * artifact itself instead of a directory holding the standard name.
  * Anything else is a loud error naming the resolved path, never a
- * search. Adapters use this behind `Session.fromFile`.
+ * search. The universal `galley.load` uses this behind the scenes.
  */
 export function resolveArtifactFile(filePath: string | undefined, host: ArtifactHost): string {
   if (!filePath) {

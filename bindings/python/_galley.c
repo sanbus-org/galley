@@ -13,7 +13,7 @@
  *   expected for backward compatibility, and Node supports int() and
  *   operator.index() to retrieve its address;
  * - text accessors copy straight into `bytes` with no UTF-8 decoding;
- * - parse() and parse_sentinel() pass pointer+length into galley_parse;
+ * - parse() passes pointer+length into galley_parse;
  *   str inputs use the interpreter's cached UTF-8 buffer.
  *
  * Sessions are not thread-safe and every call holds the GIL: use one
@@ -35,7 +35,7 @@
 /* Baked module name: the inner extension is always built with
  * -DGALLEY_MODULE_NAME=galley_impl and imported relatively by the
  * generated package init, so the language directory keeps its own name.
- * The name sets the module object, Error's qualified name, and the
+ * The name sets the module object, GalleyError's qualified name, and the
  * PyInit entry importlib resolves. */
 #ifndef GALLEY_MODULE_NAME
 #define GALLEY_MODULE_NAME galley_impl
@@ -66,7 +66,7 @@ GALLEY_WEAK extern int galley_python_procedure_enable(const char *, size_t);
 GALLEY_WEAK extern void galley_python_procedure_clear(void);
 
 /* ------------------------------------------------------------------ */
-/* Error type                                                          */
+/* GalleyError type                                                    */
 /* ------------------------------------------------------------------ */
 
 static PyObject *ErrorException = NULL;
@@ -154,8 +154,8 @@ static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
             PyErr_Clear();
         return;
     }
-    /* Pass a ProcedureArguments object; hooks that ignore it, take an
-     * int, or take no args remain compatible. */
+    /* Pass a ProcedureArguments object; hooks that ignore it or take
+     * no args remain compatible. */
     PyObject *arg = make_procedure_args(args);
     if (arg == NULL) {
         PyErr_Clear();
@@ -594,6 +594,13 @@ static PyObject *Session_close(SessionObject *self, PyObject *Py_UNUSED(ignored)
     Py_RETURN_NONE;
 }
 
+static PyObject *Session_is_closed(SessionObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (self->session == NULL)
+        Py_RETURN_TRUE;
+    Py_RETURN_FALSE;
+}
+
 PyDoc_STRVAR(set_message_override_doc,
 "set_message_override(name, message)\n"
 "\n"
@@ -669,7 +676,7 @@ PyDoc_STRVAR(parse_doc,
 "Parses a str or bytes-like input that may contain NUL bytes and returns\n"
 "the number of bytes parsed. The session copies the input, so parsed\n"
 "text stays readable after the call regardless of what happens to the\n"
-"object. Raises Error on failure; inspect diagnostic() for structured\n"
+"object. Raises GalleyError on failure; inspect diagnostic() for structured\n"
 "details.");
 
 static PyObject *Session_parse(PyObject *self, PyObject *input)
@@ -711,46 +718,6 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     if (have_view)
         PyBuffer_Release(&view);
     return status_to_parsed_with_session(status, session);
-}
-
-PyDoc_STRVAR(parse_sentinel_doc,
-"parse_sentinel(input)\n"
-"\n"
-"Parses a str or bytes input and returns the number of bytes parsed.\n"
-"The caller's bytes are passed by pointer and length; this does not\n"
-"allocate or copy in the binding. Interior NUL bytes are valid and are\n"
-"parsed as data, matching parse().");
-
-static PyObject *Session_parse_sentinel(PyObject *self, PyObject *input)
-{
-    GalleySession *session = require_session(self);
-    const char *data;
-    Py_ssize_t length;
-
-    if (session == NULL)
-        return NULL;
-    if (PyUnicode_Check(input)) {
-        data = PyUnicode_AsUTF8AndSize(input, &length);
-        if (data == NULL)
-            return NULL;
-    } else if (PyBytes_Check(input)) {
-        data = PyBytes_AS_STRING(input);
-        length = PyBytes_GET_SIZE(input);
-    } else {
-        PyErr_SetString(PyExc_TypeError,
-                        "parse_sentinel expects str or bytes");
-        return NULL;
-    }
-    PyObject *previous = push_parsing_session(self);
-    if (enter_parse_gates(self) < 0) {
-        pop_parsing_session(previous);
-        return NULL;
-    }
-    PyObject *result = status_to_parsed_with_session(
-        galley_parse(session, length > 0 ? data : "", (size_t)length), session);
-    exit_parse_gates(self, previous);
-    pop_parsing_session(previous);
-    return result;
 }
 
 PyDoc_STRVAR(parse_file_doc,
@@ -1166,10 +1133,10 @@ PyDoc_STRVAR(walk_doc,
 "walk(root, skip_semantic_errors=False)\n"
 "\n"
 "Returns a pre-order Walker over the subtree rooted at ``root``. Each\n"
-"iteration yields a ``(node, depth, is_semantic_error)`` tuple, with the\n"
-"root at depth 0. Pass a true ``skip_semantic_errors`` to prune subtrees\n"
-"rooted at semantic-error nodes. Raises ValueError for an invalid root\n"
-"or a build without AST construction.");
+"iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
+"with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
+"subtrees rooted at semantic-error nodes. Returns None for an invalid\n"
+"root or a build without AST construction.");
 
 static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords)
 {
@@ -1190,9 +1157,7 @@ static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords
         return NULL;
     walker = galley_walker_create(session, address, skip);
     if (walker == NULL) {
-        PyErr_SetString(PyExc_ValueError,
-                        "cannot walk from this node (invalid root or no AST build)");
-        return NULL;
+        Py_RETURN_NONE;
     }
     walker_obj = PyObject_New(WalkerObject, &Walker_Type);
     if (walker_obj == NULL) {
@@ -2234,13 +2199,13 @@ static PyObject *Session_variable_name_at(PyObject *self, PyObject *index)
 
 static PyMethodDef Session_methods[] = {
     {"close", (PyCFunction)(void (*)(void))Session_close, METH_NOARGS, NULL},
+    {"is_closed", (PyCFunction)(void (*)(void))Session_is_closed, METH_NOARGS,
+     "is_closed()\n\nReturns whether the session is closed."},
     {"__enter__", (PyCFunction)(void (*)(void))Session_enter, METH_NOARGS,
      NULL},
     {"__exit__", (PyCFunction)(void (*)(void))Session_exit, METH_FASTCALL,
      NULL},
     {"parse", (PyCFunction)(void (*)(void))Session_parse, METH_O, parse_doc},
-    {"parse_sentinel", (PyCFunction)(void (*)(void))Session_parse_sentinel,
-     METH_O, parse_sentinel_doc},
     {"parse_file", (PyCFunction)(void (*)(void))Session_parse_file, METH_O,
      parse_file_doc},
     {"node_count", (PyCFunction)(void (*)(void))Session_node_count,
@@ -2677,6 +2642,17 @@ static PyObject *Node_int(NodeObject *self)
     return PyLong_FromUnsignedLongLong(self->address);
 }
 
+static PyObject *Node_get_address(NodeObject *self, void *Py_UNUSED(closure))
+{
+    return PyLong_FromUnsignedLongLong(self->address);
+}
+
+static PyGetSetDef Node_getset[] = {
+    {"address", (getter)Node_get_address, NULL,
+     "Raw address (stable index in the session's node storage).", NULL},
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
 static PyNumberMethods Node_number_methods = {
     .nb_int = (unaryfunc)Node_int,
     .nb_index = (unaryfunc)Node_int,
@@ -2691,6 +2667,7 @@ static PyTypeObject Node_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "Node handle with session-aware methods. Iterate directly: for child in node:",
     .tp_methods = Node_methods,
+    .tp_getset = Node_getset,
     .tp_as_sequence = &Node_sequence_methods,
     .tp_as_mapping = &Node_mapping_methods,
     .tp_as_number = &Node_number_methods,
@@ -2722,7 +2699,6 @@ static PyObject *Walker_iternext(WalkerObject *self)
     int is_semantic_error = 0;
     SessionObject *session_obj;
     NodeObject *node_obj;
-    PyObject *tuple;
     PyObject *depth_obj;
     PyObject *flag_obj;
 
@@ -2749,16 +2725,31 @@ static PyObject *Walker_iternext(WalkerObject *self)
         return NULL;
     }
     flag_obj = PyBool_FromLong(is_semantic_error);
-    tuple = PyTuple_New(3);
-    if (tuple == NULL) {
+    if (flag_obj == NULL) {
         Py_DECREF(node_obj);
         Py_DECREF(depth_obj);
         return NULL;
     }
-    PyTuple_SET_ITEM(tuple, 0, (PyObject *)node_obj);
-    PyTuple_SET_ITEM(tuple, 1, depth_obj);
-    PyTuple_SET_ITEM(tuple, 2, flag_obj);
-    return tuple;
+    PyObject *step = PyDict_New();
+    if (step == NULL) {
+        Py_DECREF(node_obj);
+        Py_DECREF(depth_obj);
+        Py_DECREF(flag_obj);
+        return NULL;
+    }
+    if (PyDict_SetItemString(step, "node", (PyObject *)node_obj) < 0 ||
+        PyDict_SetItemString(step, "depth", depth_obj) < 0 ||
+        PyDict_SetItemString(step, "is_semantic_error", flag_obj) < 0) {
+        Py_DECREF(node_obj);
+        Py_DECREF(depth_obj);
+        Py_DECREF(flag_obj);
+        Py_DECREF(step);
+        return NULL;
+    }
+    Py_DECREF(node_obj);
+    Py_DECREF(depth_obj);
+    Py_DECREF(flag_obj);
+    return step;
 }
 
 PyDoc_STRVAR(walker_skip_children_doc,
@@ -2777,9 +2768,45 @@ static PyObject *Walker_skip_children(WalkerObject *self, PyObject *Py_UNUSED(ig
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(walker_close_doc,
+"close()\n"
+"\n"
+"Destroy the walker. Idempotent; collection destroys it as a fallback.\n"
+"Close the walker before closing the session or parsing again.");
+
+static PyObject *Walker_close(WalkerObject *self, PyObject *Py_UNUSED(ignored))
+{
+    if (self->walker != NULL) {
+        galley_walker_destroy(self->walker);
+        self->walker = NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+static PyObject *Walker_enter(WalkerObject *self, PyObject *Py_UNUSED(ignored))
+{
+    Py_INCREF(self);
+    return (PyObject *)self;
+}
+
+static PyObject *Walker_exit(WalkerObject *self, PyObject *Py_UNUSED(args))
+{
+    if (self->walker != NULL) {
+        galley_walker_destroy(self->walker);
+        self->walker = NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef Walker_methods[] = {
     {"skip_children", (PyCFunction)(void (*)(void))Walker_skip_children,
      METH_NOARGS, walker_skip_children_doc},
+    {"close", (PyCFunction)(void (*)(void))Walker_close,
+     METH_NOARGS, walker_close_doc},
+    {"__enter__", (PyCFunction)(void (*)(void))Walker_enter,
+     METH_NOARGS, "Enter the walker's context (itself)."},
+    {"__exit__", (PyCFunction)Walker_exit,
+     METH_VARARGS, "Close the walker on context exit."},
     {NULL, NULL, 0, NULL},
 };
 
@@ -2790,7 +2817,7 @@ static PyTypeObject Walker_Type = {
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Walker_dealloc,
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "Pre-order tree walker. Iterates (node, depth, is_semantic_error) tuples.",
+    .tp_doc = "Pre-order tree walker. Iterates {'node', 'depth', 'is_semantic_error'} dicts.",
     .tp_methods = Walker_methods,
     .tp_iter = PyObject_SelfIter,
     .tp_iternext = (iternextfunc)Walker_iternext,
@@ -2900,6 +2927,30 @@ static PyObject *ProcedureArgs_report_semantic_error(ProcedureArgsObject *self, 
     return PyLong_FromLongLong(count);
 }
 
+static PyObject *ProcedureArgs_set_current_node(ProcedureArgsObject *self, PyObject *node)
+{
+    GalleyNodeAddress address;
+
+    if (node_argument(node, &address) < 0)
+        return NULL;
+    galley_procedure_set_current_node(self->args, address);
+    Py_RETURN_NONE;
+}
+
+static GalleySession *procedure_args_session(ProcedureArgsObject *self)
+{
+    if (self->session_obj == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return NULL;
+    }
+    SessionObject *session_obj = (SessionObject *)self->session_obj;
+    if (session_obj->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return NULL;
+    }
+    return session_obj->session;
+}
+
 static PyMethodDef ProcedureArgs_methods[] = {
     {"current_node", (PyCFunction)ProcedureArgs_current_node, METH_NOARGS,
      "current_node()\n\nThe node being reduced, or None."},
@@ -2917,6 +2968,8 @@ static PyMethodDef ProcedureArgs_methods[] = {
      "current_column()\n\nScanner column during this reduction."},
     {"report_semantic_error", (PyCFunction)ProcedureArgs_report_semantic_error, METH_O,
      "report_semantic_error(message)\n\nRecord a semantic error on the current node and return the total count. Parsing continues."},
+    {"set_current_node", (PyCFunction)ProcedureArgs_set_current_node, METH_O,
+     "set_current_node(node)\n\nRedirect the current-node channel to node (a Node or address)."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3075,6 +3128,21 @@ PyDoc_STRVAR(install_procedures_doc,
 "a __dict__. Hooks are `reduction`, `reduction_<Variable>`, and\n"
 "`hook_<name>` callables. Returns the number of hooks installed.");
 
+/* True for export names that look like mistyped hooks
+ * (`reductionPair`, `hookPrint`): warn, do not install. Anything else
+ * (helpers, data) stays silent. Mirrors the JavaScript binding. */
+static int is_near_miss_hook_name(const char *name)
+{
+    char lower[7];
+    size_t i;
+    for (i = 0; i < 6 && name[i] != '\0'; i++) {
+        char c = name[i];
+        lower[i] = (char)((c >= 'A' && c <= 'Z') ? (c + 32) : c);
+    }
+    lower[i] = '\0';
+    return strncmp(lower, "reduct", 6) == 0 || strncmp(lower, "hook", 4) == 0;
+}
+
 static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
                                            PyObject *source)
 {
@@ -3126,8 +3194,20 @@ static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
             is_procedure = 1;
         else if (strncmp(name, "hook_", 5) == 0)
             is_procedure = 1;
-        if (!is_procedure)
+        if (!is_procedure) {
+            if (is_near_miss_hook_name(name)) {
+                char message[256];
+                snprintf(message, sizeof(message),
+                         "galley: ignoring export \"%.200s\": procedure hooks must be named "
+                         "reduction, reduction_*, or hook_*.",
+                         name);
+                if (PyErr_WarnEx(PyExc_RuntimeWarning, message, 1) < 0) {
+                    Py_DECREF(dict);
+                    return NULL;
+                }
+            }
             continue;
+        }
         if (PyDict_SetItem(py_procedure_table, key, value) < 0) {
             PyErr_Clear();
             continue;
@@ -3166,6 +3246,44 @@ static PyObject *module_list_procedures(PyObject *Py_UNUSED(module),
     if (py_procedure_table == NULL)
         return PyDict_New();
     return PyDict_Copy(py_procedure_table);
+}
+
+PyDoc_STRVAR(procedure_hook_doc,
+"procedure_hook(name)\n"
+"\n"
+"Returns the callable registered for hook name, or None when no hook\n"
+"is installed under that name.");
+
+static PyObject *module_procedure_hook(PyObject *Py_UNUSED(module),
+                                       PyObject *name_obj)
+{
+    const char *name_data;
+    Py_ssize_t name_len;
+
+    if (PyUnicode_Check(name_obj)) {
+        name_data = PyUnicode_AsUTF8AndSize(name_obj, &name_len);
+        if (name_data == NULL)
+            return NULL;
+    } else if (PyBytes_Check(name_obj)) {
+        name_data = PyBytes_AS_STRING(name_obj);
+        name_len = PyBytes_GET_SIZE(name_obj);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "name must be str or bytes");
+        return NULL;
+    }
+    if (py_procedure_table == NULL)
+        Py_RETURN_NONE;
+    PyObject *key = PyUnicode_FromStringAndSize(name_data, name_len);
+    if (key == NULL)
+        return NULL;
+    PyObject *callable = PyDict_GetItemWithError(py_procedure_table, key);
+    Py_DECREF(key);
+    if (callable == NULL) {
+        if (PyErr_Occurred())
+            return NULL;
+        Py_RETURN_NONE;
+    }
+    return Py_NewRef(callable);
 }
 
 static PyMethodDef module_methods[] = {
@@ -3211,6 +3329,7 @@ static PyMethodDef module_methods[] = {
     {"install_procedures", module_install_procedures, METH_O, install_procedures_doc},
     {"clear_procedures", module_clear_procedures, METH_NOARGS, clear_procedures_doc},
     {"list_procedures", module_list_procedures, METH_NOARGS, list_procedures_doc},
+    {"procedure_hook", module_procedure_hook, METH_O, procedure_hook_doc},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3230,6 +3349,118 @@ static struct PyModuleDef module_definition = {
     .m_size = -1,
     .m_methods = module_methods,
 };
+
+static int add_int_enum(PyObject *module, const char *class_name,
+                        const char *const *members, const long long *values,
+                        size_t count)
+{
+    PyObject *enum_module = PyImport_ImportModule("enum");
+    PyObject *int_enum;
+    PyObject *namespace;
+    PyObject *cls;
+    size_t i;
+
+    if (enum_module == NULL)
+        return -1;
+    int_enum = PyObject_GetAttrString(enum_module, "IntEnum");
+    Py_DECREF(enum_module);
+    if (int_enum == NULL)
+        return -1;
+    namespace = PyDict_New();
+    if (namespace == NULL) {
+        Py_DECREF(int_enum);
+        return -1;
+    }
+    for (i = 0; i < count; i++) {
+        PyObject *value = PyLong_FromLongLong(values[i]);
+        int stored = -1;
+        if (value != NULL)
+            stored = PyDict_SetItemString(namespace, members[i], value);
+        Py_XDECREF(value);
+        if (stored < 0) {
+            Py_DECREF(namespace);
+            Py_DECREF(int_enum);
+            return -1;
+        }
+    }
+    cls = PyObject_CallFunction(int_enum, "sO", class_name, namespace);
+    Py_DECREF(namespace);
+    Py_DECREF(int_enum);
+    if (cls == NULL)
+        return -1;
+    if (PyModule_AddObject(module, class_name, cls) < 0) {
+        Py_DECREF(cls);
+        return -1;
+    }
+    return 0;
+}
+
+static int add_binding_enums(PyObject *module)
+{
+    static const char *const parser_type_members[] = {"LL", "LR"};
+    static const long long parser_type_values[] = {
+        galley_parser_type_ll, galley_parser_type_lr};
+    static const char *const recovery_mode_members[] = {
+        "DISABLED", "AUTOMATIC", "EXPLICIT"};
+    static const long long recovery_mode_values[] = {
+        galley_recovery_mode_disabled, galley_recovery_mode_automatic,
+        galley_recovery_mode_explicit};
+    static const char *const kind_members[] = {
+        "NONE", "SYNTAX", "INDENTATION", "SEMANTIC"};
+    static const long long kind_values[] = {
+        galley_diagnostic_kind_none, galley_diagnostic_kind_syntax,
+        galley_diagnostic_kind_indentation, galley_diagnostic_kind_semantic};
+    static const char *const recovery_target_members[] = {
+        "NONE", "LHS_VARIABLE", "PRODUCTION", "OCCURRENCE"};
+    static const long long recovery_target_values[] = {
+        galley_recovery_target_none, galley_recovery_target_lhs_variable,
+        galley_recovery_target_production, galley_recovery_target_occurrence};
+    static const char *const resume_members[] = {"BEFORE", "AFTER"};
+    static const long long resume_values[] = {
+        galley_resume_before, galley_resume_after};
+    static const char *const status_members[] = {
+        "OK",
+        "ERROR_NULL_ARGUMENT",
+        "ERROR_SYNTAX",
+        "ERROR_INDENTATION",
+        "ERROR_STACK_OVERFLOW",
+        "ERROR_AST_CAPACITY_EXCEEDED",
+        "ERROR_UNTERMINATED_RAW_STRING",
+        "ERROR_OUT_OF_MEMORY",
+        "ERROR_INTERNAL",
+        "ERROR_NO_DIAGNOSTIC",
+        "ERROR_INVALID_NODE",
+        "ERROR_IO",
+        "ERROR_SEMANTIC"};
+    static const long long status_values[] = {
+        galley_ok,
+        galley_error_null_argument,
+        galley_error_syntax,
+        galley_error_indentation,
+        galley_error_stack_overflow,
+        galley_error_ast_capacity_exceeded,
+        galley_error_unterminated_raw_string,
+        galley_error_out_of_memory,
+        galley_error_internal,
+        galley_error_no_diagnostic,
+        galley_error_invalid_node,
+        galley_error_io,
+        galley_error_semantic};
+
+    if (add_int_enum(module, "ParserType", parser_type_members,
+                     parser_type_values, 2) < 0 ||
+        add_int_enum(module, "RecoveryMode", recovery_mode_members,
+                     recovery_mode_values, 3) < 0 ||
+        add_int_enum(module, "Kind", kind_members, kind_values, 4) < 0 ||
+        add_int_enum(module, "RecoveryTarget", recovery_target_members,
+                     recovery_target_values, 4) < 0 ||
+        add_int_enum(module, "Resume", resume_members, resume_values,
+                     2) < 0 ||
+        add_int_enum(module, "Status", status_members, status_values,
+                     13) < 0)
+        return -1;
+    return 0;
+}
 
 PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
 {
@@ -3251,14 +3482,14 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
         return NULL;
 
     ErrorException = PyErr_NewExceptionWithDoc(
-        GALLEY_MODULE_STRING ".Error",
+        GALLEY_MODULE_STRING ".GalleyError",
         "Failure reported by a Galley operation. The raw status code is\n"
         "available as the `code` attribute.",
         NULL, NULL);
     if (ErrorException == NULL)
         goto fail;
     Py_INCREF(ErrorException);
-    if (PyModule_AddObject(module, "Error", ErrorException) < 0) {
+    if (PyModule_AddObject(module, "GalleyError", ErrorException) < 0) {
         Py_DECREF(ErrorException);
         goto fail;
     }
@@ -3291,39 +3522,15 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
         goto fail;
     }
 
-    if (PyModule_AddIntConstant(module, "PARSER_TYPE_LL",
-                                galley_parser_type_ll) < 0 ||
-        PyModule_AddIntConstant(module, "PARSER_TYPE_LR",
-                                galley_parser_type_lr) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_MODE_DISABLED",
-                                galley_recovery_mode_disabled) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_MODE_AUTOMATIC",
-                                galley_recovery_mode_automatic) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_MODE_EXPLICIT",
-                                galley_recovery_mode_explicit) < 0 ||
-        PyModule_AddIntConstant(module, "KIND_NONE",
-                                galley_diagnostic_kind_none) < 0 ||
-        PyModule_AddIntConstant(module, "KIND_SYNTAX",
-                                galley_diagnostic_kind_syntax) < 0 ||
-        PyModule_AddIntConstant(module, "KIND_INDENTATION",
-                                galley_diagnostic_kind_indentation) < 0 ||
-        PyModule_AddIntConstant(module, "KIND_SEMANTIC",
-                                galley_diagnostic_kind_semantic) < 0 ||
-        PyModule_AddIntConstant(module, "KIND_SEMANTIC",
-                                galley_diagnostic_kind_semantic) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_TARGET_NONE",
-                                galley_recovery_target_none) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_TARGET_LHS_VARIABLE",
-                                galley_recovery_target_lhs_variable) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_TARGET_PRODUCTION",
-                                galley_recovery_target_production) < 0 ||
-        PyModule_AddIntConstant(module, "RECOVERY_TARGET_OCCURRENCE",
-                                galley_recovery_target_occurrence) < 0 ||
-        PyModule_AddIntConstant(module, "RESUME_BEFORE",
-                                galley_resume_before) < 0 ||
-        PyModule_AddIntConstant(module, "RESUME_AFTER",
-                                galley_resume_after) < 0)
+    if (add_binding_enums(module) < 0)
         goto fail;
+
+    PyObject *invalid_node = PyLong_FromUnsignedLongLong(GALLEY_INVALID_NODE);
+    if (invalid_node == NULL ||
+        PyModule_AddObject(module, "INVALID_NODE", invalid_node) < 0) {
+        Py_XDECREF(invalid_node);
+        goto fail;
+    }
 
     /* Python procedure hooks: install the dispatch callback into the
      * linked archive. Hook callables arrive through generated package

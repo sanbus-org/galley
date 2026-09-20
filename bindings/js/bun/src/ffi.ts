@@ -13,7 +13,8 @@ import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core";
+import { GalleyError } from "@sanbus/galley-core";
+import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { ensureDispatchFor } from "./dispatch.ts";
 
 /** Native handles are addresses; 0 is null. */
@@ -44,6 +45,7 @@ interface GalleySymbols {
   galley_session_set_message_override(session: NativeHandle, name: number, nameLen: bigint, message: number, messageLen: bigint): bigint;
   galley_parse(session: NativeHandle, data: number, len: bigint): bigint;
   galley_parse_file(session: NativeHandle, path: number): bigint;
+  galley_last_input(session: NativeHandle, outData: number, outLen: number): bigint;
   galley_last_position(session: NativeHandle, outLine: number, outCol: number): bigint;
   galley_node_count(session: NativeHandle): bigint;
   galley_reserve_nodes(session: NativeHandle, capacity: bigint): bigint;
@@ -216,6 +218,7 @@ const BASE_SYMBOLS = {
   galley_session_set_message_override: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse_file: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  galley_last_input: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_last_position: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_node_count: { args: [FFIType.ptr], returns: FFIType.u64 },
   galley_reserve_nodes: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
@@ -515,6 +518,14 @@ export class BunPort implements FfiPort {
     const outCol = u32Out();
     if (this.native.galley_last_position(handle as NativeHandle, ptr(outLine), ptr(outCol)) < 0n) return null;
     return [outLine[0], outCol[0]];
+  }
+
+  lastInput(handle: Handle): Uint8Array | null {
+    const h = handle as NativeHandle;
+    const outData = ptrOut64();
+    const outLen = ptrOut64();
+    if (this.native.galley_last_input(h, ptr(outData), ptr(outLen)) < 0n) return null;
+    return readBytes(outData[0], outLen[0]);
   }
 
   // -- arena and navigation ----------------------------------------------

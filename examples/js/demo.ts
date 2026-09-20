@@ -5,28 +5,20 @@
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import {
-  Session,
-  KIND_SYNTAX,
-  KIND_INDENTATION,
-} from "@sanbus/galley";
-import { Session as WasmSession } from "@sanbus/galley-wasm";
+import { galley, Kind } from "@sanbus/galley";
+import type { Session } from "@sanbus/galley";
+import * as kv from "./kv/index.mjs";
 import * as procedures from "./kv/procedures.ts";
-
-// The language directory this demo runs: the session loads the
-// standard-named parser artifact from it. Exact directory, no searching.
-const LANGUAGE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "kv");
 
 // GALLEY_WASM=1 (or a path to a `.wasm` module file) runs the same demo
 // through the WebAssembly backend instead of native. Explicit choice, so
-// the fallback notice stays off and the output matches the native run
-// byte for byte.
+// the fallback notice is silenced process-wide and the output matches
+// the native run byte for byte.
 function wasmBytes(): Uint8Array | "dir" | null {
   const selected = process.env.GALLEY_WASM;
   if (!selected) return null;
+  process.env.GALLEY_QUIET = "1";
   if (selected === "1") return "dir";
   return new Uint8Array(fs.readFileSync(selected));
 }
@@ -56,21 +48,26 @@ function printTree(node: import("@sanbus/galley").Node, depth: number): void {
 }
 
 async function main(): Promise<number> {
-  let session: Session | WasmSession;
+  let session: Session;
+  let language: import("@sanbus/galley").Language;
   try {
+    await kv.initialize();
     const wasm = wasmBytes();
     const hooks = procedures as unknown as Record<string, unknown>;
-    session =
-      wasm === null
-        ? await Session.fromDirectory(LANGUAGE_DIR, { procedures: hooks, maxErrors: 10 })
-        : wasm === "dir"
-          ? await WasmSession.fromDirectory(LANGUAGE_DIR, { procedures: hooks, maxErrors: 10 })
-          : await WasmSession.fromBytes(wasm, { procedures: hooks, maxErrors: 10 });
+    if (wasm === null) {
+      language = await kv.language();
+    } else if (wasm === "dir") {
+      language = await kv.language({ backend: "wasm" });
+    } else {
+      language = await galley.loadBytes(wasm);
+    }
+    language.installProcedures(hooks);
+    session = await language.openSession({ maxErrors: 10 });
   } catch {
     console.error("failed to create a parser session");
     return 1;
   }
-  console.log(`galley version: ${session.version()}`);
+  console.log(`galley version: ${language.version()}`);
 
   // emulate Python's `with` via try/finally close
   try {
@@ -104,14 +101,14 @@ async function main(): Promise<number> {
     // Successful parse: walk the tree.
     let parsed: number;
     try {
-      parsed = session.parseSentinel(VALID_SAMPLE);
+      parsed = session.parse(VALID_SAMPLE);
     } catch (err: unknown) {
       const galleyErr = err as { code: number };
       console.error(`unexpected failure: ${err} (${galleyErr.code})`);
       return 1;
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!session.hasAst()) {
+    if (!language.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -120,7 +117,7 @@ async function main(): Promise<number> {
 
     // Failed parse: inspect the diagnostic.
     try {
-      session.parseSentinel(BROKEN_SAMPLE);
+      session.parse(BROKEN_SAMPLE);
       console.error("expected the broken sample to fail");
       return 1;
     } catch (err: unknown) {
@@ -157,9 +154,9 @@ async function main(): Promise<number> {
     console.log(`recorded diagnostics: ${recorded.length}`);
     recorded.forEach((diag, idx) => {
       const kindName =
-        diag.kind === KIND_SYNTAX
+        diag.kind === Kind.Syntax
           ? "syntax"
-          : diag.kind === KIND_INDENTATION
+          : diag.kind === Kind.Indentation
             ? "indentation"
             : "none";
       const unexpected = diag.unexpectedToken
@@ -191,7 +188,7 @@ async function main(): Promise<number> {
     console.log(`file parse: ${parsed} bytes, ended at ${endLine}:${endColumn}`);
 
     // Tree editing: detach the root's children, then reattach them.
-    if (session.hasAst()) {
+    if (language.hasAst()) {
       const root = session.rootNode();
       if (!root) {
         console.error("expected the root to have children");

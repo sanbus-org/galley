@@ -21,14 +21,13 @@ import type {
   TreeSnapshot,
   WalkedStep,
 } from "@sanbus/galley-core";
+import { GalleyError, MissingArtifactError } from "@sanbus/galley-core";
 import {
-  GalleyError,
-  MissingArtifactError,
   resolveArtifact,
   resolveArtifactFile,
   artifactFileName,
   canonicalResolvePath,
-} from "@sanbus/galley-core";
+} from "@sanbus/galley-core/internal";
 import { ensureDispatchFor } from "./dispatch.ts";
 const require = createRequire(import.meta.url);
 
@@ -71,9 +70,9 @@ export interface AddonApi {
   ): bigint;
 
   // parse
-  galley_parse_sentinel(session: bigint, input: string): bigint;
   galley_parse(session: bigint, data: Uint8Array, len: number): bigint;
   galley_parse_file(session: bigint, filePath: string): bigint;
+  galley_last_input(session: bigint): Uint8Array | null;
   galley_last_position(session: bigint): [number, number] | null;
 
   // node / tree
@@ -456,6 +455,10 @@ export class NodePort implements FfiPort {
 
   lastPosition(handle: Handle): [number, number] | null {
     return this.api.galley_last_position(handle as bigint);
+  }
+
+  lastInput(handle: Handle): Uint8Array | null {
+    return this.api.galley_last_input(handle as bigint);
   }
 
   // -- arena and navigation ----------------------------------------------

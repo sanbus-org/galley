@@ -34,5 +34,7 @@
 /package-lock.json
 /kv/package.json
 /kv/index.mjs
+/kv/index.d.mts
 /json/package.json
 /json/index.mjs
+/json/index.d.mts

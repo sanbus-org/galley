@@ -6,10 +6,10 @@
  */
 
 import {
-  Session,
-  KIND_SYNTAX,
-  KIND_INDENTATION,
+  galley,
+  Kind,
   type Node,
+  type Session,
 } from "@sanbus/galley/browser";
 import * as procedures from "./kv/procedures.ts";
 
@@ -47,12 +47,11 @@ function printTree(node: Node, depth: number): void {
 }
 
 async function main(): Promise<void> {
-  const session = await Session.fromUrl(wasmUrl(), {
-    procedures: procedures as unknown as Record<string, unknown>,
-    maxErrors: 10,
-  });
+  const language = await galley.loadUrl(wasmUrl());
+  language.installProcedures(procedures as unknown as Record<string, unknown>);
+  const session: Session = await language.openSession({ maxErrors: 10 });
   try {
-    console.log(`galley version: ${session.version()}`);
+    console.log(`galley version: ${language.version()}`);
 
     try {
       session.setMessageOverride(
@@ -66,12 +65,12 @@ async function main(): Promise<void> {
     // Successful parse: walk the tree.
     let parsed: number;
     try {
-      parsed = session.parseSentinel(VALID_SAMPLE);
+      parsed = session.parse(VALID_SAMPLE);
     } catch (err: unknown) {
       fail(`unexpected failure: ${err}`);
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!session.hasAst()) {
+    if (!language.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -80,7 +79,7 @@ async function main(): Promise<void> {
 
     // Failed parse: inspect the diagnostic.
     try {
-      session.parseSentinel(BROKEN_SAMPLE);
+      session.parse(BROKEN_SAMPLE);
       fail("expected the broken sample to fail");
     } catch {
       // expected
@@ -111,9 +110,9 @@ async function main(): Promise<void> {
     console.log(`recorded diagnostics: ${recorded.length}`);
     recorded.forEach((diag, idx) => {
       const kindName =
-        diag.kind === KIND_SYNTAX
+        diag.kind === Kind.Syntax
           ? "syntax"
-          : diag.kind === KIND_INDENTATION
+          : diag.kind === Kind.Indentation
             ? "indentation"
             : "none";
       const unexpected = diag.unexpectedToken ? utf8.decode(diag.unexpectedToken) : "";
@@ -121,7 +120,7 @@ async function main(): Promise<void> {
     });
 
     // Tree editing: detach the root's children, then reattach them.
-    if (session.hasAst()) {
+    if (language.hasAst()) {
       const root = session.rootNode();
       if (!root) fail("expected the root to have children");
       const childrenBefore = root.length;

@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "devDependencies": {
+    "@sanbus/galley-core": "file:../../bindings/js/core",
     "@sanbus/galley-bun": "file:../../bindings/js/bun",
     "@sanbus/galley-node": "file:../../bindings/js/node",
     "@sanbus/galley-wasm": "file:../../bindings/js/wasm",

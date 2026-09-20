@@ -1,6 +1,11 @@
 {
   "imports": {
-    "@sanbus/galley-core": "../core/src/index.ts"
+    "@sanbus/galley-core": "../core/src/index.ts",
+    "@sanbus/galley-core/internal": "../core/src/internal.ts",
+    "@sanbus/galley-node": "../node/src/index.ts",
+    "@sanbus/galley-bun": "../bun/src/index.ts",
+    "@sanbus/galley-deno": "../deno/src/index.ts",
+    "@sanbus/galley-wasm": "../wasm/src/index.ts"
   },
   "tasks": {
     "check": "deno check src/index.ts",

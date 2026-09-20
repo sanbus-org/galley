@@ -15,7 +15,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { JSCallback, FFIType, toArrayBuffer } from "bun:ffi";
 
-import { loadProceduresModule } from "@sanbus/galley-core";
+import { loadProceduresModule } from "@sanbus/galley-core/internal";
 import type { FfiPort } from "@sanbus/galley-core";
 import type { BunPort } from "./ffi.ts";
 

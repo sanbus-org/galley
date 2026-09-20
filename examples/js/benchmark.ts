@@ -8,9 +8,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import { Session } from "@sanbus/galley";
-import { Session as WasmSession } from "@sanbus/galley-wasm";
+import { galley } from "@sanbus/galley";
+import type { Session } from "@sanbus/galley";
+import * as json from "./json/index.mjs";
 
 const LOGICAL_INPUT = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS = 10;
@@ -28,15 +28,12 @@ function resolveInput(explicit: string | undefined): string {
   process.exit(1);
 }
 
-// The language directory this benchmark runs: the session loads the
-// standard-named parser artifact from it. Exact directory, no searching.
-const BENCHMARK_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "json");
-
 // GALLEY_WASM=1 (or a path to a `.wasm` module file) benchmarks the
 // WebAssembly backend instead of native, mirroring demo.ts.
 function jsonWasmBytes(): Uint8Array | "dir" | null {
   const selected = process.env.GALLEY_WASM;
   if (!selected) return null;
+  process.env.GALLEY_QUIET = "1";
   if (selected === "1") return "dir";
   return new Uint8Array(fs.readFileSync(selected));
 }
@@ -63,15 +60,19 @@ async function main(): Promise<number> {
   }
   const length = data.length;
 
-  let session: Session | WasmSession;
+  let session: Session;
   try {
+    await json.initialize();
     const wasm = jsonWasmBytes();
-    session =
-      wasm === null
-        ? await Session.fromDirectory(BENCHMARK_DIR)
-        : wasm === "dir"
-          ? await WasmSession.fromDirectory(BENCHMARK_DIR)
-          : await WasmSession.fromBytes(wasm);
+    if (wasm !== null && wasm !== "dir") {
+      const language = await galley.loadBytes(wasm);
+      session = await language.openSession();
+    } else {
+      session =
+        wasm === null
+          ? await json.openSession()
+          : await json.openSession({ backend: "wasm" });
+    }
   } catch {
     console.error("failed to create a parser session");
     return 1;
@@ -80,7 +81,7 @@ async function main(): Promise<number> {
   try {
     let parsed: number;
     try {
-      parsed = session.parseSentinel(data);
+      parsed = session.parse(data);
     } catch (err: unknown) {
       console.error(`warmup parse failed: ${err}`);
       return 1;
@@ -94,7 +95,7 @@ async function main(): Promise<number> {
     let index = 0;
     try {
       for (; index < iterations; index++) {
-        parsed = session.parseSentinel(data);
+        parsed = session.parse(data);
         if (parsed !== length) break;
       }
     } catch (err: unknown) {

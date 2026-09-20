@@ -155,7 +155,9 @@ del {IMPL_MODULE_NAME}
 # extension types are immutable, so no per-package rename. Behavior is
 # unaffected: same objects, same registry.
 
-procedures = None
+# Bundled hooks live in the procedures submodule, importable directly
+# (`from my_language import procedures` resolves the registered module
+# below); the package binds no hook namespace itself.
 _procedures_file = _Path(__file__).resolve().parent / "procedures.py"
 if _procedures_file.is_file():
     import importlib.util as _importlib_util
@@ -168,16 +170,16 @@ if _procedures_file.is_file():
         raise ImportError(
             f"not a loadable procedures module: {{_procedures_file}}"
         )
-    procedures = _importlib_util.module_from_spec(_spec)
-    _sys.modules[_spec.name] = procedures
-    _spec.loader.exec_module(procedures)
-    _installed = _impl.install_procedures(procedures.__dict__)
+    _procedures = _importlib_util.module_from_spec(_spec)
+    _sys.modules[_spec.name] = _procedures
+    _spec.loader.exec_module(_procedures)
+    _installed = _impl.install_procedures(_procedures.__dict__)
     if _installed == 0:
         print(
             f"galley: {{_procedures_file}} defines no procedure hooks",
             file=_sys.stderr,
         )
-    del _spec, _installed, _importlib_util, _sys
+    del _spec, _installed, _importlib_util, _sys, _procedures
 del _Path, _procedures_file
 """,
         encoding="utf-8",
