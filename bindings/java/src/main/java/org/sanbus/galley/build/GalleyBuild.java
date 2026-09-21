@@ -254,7 +254,7 @@ public final class GalleyBuild {
         lines.add("");
         lines.add("    private Parser() {}");
         lines.add("");
-        lines.add("    public static org.sanbus.galley.Parser load(String libraryPath) {");
+        lines.add("    public static org.sanbus.galley.Parser load(String libraryPath) throws org.sanbus.galley.MissingArtifactException {");
         lines.add("        org.sanbus.galley.Parser parser = org.sanbus.galley.Galley.load(libraryPath);");
         for (String hook : hooks) {
             lines.add("        parser.installProcedure(\"" + hook + "\", " + hookClass + "::" + hook + ");");
@@ -262,7 +262,7 @@ public final class GalleyBuild {
         lines.add("        return parser;");
         lines.add("    }");
         lines.add("");
-        lines.add("    public static org.sanbus.galley.Parser load() {");
+        lines.add("    public static org.sanbus.galley.Parser load() throws org.sanbus.galley.MissingArtifactException {");
         lines.add("        return load(null);");
         lines.add("    }");
         lines.add("}");

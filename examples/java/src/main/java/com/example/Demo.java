@@ -36,10 +36,9 @@ public final class Demo {
     }
 
     private static void printTree(Node node, int depth) {
-        byte[] nameBytes = node.symbolName();
+        String name = node.symbolName();
         byte[] textBytes = node.text();
-        if (nameBytes == null || textBytes == null) System.exit(1);
-        String name = new String(nameBytes, StandardCharsets.UTF_8);
+        if (name == null || textBytes == null) System.exit(1);
         int line = 0;
         int[] pos = node.lineColumn();
         if (pos != null) line = pos[0];
@@ -59,7 +58,7 @@ public final class Demo {
         Parser parser;
         try {
             parser = Galley.load(libraryPath());
-        } catch (IllegalStateException e) {
+        } catch (MissingArtifactException e) {
             System.err.println("failed to load the parser: " + e.getMessage());
             System.exit(1);
             return;
@@ -73,7 +72,7 @@ public final class Demo {
         Session session;
         try {
             session = parser.openSession(opts);
-        } catch (GalleyException | IllegalStateException e) {
+        } catch (GalleyException e) {
             System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);
             return;
@@ -155,7 +154,7 @@ public final class Demo {
             System.out.println("recorded diagnostics: " + recorded.size());
             for (int i = 0; i < recorded.size(); i++) {
                 Diagnostic d = recorded.get(i);
-                String kindName = d.getKind() == Diagnostic.KIND_SYNTAX ? "syntax" : d.getKind() == Diagnostic.KIND_INDENTATION ? "indentation" : "none";
+                String kindName = d.getKind() == DiagnosticKind.SYNTAX ? "syntax" : d.getKind() == DiagnosticKind.INDENTATION ? "indentation" : "none";
                 String unexpected = d.getUnexpectedToken() != null ? new String(d.getUnexpectedToken(), StandardCharsets.UTF_8) : "";
                 System.out.println("  [" + i + "] " + kindName + " at " + d.getLine() + ":" + d.getColumn() + " near '" + unexpected + "'");
             }

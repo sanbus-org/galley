@@ -30,7 +30,7 @@ public final class Parser {
     // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
     private final MemorySegment dispatchStub;
 
-    Parser(String canonicalPath) {
+    Parser(String canonicalPath) throws MissingArtifactException {
         this.canonicalPath = canonicalPath;
         this.lib = GalleyLibraryLoader.load(canonicalPath);
         MemorySegment stub;
@@ -60,9 +60,9 @@ public final class Parser {
 
     public String version() { return lib.galley_version(); }
 
-    public int parserType() { return (int) lib.galley_parser_type(); }
+    public ParserType parserType() { return ParserType.fromCode(lib.galley_parser_type()); }
 
-    public int errorRecoveryMode() { return (int) lib.galley_error_recovery_mode(); }
+    public RecoveryMode errorRecoveryMode() { return RecoveryMode.fromCode(lib.galley_error_recovery_mode()); }
 
     public boolean hasAst() { return lib.galley_has_ast() != 0; }
 
@@ -146,6 +146,11 @@ public final class Parser {
     GalleyLibrary library() { return lib; }
 
     String statusString(long status) { return lib.galley_status_string(status); }
+
+    String statusString(StatusCode status) {
+        if (status == null) return null;
+        return lib.galley_status_string(status.getCode());
+    }
 
     // Called by this parser's upcall stub.
     private void dispatch(MemorySegment namePtr, long nameLen, MemorySegment argsPtr) {

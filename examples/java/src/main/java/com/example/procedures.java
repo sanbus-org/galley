@@ -26,8 +26,8 @@ public final class procedures {
     }
 
     private static String nameOf(Node node) {
-        byte[] b = node.symbolName();
-        return b == null ? "" : new String(b, StandardCharsets.UTF_8);
+        String name = node.symbolName();
+        return name != null ? name : "";
     }
 
     private static int[] posOf(Node node) {
