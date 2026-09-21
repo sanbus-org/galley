@@ -25,4 +25,4 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 
 - Parsing accepts strings and byte arrays plus idiomatic view and path forms, normalized through shared check helpers. File paths accept URL objects where the platform defines them.
 - Nodes compare through an explicit equality method and expose their address as a bigint getter. Maps and sets keep reference identity, so memoizing code keys on the address explicitly.
-- Walkers close explicitly or through `using` blocks before the session closes or parses again. Sessions close explicitly or through disposal blocks.
+- Walkers close explicitly or through `using` blocks before the session closes or parses again; stepping after close or a re-parse throws `SessionClosedError`, while parsing with an abandoned walker still succeeds. Sessions close explicitly or through disposal blocks.

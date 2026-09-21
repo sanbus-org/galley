@@ -156,7 +156,8 @@ class Node:
 
     A ``Node`` keeps a strong reference to its ``Session`` and raises
     ``ValueError`` after the session is closed (``close()`` or exiting
-    ``with``).  ``int(node)`` and ``operator.index(node)`` return the raw
+    ``with``) or parses again: nodes read only the parse generation that
+    created them. ``int(node)`` and ``operator.index(node)`` return the raw
     address; plain ``int`` addresses are accepted wherever a ``Node`` is
     expected.
     """
@@ -243,13 +244,19 @@ class Node:
 class Walker(Iterator[dict[str, Any]]):
     """Pre-order tree walker over ``{"node", "depth", "is_semantic_error"}`` dicts.
 
-    Returned by ``Session.walk``; the root yields at depth 0. Close the
-    walker (or use it as a context manager, or let it go out of scope)
-    before closing the session or parsing again.
+    Returned by ``Session.walk``; the root yields at depth 0. The walker is
+    bound to the parse that created it: stepping it after the session
+    parses again or closes raises ``ValueError``. Close the walker (or use
+    it as a context manager, or let it go out of scope) before closing the
+    session or parsing again.
     """
 
     def __next__(self) -> dict[str, Any]:
-        """Next ``{"node", "depth", "is_semantic_error"}`` dict in pre-order."""
+        """Next ``{"node", "depth", "is_semantic_error"}`` dict in pre-order.
+
+        Raises ``ValueError`` when the walker is closed or the session has
+        parsed again or closed since the walker was created.
+        """
         ...
 
     def __iter__(self) -> Walker:
@@ -257,7 +264,11 @@ class Walker(Iterator[dict[str, Any]]):
         ...
 
     def skip_children(self) -> None:
-        """Prune the children of the last yielded node."""
+        """Prune the children of the last yielded node.
+
+        Raises ``ValueError`` when the walker is closed or the session has
+        parsed again or closed since the walker was created.
+        """
         ...
 
     def close(self) -> None:
@@ -438,6 +449,8 @@ class Session:
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
         semantic-error nodes. Raises ``ValueError`` for an invalid root.
+        The walker is bound to the current parse: stepping it after the
+        session parses again or closes raises ``ValueError``.
         """
         ...
     def symbol_name(self, node: Node | int) -> bytes | None:

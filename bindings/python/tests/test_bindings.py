@@ -616,6 +616,63 @@ class WalkTests(unittest.TestCase):
         with self.session.walk(root) as scoped:
             self.assertIsNotNone(next(scoped))
 
+    def test_walker_step_after_reparse_raises(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        self.assertIsNotNone(next(walker))
+        self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        with self.assertRaises(ValueError):
+            next(walker)
+        with self.assertRaises(ValueError):
+            walker.skip_children()
+        walker.close()
+        walker.close()
+
+    def test_parse_with_abandoned_walker_succeeds(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        # Parsing never raises merely because a walker is open; the
+        # abandoned walker fails at its next step instead.
+        self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        with self.assertRaises(ValueError):
+            next(walker)
+        walker.close()
+        fresh = self.session.root_node()
+        assert fresh is not None
+        self.assertGreater(len(list(self.session.walk(fresh))), 1)
+
+    def test_failed_parse_invalidates_walkers(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        self.assertIsNotNone(next(walker))
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:")
+        with self.assertRaises(ValueError):
+            next(walker)
+        walker.close()
+
+    def test_node_after_reparse_raises(self) -> None:
+        root = self.session.root_node()
+        assert root is not None
+        self.assertGreater(self.session.child_count(root), 0)
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaises(ValueError):
+            self.session.child_count(root)
+        with self.assertRaises(ValueError):
+            root.text()
+        fresh = self.session.root_node()
+        assert fresh is not None
+        self.assertGreater(self.session.child_count(fresh), 0)
+
     def test_walk_reports_no_error_flags_on_a_clean_tree(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
@@ -783,6 +840,21 @@ class LifetimeTests(unittest.TestCase):
             self.assertGreater(session.parse("alpha:12"), 0)
         with self.assertRaises(ValueError):
             session.parse("alpha:12")
+
+    def test_walker_step_after_session_close_raises(self):
+        session = grammar.Session()
+        session.parse("alpha:12")
+        root = session.root_node()
+        assert root is not None
+        walker = session.walk(root)
+        self.assertIsNotNone(next(walker))
+        session.close()
+        with self.assertRaises(ValueError):
+            next(walker)
+        with self.assertRaises(ValueError):
+            walker.skip_children()
+        walker.close()
+        walker.close()
 
     def test_options_round_trip(self):
         session = grammar.Session(
