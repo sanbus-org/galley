@@ -24,6 +24,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class GalleyTest {
 
+    private static String fixtureLibraryPath() {
+        String env = System.getenv("GALLEY_LIBRARY_PATH");
+        if (env != null && !env.isEmpty()) return env;
+        String prop = System.getProperty("galley.library.path");
+        if (prop != null && !prop.isEmpty()) return prop;
+        throw new IllegalStateException("GALLEY_LIBRARY_PATH (or galley.library.path) must point at the fixture library");
+    }
+
+    private static Parser fixtureParser() {
+        Parser parser = Galley.load(fixtureLibraryPath());
+        parser.clearProcedures();
+        return parser;
+    }
+
     @Test
     void versionReturnsNonEmptyString() {
         String v = Galley.version();
@@ -74,21 +88,24 @@ public class GalleyTest {
     @Nested
     class SessionTests {
         Session session;
+        Parser parser;
 
         @BeforeEach
         void setUp() {
-            session = new Session(SessionOptions.builder().maxErrors(10).build());
+            parser = fixtureParser();
+            session = parser.openSession(SessionOptions.builder().maxErrors(10).build());
         }
 
         @AfterEach
         void tearDown() {
             session.close();
+            parser.clearProcedures();
         }
 
         @Test
         void procedureHookCanReadNodeText() {
             List<byte[]> seen = new ArrayList<>();
-            Procedures.installProcedure("reduction_Pair", args -> {
+            parser.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 assertNotNull(args.getSession());
@@ -97,11 +114,7 @@ public class GalleyTest {
                 assertTrue(text.length > 0);
                 seen.add(text);
             });
-            try {
-                session.parse("alpha:12,beta:3");
-            } finally {
-                Procedures.clearProcedures();
-            }
+            session.parse("alpha:12,beta:3");
             assertEquals(2, seen.size());
         }
 
@@ -143,7 +156,7 @@ public class GalleyTest {
 
         @Test
         void diagnosticResetsAfterSuccessfulParse() {
-            Session s = new Session();
+            Session s = parser.openSession();
             try {
                 assertThrows(GalleyException.class, () -> s.parse("alpha:"));
                 assertNotNull(s.diagnostic());
@@ -169,64 +182,59 @@ public class GalleyTest {
         @Test
         void hookReportedSemanticErrorsAggregateAndFail() {
             List<Integer> counts = new ArrayList<>();
-            Procedures.installProcedure("reduction_Number", args -> {
+            parser.installProcedure("reduction_Number", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
                 if (value > 99) counts.add(args.reportSemanticError("value out of range"));
             });
-            try {
-                GalleyException ex = assertThrows(GalleyException.class,
-                        () -> session.parse("alpha:12,beta:300,gamma:400"));
-                assertEquals(-12, ex.getCode());
-                assertTrue(ex.getMessage().contains("value out of range"));
-                assertEquals(List.of(1, 2), counts);
-                Diagnostic d = session.diagnostic();
-                assertNotNull(d);
-                assertEquals(Diagnostic.KIND_SEMANTIC, d.getKind());
-                assertEquals(1, d.getLine());
-                assertEquals(2, d.getSemanticErrorCount());
-                assertArrayEquals(new String[]{"Number", "value out of range"}, d.getSemantic());
-                assertTrue(d.getMessage().contains("SemanticError"));
-                assertEquals(2, session.diagnostics().size());
-            } finally {
-                Procedures.clearProcedures();
-            }
+            GalleyException ex = assertThrows(GalleyException.class,
+                    () -> session.parse("alpha:12,beta:300,gamma:400"));
+            assertEquals(-12, ex.getCode());
+            assertTrue(ex.getMessage().contains("value out of range"));
+            assertEquals(List.of(1, 2), counts);
+            Diagnostic d = session.diagnostic();
+            assertNotNull(d);
+            assertEquals(Diagnostic.KIND_SEMANTIC, d.getKind());
+            assertEquals(1, d.getLine());
+            assertEquals(2, d.getSemanticErrorCount());
+            assertArrayEquals(new String[]{"Number", "value out of range"}, d.getSemantic());
+            assertTrue(d.getMessage().contains("SemanticError"));
+            assertEquals(2, session.diagnostics().size());
         }
 
         @Test
         void semanticCountsResetAfterSuccessfulParse() {
-            Procedures.installProcedure("reduction_Number", args -> {
+            parser.installProcedure("reduction_Number", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
                 if (value > 99) args.reportSemanticError("value out of range");
             });
-            try {
-                assertThrows(GalleyException.class, () -> session.parse("alpha:300"));
-                session.parse("alpha:12");
-                assertFalse(session.hasDiagnostic());
-                assertNull(session.diagnostic());
-                assertTrue(session.diagnostics().isEmpty());
-            } finally {
-                Procedures.clearProcedures();
-            }
+            assertThrows(GalleyException.class, () -> session.parse("alpha:300"));
+            session.parse("alpha:12");
+            assertFalse(session.hasDiagnostic());
+            assertNull(session.diagnostic());
+            assertTrue(session.diagnostics().isEmpty());
         }
     }
 
     @Nested
     class WalkTests {
         Session session;
+        Parser parser;
 
         @BeforeEach
         void setUp() {
-            session = new Session();
+            parser = fixtureParser();
+            session = parser.openSession();
             session.parse("alpha:12,beta:3");
         }
 
         @AfterEach
         void tearDown() {
             session.close();
+            parser.clearProcedures();
         }
 
         @Test
@@ -435,11 +443,13 @@ public class GalleyTest {
     @Nested
     class EditTests {
         Session session;
+        Parser parser;
         Node root;
 
         @BeforeEach
         void setUp() {
-            session = new Session();
+            parser = fixtureParser();
+            session = parser.openSession();
             session.parse("alpha:12,beta:3");
             root = session.rootNode();
             assertNotNull(root);
@@ -448,6 +458,7 @@ public class GalleyTest {
         @AfterEach
         void tearDown() {
             session.close();
+            parser.clearProcedures();
         }
 
         @Test
@@ -546,15 +557,18 @@ public class GalleyTest {
     @Nested
     class SymbolTableTests {
         Session session;
+        Parser parser;
 
         @BeforeEach
         void setUp() {
-            session = new Session();
+            parser = fixtureParser();
+            session = parser.openSession();
         }
 
         @AfterEach
         void tearDown() {
             session.close();
+            parser.clearProcedures();
         }
 
         @Test
@@ -575,22 +589,36 @@ public class GalleyTest {
     class ReservationTests {
         @Test
         void reserveAndReportCapacity() {
-            Session s = new Session();
+            Parser parser = fixtureParser();
+            Session s = parser.openSession();
             try {
                 long cap = s.nodeCapacity();
                 s.reserveNodes(cap + 1024);
                 assertTrue(s.nodeCapacity() >= cap + 1024);
             } finally {
                 s.close();
+                parser.clearProcedures();
             }
         }
     }
 
     @Nested
     class LifetimeTests {
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+        }
+
+        @AfterEach
+        void tearDown() {
+            parser.clearProcedures();
+        }
+
         @Test
         void closeIsIdempotentAndClosedSessionsThrow() {
-            Session s = new Session();
+            Session s = parser.openSession();
             s.parse("alpha:12");
             s.close();
             s.close();
@@ -600,7 +628,7 @@ public class GalleyTest {
 
         @Test
         void nodeAfterCloseThrows() {
-            Session s = new Session();
+            Session s = parser.openSession();
             s.parse("alpha:12,beta:3");
             Node root = s.rootNode();
             s.close();
@@ -610,18 +638,18 @@ public class GalleyTest {
 
         @Test
         void autoCloseable() {
-            Session s = new Session();
+            Session s = parser.openSession();
             s.parse("alpha:12");
             s.close();
             assertTrue(s.isClosed());
-            Session s2 = new Session();
+            Session s2 = parser.openSession();
             s2.close();
             assertTrue(s2.isClosed());
         }
 
         @Test
         void optionsRoundTrip() {
-            Session s = new Session(SessionOptions.builder()
+            Session s = parser.openSession(SessionOptions.builder()
                     .maxErrors(3)
                     .recoveryWindow(100)
                     .stackOverflowRecovery(false)
@@ -639,13 +667,13 @@ public class GalleyTest {
 
         @Test
         void messageOverride() {
-            Session s = new Session(SessionOptions.builder()
+            Session s = parser.openSession(SessionOptions.builder()
                     .messageOverride("Number", "custom at line {line}")
                     .build());
             try {
                 GalleyException ex = assertThrows(GalleyException.class, () -> s.parse("alpha:"));
                 assertTrue(ex.getDiagnostic().getMessage().contains("custom at line 1"));
-                Session s2 = new Session();
+                Session s2 = parser.openSession();
                 try {
                     s2.setMessageOverride("Number", "override2 {line}:{column}");
                     GalleyException ex2 = assertThrows(GalleyException.class, () -> s2.parse("alpha:"));
@@ -660,70 +688,120 @@ public class GalleyTest {
 
         @Test
         void procedureHookCanReadNodeTextWithSession() {
-            Procedures.clearProcedures();
             List<String> seen = new ArrayList<>();
-            Procedures.installProcedure("reduction_Pair", args -> {
+            parser.installProcedure("reduction_Pair", args -> {
                 Node n = args.currentNode();
                 assertNotNull(n);
                 seen.add(new String(n.text(), StandardCharsets.UTF_8));
             });
-            Session sess = new Session();
+            Session sess = parser.openSession();
             try {
                 sess.parse("alpha:12,beta:3");
                 assertEquals(2, seen.size());
             } finally {
                 sess.close();
-                Procedures.clearProcedures();
             }
         }
 
         @Test
         void installProcedureDispatchesHostHooks() {
-            Procedures.clearProcedures();
             AtomicInteger called = new AtomicInteger(0);
-            Procedures.installProcedure("reduction", args -> called.incrementAndGet());
-            Procedures.installProcedure("reduction_Pair", args -> called.incrementAndGet());
-            assertEquals(2, Procedures.listProcedures().size());
-            Session sess = new Session();
+            parser.installProcedure("reduction", () -> called.incrementAndGet());
+            parser.installProcedure("reduction_Pair", args -> called.incrementAndGet());
+            assertEquals(2, parser.listProcedures().size());
+            Session sess = parser.openSession();
             try {
                 sess.parse("alpha:12,beta:3");
                 assertTrue(called.get() > 0);
                 int before = called.get();
-                Procedures.clearProcedures();
-                assertEquals(0, Procedures.listProcedures().size());
+                parser.clearProcedures();
+                assertEquals(0, parser.listProcedures().size());
                 sess.parse("alpha:12");
                 assertEquals(before, called.get());
             } finally {
                 sess.close();
-                Procedures.clearProcedures();
             }
         }
 
         @Test
         void installProceduresBulkRegisters() {
-            Procedures.clearProcedures();
             Map<String, Object> mod = Map.of(
                     "reduction_Document", (java.util.function.Consumer<ProcedureArguments>) args -> {},
-                    "hook_print", (java.util.function.Consumer<ProcedureArguments>) args -> {},
+                    "hook_print", (Runnable) () -> {},
                     "notAHook", (java.util.function.Consumer<ProcedureArguments>) args -> {}
             );
-            int n = Procedures.installProcedures(mod);
+            int n = parser.installProcedures(mod);
             assertEquals(2, n);
-            assertEquals(2, Procedures.listProcedures().size());
-            Procedures.clearProcedures();
+            assertEquals(2, parser.listProcedures().size());
         }
 
         @Test
         void hookThrowingDoesNotAbortParse() {
-            Procedures.clearProcedures();
-            Procedures.installProcedure("reduction_Pair", args -> { throw new RuntimeException("boom"); });
-            Session sess = new Session();
+            parser.installProcedure("reduction_Pair", args -> { throw new RuntimeException("boom"); });
+            Session sess = parser.openSession();
             try {
                 int parsed = sess.parse("alpha:12,beta:3");
                 assertTrue(parsed > 0);
             } finally {
                 sess.close();
-                Procedures.clearProcedures();
+            }
+        }
+    }
+
+    @Nested
+    class IsolationTests {
+        @Test
+        void loadCachesByCanonicalPath() throws Exception {
+            String path = fixtureLibraryPath();
+            Parser first = Galley.load(path);
+            try {
+                assertSame(first, Galley.load(path));
+                assertSame(first, Galley.load(Path.of(path).toRealPath().toString()));
+                assertSame(first, Galley.load());
+                Path dir = Files.createTempDirectory("galley-java-symlink");
+                Path link = dir.resolve("fixture-link");
+                Files.createSymbolicLink(link, Path.of(path));
+                try {
+                    assertSame(first, Galley.load(link.toString()));
+                } finally {
+                    Files.deleteIfExists(link);
+                    Files.deleteIfExists(dir);
+                }
+            } finally {
+                first.clearProcedures();
+            }
+        }
+
+        @Test
+        void parsersOnDifferentPathsDoNotShareHooks() throws Exception {
+            Parser first = Galley.load(fixtureLibraryPath());
+            Path dir = Files.createTempDirectory("galley-java-isolation");
+            Path copy = dir.resolve(Path.of(fixtureLibraryPath()).getFileName());
+            Files.copy(Path.of(fixtureLibraryPath()), copy);
+            Parser second = Galley.load(copy.toString());
+            try {
+                assertNotSame(first, second);
+                AtomicInteger firstCalls = new AtomicInteger(0);
+                AtomicInteger secondCalls = new AtomicInteger(0);
+                first.installProcedure("reduction_Pair", args -> firstCalls.incrementAndGet());
+                second.installProcedure("reduction_Pair", args -> secondCalls.incrementAndGet());
+                assertNotNull(first.lookupProcedure("reduction_Pair"));
+                assertNotNull(second.lookupProcedure("reduction_Pair"));
+                assertNull(first.lookupProcedure("reduction_Never"));
+                try (Session a = first.openSession(); Session b = second.openSession()) {
+                    a.parse("alpha:12,beta:3");
+                    b.parse("alpha:1");
+                }
+                assertEquals(2, firstCalls.get());
+                assertEquals(1, secondCalls.get());
+                first.clearProcedures();
+                assertNull(first.lookupProcedure("reduction_Pair"));
+                assertNotNull(second.lookupProcedure("reduction_Pair"));
+            } finally {
+                first.clearProcedures();
+                second.clearProcedures();
+                Files.deleteIfExists(copy);
+                Files.deleteIfExists(dir);
             }
         }
     }

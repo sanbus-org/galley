@@ -4,6 +4,12 @@ Keyvalue `procedures.java` copied from `examples/java`; `ll.grm` and `config.zig
 was decoupled from the user-facing examples. No rewrites: the hooks
 only ever import `org.sanbus.galley.*`.
 
+The hook source lives in the `test_fixture` package (the packaged
+layout is canonical: only it yields the generated `Parser` alongside the
+shim; with two inert internal hooks so every metadata hook resolves); the
+builder emits the banner-guarded `test_fixture/Parser` wiring them next
+to it, and refuses to overwrite a foreign file there.
+
 The parser (`_ll-parser.zig`, `procedures.zig`,
 `procedures_java.zig`, `metadata.json`, `libgalley-java.*`) is built
 into this directory with the stock builder class:

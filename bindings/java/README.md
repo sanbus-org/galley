@@ -25,7 +25,7 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 GALLEY_LIBRARY_PATH=bindings/java/test-fixture/libgalley-java.so mvn -B -f bindings/java/pom.xml test
 ```
 
-Library resolution: `SessionOptions.libraryPath` (explicit) → `GALLEY_LIBRARY_PATH` env → `galley.library.path` system property, or a loud error naming the exact path. Nothing is searched.
+Library resolution: `Galley.load(path)` (explicit) → `GALLEY_LIBRARY_PATH` env → `galley.library.path` system property, or a loud error naming the exact path. Nothing is searched.
 
 Environment overrides for the build tool: `ZIG_EXECUTABLE` (default `zig`), `GALLEY_CHECKOUT` (required). For convenience, `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one — that cache is examples-only, not part of the bindings.
 
@@ -34,7 +34,8 @@ Environment overrides for the build tool: `ZIG_EXECUTABLE` (default `zig`), `GAL
 ```java
 import org.sanbus.galley.*;
 
-try (Session session = new Session()) {
+Parser parser = Galley.load(path);
+try (Session session = parser.openSession()) {
     session.parse("alpha:12,beta:3");
     Node root = session.rootNode();
     System.out.println(new String(session.text(root)));

@@ -62,7 +62,7 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
 ```
 
-Pass the built file with `SessionOptions.libraryPath`, or name it once with
+Pass the built file to `Galley.load`, or name it once with
 `GALLEY_LIBRARY_PATH` (or `-Dgalley.library.path`). Nothing is searched:
 a missing file is a loud error naming the exact path.
 
@@ -107,19 +107,20 @@ public final class procedures {
         System.err.printf("@print \"%s\" at %d:%d%n",
             new String(node.text()), pos[0], pos[1]);
     }
-    public static void register() {
-        Procedures.installProcedure("reduction_Pair", procedures::reduction_Pair);
-        Procedures.installProcedure("reduction_KeyTail", procedures::reduction_KeyTail);
-        Procedures.installProcedure("hook_print", procedures::hook_print);
+    public static void register(org.sanbus.galley.Parser parser) {
+        parser.installProcedure("reduction_Pair", procedures::reduction_Pair);
+        parser.installProcedure("reduction_KeyTail", procedures::reduction_KeyTail);
+        parser.installProcedure("hook_print", procedures::hook_print);
     }
 }
 ```
 
-Then register before parsing:
+Then load the parser and register before parsing:
 
 ```java
-procedures.register(); // or manually
-Procedures.installProcedure("reduction_Pair", args -> {
+Parser parser = Galley.load(libraryPath);
+procedures.register(parser); // or manually
+parser.installProcedure("reduction_Pair", args -> {
     Node n = args.currentNode();
     System.err.println(new String(n.text()));
 });
@@ -128,7 +129,7 @@ Procedures.installProcedure("reduction_Pair", args -> {
 Mechanically, the build tool reads the generator's hook list (`procedures`
 in metadata.json) and produces a Zig shim (`procedures_java.zig`)
 containing one dispatch slot per hook; the JVM registers each Java hook
-address into that single slot at `Procedures.installProcedure` time
+address into that parser's slot at `parser.installProcedure` time
 (via JNA `galley_install_java_dispatch`). The parser calls through the slot
 directly, so hook code executes in the host's JVM. Unregistered slots are
 no-ops. Reduction hooks keep their `reduction_<VariableName>` names (plus
@@ -142,9 +143,9 @@ Map<String, Consumer<ProcedureArguments>> map = Map.of(
     "reduction_Pair", args -> {},
     "hook_print", args -> {}
 );
-Procedures.installProcedures(map);
-Procedures.listProcedures(); // Map<String, Consumer>
-Procedures.clearProcedures();
+parser.installProcedures(map);
+parser.listProcedures(); // Map<String, Consumer>
+parser.clearProcedures();
 ```
 
 Legacy `procedures.c` / `procedures.cpp` hooks continue to work exactly like
@@ -201,7 +202,7 @@ diagnostic:
 SessionOptions opts = SessionOptions.builder()
     .messageOverride("Number", "expected a number after ':' (digits only) at line {line}")
     .build();
-try (Session s = new Session(opts)) { ... }
+try (Session s = Galley.load(path).openSession(opts)) { ... }
 // Or per-session:
 s.setMessageOverride("Number", "expected a number after ':' (digits only) at line {line}");
 ```
@@ -215,7 +216,8 @@ instead; the build detects it and compiles it into the shared library.
 ## Sessions
 
 ```java
-try (Session session = new Session(SessionOptions.builder()
+Parser parser = Galley.load(path);
+try (Session session = parser.openSession(SessionOptions.builder()
         .maxErrors(10)
         .recoveryWindow(500)
         .build())) {
@@ -249,7 +251,7 @@ Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `pa
 Sessions own their IO backend and allocator and are not safe for concurrent
 use — keep one per thread or guard it externally. Node handles, text slices,
 and diagnostics remain valid until the next parse on the same session or
-`close()`. `try (Session s = new Session())` is the idiomatic close pattern
+`close()`. `try (Session s = parser.openSession())` is the idiomatic close pattern
 (`s.close()` is idempotent).
 
 Tree editing follows the same address-stable model as the C API: addresses

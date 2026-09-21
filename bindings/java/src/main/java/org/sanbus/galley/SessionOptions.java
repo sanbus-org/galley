@@ -17,7 +17,6 @@ public final class SessionOptions {
     private final double astPreallocationRatio;
     private final long astPreallocationCap;
     private final Map<String, String> messageOverrides;
-    private final String libraryPath;
 
     private SessionOptions(Builder b) {
         this.maxErrors = b.maxErrors;
@@ -28,7 +27,6 @@ public final class SessionOptions {
         this.astPreallocationRatio = b.astPreallocationRatio;
         this.astPreallocationCap = b.astPreallocationCap;
         this.messageOverrides = Collections.unmodifiableMap(new HashMap<>(b.messageOverrides));
-        this.libraryPath = b.libraryPath;
     }
 
     public int getMaxErrors() { return maxErrors; }
@@ -39,7 +37,6 @@ public final class SessionOptions {
     public double getAstPreallocationRatio() { return astPreallocationRatio; }
     public long getAstPreallocationCap() { return astPreallocationCap; }
     public Map<String, String> getMessageOverrides() { return messageOverrides; }
-    public String getLibraryPath() { return libraryPath; }
 
     public static Builder builder() { return new Builder(); }
 
@@ -54,7 +51,6 @@ public final class SessionOptions {
         private double astPreallocationRatio = -1.0;
         private long astPreallocationCap = 0;
         private final Map<String, String> messageOverrides = new HashMap<>();
-        private String libraryPath = null;
 
         public Builder maxErrors(int v) { this.maxErrors = v; return this; }
         public Builder recoveryWindow(int v) { this.recoveryWindow = v; return this; }
@@ -65,7 +61,6 @@ public final class SessionOptions {
         public Builder astPreallocationCap(long v) { this.astPreallocationCap = v; return this; }
         public Builder messageOverride(String name, String message) { this.messageOverrides.put(name, message); return this; }
         public Builder messageOverrides(Map<String, String> m) { this.messageOverrides.putAll(m); return this; }
-        public Builder libraryPath(String p) { this.libraryPath = p; return this; }
 
         public SessionOptions build() { return new SessionOptions(this); }
     }

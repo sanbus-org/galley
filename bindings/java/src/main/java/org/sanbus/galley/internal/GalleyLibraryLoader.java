@@ -1,8 +1,8 @@
 package org.sanbus.galley.internal;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads the Galley shared library via Panama SymbolLookup, mirroring
@@ -13,10 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * error, never a search.
  */
 public final class GalleyLibraryLoader {
-
-    private static final ConcurrentHashMap<String, GalleyLibrary> CACHE = new ConcurrentHashMap<>();
-    private static String cachedPath = null;
-    private static GalleyLibrary cachedLibrary = null;
 
     private GalleyLibraryLoader() {}
 
@@ -49,43 +45,31 @@ public final class GalleyLibraryLoader {
         }
         if (chosen == null) {
             throw new IllegalStateException(
-                    "galley: parser artifact not found: no parser artifact given; pass libraryPath or set GALLEY_LIBRARY_PATH.\n"
+                    "galley: parser artifact not found: no parser artifact given; pass a path to Galley.load or set GALLEY_LIBRARY_PATH.\n"
                     + buildHint());
         }
-        String resolved = Paths.get(chosen).toAbsolutePath().toString();
-        if (!Files.exists(Paths.get(resolved))) {
+        String absolute = Paths.get(chosen).toAbsolutePath().toString();
+        if (!Files.exists(Paths.get(absolute))) {
             throw new IllegalStateException(
-                    "galley: parser artifact not found: at " + resolved + ".\n"
+                    "galley: parser artifact not found: at " + absolute + ".\n"
                     + buildHint());
         }
-        return resolved;
+        return canonicalPath(absolute);
     }
 
-    public static synchronized GalleyLibrary load(String explicitPath) {
-        String libPath = findLibrary(explicitPath);
-        if (cachedLibrary != null && libPath.equals(cachedPath)) return cachedLibrary;
-
-        GalleyLibrary lib = CACHE.get(libPath);
-        if (lib != null) {
-            cachedLibrary = lib;
-            cachedPath = libPath;
-            return lib;
+    private static String canonicalPath(String absolute) {
+        try {
+            return Paths.get(absolute).toRealPath().toString();
+        } catch (IOException e) {
+            return absolute;
         }
-
-        lib = new GalleyLibrary(libPath);
-        CACHE.put(libPath, lib);
-        cachedLibrary = lib;
-        cachedPath = libPath;
-        return lib;
     }
 
-    public static synchronized GalleyLibrary load() {
+    public static GalleyLibrary load(String explicitPath) {
+        return new GalleyLibrary(findLibrary(explicitPath));
+    }
+
+    public static GalleyLibrary load() {
         return load(null);
-    }
-
-    public static synchronized void clearCache() {
-        CACHE.clear();
-        cachedLibrary = null;
-        cachedPath = null;
     }
 }
