@@ -2,6 +2,7 @@ package org.sanbus.galley;
 
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.sanbus.galley.internal.GalleyLibrary;
 import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
@@ -13,6 +14,7 @@ public final class Galley {
     private Galley() {}
 
     private static final ConcurrentHashMap<String, Parser> PARSER_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Object> LOAD_LOCKS = new ConcurrentHashMap<>();
 
     /**
      * Loads the parser artifact at {@code path} and returns its handle.
@@ -27,11 +29,15 @@ public final class Galley {
      */
     public static Parser load(String path) throws MissingArtifactException {
         String canonical = GalleyLibraryLoader.findLibrary(path);
-        Parser existing = PARSER_CACHE.get(canonical);
-        if (existing != null) return existing;
-        Parser created = new Parser(canonical);
-        Parser raced = PARSER_CACHE.putIfAbsent(canonical, created);
-        return raced != null ? raced : created;
+        Object lock = LOAD_LOCKS.computeIfAbsent(canonical, key -> new Object());
+        synchronized (lock) {
+            Parser existing = PARSER_CACHE.get(canonical);
+            if (existing != null) return existing;
+            Parser created = new Parser(canonical, new GalleyLibrary(canonical));
+            created.installDispatchStub();
+            PARSER_CACHE.put(canonical, created);
+            return created;
+        }
     }
 
     /**

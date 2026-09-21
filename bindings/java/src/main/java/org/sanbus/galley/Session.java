@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import org.sanbus.galley.internal.GalleyLibrary;
 
@@ -25,6 +26,12 @@ public final class Session implements AutoCloseable {
     private final GalleyLibrary lib;
     private boolean closed = false;
     private final Parser parser;
+    /**
+     * Parse generation, bumped by every parse and close. Walkers stamp it
+     * at creation and refuse to step once it moves, so no step ever reads
+     * reallocated storage.
+     */
+    private long generation = 0;
 
     private static final ThreadLocal<Session> PARSING_SESSION = new ThreadLocal<>();
 
@@ -68,10 +75,13 @@ public final class Session implements AutoCloseable {
         this.handle = h;
         LIVE_SESSIONS.put(h.address(), this);
 
-        for (Map.Entry<String, String> e : options.getMessageOverrides().entrySet()) {
+        for (Map.Entry<String, byte[]> e : options.getMessageOverrides().entrySet()) {
             setMessageOverride(e.getKey(), e.getValue());
         }
     }
+
+    /** Current parse generation. Only Walker reads this, to fail steps bound to an older parse. */
+    long parseGeneration() { return generation; }
 
     static Session fromNativePointer(MemorySegment seg, GalleyLibrary lib) {
         if (seg == null || seg.equals(MemorySegment.NULL) || seg.address() == 0) return null;
@@ -118,6 +128,50 @@ public final class Session implements AutoCloseable {
         if (status < 0) throw errorFromStatus(status);
     }
 
+    /**
+     * Single gate ending every parse leg: bumps the parse generation on
+     * any status (success or failure, so pre-parse walkers fail at their
+     * next step instead of reading reallocated storage), then raises or
+     * returns the parsed byte count. Parsing itself never throws merely
+     * because a walker is open.
+     */
+    private int completeParse(long status) {
+        generation++;
+        if (status < 0) throw errorFromStatus(status);
+        return (int) status;
+    }
+
+    /** One native parse call. Runs inside the entry-table bracket with the session marked parsing. */
+    private interface NativeParse {
+        long run();
+    }
+
+    /**
+     * Single gate for every parse leg: snapshots the hook table (installs
+     * and clears made mid-parse apply to later parses only), syncs the
+     * native gates from the snapshot, marks this session parsing, runs
+     * the native call, then restores the enclosing dispatch table so
+     * nested parses restore the enclosing hook set on unwind.
+     */
+    private int parseWithGates(NativeParse nativeParse) {
+        Map<String, Consumer<ProcedureArguments>> table = parser.snapshotHooks();
+        parser.pushDispatchTable(table);
+        try {
+            parser.syncGates(table);
+            Session prev = PARSING_SESSION.get();
+            PARSING_SESSION.set(this);
+            long status;
+            try {
+                status = nativeParse.run();
+            } finally {
+                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
+            }
+            return completeParse(status);
+        } finally {
+            parser.popDispatchTable();
+        }
+    }
+
     public boolean isClosed() { return closed || handle == null || handle.equals(MemorySegment.NULL); }
 
     @Override
@@ -129,71 +183,40 @@ public final class Session implements AutoCloseable {
             handle = MemorySegment.NULL;
         }
         closed = true;
+        generation++;
     }
 
     // -- parsing --
 
+    /**
+     * Parses {@code input}, returning bytes parsed. Null is rejected
+     * loudly. The input crosses by length-prefixed pointer, never a C
+     * string; audit note: the native runtime currently stops at interior
+     * NUL bytes, so NUL-as-data holds only up to the binding boundary.
+     */
     public int parse(byte[] input) {
         requireOpen();
-        parser.syncGates();
-        if (input == null) input = new byte[0];
-        long len = input.length;
-        if (len == 0) {
-            Session prev = PARSING_SESSION.get();
-            PARSING_SESSION.set(this);
-            long status;
-            try {
-                status = lib.galley_parse(handle, MemorySegment.NULL, len);
-            } finally {
-                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-            }
-            if (status < 0) throw errorFromStatus(status);
-            return (int) status;
+        if (input == null) throw new IllegalArgumentException("input is null");
+        if (input.length == 0) {
+            return parseWithGates(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, input);
-            Session prev = PARSING_SESSION.get();
-            PARSING_SESSION.set(this);
-            long status;
-            try {
-                status = lib.galley_parse(handle, dataSeg, len);
-            } finally {
-                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-            }
-            if (status < 0) throw errorFromStatus(status);
-            return (int) status;
+            long len = input.length;
+            return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
         }
     }
 
     public int parse(ByteBuffer buffer) {
         requireOpen();
-        parser.syncGates();
         if (buffer == null) throw new IllegalArgumentException("buffer is null");
         int len = buffer.remaining();
         if (len == 0) {
-            Session prev = PARSING_SESSION.get();
-            PARSING_SESSION.set(this);
-            long status;
-            try {
-                status = lib.galley_parse(handle, MemorySegment.NULL, len);
-            } finally {
-                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-            }
-            if (status < 0) throw errorFromStatus(status);
-            return (int) status;
+            return parseWithGates(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
         }
         if (buffer.isDirect()) {
             MemorySegment dataSeg = MemorySegment.ofBuffer(buffer);
-            Session prev = PARSING_SESSION.get();
-            PARSING_SESSION.set(this);
-            long status;
-            try {
-                status = lib.galley_parse(handle, dataSeg, len);
-            } finally {
-                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-            }
-            if (status < 0) throw errorFromStatus(status);
-            return (int) status;
+            return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
         } else {
             // Heap ByteBuffer: copy to native via arena
             byte[] tmp;
@@ -215,22 +238,13 @@ public final class Session implements AutoCloseable {
             }
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, tmp);
-                Session prev = PARSING_SESSION.get();
-                PARSING_SESSION.set(this);
-                long status;
-                try {
-                    status = lib.galley_parse(handle, dataSeg, len);
-                } finally {
-                    if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-                }
-                if (status < 0) throw errorFromStatus(status);
-                return (int) status;
+                return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
             }
         }
     }
 
     public int parse(String input) {
-        if (input == null) input = "";
+        if (input == null) throw new IllegalArgumentException("input is null");
         byte[] bytes = input.getBytes(StandardCharsets.UTF_8);
         return parse(bytes);
     }
@@ -249,22 +263,17 @@ public final class Session implements AutoCloseable {
 
     public int parseFile(String path) {
         requireOpen();
-        parser.syncGates();
         if (path == null) throw new IllegalArgumentException("path is null");
-        Session prev = PARSING_SESSION.get();
-        PARSING_SESSION.set(this);
-        long status;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment cPath = arena.allocateFrom(path, StandardCharsets.UTF_8);
-            status = lib.galley_parse_file(handle, cPath);
-        } finally {
-            if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
+            return parseWithGates(() -> lib.galley_parse_file(handle, cPath));
         }
-        if (status < 0) throw errorFromStatus(status);
-        return (int) status;
     }
 
-    public int parseFile(File file) { return parseFile(file.getAbsolutePath()); }
+    public int parseFile(File file) {
+        if (file == null) throw new IllegalArgumentException("file is null");
+        return parseFile(file.getAbsolutePath());
+    }
 
     // -- arena --
 
@@ -468,7 +477,7 @@ public final class Session implements AutoCloseable {
         requireOpen();
         MemorySegment walker = lib.galley_walker_create(handle, address, skipSemanticErrors ? 1 : 0);
         if (walker.equals(MemorySegment.NULL)) return null;
-        return new Walker(this, walker);
+        return new Walker(this, walker, generation);
     }
 
     Walker.WalkStep walkerNext(MemorySegment walker) {
@@ -640,17 +649,29 @@ public final class Session implements AutoCloseable {
         return lib.galley_has_diagnostic(handle) != 0;
     }
 
+    /**
+     * Registers one message override: text form, encoded as UTF-8 once.
+     * Nulls are rejected loudly. See {@link SessionOptions} for the UTF-8 policy.
+     */
     public void setMessageOverride(String name, String message) {
+        if (name == null || message == null) throw new IllegalArgumentException("name and message required");
+        setMessageOverride(name, message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Registers one message override: raw-byte form, passed through
+     * unmodified with no re-encoding. Nulls are rejected loudly.
+     */
+    public void setMessageOverride(String name, byte[] message) {
         requireOpen();
         if (name == null || message == null) throw new IllegalArgumentException("name and message required");
         try (Arena arena = Arena.ofConfined()) {
             byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
-            byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
             MemorySegment nameSeg = nameBytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, nameBytes);
-            MemorySegment msgSeg = msgBytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, msgBytes);
+            MemorySegment msgSeg = message.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, message);
             long st = lib.galley_session_set_message_override(handle,
                     nameSeg, nameBytes.length,
-                    msgSeg, msgBytes.length);
+                    msgSeg, message.length);
             checkStatus(st);
         }
     }
@@ -1216,7 +1237,7 @@ public final class Session implements AutoCloseable {
 
     public long variableCount() { return parser.variableCount(); }
 
-    public String statusString(long status) { return lib.galley_status_string(status); }
+    public String statusString(long status) { return parser.statusString(status); }
 
     public String statusString(StatusCode status) { return parser.statusString(status); }
 
