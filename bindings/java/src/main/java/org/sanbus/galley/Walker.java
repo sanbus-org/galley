@@ -10,6 +10,11 @@ import java.util.Objects;
  * {@link WalkStep} per node with the root at depth 0. Shares the session's
  * node storage: close the walker (try-with-resources) before closing the
  * session or parsing again. Created by {@link Session#walk}.
+ *
+ * Single-pass: iteration resumes, never restarts — a second loop
+ * continues where the first left off. Bound to the parse generation that
+ * created it: stepping after the session parses again or closes throws
+ * instead of reading stale storage.
  */
 public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.WalkStep>, AutoCloseable {
     /** One pre-order step: the node, its depth, and its semantic-error flag. */
@@ -26,17 +31,25 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
 
     private final Session session;
     private MemorySegment handle;
+    private final long generation;
     private WalkStep next;
     private boolean done;
 
-    Walker(Session session, MemorySegment handle) {
+    Walker(Session session, MemorySegment handle, long generation) {
         this.session = Objects.requireNonNull(session, "session");
         this.handle = Objects.requireNonNull(handle, "handle");
+        this.generation = generation;
     }
 
+    /**
+     * Single gate for steps: closed walkers, closed sessions, and walkers
+     * left over from a previous parse generation all raise instead of
+     * touching reallocated storage.
+     */
     private void requireOpen() {
         if (handle == null) throw new GalleyClosedException("walker");
         if (session.isClosed()) throw new GalleyClosedException("walker's session");
+        if (generation != session.parseGeneration()) throw GalleyClosedException.invalidated("walker");
     }
 
     /**

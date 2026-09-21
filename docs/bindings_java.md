@@ -144,7 +144,6 @@ the general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings.
 
 You can also bulk-register from a map or object:
-
 ```java
 Map<String, Consumer<ProcedureArguments>> map = Map.of(
     "reduction_Pair", args -> {},
@@ -154,6 +153,10 @@ parser.installProcedures(map);
 parser.listProcedures(); // Map<String, Consumer>
 parser.clearProcedures();
 ```
+
+Only `reduction`, `reduction_*`, and `hook_*` install; anything else is
+ignored. Names that look like mistyped hooks (`reductionPair`,
+`hookPrint`) warn on `System.err` naming the export and the rule.
 
 Legacy `procedures.c` / `procedures.cpp` hooks continue to work exactly like
 the C/C++ consumers: the build compiles the C file into the shared library
@@ -187,7 +190,11 @@ the last successful parse, yielding one `Walker.WalkStep{node, depth,
 isSemanticError}` per step with the root at depth 0 — the shared runtime
 walker, so order and depths match every other binding. `Walker` is
 `Iterable` and `AutoCloseable`: close it (try-with-resources) before
-closing the session or parsing again. `skipChildren()` prunes the last
+closing the session or parsing again. The walker is bound to the parse
+generation that created it: stepping after the session parses again or
+closes throws `GalleyClosedException` instead of reading stale storage,
+so parsing with an abandoned walker still succeeds and the walker fails
+at its next step. `skipChildren()` prunes the last
 yielded node's children:
 
 ```java
@@ -214,6 +221,7 @@ SessionOptions opts = SessionOptions.builder()
 try (Session s = Galley.load(path).openSession(opts)) { ... }
 // Or per-session:
 s.setMessageOverride("Number", "expected a number after ':' (digits only) at line {line}");
+s.setMessageOverride("Number", "expected a number ...".getBytes(StandardCharsets.UTF_8)); // raw bytes, no re-encoding
 ```
 
 Override messages may contain `{line}`, `{column}`, `{unexpected}`,

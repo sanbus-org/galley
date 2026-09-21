@@ -3,7 +3,11 @@ package org.sanbus.galley;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.PrintStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -267,6 +271,42 @@ public class GalleyTest {
             assertNull(session.diagnostic());
             assertTrue(session.diagnostics().isEmpty());
         }
+
+        @Test
+        void messageOverrideAcceptsRawBytes() {
+            Session s = parser.openSession();
+            try {
+                s.setMessageOverride("Number", "välue {line}".getBytes(StandardCharsets.UTF_8));
+                GalleyException ex = assertThrows(GalleyException.class, () -> s.parse("alpha:"));
+                assertTrue(ex.getDiagnostic().getMessage().contains("välue 1"));
+            } finally {
+                s.close();
+            }
+            Session built = parser.openSession(SessionOptions.builder()
+                    .messageOverride("Number", "built {line}".getBytes(StandardCharsets.UTF_8))
+                    .build());
+            try {
+                GalleyException ex = assertThrows(GalleyException.class, () -> built.parse("alpha:"));
+                assertTrue(ex.getDiagnostic().getMessage().contains("built 1"));
+            } finally {
+                built.close();
+            }
+        }
+
+        @Test
+        void parseEntriesRejectNullLoudly() {
+            assertThrows(IllegalArgumentException.class, () -> session.parse((byte[]) null));
+            assertThrows(IllegalArgumentException.class, () -> session.parse((String) null));
+            assertThrows(IllegalArgumentException.class, () -> session.parse((ByteBuffer) null));
+            assertThrows(IllegalArgumentException.class, () -> session.parseFile((String) null));
+            assertThrows(IllegalArgumentException.class, () -> session.parseFile((File) null));
+            assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride(null, "x"));
+            assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride("Number", (String) null));
+            assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride("Number", (byte[]) null));
+            assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverride(null, "x"));
+            assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverride("Number", (byte[]) null));
+            assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverrides(null));
+        }
     }
 
     @Nested
@@ -489,6 +529,80 @@ public class GalleyTest {
                 assertFalse(walker.hasNext());
             }
             assertNull(session.walk(0xFFFFFFFFFFFFFFFFL, false));
+        }
+
+        @Test
+        void walkerStepAfterReparseThrows() {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Walker walker = session.walk(root, false);
+            assertNotNull(walker);
+            assertTrue(walker.hasNext());
+            walker.next();
+            assertEquals(15, session.parse("alpha:12,beta:3"));
+            GalleyClosedException invalidated = assertThrows(GalleyClosedException.class, walker::next);
+            assertTrue(invalidated.getMessage().contains("invalidated"));
+            assertThrows(GalleyClosedException.class, walker::skipChildren);
+            walker.close();
+            walker.close();
+            Node fresh = session.rootNode();
+            assertNotNull(fresh);
+            try (Walker rewound = session.walk(fresh, false)) {
+                assertNotNull(rewound);
+                assertTrue(rewound.hasNext());
+            }
+        }
+
+        @Test
+        void walkerStepAfterSessionCloseThrows() {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Walker walker = session.walk(root, false);
+            assertNotNull(walker);
+            assertTrue(walker.hasNext());
+            walker.next();
+            session.close();
+            assertThrows(GalleyClosedException.class, walker::next);
+            assertThrows(GalleyClosedException.class, walker::skipChildren);
+            walker.close();
+            walker.close();
+        }
+
+        @Test
+        void parseWithAbandonedWalkerSucceeds() {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Walker walker = session.walk(root, false);
+            assertNotNull(walker);
+            // Parsing never throws merely because a walker is open; the
+            // abandoned walker fails at its next step instead.
+            assertEquals(15, session.parse("alpha:12,beta:3"));
+            assertThrows(GalleyClosedException.class, walker::next);
+            walker.close();
+            Node fresh = session.rootNode();
+            assertNotNull(fresh);
+            try (Walker rewound = session.walk(fresh, false)) {
+                assertNotNull(rewound);
+                int steps = 0;
+                while (rewound.hasNext()) {
+                    rewound.next();
+                    steps++;
+                }
+                assertTrue(steps > 1);
+            }
+        }
+
+        @Test
+        void failedParseInvalidatesWalkers() {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Walker walker = session.walk(root, false);
+            assertNotNull(walker);
+            assertTrue(walker.hasNext());
+            walker.next();
+            assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            assertThrows(GalleyClosedException.class, walker::next);
+            walker.close();
         }
     }
 
@@ -823,6 +937,37 @@ public class GalleyTest {
             } finally {
                 sess.close();
             }
+        }
+
+        @Test
+        void nearMissHookNamesWarnAndStayUninstalled() {
+            PrintStream original = System.err;
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+            try {
+                parser.installProcedure("reduction_Pair", args -> {});
+                parser.installProcedure("reductionPair", args -> {});
+                parser.installProcedure("hookPrint", () -> {});
+                int installed = parser.installProcedures(Map.of(
+                        "reducton_X", (Runnable) () -> {},
+                        "myHelper", (Runnable) () -> {}));
+                assertEquals(0, installed);
+            } finally {
+                System.setErr(original);
+            }
+            String warnings = captured.toString(StandardCharsets.UTF_8);
+            assertEquals(1, parser.listProcedures().size());
+            assertNotNull(parser.lookupProcedure("reduction_Pair"));
+            assertNull(parser.lookupProcedure("reductionPair"));
+            assertNull(parser.lookupProcedure("hookPrint"));
+            assertNull(parser.lookupProcedure("reducton_X"));
+            assertNull(parser.lookupProcedure("myHelper"));
+            assertFalse(warnings.contains("reduction_Pair"));
+            assertTrue(warnings.contains("\"reductionPair\""));
+            assertTrue(warnings.contains("\"hookPrint\""));
+            assertTrue(warnings.contains("\"reducton_X\""));
+            assertTrue(warnings.contains("reduction, reduction_*, or hook_*"));
+            assertFalse(warnings.contains("myHelper"));
         }
     }
 

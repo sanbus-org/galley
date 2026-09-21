@@ -16,8 +16,21 @@ public class GalleyClosedException extends IllegalStateException {
      *                   {@code "node's session"}.
      */
     public GalleyClosedException(String objectName) {
-        super(objectName + " is closed");
+        this(objectName, objectName + " is closed");
+    }
+
+    private GalleyClosedException(String objectName, String message) {
+        super(message);
         this.objectName = objectName;
+    }
+
+    /**
+     * A walker bound to an older parse generation: unusable after its
+     * session parsed again, never a stale read. Mirrors the Python/JS
+     * {@code "walker is invalidated"} failure.
+     */
+    public static GalleyClosedException invalidated(String objectName) {
+        return new GalleyClosedException(objectName, objectName + " is invalidated");
     }
 
     /** The closed object named by this failure. */

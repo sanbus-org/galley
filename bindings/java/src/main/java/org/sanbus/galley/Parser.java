@@ -5,14 +5,16 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import org.sanbus.galley.internal.GalleyLibrary;
-import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
  * Loaded parser handle: the artifact-level namespace sessions open from.
@@ -27,12 +29,26 @@ public final class Parser {
     private final String canonicalPath;
     private final GalleyLibrary lib;
     private final ConcurrentHashMap<String, Consumer<ProcedureArguments>> hooks = new ConcurrentHashMap<>();
+    // Entry-dispatch stack: one snapshot per active parse level (innermost
+    // last), mirroring Python's gate_snapshots and the JS entry table.
+    // Dispatch reads the innermost snapshot so mid-parse installs and
+    // clears apply to later parses only; nested parses push their own and
+    // the enclosing table is restored on unwind.
+    private final Deque<Map<String, Consumer<ProcedureArguments>>> dispatchStack = new ArrayDeque<>();
     // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
-    private final MemorySegment dispatchStub;
+    private MemorySegment dispatchStub = MemorySegment.NULL;
 
-    Parser(String canonicalPath) throws MissingArtifactException {
+    Parser(String canonicalPath, GalleyLibrary lib) {
         this.canonicalPath = canonicalPath;
-        this.lib = GalleyLibraryLoader.load(canonicalPath);
+        this.lib = lib;
+    }
+
+    /**
+     * Installs this parser's upcall stub. Called once by Galley.load for
+     * the cache winner only, so racing loads never leave a loser's stub
+     * installed natively.
+     */
+    void installDispatchStub() {
         MemorySegment stub;
         try {
             var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",
@@ -86,11 +102,19 @@ public final class Parser {
 
     public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
         if (name == null || hook == null) throw new IllegalArgumentException("name and hook required");
+        if (!isHookName(name)) {
+            warnIfNearMissHook(name);
+            return;
+        }
         hooks.put(name, hook);
     }
 
     public void installProcedure(String name, Runnable hook) {
         if (name == null || hook == null) throw new IllegalArgumentException("name and hook required");
+        if (!isHookName(name)) {
+            warnIfNearMissHook(name);
+            return;
+        }
         hooks.put(name, args -> hook.run());
     }
 
@@ -98,15 +122,20 @@ public final class Parser {
      * Installs every hook-shaped entry ({@code reduction},
      * {@code reduction_*}, {@code hook_*}) whose value is a
      * {@code Consumer<ProcedureArguments>} or a {@code Runnable}.
-     * Anything else is ignored. Returns the number installed.
+     * Near-miss names warn and anything else is silently ignored.
+     * Returns the number installed.
      */
     public int installProcedures(Map<String, ?> source) {
         if (source == null) return 0;
         int count = 0;
         for (Map.Entry<String, ?> entry : source.entrySet()) {
             String name = entry.getKey();
+            if (!isHookName(name)) {
+                warnIfNearMissHook(name);
+                continue;
+            }
             Consumer<ProcedureArguments> hook = toHook(entry.getValue());
-            if (hook == null || !isHookName(name)) continue;
+            if (hook == null) continue;
             hooks.put(name, hook);
             count++;
         }
@@ -127,14 +156,32 @@ public final class Parser {
     }
 
     /**
-     * Selective dispatch sync (the single gate every parse leg calls):
-     * clears every native procedure gate, then enables exactly the
-     * registered names. Missing symbols are no-ops.
+     * Entry-table snapshot of the live hook table: one parse's dispatch
+     * view. Installs and clears made mid-parse apply to later parses only.
      */
-    void syncGates() {
+    Map<String, Consumer<ProcedureArguments>> snapshotHooks() {
+        return new HashMap<>(hooks);
+    }
+
+    /** Pushes a parse level's entry table; restored by {@link #popDispatchTable}. */
+    void pushDispatchTable(Map<String, Consumer<ProcedureArguments>> table) {
+        dispatchStack.push(new HashMap<>(table));
+    }
+
+    /** Pops a parse level's entry table, restoring the enclosing one. */
+    void popDispatchTable() {
+        dispatchStack.poll();
+    }
+
+    /**
+     * Selective dispatch sync (the single gate every parse leg calls):
+     * clears every native procedure gate, then enables exactly the names
+     * in the entry table. Missing symbols are no-ops.
+     */
+    void syncGates(Map<String, Consumer<ProcedureArguments>> table) {
         lib.galley_java_procedure_clear();
-        if (hooks.isEmpty()) return;
-        for (String name : hooks.keySet()) {
+        if (table == null || table.isEmpty()) return;
+        for (String name : table.keySet()) {
             byte[] bytes = name.getBytes(StandardCharsets.UTF_8);
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment seg = arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
@@ -155,10 +202,17 @@ public final class Parser {
     // Called by this parser's upcall stub.
     private void dispatch(MemorySegment namePtr, long nameLen, MemorySegment argsPtr) {
         try {
-            if (hooks.isEmpty() || namePtr.equals(MemorySegment.NULL) || argsPtr.equals(MemorySegment.NULL)) return;
+            if (namePtr.equals(MemorySegment.NULL) || argsPtr.equals(MemorySegment.NULL)) return;
             byte[] nameBytes = namePtr.reinterpret(nameLen).toArray(ValueLayout.JAVA_BYTE);
             String name = new String(nameBytes, StandardCharsets.UTF_8);
-            Consumer<ProcedureArguments> hook = hooks.get(name);
+            // Dispatch reads the innermost entry snapshot (the live table
+            // when no parse is active), so mid-parse installs and clears
+            // stay invisible in-flight. Hook throwables are logged and
+            // swallowed so a throwing hook never aborts the parse.
+            Map<String, Consumer<ProcedureArguments>> table = dispatchStack.peek();
+            if (table == null) table = hooks;
+            if (table.isEmpty()) return;
+            Consumer<ProcedureArguments> hook = table.get(name);
             if (hook == null) return;
             ProcedureArguments args = new ProcedureArguments(argsPtr, lib);
             try {
@@ -184,5 +238,24 @@ public final class Parser {
     private static boolean isHookName(String name) {
         return name != null
                 && (name.equals("reduction") || name.startsWith("reduction_") || name.startsWith("hook_"));
+    }
+
+    /**
+     * True for names that look like mistyped hooks ({@code reductionPair},
+     * {@code hookPrint}, {@code reducton_X}): a warning, not an install.
+     * Anything else (helpers, data) stays silent. Mirrors the JS
+     * {@code isNearMissHookName}.
+     */
+    private static boolean isNearMissHookName(String name) {
+        if (name == null || isHookName(name)) return false;
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.startsWith("reduct") || lower.startsWith("hook");
+    }
+
+    /** Warns on a skipped name that looks like a mistyped hook. */
+    private static void warnIfNearMissHook(String name) {
+        if (!isNearMissHookName(name)) return;
+        System.err.println("galley: ignoring export \"" + name
+                + "\": procedure hooks must be named reduction, reduction_*, or hook_*.");
     }
 }
