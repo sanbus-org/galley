@@ -53,29 +53,26 @@ public final class Demo {
     }
 
     public static void main(String[] args) throws Exception {
-        // Register procedure hooks (mirrors Python's auto-import of procedures.py)
+        // Load the parser, then install the bundled procedure hooks
+        // (mirrors Python's auto-import of procedures.py). Explicit
+        // installs after this win per hook name.
+        Parser parser;
         try {
-            // Try to load procedures class from same directory as grammar if available
-            // The example's procedures.java is at the language-dir root; at runtime we
-            // manually register them here. In a real consumer, call Procedures.installProcedure
-            // for each hook you need.
-            Class<?> procClass = Class.forName("procedures");
-            procClass.getMethod("register").invoke(null);
-        } catch (ClassNotFoundException ignored) {
-            // Fallback: manually install via Demo-local hooks (none) - still try example's procedures
-            // If not found on classpath, ensure the grammar's procedures.java was compiled with this demo
-        } catch (Exception e) {
-            System.err.println("failed to register procedures: " + e);
+            parser = Galley.load(libraryPath());
+        } catch (IllegalStateException e) {
+            System.err.println("failed to load the parser: " + e.getMessage());
+            System.exit(1);
+            return;
         }
+        procedures.register(parser);
 
         SessionOptions opts = SessionOptions.builder()
-                .libraryPath(libraryPath())
                 .maxErrors(10)
                 .messageOverride("Number", "expected a number after ':' (digits only) at line {line}")
                 .build();
         Session session;
         try {
-            session = new Session(opts);
+            session = parser.openSession(opts);
         } catch (GalleyException | IllegalStateException e) {
             System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);

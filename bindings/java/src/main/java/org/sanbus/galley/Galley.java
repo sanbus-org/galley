@@ -1,6 +1,7 @@
 package org.sanbus.galley;
 
-import org.sanbus.galley.internal.GalleyLibrary;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
@@ -30,36 +31,49 @@ public final class Galley {
 
     private Galley() {}
 
-    private static GalleyLibrary lib(String path) {
-        return path != null ? GalleyLibraryLoader.load(path) : GalleyLibraryLoader.load();
+    private static final ConcurrentHashMap<String, Parser> PARSER_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Loads the parser artifact at {@code path} and returns its handle.
+     * Handles are cached by canonical artifact path for the process
+     * lifetime: the same source always yields the identical object, and a
+     * failed load binds and caches nothing. A null path resolves through
+     * {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}, else a
+     * loud error naming the exact path. Bare loads wire no hooks.
+     */
+    public static Parser load(String path) {
+        return PARSER_CACHE.computeIfAbsent(GalleyLibraryLoader.findLibrary(path), Parser::new);
     }
 
-    public static String version() { return lib(null).galley_version(); }
-    public static String version(String libraryPath) { return lib(libraryPath).galley_version(); }
+    /** Loads through {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}. */
+    public static Parser load() { return load(null); }
 
-    public static int parserType() { return (int) lib(null).galley_parser_type(); }
-    public static int parserType(String libraryPath) { return (int) lib(libraryPath).galley_parser_type(); }
+    public static String version() { return load().version(); }
+    public static String version(String libraryPath) { return load(libraryPath).version(); }
 
-    public static int errorRecoveryMode() { return (int) lib(null).galley_error_recovery_mode(); }
-    public static int errorRecoveryMode(String libraryPath) { return (int) lib(libraryPath).galley_error_recovery_mode(); }
+    public static int parserType() { return load().parserType(); }
+    public static int parserType(String libraryPath) { return load(libraryPath).parserType(); }
 
-    public static boolean hasAst() { return lib(null).galley_has_ast() != 0; }
-    public static boolean hasAst(String libraryPath) { return lib(libraryPath).galley_has_ast() != 0; }
+    public static int errorRecoveryMode() { return load().errorRecoveryMode(); }
+    public static int errorRecoveryMode(String libraryPath) { return load(libraryPath).errorRecoveryMode(); }
 
-    public static boolean hasProcedures() { return lib(null).galley_has_procedures() != 0; }
-    public static boolean hasProcedures(String libraryPath) { return lib(libraryPath).galley_has_procedures() != 0; }
+    public static boolean hasAst() { return load().hasAst(); }
+    public static boolean hasAst(String libraryPath) { return load(libraryPath).hasAst(); }
 
-    public static boolean allowsNoAstTreeProcedures() { return lib(null).galley_allows_no_ast_tree_procedures() != 0; }
-    public static boolean sourceRetentionEnabled() { return lib(null).galley_source_retention_enabled() != 0; }
-    public static boolean hasPositionTracking() { return lib(null).galley_has_position_tracking() != 0; }
-    public static boolean hasInputStreaming() { return lib(null).galley_has_input_streaming() != 0; }
-    public static boolean usesVerbatim() { return lib(null).galley_uses_verbatim() != 0; }
-    public static boolean stackOverflowRecoveryAvailable() { return lib(null).galley_stack_overflow_recovery_available() != 0; }
+    public static boolean hasProcedures() { return load().hasProcedures(); }
+    public static boolean hasProcedures(String libraryPath) { return load(libraryPath).hasProcedures(); }
 
-    public static long symbolCount() { return lib(null).galley_symbol_count(); }
-    public static long variableCount() { return lib(null).galley_variable_count(); }
+    public static boolean allowsNoAstTreeProcedures() { return load().allowsNoAstTreeProcedures(); }
+    public static boolean sourceRetentionEnabled() { return load().sourceRetentionEnabled(); }
+    public static boolean hasPositionTracking() { return load().hasPositionTracking(); }
+    public static boolean hasInputStreaming() { return load().hasInputStreaming(); }
+    public static boolean usesVerbatim() { return load().usesVerbatim(); }
+    public static boolean stackOverflowRecoveryAvailable() { return load().stackOverflowRecoveryAvailable(); }
 
-    public static String statusString(long status) { return lib(null).galley_status_string(status); }
+    public static long symbolCount() { return load().symbolCount(); }
+    public static long variableCount() { return load().variableCount(); }
+
+    public static String statusString(long status) { return load().statusString(status); }
 
     // Snake_case aliases for Python-doc parity; not unused duplicates.
     public static boolean has_ast() { return hasAst(); }

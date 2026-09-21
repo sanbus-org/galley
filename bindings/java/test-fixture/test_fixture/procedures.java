@@ -4,14 +4,18 @@
 // and source position, plus dropIfEmpty on empty tails. Author-defined
 // grammar hooks arrive as hook_<name> — Key is annotated @print.
 //
-// Hooks are registered at runtime via
-// org.sanbus.galley.Procedures.installProcedure; the file's existence
-// next to the grammar triggers the build tool to generate the Zig shim
-// (procedures_java.zig) that dispatches through those registrations.
+// This file is the Java counterpart of examples/python/procedures.py,
+// examples/go/demo/procedures.go, examples/rust/procedures.rs, and
+// examples/js/node/procedures.ts. Hooks install onto a parser handle at
+// runtime via parser.installProcedure; the file's existence next to the
+// grammar triggers the build tool to generate the Zig shim
+// (procedures_java.zig) that dispatches through those registrations,
+// plus the packaged Parser wiring them in one explicit call per hook.
+
+package test_fixture;
 
 import org.sanbus.galley.Node;
 import org.sanbus.galley.ProcedureArguments;
-import org.sanbus.galley.Procedures;
 
 import java.nio.charset.StandardCharsets;
 
@@ -118,17 +122,25 @@ public final class procedures {
         emit("Document " + res[0] + " pairs, sum=" + res[1]);
     }
 
-    // Register all hooks. Called from Demo at startup.
-    public static void register() {
-        Procedures.installProcedure("reduction", procedures::reduction);
-        Procedures.installProcedure("reduction_Key", procedures::reduction_Key);
-        Procedures.installProcedure("reduction_PairList", procedures::reduction_PairList);
-        Procedures.installProcedure("reduction_KeyTail", procedures::reduction_KeyTail);
-        Procedures.installProcedure("reduction_NumberTail", procedures::reduction_NumberTail);
-        Procedures.installProcedure("reduction_PairListTail", procedures::reduction_PairListTail);
-        Procedures.installProcedure("hook_print", procedures::hook_print);
-        Procedures.installProcedure("reduction_Number", procedures::reduction_Number);
-        Procedures.installProcedure("reduction_Pair", procedures::reduction_Pair);
-        Procedures.installProcedure("reduction_Document", procedures::reduction_Document);
+    // Internal generator hooks with no user behavior. Present so the
+    // generated Parser resolves every metadata hook; they stay inert.
+    public static void reduction__AugmentedStart(ProcedureArguments args) {}
+
+    public static void reduction_GenerativeTerminal(ProcedureArguments args) {}
+
+    // Install all hooks onto the given parser.
+    public static void register(org.sanbus.galley.Parser parser) {
+        parser.installProcedure("reduction", procedures::reduction);
+        parser.installProcedure("reduction_Key", procedures::reduction_Key);
+        parser.installProcedure("reduction_PairList", procedures::reduction_PairList);
+        parser.installProcedure("reduction_KeyTail", procedures::reduction_KeyTail);
+        parser.installProcedure("reduction_NumberTail", procedures::reduction_NumberTail);
+        parser.installProcedure("reduction_PairListTail", procedures::reduction_PairListTail);
+        parser.installProcedure("hook_print", procedures::hook_print);
+        parser.installProcedure("reduction_Number", procedures::reduction_Number);
+        parser.installProcedure("reduction_Pair", procedures::reduction_Pair);
+        parser.installProcedure("reduction_Document", procedures::reduction_Document);
+        parser.installProcedure("reduction__AugmentedStart", procedures::reduction__AugmentedStart);
+        parser.installProcedure("reduction_GenerativeTerminal", procedures::reduction_GenerativeTerminal);
     }
 }

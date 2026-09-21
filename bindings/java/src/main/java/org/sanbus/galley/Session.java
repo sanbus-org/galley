@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.sanbus.galley.internal.GalleyLibrary;
-import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
  * Parsing session bound to this library's parser. Mirrors Python/Go/Rust/TypeScript Sessions
@@ -25,19 +24,19 @@ public final class Session implements AutoCloseable {
     private MemorySegment handle;
     private final GalleyLibrary lib;
     private boolean closed = false;
-    private final String libraryPath;
+    private final Parser parser;
 
     private static final ThreadLocal<Session> PARSING_SESSION = new ThreadLocal<>();
 
-    public Session() {
-        this(SessionOptions.defaults());
+    public Session(Parser parser) {
+        this(parser, SessionOptions.defaults());
     }
 
-    public Session(SessionOptions options) {
+    public Session(Parser parser, SessionOptions options) {
+        if (parser == null) throw new IllegalArgumentException("parser is null");
         if (options == null) options = SessionOptions.defaults();
-        this.libraryPath = options.getLibraryPath();
-        this.lib = GalleyLibraryLoader.load(libraryPath);
-        Procedures.ensureForLibrary(lib);
+        this.parser = parser;
+        this.lib = parser.library();
 
         MemorySegment h;
         boolean hasNonDefault = options.getMaxErrors() != 10 ||
@@ -68,7 +67,6 @@ public final class Session implements AutoCloseable {
         }
         this.handle = h;
         LIVE_SESSIONS.put(h.address(), this);
-        Procedures.registerSession(h.address(), this);
 
         for (Map.Entry<String, String> e : options.getMessageOverrides().entrySet()) {
             setMessageOverride(e.getKey(), e.getValue());
@@ -79,8 +77,6 @@ public final class Session implements AutoCloseable {
         if (seg == null || seg.equals(MemorySegment.NULL) || seg.address() == 0) return null;
         long val = seg.address();
         Session s = LIVE_SESSIONS.get(val);
-        if (s != null) return s;
-        s = Procedures.findSession(seg);
         if (s != null) return s;
         Session tl = PARSING_SESSION.get();
         if (tl != null && tl.handle != null && tl.handle.address() == val) return tl;
@@ -95,8 +91,6 @@ public final class Session implements AutoCloseable {
     static Session fromNativeAddress(long address, GalleyLibrary lib) {
         if (address == 0) return null;
         Session s = LIVE_SESSIONS.get(address);
-        if (s != null) return s;
-        s = Procedures.findSessionByAddress(address);
         if (s != null) return s;
         Session tl = PARSING_SESSION.get();
         if (tl != null && tl.handle != null && tl.handle.address() == address) return tl;
@@ -131,7 +125,6 @@ public final class Session implements AutoCloseable {
         if (handle != null && !handle.equals(MemorySegment.NULL)) {
             long val = handle.address();
             LIVE_SESSIONS.remove(val);
-            Procedures.unregisterSession(val);
             try { lib.galley_session_destroy(handle); } catch (Exception ignored) {}
             handle = MemorySegment.NULL;
         }
@@ -142,7 +135,7 @@ public final class Session implements AutoCloseable {
 
     public int parse(byte[] input) {
         requireOpen();
-        Procedures.syncGatesFor(lib);
+        parser.syncGates();
         if (input == null) input = new byte[0];
         long len = input.length;
         if (len == 0) {
@@ -174,7 +167,7 @@ public final class Session implements AutoCloseable {
 
     public int parse(ByteBuffer buffer) {
         requireOpen();
-        Procedures.syncGatesFor(lib);
+        parser.syncGates();
         if (buffer == null) throw new IllegalArgumentException("buffer is null");
         int len = buffer.remaining();
         if (len == 0) {
@@ -256,7 +249,7 @@ public final class Session implements AutoCloseable {
 
     public int parseFile(String path) {
         requireOpen();
-        Procedures.syncGatesFor(lib);
+        parser.syncGates();
         if (path == null) throw new IllegalArgumentException("path is null");
         Session prev = PARSING_SESSION.get();
         PARSING_SESSION.set(this);
@@ -1148,33 +1141,33 @@ public final class Session implements AutoCloseable {
         }
     }
 
-    // -- parser metadata (bound to this session's own library) --
+    // -- parser metadata (answered by the owning parser) --
 
-    public String version() { return lib.galley_version(); }
+    public String version() { return parser.version(); }
 
-    public int parserType() { return (int) lib.galley_parser_type(); }
+    public int parserType() { return parser.parserType(); }
 
-    public int errorRecoveryMode() { return (int) lib.galley_error_recovery_mode(); }
+    public int errorRecoveryMode() { return parser.errorRecoveryMode(); }
 
-    public boolean hasAst() { return lib.galley_has_ast() != 0; }
+    public boolean hasAst() { return parser.hasAst(); }
 
-    public boolean hasProcedures() { return lib.galley_has_procedures() != 0; }
+    public boolean hasProcedures() { return parser.hasProcedures(); }
 
-    public boolean allowsNoAstTreeProcedures() { return lib.galley_allows_no_ast_tree_procedures() != 0; }
+    public boolean allowsNoAstTreeProcedures() { return parser.allowsNoAstTreeProcedures(); }
 
-    public boolean sourceRetentionEnabled() { return lib.galley_source_retention_enabled() != 0; }
+    public boolean sourceRetentionEnabled() { return parser.sourceRetentionEnabled(); }
 
-    public boolean hasPositionTracking() { return lib.galley_has_position_tracking() != 0; }
+    public boolean hasPositionTracking() { return parser.hasPositionTracking(); }
 
-    public boolean hasInputStreaming() { return lib.galley_has_input_streaming() != 0; }
+    public boolean hasInputStreaming() { return parser.hasInputStreaming(); }
 
-    public boolean usesVerbatim() { return lib.galley_uses_verbatim() != 0; }
+    public boolean usesVerbatim() { return parser.usesVerbatim(); }
 
-    public boolean stackOverflowRecoveryAvailable() { return lib.galley_stack_overflow_recovery_available() != 0; }
+    public boolean stackOverflowRecoveryAvailable() { return parser.stackOverflowRecoveryAvailable(); }
 
-    public long symbolCount() { return lib.galley_symbol_count(); }
+    public long symbolCount() { return parser.symbolCount(); }
 
-    public long variableCount() { return lib.galley_variable_count(); }
+    public long variableCount() { return parser.variableCount(); }
 
     public String statusString(long status) { return lib.galley_status_string(status); }
 

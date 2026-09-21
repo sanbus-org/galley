@@ -1,5 +1,6 @@
 package com.example;
 
+import org.sanbus.galley.Galley;
 import org.sanbus.galley.GalleyException;
 import org.sanbus.galley.Session;
 import org.sanbus.galley.SessionOptions;
@@ -110,11 +111,11 @@ public final class Benchmark {
             System.exit(1);
             return;
         }
-        SessionOptions opts = SessionOptions.builder().libraryPath(libPath).build();
+        SessionOptions opts = SessionOptions.builder().build();
 
         Session session;
         try {
-            session = new Session(opts);
+            session = Galley.load(libPath).openSession(opts);
         } catch (GalleyException | IllegalStateException e) {
             System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);

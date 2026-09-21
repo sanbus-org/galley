@@ -7,3 +7,4 @@
 /test-fixture/procedures_java.zig
 /test-fixture/metadata.json
 /test-fixture/libgalley-java.*
+/test-fixture/test_fixture/Parser.java
