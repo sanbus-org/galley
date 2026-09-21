@@ -132,6 +132,12 @@ export class Session {
   #port: FfiPort;
   #closed = false;
   #procedures: ProcedureRegistry;
+  /**
+   * Parse generation, bumped by every parse and close. Walkers stamp it at
+   * creation and refuse to step once it moves, so no step ever reads
+   * reallocated storage.
+   */
+  #generation = 0;
 
   /**
    * Takes a bound port: factories resolve the backend first, so a
@@ -185,6 +191,15 @@ export class Session {
 
   get isClosed(): boolean {
     return this.#closed;
+  }
+
+  /**
+   * Current parse generation. Internal: only `Walker` reads this, to fail
+   * steps bound to an older parse instead of walking stale storage.
+   * @internal
+   */
+  get parseGeneration(): number {
+    return this.#generation;
   }
 
   #requirePort(): FfiPort {
@@ -260,6 +275,7 @@ export class Session {
       this.#handle = null;
     }
     this.#closed = true;
+    this.#generation++;
   }
 
   /** For `using session = ...` (Explicit Resource Management). */
@@ -298,6 +314,10 @@ export class Session {
         port.activeDispatch = previous;
       }
     }
+    // Bump even on failure: the storage may have moved, so walkers from
+    // the previous parse fail at their next step instead of reading it.
+    // Parsing itself never throws merely because a walker is open.
+    this.#generation++;
     if (status < 0) {
       throw this.#errorFromStatus(status);
     }
@@ -325,6 +345,9 @@ export class Session {
         port.activeDispatch = previous;
       }
     }
+    // Same invalidation as parse: walkers from the previous parse fail
+    // at their next step instead of reading reallocated storage.
+    this.#generation++;
     if (status < 0) {
       throw this.#errorFromStatus(status);
     }
@@ -416,14 +439,16 @@ export class Session {
    * Pre-order walker over the subtree rooted at `root`, with the root at
    * depth 0. Pass true to prune subtrees rooted at semantic-error nodes.
    * Returns null for invalid roots and builds without AST construction.
-   * Close the walker (or use `using`) before closing the session or
-   * parsing again.
+   * The walker is bound to the current parse generation: stepping it
+   * after the session parses again or closes throws a
+   * `SessionClosedError`, so parsing with an abandoned walker still
+   * succeeds and the walker fails at its next step.
    */
   walk(root: Node | bigint | number, skipSemanticErrors = false): Walker | null {
     const h = this.#requireHandle();
     const handle = this.port.walkerCreate(h, toNodeAddress(root), skipSemanticErrors);
     if (handle === null || handle === undefined) return null;
-    return new Walker(this, this.port, handle);
+    return new Walker(this, this.port, handle, this.#generation);
   }
 
   symbolNameBytes(node: Node | bigint | number): Uint8Array | null {
@@ -784,24 +809,41 @@ export interface WalkStep {
 
 /**
  * Pre-order tree walker over the last successful parse, yielding one
- * {@link WalkStep} per node. Shares the session's node storage: close the
- * walker (or use `using`) before closing the session or parsing again.
- * Created by {@link Session.walk}.
+ * {@link WalkStep} per node. Bound to the parse generation that created
+ * it: stepping after the session parses again or closes throws a
+ * `SessionClosedError` instead of reading stale storage. Created by
+ * {@link Session.walk}.
  */
 export class Walker implements IterableIterator<WalkStep> {
   #session: Session;
   #port: FfiPort;
   #handle: Handle | null;
+  #generation: number;
+  #closed = false;
 
-  constructor(session: Session, port: FfiPort, handle: Handle) {
+  constructor(session: Session, port: FfiPort, handle: Handle, generation: number) {
     this.#session = session;
     this.#port = port;
     this.#handle = handle;
+    this.#generation = generation;
+  }
+
+  /**
+   * The single gate for steps: closed walkers, closed sessions, and
+   * walkers left over from a previous parse generation all throw instead
+   * of reading reallocated storage.
+   */
+  #requireHandle(): Handle {
+    if (this.#closed || this.#handle === null) throw new SessionClosedError("walker is closed");
+    if (this.#session.isClosed) throw new SessionClosedError("session is closed");
+    if (this.#generation !== this.#session.parseGeneration) {
+      throw new SessionClosedError("walker is invalidated");
+    }
+    return this.#handle;
   }
 
   next(): IteratorResult<WalkStep> {
-    if (this.#handle === null) return { done: true, value: undefined };
-    const step = this.#port.walkerNext(this.#handle);
+    const step = this.#port.walkerNext(this.#requireHandle());
     if (step === null) return { done: true, value: undefined };
     return {
       done: false,
@@ -822,8 +864,7 @@ export class Walker implements IterableIterator<WalkStep> {
    * its next sibling. No effect without a last step.
    */
   skipChildren(): void {
-    if (this.#handle === null) return;
-    this.#port.walkerSkipChildren(this.#handle);
+    this.#port.walkerSkipChildren(this.#requireHandle());
   }
 
   close(): void {
@@ -831,6 +872,7 @@ export class Walker implements IterableIterator<WalkStep> {
       this.#port.walkerDestroy(this.#handle);
       this.#handle = null;
     }
+    this.#closed = true;
   }
 
   /** For `using walker = session.walk(...)`. */

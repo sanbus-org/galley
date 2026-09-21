@@ -18,4 +18,4 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 
 - Parsing accepts `str` plus the buffer protocol, and file paths accept path-like objects. Sessions are not thread-safe, and every call holds the GIL.
 - Nodes are hashable by address with session-aware equality, so they work as dict keys and set members. Nodes expose their address as a read-only attribute alongside `int` and `index` conversion.
-- Walkers support explicit `close` plus context-manager blocks, with collection as the fallback. Sessions support `with` blocks.
+- Walkers support explicit `close` plus context-manager blocks, with collection as the fallback. Stepping a walker after close or a re-parse raises `ValueError`, and nodes read only the parse generation that created them. Sessions support `with` blocks.

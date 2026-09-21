@@ -94,6 +94,10 @@ typedef struct {
      * so nested parses restore the enclosing level instead of sharing one
      * process-global stack. */
     PyObject *gate_snapshots;
+    /* Parse generation, bumped by every parse and close. Nodes and walkers
+     * stamp it at creation and refuse to touch reallocated storage once it
+     * moves, so no step or accessor ever reads a stale parse. */
+    unsigned long long generation;
 } SessionObject;
 
 static PyObject *push_parsing_session(PyObject *self)
@@ -408,12 +412,14 @@ typedef struct {
     PyObject *session_obj;
     GalleySession *session;
     GalleyNodeAddress address;
+    unsigned long long generation;
 } NodeObject;
 
 typedef struct WalkerObject {
     PyObject_HEAD
     PyObject *session_obj;
     GalleyWalker *walker;
+    unsigned long long generation;
 } WalkerObject;
 
 static PyTypeObject Session_Type;
@@ -429,6 +435,10 @@ static inline GalleySession *node_session(NodeObject *node)
     SessionObject *sobj = (SessionObject *)node->session_obj;
     if (sobj->session == NULL) {
         PyErr_SetString(PyExc_ValueError, "node's session is closed");
+        return NULL;
+    }
+    if (node->generation != sobj->generation) {
+        PyErr_SetString(PyExc_ValueError, "node is invalidated");
         return NULL;
     }
     return sobj->session;
@@ -475,6 +485,56 @@ static inline GalleySession *require_session(PyObject *self)
     return session_object->session;
 }
 
+/* Bumps the session's parse generation, invalidating nodes and walkers
+ * from earlier parses. Call after every native parse (success or failure)
+ * and on close; never merely because a walker is open, so parsing with an
+ * abandoned walker still succeeds and the walker fails at its next step. */
+static inline void bump_generation(PyObject *self)
+{
+    ((SessionObject *)self)->generation++;
+}
+
+/* Single gate for Node creation: stamps the session's parse generation so
+ * accessors refuse stale reads after a re-parse. NULL with ValueError when
+ * the session is closed. */
+static NodeObject *make_node(PyObject *session_obj, GalleyNodeAddress address)
+{
+    SessionObject *session_object = (SessionObject *)session_obj;
+    if (session_object->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return NULL;
+    }
+    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
+    if (node_obj == NULL)
+        return NULL;
+    node_obj->session_obj = Py_NewRef(session_obj);
+    node_obj->session = session_object->session;
+    node_obj->address = address;
+    node_obj->generation = session_object->generation;
+    return node_obj;
+}
+
+/* Single gate for walker steps: closed walkers, closed sessions, and
+ * walkers left over from a previous parse generation all raise instead of
+ * touching reallocated storage. */
+static int require_walker(WalkerObject *self)
+{
+    SessionObject *session_object = (SessionObject *)self->session_obj;
+    if (self->walker == NULL) {
+        PyErr_SetString(PyExc_ValueError, "walker is closed");
+        return -1;
+    }
+    if (session_object->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return -1;
+    }
+    if (self->generation != session_object->generation) {
+        PyErr_SetString(PyExc_ValueError, "walker is invalidated");
+        return -1;
+    }
+    return 0;
+}
+
 /* Shared body of the five link accessors: missing links become None. */
 static PyObject *node_link_result(PyObject *session_obj, GalleySession *session, PyObject *node,
                                   NodeLink link)
@@ -485,13 +545,7 @@ static PyObject *node_link_result(PyObject *session_obj, GalleySession *session,
     address = link(session, address);
     if (address == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(session_obj);
-    node_obj->session = session;
-    node_obj->address = address;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(session_obj, address);
 }
 
 /* Shared body of the two (data, length) accessors: invalid nodes become
@@ -574,6 +628,9 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     if (self->session != NULL)
         galley_session_destroy(self->session);
     self->session = session;
+    /* A re-init orphans prior nodes and walkers: bump the generation so
+     * their next access raises instead of reading the new storage. */
+    self->generation++;
     /* A re-init outside any parse owns no snapshots; drop the chain
      * defensively so a reused object never inherits gate state. */
     Py_CLEAR(self->gate_snapshots);
@@ -585,6 +642,7 @@ static void close_session(SessionObject *self)
     if (self->session != NULL) {
         galley_session_destroy(self->session);
         self->session = NULL;
+        self->generation++;
     }
 }
 
@@ -713,6 +771,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
         return NULL;
     }
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
+    bump_generation(self);
     exit_parse_gates(self, previous);
     pop_parsing_session(previous);
     if (have_view)
@@ -750,7 +809,9 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
         if (enter_parse_gates(self) < 0) {
             pop_parsing_session(previous);
         } else {
-            result = status_to_parsed_with_session(galley_parse_file(session, data), session);
+            long long status = galley_parse_file(session, data);
+            bump_generation(self);
+            result = status_to_parsed_with_session(status, session);
             exit_parse_gates(self, previous);
             pop_parsing_session(previous);
         }
@@ -823,13 +884,7 @@ static PyObject *Session_root_node(PyObject *self, PyObject *Py_UNUSED(ignored))
     root = galley_root_node(session);
     if (root == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = root;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, root);
 }
 
 PyDoc_STRVAR(node_valid_doc,
@@ -898,14 +953,11 @@ static PyObject *Session_children(PyObject *self, PyObject *node)
             Py_DECREF(tuple);
             return NULL;
         }
-        NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
+        NodeObject *node_obj = make_node(self, child);
         if (node_obj == NULL) {
             Py_DECREF(tuple);
             return NULL;
         }
-        node_obj->session_obj = Py_NewRef(self);
-        node_obj->session = session;
-        node_obj->address = child;
         PyTuple_SET_ITEM(tuple, i, (PyObject *)node_obj);
         child = galley_node_next_sibling(session, child);
     }
@@ -1136,7 +1188,10 @@ PyDoc_STRVAR(walk_doc,
 "iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
 "with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
 "subtrees rooted at semantic-error nodes. Returns None for an invalid\n"
-"root or a build without AST construction.");
+"root or a build without AST construction. The walker is bound to the\n"
+"parse that created it: stepping it after the session parses again or\n"
+"closes raises ValueError, so parsing with an abandoned walker still\n"
+"succeeds and the walker fails at its next step.");
 
 static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords)
 {
@@ -1166,6 +1221,7 @@ static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords
     }
     walker_obj->session_obj = Py_NewRef(self);
     walker_obj->walker = walker;
+    walker_obj->generation = ((SessionObject *)self)->generation;
     return (PyObject *)walker_obj;
 }
 
@@ -1929,13 +1985,7 @@ static PyObject *Session_remove_siblings(PyObject *self,
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, head);
 }
 
 PyDoc_STRVAR(remove_self_doc,
@@ -1958,13 +2008,7 @@ static PyObject *Session_remove_self(PyObject *self, PyObject *node)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, head);
 }
 
 PyDoc_STRVAR(promote_children_over_wrapper_doc,
@@ -1990,13 +2034,7 @@ static PyObject *Session_promote_children_over_wrapper(PyObject *self,
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, head);
 }
 
 PyDoc_STRVAR(clean_children_doc,
@@ -2019,13 +2057,7 @@ static PyObject *Session_clean_children(PyObject *self, PyObject *node)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, head);
 }
 
 PyDoc_STRVAR(unlink_wrapper_doc,
@@ -2116,13 +2148,7 @@ static PyObject *Session_remove_children_at(PyObject *self,
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self, head);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2357,13 +2383,7 @@ static PyObject *Node_item(NodeObject *self, Py_ssize_t index)
         PyErr_SetString(PyExc_RuntimeError, "child not found");
         return NULL;
     }
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = child;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, child);
 }
 
 static PyObject *Node_subscript(NodeObject *self, PyObject *key)
@@ -2450,13 +2470,7 @@ static PyObject *Node_parent(NodeObject *self, PyObject *Py_UNUSED(ignored))
     parent = galley_node_parent(session, self->address);
     if (parent == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = parent;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, parent);
 }
 
 static PyObject *Node_next_sibling(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -2468,13 +2482,7 @@ static PyObject *Node_next_sibling(NodeObject *self, PyObject *Py_UNUSED(ignored
     sibling = galley_node_next_sibling(session, self->address);
     if (sibling == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = sibling;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, sibling);
 }
 
 static PyObject *Node_prior_sibling(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -2486,13 +2494,7 @@ static PyObject *Node_prior_sibling(NodeObject *self, PyObject *Py_UNUSED(ignore
     sibling = galley_node_prior_sibling(session, self->address);
     if (sibling == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = sibling;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, sibling);
 }
 
 static PyObject *Node_first_child(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -2504,13 +2506,7 @@ static PyObject *Node_first_child(NodeObject *self, PyObject *Py_UNUSED(ignored)
     child = galley_node_first_child(session, self->address);
     if (child == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = child;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, child);
 }
 
 static PyObject *Node_last_child(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -2522,13 +2518,7 @@ static PyObject *Node_last_child(NodeObject *self, PyObject *Py_UNUSED(ignored))
     child = galley_node_last_child(session, self->address);
     if (child == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = child;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, child);
 }
 
 static PyObject *Node_clean_children(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -2541,13 +2531,7 @@ static PyObject *Node_clean_children(NodeObject *self, PyObject *Py_UNUSED(ignor
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session;
-    node_obj->address = head;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, head);
 }
 
 static PyObject *Node_append_children(NodeObject *self, PyObject *chain)
@@ -2697,28 +2681,19 @@ static PyObject *Walker_iternext(WalkerObject *self)
     GalleyNodeAddress address = GALLEY_INVALID_NODE;
     unsigned int depth = 0;
     int is_semantic_error = 0;
-    SessionObject *session_obj;
     NodeObject *node_obj;
     PyObject *depth_obj;
     PyObject *flag_obj;
 
-    if (self->walker == NULL) {
-        PyErr_SetString(PyExc_ValueError, "walker is closed");
+    /* Gate first: never touch walker storage that a close or re-parse may
+     * have freed or reallocated. */
+    if (require_walker(self) < 0)
         return NULL;
-    }
     if (!galley_walker_next(self->walker, &address, &depth, &is_semantic_error))
         return NULL;
-    session_obj = (SessionObject *)self->session_obj;
-    if (session_obj->session == NULL) {
-        PyErr_SetString(PyExc_ValueError, "session is closed");
-        return NULL;
-    }
-    node_obj = PyObject_New(NodeObject, &Node_Type);
+    node_obj = make_node(self->session_obj, address);
     if (node_obj == NULL)
         return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session_obj->session;
-    node_obj->address = address;
     depth_obj = PyLong_FromUnsignedLong(depth);
     if (depth_obj == NULL) {
         Py_DECREF(node_obj);
@@ -2760,10 +2735,8 @@ PyDoc_STRVAR(walker_skip_children_doc,
 
 static PyObject *Walker_skip_children(WalkerObject *self, PyObject *Py_UNUSED(ignored))
 {
-    if (self->walker == NULL) {
-        PyErr_SetString(PyExc_ValueError, "walker is closed");
+    if (require_walker(self) < 0)
         return NULL;
-    }
     galley_walker_skip_children(self->walker);
     Py_RETURN_NONE;
 }
@@ -2839,18 +2812,7 @@ static PyObject *ProcedureArgs_make_node(ProcedureArgsObject *self, GalleyNodeAd
         Py_RETURN_NONE;
     if (self->session_obj == NULL)
         Py_RETURN_NONE;
-    SessionObject *session_obj = (SessionObject *)self->session_obj;
-    if (session_obj->session == NULL) {
-        PyErr_SetString(PyExc_ValueError, "session is closed");
-        return NULL;
-    }
-    NodeObject *node_obj = PyObject_New(NodeObject, &Node_Type);
-    if (node_obj == NULL)
-        return NULL;
-    node_obj->session_obj = Py_NewRef(self->session_obj);
-    node_obj->session = session_obj->session;
-    node_obj->address = address;
-    return (PyObject *)node_obj;
+    return (PyObject *)make_node(self->session_obj, address);
 }
 
 static PyObject *ProcedureArgs_current_node(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))

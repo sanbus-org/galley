@@ -21,7 +21,7 @@ Rules every host binding follows. Grammar-level procedure semantics live in [pro
 ## Walking and snapshots
 
 - Walkers yield named steps with the node, the depth, and the semantic-error flag, starting at depth zero. Pruning skips the last yielded subtree.
-- A walk from an invalid root yields the host empty value. Walkers close before the session closes or parses again, and hosts may also scope them with resource blocks.
+- A walk from an invalid root yields the host empty value. A walker is bound to its parse generation: use after close and stepping after a re-parse raise a catchable host error, never a stale read. Parsing with an abandoned open walker still succeeds; the walker fails at its next step. Walkers close explicitly or through resource blocks, and closing stays idempotent.
 - Snapshots bulk-read the last successful parse in a single crossing: parentage, child counts, variables, and spans. Sessions retain the last input that snapshot spans index, so bulk text extraction reads the snapshot plus the retained input instead of issuing one call per node.
 
 ## Names, values, and codes

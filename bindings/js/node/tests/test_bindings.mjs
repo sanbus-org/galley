@@ -590,6 +590,87 @@ await test("walk skipChildren prunes the subtree", async () => {
   }
 });
 
+await test("walker step after close throws", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    assert.equal(walker.next().done, false);
+    s.close();
+    assert.throws(() => walker.next(), SessionClosedError);
+    assert.throws(() => walker.skipChildren(), SessionClosedError);
+    walker.close();
+    walker.close();
+  } finally {
+    s.close();
+  }
+});
+
+await test("walker step after re-parse throws", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    assert.equal(walker.next().done, false);
+    assert.equal(s.parse("alpha:12,beta:3"), 15);
+    assert.throws(() => walker.next(), SessionClosedError);
+    assert.throws(() => walker.skipChildren(), SessionClosedError);
+    walker.close();
+    const fresh = s.rootNode();
+    assert.ok(fresh !== null);
+    const rewound = s.walk(fresh);
+    assert.ok(rewound !== null);
+    try {
+      assert.equal(rewound.next().done, false);
+    } finally {
+      rewound.close();
+    }
+  } finally {
+    s.close();
+  }
+});
+
+await test("parse with abandoned walker succeeds", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    // Parsing never throws merely because a walker is open; the
+    // abandoned walker fails at its next step instead.
+    assert.equal(s.parse("alpha:12,beta:3"), 15);
+    assert.throws(() => walker.next(), SessionClosedError);
+    walker.close();
+  } finally {
+    s.close();
+  }
+});
+
+await test("walker close is idempotent and using disposes", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    walker.close();
+    walker.close();
+    assert.throws(() => walker.next(), SessionClosedError);
+    {
+      using scoped = s.walk(root);
+      assert.ok(scoped !== null);
+      assert.equal(scoped.next().done, false);
+    }
+  } finally {
+    s.close();
+  }
+});
+
 await test("invalid node accessors return null", async () => {
   const s = await newSession();
   try {
