@@ -80,7 +80,7 @@ public final class ProcedureArguments {
     /**
      * Records a semantic error on the current node and returns the running
      * total. Parsing continues; a syntax-clean parse with any semantic
-     * error fails with status -12.
+     * error fails with {@link StatusCode#ERROR_SEMANTIC}.
      */
     public int reportSemanticError(String message) {
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);

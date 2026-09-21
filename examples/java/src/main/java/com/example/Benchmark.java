@@ -2,6 +2,7 @@ package com.example;
 
 import org.sanbus.galley.Galley;
 import org.sanbus.galley.GalleyException;
+import org.sanbus.galley.MissingArtifactException;
 import org.sanbus.galley.Session;
 import org.sanbus.galley.SessionOptions;
 import org.sanbus.galley.internal.GalleyLibraryLoader;
@@ -116,7 +117,7 @@ public final class Benchmark {
         Session session;
         try {
             session = Galley.load(libPath).openSession(opts);
-        } catch (GalleyException | IllegalStateException e) {
+        } catch (GalleyException | MissingArtifactException e) {
             System.err.println("failed to create a parser session: " + e.getMessage());
             System.exit(1);
             return;

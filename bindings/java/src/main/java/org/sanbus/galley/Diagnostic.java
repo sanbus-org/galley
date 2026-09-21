@@ -1,28 +1,19 @@
 package org.sanbus.galley;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
  * Read-only snapshot of a parse diagnostic, mirroring Python's Diagnostic
  * and the C API's recorded diagnostics.
+ *
+ * Frozen at raise time: every array is deep-copied on construction and
+ * every getter returns a copy, so later parses — and callers — cannot
+ * mutate a diagnostic carried by a {@link GalleyException}.
  */
 public final class Diagnostic {
-    public static final int KIND_NONE = 0;
-    public static final int KIND_SYNTAX = 1;
-    public static final int KIND_INDENTATION = 2;
-    public static final int KIND_SEMANTIC = 3;
-
-    public static final int RECOVERY_TARGET_NONE = 0;
-    public static final int RECOVERY_TARGET_LHS_VARIABLE = 1;
-    public static final int RECOVERY_TARGET_PRODUCTION = 2;
-    public static final int RECOVERY_TARGET_OCCURRENCE = 3;
-
-    public static final int RESUME_BEFORE = 0;
-    public static final int RESUME_AFTER = 1;
-
-    private final int kind;
+    private final DiagnosticKind kind;
     private final int line;
     private final int column;
     private final String message;
@@ -30,13 +21,14 @@ public final class Diagnostic {
     private final byte[] unexpectedToken; // nullable
     private final List<byte[]> expectedTokens;
     private final List<String> context;
+    private final List<byte[]> contextBytes;
     private final int syntaxErrorCount;
     private final int semanticErrorCount;
     private final String[] semantic; // nullable: [variable, message]
     private final int[] indentation; // nullable: [spaces, width]
-    private final Integer recoveryKind;
+    private final RecoveryTarget recoveryKind;
     private final byte[] recoveryTerminal;
-    private final Integer recoveryResume;
+    private final ResumeSide recoveryResume;
     private final String recoveryLhsVariable;
     private final RecoveryProduction recoveryProduction;
     private final RecoveryOccurrence recoveryOccurrence;
@@ -65,47 +57,60 @@ public final class Diagnostic {
         @Override public String toString() { return parentVariable + ":" + rhsIndex + ":" + symbolIndex + ":" + variable; }
     }
 
-    public Diagnostic(int kind, int line, int column, String message, String messageAnsi,
+    private static List<byte[]> copyBytes(List<byte[]> values) {
+        if (values == null) return Collections.emptyList();
+        List<byte[]> out = new ArrayList<>(values.size());
+        for (byte[] value : values) out.add(value != null ? value.clone() : null);
+        return out;
+    }
+
+    public Diagnostic(DiagnosticKind kind, int line, int column, String message, String messageAnsi,
                       byte[] unexpectedToken, List<byte[]> expectedTokens, List<String> context,
+                      List<byte[]> contextBytes,
                       int syntaxErrorCount, int semanticErrorCount, String[] semantic, int[] indentation,
-                      Integer recoveryKind, byte[] recoveryTerminal, Integer recoveryResume,
+                      RecoveryTarget recoveryKind, byte[] recoveryTerminal, ResumeSide recoveryResume,
                       String recoveryLhsVariable, RecoveryProduction recoveryProduction,
                       RecoveryOccurrence recoveryOccurrence) {
-        this.kind = kind;
+        this.kind = kind != null ? kind : DiagnosticKind.UNKNOWN;
         this.line = line;
         this.column = column;
         this.message = message != null ? message : "";
         this.messageAnsi = messageAnsi != null ? messageAnsi : "";
-        this.unexpectedToken = unexpectedToken;
-        this.expectedTokens = expectedTokens != null ? Collections.unmodifiableList(expectedTokens) : Collections.emptyList();
-        this.context = context != null ? Collections.unmodifiableList(context) : Collections.emptyList();
+        this.unexpectedToken = unexpectedToken != null ? unexpectedToken.clone() : null;
+        this.expectedTokens = Collections.unmodifiableList(copyBytes(expectedTokens));
+        this.context = context != null
+                ? Collections.unmodifiableList(new ArrayList<>(context))
+                : Collections.emptyList();
+        this.contextBytes = Collections.unmodifiableList(copyBytes(contextBytes));
         this.syntaxErrorCount = syntaxErrorCount;
         this.semanticErrorCount = semanticErrorCount;
-        this.semantic = semantic;
-        this.indentation = indentation;
+        this.semantic = semantic != null ? semantic.clone() : null;
+        this.indentation = indentation != null ? indentation.clone() : null;
         this.recoveryKind = recoveryKind;
-        this.recoveryTerminal = recoveryTerminal;
+        this.recoveryTerminal = recoveryTerminal != null ? recoveryTerminal.clone() : null;
         this.recoveryResume = recoveryResume;
         this.recoveryLhsVariable = recoveryLhsVariable;
         this.recoveryProduction = recoveryProduction;
         this.recoveryOccurrence = recoveryOccurrence;
     }
 
-    public int getKind() { return kind; }
+    public DiagnosticKind getKind() { return kind; }
     public int getLine() { return line; }
     public int getColumn() { return column; }
     public String getMessage() { return message; }
     public String getMessageAnsi() { return messageAnsi; }
-    public byte[] getUnexpectedToken() { return unexpectedToken; }
-    public List<byte[]> getExpectedTokens() { return expectedTokens; }
+    public byte[] getUnexpectedToken() { return unexpectedToken != null ? unexpectedToken.clone() : null; }
+    public List<byte[]> getExpectedTokens() { return Collections.unmodifiableList(copyBytes(expectedTokens)); }
     public List<String> getContext() { return context; }
+    /** Raw bytes behind {@link #getContext()}, one entry per name. */
+    public List<byte[]> getContextBytes() { return Collections.unmodifiableList(copyBytes(contextBytes)); }
     public int getSyntaxErrorCount() { return syntaxErrorCount; }
     public int getSemanticErrorCount() { return semanticErrorCount; }
-    public String[] getSemantic() { return semantic; }
-    public int[] getIndentation() { return indentation; }
-    public Integer getRecoveryKind() { return recoveryKind; }
-    public byte[] getRecoveryTerminal() { return recoveryTerminal; }
-    public Integer getRecoveryResume() { return recoveryResume; }
+    public String[] getSemantic() { return semantic != null ? semantic.clone() : null; }
+    public int[] getIndentation() { return indentation != null ? indentation.clone() : null; }
+    public RecoveryTarget getRecoveryKind() { return recoveryKind; }
+    public byte[] getRecoveryTerminal() { return recoveryTerminal != null ? recoveryTerminal.clone() : null; }
+    public ResumeSide getRecoveryResume() { return recoveryResume; }
     public String getRecoveryLhsVariable() { return recoveryLhsVariable; }
     public RecoveryProduction getRecoveryProduction() { return recoveryProduction; }
     public RecoveryOccurrence getRecoveryOccurrence() { return recoveryOccurrence; }
@@ -113,8 +118,8 @@ public final class Diagnostic {
     // Python-doc attribute names; not unused duplicates of the getters.
     public String message() { return message; }
     public String messageAnsi() { return messageAnsi; }
-    public byte[] unexpectedToken() { return unexpectedToken; }
-    public List<byte[]> expectedTokens() { return expectedTokens; }
+    public byte[] unexpectedToken() { return getUnexpectedToken(); }
+    public List<byte[]> expectedTokens() { return getExpectedTokens(); }
 
     @Override
     public String toString() {

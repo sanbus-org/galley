@@ -35,8 +35,8 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     }
 
     private void requireOpen() {
-        if (handle == null) throw new IllegalStateException("walker is closed");
-        if (session.isClosed()) throw new IllegalStateException("walker's session is closed");
+        if (handle == null) throw new GalleyClosedException("walker");
+        if (session.isClosed()) throw new GalleyClosedException("walker's session");
     }
 
     /**

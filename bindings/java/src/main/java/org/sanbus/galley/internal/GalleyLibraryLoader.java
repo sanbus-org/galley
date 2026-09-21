@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import org.sanbus.galley.MissingArtifactException;
+
 /**
  * Loads the Galley shared library via Panama SymbolLookup, mirroring
  * bindings/js/node/src/ffi.ts. No JNA.
@@ -28,12 +30,10 @@ public final class GalleyLibraryLoader {
         return libFileName("galley-java");
     }
 
-    private static String buildHint() {
-        return "Build it first: java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild <language-dir>\n"
-                + "or set GALLEY_LIBRARY_PATH=/path/to/" + libFileName();
-    }
-
-    public static String findLibrary(String explicit) {
+    /**
+     * @throws MissingArtifactException when no artifact is where it was told.
+     */
+    public static String findLibrary(String explicit) throws MissingArtifactException {
         String chosen = (explicit != null && !explicit.isEmpty()) ? explicit : null;
         if (chosen == null) {
             String env = System.getenv("GALLEY_LIBRARY_PATH");
@@ -44,15 +44,11 @@ public final class GalleyLibraryLoader {
             if (prop != null && !prop.isEmpty()) chosen = prop;
         }
         if (chosen == null) {
-            throw new IllegalStateException(
-                    "galley: parser artifact not found: no parser artifact given; pass a path to Galley.load or set GALLEY_LIBRARY_PATH.\n"
-                    + buildHint());
+            throw new MissingArtifactException(null);
         }
         String absolute = Paths.get(chosen).toAbsolutePath().toString();
         if (!Files.exists(Paths.get(absolute))) {
-            throw new IllegalStateException(
-                    "galley: parser artifact not found: at " + absolute + ".\n"
-                    + buildHint());
+            throw new MissingArtifactException(absolute);
         }
         return canonicalPath(absolute);
     }
@@ -65,11 +61,11 @@ public final class GalleyLibraryLoader {
         }
     }
 
-    public static GalleyLibrary load(String explicitPath) {
+    public static GalleyLibrary load(String explicitPath) throws MissingArtifactException {
         return new GalleyLibrary(findLibrary(explicitPath));
     }
 
-    public static GalleyLibrary load() {
+    public static GalleyLibrary load() throws MissingArtifactException {
         return load(null);
     }
 }

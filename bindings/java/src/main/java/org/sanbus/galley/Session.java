@@ -63,7 +63,7 @@ public final class Session implements AutoCloseable {
             h = lib.galley_session_create();
         }
         if (h == null || h.equals(MemorySegment.NULL) || h.address() == 0) {
-            throw new GalleyException("out of memory", -7);
+            throw new GalleyException("out of memory", StatusCode.ERROR_OUT_OF_MEMORY);
         }
         this.handle = h;
         LIVE_SESSIONS.put(h.address(), this);
@@ -98,7 +98,7 @@ public final class Session implements AutoCloseable {
     }
 
     private void requireOpen() {
-        if (closed || handle == null || handle.equals(MemorySegment.NULL)) throw new IllegalStateException("session is closed");
+        if (closed || handle == null || handle.equals(MemorySegment.NULL)) throw new GalleyClosedException("session");
     }
 
     private GalleyException errorFromStatus(long status) {
@@ -494,7 +494,27 @@ public final class Session implements AutoCloseable {
         lib.galley_walker_destroy(walker);
     }
 
-    public byte[] symbolName(Node node) {
+    /**
+     * Grammar name of the node's symbol, decoded as UTF-8 with replacement
+     * for malformed input. Null for invalid nodes. Token content stays raw
+     * bytes: use {@link #text} for that.
+     */
+    public String symbolName(Node node) {
+        byte[] bytes = symbolNameBytes(node);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Grammar name of the node's symbol, decoded as UTF-8 with replacement
+     * for malformed input. Null for invalid nodes.
+     */
+    public String symbolName(long address) {
+        byte[] bytes = symbolNameBytes(address);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /** Raw bytes behind {@link #symbolName(Node)}. Null for invalid nodes. */
+    public byte[] symbolNameBytes(Node node) {
         requireOpen();
         if (node == null) return null;
         try (Arena arena = Arena.ofConfined()) {
@@ -509,7 +529,8 @@ public final class Session implements AutoCloseable {
         }
     }
 
-    public byte[] symbolName(long address) {
+    /** Raw bytes behind {@link #symbolName(long)}. Null for invalid nodes. */
+    public byte[] symbolNameBytes(long address) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
@@ -695,6 +716,7 @@ public final class Session implements AutoCloseable {
         }
 
         List<String> context = new ArrayList<>();
+        List<byte[]> contextBytes = new ArrayList<>();
         long ctxCount = lib.galley_diagnostic_context_count(handle);
         if (ctxCount > 0) {
             for (long i = 0; i < ctxCount; i++) {
@@ -706,6 +728,7 @@ public final class Session implements AutoCloseable {
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
                             byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+                            contextBytes.add(b);
                             context.add(new String(b, StandardCharsets.UTF_8));
                         }
                     }
@@ -730,10 +753,11 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        Integer recoveryKind = null;
+        RecoveryTarget recoveryKind = null;
         long rk = lib.galley_diagnostic_recovery_kind(handle);
-        if (rk != 0) recoveryKind = (int) rk;
+        if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
 
+        // Absent stays null: same rule as the recorded builder below.
         byte[] recoveryTerminal = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
@@ -742,16 +766,14 @@ public final class Session implements AutoCloseable {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-                else if (ptr.equals(MemorySegment.NULL) || len == 0) recoveryTerminal = new byte[0];
-                else recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
             }
         }
 
-        Integer recoveryResume = null;
+        ResumeSide recoveryResume = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
             if (lib.galley_diagnostic_recovery_resume(handle, outResume) == 0) {
-                recoveryResume = (int) outResume.get(ValueLayout.JAVA_LONG, 0);
+                recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
             }
         }
 
@@ -805,7 +827,8 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        return new Diagnostic((int) kind, line, col, message, messageAnsi, unexpected, expected, context,
+        return new Diagnostic(DiagnosticKind.fromCode(kind), line, col, message, messageAnsi, unexpected, expected, context,
+                contextBytes,
                 syntaxErrorCount, semanticErrorCount, semantic, indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
     }
@@ -830,6 +853,7 @@ public final class Session implements AutoCloseable {
             if (lib.galley_recorded_diagnostic_message(handle, diagIndex, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
+                // No recorded-ANSI entry in the C ABI; Python/JS copy the recorded message too.
                 messageAnsi = message;
             }
         }
@@ -865,6 +889,7 @@ public final class Session implements AutoCloseable {
         }
 
         List<String> context = new ArrayList<>();
+        List<byte[]> contextBytes = new ArrayList<>();
         long ctxCount = lib.galley_recorded_context_count(handle, diagIndex);
         if (ctxCount > 0) {
             for (long i = 0; i < ctxCount; i++) {
@@ -876,6 +901,7 @@ public final class Session implements AutoCloseable {
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
                             byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+                            contextBytes.add(b);
                             context.add(new String(b, StandardCharsets.UTF_8));
                         }
                     }
@@ -892,9 +918,9 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        Integer recoveryKind = null;
+        RecoveryTarget recoveryKind = null;
         long rk = lib.galley_recorded_diagnostic_recovery_kind(handle, diagIndex);
-        if (rk != 0) recoveryKind = (int) rk;
+        if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
 
         byte[] recoveryTerminal = null;
         try (Arena arena = Arena.ofConfined()) {
@@ -907,11 +933,11 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        Integer recoveryResume = null;
+        ResumeSide recoveryResume = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
             if (lib.galley_recorded_recovery_resume(handle, diagIndex, outResume) == 0) {
-                recoveryResume = (int) outResume.get(ValueLayout.JAVA_LONG, 0);
+                recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
             }
         }
 
@@ -965,7 +991,8 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        return new Diagnostic((int) kind, line, col, message, messageAnsi, unexpected, expected, context,
+        return new Diagnostic(DiagnosticKind.fromCode(kind), line, col, message, messageAnsi, unexpected, expected, context,
+                contextBytes,
                 0, 0, readSemantic(diagIndex, true), indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
     }
@@ -1108,7 +1135,17 @@ public final class Session implements AutoCloseable {
 
     // -- symbol table --
 
-    public byte[] symbolNameAt(long index) {
+    /**
+     * Grammar name of the symbol at table {@code index}, decoded as UTF-8
+     * with replacement for malformed input. Null for out-of-range indices.
+     */
+    public String symbolNameAt(long index) {
+        byte[] bytes = symbolNameAtBytes(index);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /** Raw bytes behind {@link #symbolNameAt(long)}. Null for out-of-range indices. */
+    public byte[] symbolNameAtBytes(long index) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
@@ -1127,7 +1164,17 @@ public final class Session implements AutoCloseable {
         return lib.galley_symbol_is_terminal(handle, index) != 0;
     }
 
-    public byte[] variableNameAt(long index) {
+    /**
+     * Grammar name of the variable at table {@code index}, decoded as UTF-8
+     * with replacement for malformed input. Null for out-of-range indices.
+     */
+    public String variableNameAt(long index) {
+        byte[] bytes = variableNameAtBytes(index);
+        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /** Raw bytes behind {@link #variableNameAt(long)}. Null for out-of-range indices. */
+    public byte[] variableNameAtBytes(long index) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
@@ -1145,9 +1192,9 @@ public final class Session implements AutoCloseable {
 
     public String version() { return parser.version(); }
 
-    public int parserType() { return parser.parserType(); }
+    public ParserType parserType() { return parser.parserType(); }
 
-    public int errorRecoveryMode() { return parser.errorRecoveryMode(); }
+    public RecoveryMode errorRecoveryMode() { return parser.errorRecoveryMode(); }
 
     public boolean hasAst() { return parser.hasAst(); }
 
@@ -1170,6 +1217,8 @@ public final class Session implements AutoCloseable {
     public long variableCount() { return parser.variableCount(); }
 
     public String statusString(long status) { return lib.galley_status_string(status); }
+
+    public String statusString(StatusCode status) { return parser.statusString(status); }
 
     // Expose handle for internal use
     MemorySegment getHandle() { return handle; }

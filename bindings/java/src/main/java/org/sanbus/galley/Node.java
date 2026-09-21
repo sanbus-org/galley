@@ -23,17 +23,20 @@ public final class Node implements Iterable<Node> {
     public long getAddress() { return address; }
 
     private void requireOpen() {
-        if (session.isClosed()) throw new IllegalStateException("node's session is closed");
+        if (session.isClosed()) throw new GalleyClosedException("node's session");
     }
 
     // Delegated accessors
 
     public byte[] text() { requireOpen(); return session.text(this); }
-    public byte[] symbolName() { requireOpen(); return session.symbolName(this); }
-    public String symbolNameString() {
-        byte[] b = symbolName();
-        return b == null ? null : new String(b, java.nio.charset.StandardCharsets.UTF_8);
-    }
+    /**
+     * Grammar name of this node's symbol, decoded as UTF-8 with replacement
+     * for malformed input. Null for invalid nodes. Token content stays raw
+     * bytes: use {@link #text} for that.
+     */
+    public String symbolName() { requireOpen(); return session.symbolName(this); }
+    /** Raw bytes behind {@link #symbolName()}. Null for invalid nodes. */
+    public byte[] symbolNameBytes() { requireOpen(); return session.symbolNameBytes(this); }
     public long[] span() { requireOpen(); return session.span(this); }
     public int[] lineColumn() { requireOpen(); return session.lineColumn(this); }
     public Node parent() { requireOpen(); return session.parent(this); }
@@ -87,7 +90,7 @@ public final class Node implements Iterable<Node> {
     @Override
     public String toString() {
         String name = null;
-        try { byte[] n = symbolName(); if (n != null) name = new String(n, java.nio.charset.StandardCharsets.UTF_8); } catch (Exception ignored) {}
+        try { name = symbolName(); } catch (Exception ignored) {}
         return "Node@" + Long.toHexString(address) + "(" + (name != null ? name : "?") + ")";
     }
 

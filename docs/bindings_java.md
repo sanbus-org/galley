@@ -64,7 +64,9 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out 
 
 Pass the built file to `Galley.load`, or name it once with
 `GALLEY_LIBRARY_PATH` (or `-Dgalley.library.path`). Nothing is searched:
-a missing file is a loud error naming the exact path.
+a missing file throws `MissingArtifactException` (a `FileNotFoundException`
+with the shared `galley:missing-artifact` code) naming the exact path plus
+the `GalleyBuild <language-dir>` build command.
 
 ## Performance Notes
 
@@ -72,7 +74,12 @@ The Panama FFI boundary is the only overhead over the C API:
 
 - Every method is a direct `Linker.downcallHandle` / `MemorySegment` call; no JSON or subprocess marshalling. Sessions are not thread-safe — keep one per thread or guard it externally.
 - Node handles are `Node` objects that wrap a stable address in the library's non-relocating node storage and keep a strong reference to their owning `Session`; plain `long` addresses are also accepted wherever a node is expected. Iteration and indexing are zero-copy (`for (Node child : session.children(root))`, `root.children()`, `node.length`).
-- Text accessors (`text`, `symbolName`, diagnostic tokens) return `byte[]` copies with no UTF-8 decoding; decode on demand.
+- Grammar-name accessors (`symbolName`, symbol/variable table names,
+  diagnostic context) return `String` decoded as UTF-8 with replacement for
+  malformed input; the raw bytes stay available through the `*Bytes` twins
+  (`symbolNameBytes`, `symbolNameAtBytes`, `variableNameAtBytes`,
+  `getContextBytes`). Token content (`text`, unexpected/expected tokens)
+  stays `byte[]` copies with no UTF-8 decoding; decode on demand.
 - `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput, mirroring Go's `unsafe.Pointer(&input[0])`, Rust's `as_ptr()`, and Python's `PyBytes_AS_STRING`. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
 - `parse(String)` encodes to UTF-8 once per call (`String.getBytes(UTF_8)`). The session copies into its own storage so node text stays valid after return.
 
@@ -159,7 +166,7 @@ A hook reports a semantic error when the input parses but its meaning is
 invalid. `reportSemanticError` records the diagnostic, marks the node, and
 returns the running total so hooks can limit themselves. Parsing continues;
 a syntax-clean parse with any semantic error throws `GalleyException` with
-code -12:
+code `StatusCode.ERROR_SEMANTIC`:
 
 ```java
 if (Long.parseLong(text) > 999) {
@@ -168,8 +175,10 @@ if (Long.parseLong(text) > 999) {
 ```
 
 Read them through `session.diagnostic()` / `session.diagnostics()`; the
-snapshot carries `getKind() == Diagnostic.KIND_SEMANTIC` and
-`getSemantic()` returning `[variable, message]`.
+snapshot carries `getKind() == DiagnosticKind.SEMANTIC` and
+`getSemantic()` returning `[variable, message]`. The snapshot is frozen at
+raise time: later parses cannot mutate the `Diagnostic` carried by a
+`GalleyException`.
 
 ## Tree Walking
 
@@ -184,7 +193,7 @@ yielded node's children:
 ```java
 try (Walker walker = session.walk(session.rootNode(), false)) {
     for (Walker.WalkStep step : walker) {
-        System.err.println("  ".repeat(step.depth) + new String(session.symbolName(step.node)));
+        System.err.println("  ".repeat(step.depth) + session.symbolName(step.node));
     }
 }
 ```
@@ -225,12 +234,12 @@ try (Session session = parser.openSession(SessionOptions.builder()
     Node root = session.rootNode();
     if (root != null) {
         for (Node child : session.children(root)) {
-            System.out.println(new String(session.symbolName(child)));
+            System.out.println(session.symbolName(child));
             System.out.println("  → " + new String(session.text(child)));
         }
         // Node convenience: root.children(), root.text(), etc.
         for (Node child : root) {
-            System.out.println(child.symbolNameString() + " " + new String(child.text()));
+            System.out.println(child.symbolName() + " " + new String(child.text()));
         }
     }
     // Zero-copy direct buffer for throughput-sensitive paths (benchmarks):
@@ -269,16 +278,17 @@ root.appendChildren(head2);
 
 ```java
 Galley.version();                         // String
-Galley.parserType();                       // PARSER_TYPE_LL / PARSER_TYPE_LR
+Galley.parserType();                       // ParserType (LL / LR / UNKNOWN)
 Galley.hasAst();                           // boolean
 Galley.hasProcedures();
-Galley.errorRecoveryMode();                // RECOVERY_MODE_*
-Galley.statusString(-2);                   // "syntax error" / null
+Galley.errorRecoveryMode();                // RecoveryMode (DISABLED / AUTOMATIC / EXPLICIT / UNKNOWN)
+Galley.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
 Galley.symbolCount();                      // long
 Galley.variableCount();
-session.symbolNameAt(0);                   // byte[] / null
+session.symbolNameAt(0);                   // String / null
+session.symbolNameAtBytes(0);              // byte[] / null
 session.symbolIsTerminal(0);
-session.variableNameAt(0);
+session.variableNameAt(0);                 // String / null
 ```
 
 ## Development builds

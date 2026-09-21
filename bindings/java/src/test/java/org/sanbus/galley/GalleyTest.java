@@ -3,6 +3,7 @@ package org.sanbus.galley;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.FileNotFoundException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,22 +34,25 @@ public class GalleyTest {
     }
 
     private static Parser fixtureParser() {
-        Parser parser = Galley.load(fixtureLibraryPath());
-        parser.clearProcedures();
-        return parser;
+        try {
+            Parser parser = Galley.load(fixtureLibraryPath());
+            parser.clearProcedures();
+            return parser;
+        } catch (MissingArtifactException e) {
+            throw new IllegalStateException("fixture library missing: " + e.getMessage(), e);
+        }
     }
 
     @Test
-    void versionReturnsNonEmptyString() {
+    void versionReturnsNonEmptyString() throws Exception {
         String v = Galley.version();
         assertNotNull(v);
         assertFalse(v.isEmpty());
     }
 
     @Test
-    void parserMetadataFlagsAreConsistent() {
-        int pt = Galley.parserType();
-        assertTrue(pt == Galley.PARSER_TYPE_LL || pt == Galley.PARSER_TYPE_LR);
+    void parserMetadataFlagsAreConsistent() throws Exception {
+        assertEquals(ParserType.LL, Galley.parserType());
         assertTrue(Galley.hasAst());
         // boolean flags
         assertNotNull(Galley.hasProcedures());
@@ -58,16 +62,21 @@ public class GalleyTest {
         assertNotNull(Galley.hasInputStreaming());
         assertNotNull(Galley.usesVerbatim());
         assertNotNull(Galley.stackOverflowRecoveryAvailable());
-        int rm = Galley.errorRecoveryMode();
-        assertTrue(rm == Galley.RECOVERY_MODE_DISABLED || rm == Galley.RECOVERY_MODE_AUTOMATIC || rm == Galley.RECOVERY_MODE_EXPLICIT);
+        RecoveryMode rm = Galley.errorRecoveryMode();
+        assertTrue(rm == RecoveryMode.DISABLED || rm == RecoveryMode.AUTOMATIC || rm == RecoveryMode.EXPLICIT);
+        assertEquals(0, ParserType.LL.getCode());
+        assertEquals(1, ParserType.LR.getCode());
+        assertEquals(ParserType.UNKNOWN, ParserType.fromCode(999));
+        assertEquals(RecoveryMode.UNKNOWN, RecoveryMode.fromCode(999));
     }
 
     @Test
-    void statusStringRendersKnownCodes() {
-        String rendered = Galley.statusString(-2);
+    void statusStringRendersKnownCodes() throws Exception {
+        String rendered = Galley.statusString(StatusCode.ERROR_SYNTAX);
         assertNotNull(rendered);
         assertTrue(rendered.toLowerCase().contains("syntax"));
-        assertNull(Galley.statusString(999999));
+        assertEquals(StatusCode.UNKNOWN, StatusCode.fromCode(999999));
+        assertNull(Galley.statusString(StatusCode.fromCode(999999)));
     }
 
     @Test
@@ -138,12 +147,12 @@ public class GalleyTest {
         @Test
         void syntaxErrorRaisesWithCodeAndDiagnostic() {
             GalleyException ex = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
-            assertEquals(-2, ex.getCode());
+            assertEquals(StatusCode.ERROR_SYNTAX, ex.getCode());
             Diagnostic d = ex.getDiagnostic();
             assertNotNull(d);
             assertTrue(session.hasDiagnostic());
             assertNotNull(session.diagnostic());
-            assertEquals(Diagnostic.KIND_SYNTAX, d.getKind());
+            assertEquals(DiagnosticKind.SYNTAX, d.getKind());
             assertEquals(1, d.getLine());
             assertEquals(7, d.getColumn());
             assertTrue(d.getMessage().contains("parse failed"));
@@ -169,6 +178,47 @@ public class GalleyTest {
         }
 
         @Test
+        void failureDiagnosticIsFrozenAcrossLaterParses() {
+            GalleyException failure = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            Diagnostic frozen = failure.getDiagnostic();
+            assertNotNull(frozen);
+            String message = frozen.getMessage();
+            assertFalse(message.isEmpty());
+            List<byte[]> expectedBefore = new ArrayList<>();
+            for (byte[] token : frozen.getExpectedTokens()) expectedBefore.add(token.clone());
+            assertFalse(expectedBefore.isEmpty());
+            List<String> contextBefore = List.copyOf(frozen.getContext());
+            List<byte[]> contextBytesBefore = new ArrayList<>();
+            for (byte[] name : frozen.getContextBytes()) contextBytesBefore.add(name.clone());
+            // A later successful parse cannot mutate the raised snapshot.
+            session.parse("alpha:12,beta:3");
+            assertFalse(session.hasDiagnostic());
+            assertEquals(message, frozen.getMessage());
+            assertEquals(DiagnosticKind.SYNTAX, frozen.getKind());
+            assertEquals(expectedBefore.size(), frozen.getExpectedTokens().size());
+            for (int i = 0; i < expectedBefore.size(); i++) {
+                assertArrayEquals(expectedBefore.get(i), frozen.getExpectedTokens().get(i));
+            }
+            assertEquals(contextBefore, frozen.getContext());
+            assertEquals(contextBytesBefore.size(), frozen.getContextBytes().size());
+            for (int i = 0; i < contextBytesBefore.size(); i++) {
+                assertArrayEquals(contextBytesBefore.get(i), frozen.getContextBytes().get(i));
+            }
+            // Callers cannot mutate it through the getters either.
+            List<byte[]> tokens = frozen.getExpectedTokens();
+            assertEquals(expectedBefore.size(), tokens.size());
+            for (int i = 0; i < tokens.size(); i++) {
+                byte[] exposed = tokens.get(i);
+                assertArrayEquals(expectedBefore.get(i), exposed);
+                if (exposed.length > 0) {
+                    exposed[0] ^= (byte) 0xFF;
+                    assertArrayEquals(expectedBefore.get(i), frozen.getExpectedTokens().get(i));
+                }
+            }
+            assertThrows(UnsupportedOperationException.class, () -> frozen.getExpectedTokens().add(new byte[0]));
+        }
+
+        @Test
         void fileParsingReportsEndPosition() throws Exception {
             Path p = Path.of("/tmp/galley-java-bindings-test.kv");
             Files.writeString(p, "alpha:12,beta:3", StandardCharsets.UTF_8);
@@ -190,12 +240,12 @@ public class GalleyTest {
             });
             GalleyException ex = assertThrows(GalleyException.class,
                     () -> session.parse("alpha:12,beta:300,gamma:400"));
-            assertEquals(-12, ex.getCode());
+            assertEquals(StatusCode.ERROR_SEMANTIC, ex.getCode());
             assertTrue(ex.getMessage().contains("value out of range"));
             assertEquals(List.of(1, 2), counts);
             Diagnostic d = session.diagnostic();
             assertNotNull(d);
-            assertEquals(Diagnostic.KIND_SEMANTIC, d.getKind());
+            assertEquals(DiagnosticKind.SEMANTIC, d.getKind());
             assertEquals(1, d.getLine());
             assertEquals(2, d.getSemanticErrorCount());
             assertArrayEquals(new String[]{"Number", "value out of range"}, d.getSemantic());
@@ -264,7 +314,8 @@ public class GalleyTest {
         void symbolNamesTextSpansAndPositions() {
             Node root = session.rootNode();
             assertNotNull(root);
-            assertArrayEquals("Document".getBytes(StandardCharsets.UTF_8), session.symbolName(root));
+            assertEquals("Document", session.symbolName(root));
+            assertArrayEquals("Document".getBytes(StandardCharsets.UTF_8), session.symbolNameBytes(root));
             byte[] text = session.text(root);
             assertArrayEquals("alpha:12,beta:3".getBytes(StandardCharsets.UTF_8), text);
             long[] span = session.span(root);
@@ -282,7 +333,8 @@ public class GalleyTest {
         void nodeObjectMirrorsSessionNavigation() {
             Node root = session.rootNode();
             assertNotNull(root);
-            assertArrayEquals("Document".getBytes(StandardCharsets.UTF_8), root.symbolName());
+            assertEquals("Document", root.symbolName());
+            assertArrayEquals("Document".getBytes(StandardCharsets.UTF_8), root.symbolNameBytes());
             assertNotNull(root.text());
             assertArrayEquals(new long[]{0, 15}, root.span());
             assertArrayEquals(new int[]{1, 1}, root.lineColumn());
@@ -312,7 +364,7 @@ public class GalleyTest {
         }
 
         private Node findTerminal(Node node) {
-            byte[] sym = session.symbolName(node);
+            byte[] sym = session.symbolNameBytes(node);
             if (sym != null && sym.length == 0) return node;
             Node child = session.firstChild(node);
             while (child != null) {
@@ -572,16 +624,22 @@ public class GalleyTest {
         }
 
         @Test
-        void symbolAndVariableTables() {
+        void symbolAndVariableTables() throws Exception {
             assertTrue(Galley.symbolCount() > 0);
             assertTrue(Galley.variableCount() > 0);
-            byte[] firstName = session.symbolNameAt(0);
+            String firstName = session.symbolNameAt(0);
             assertNotNull(firstName);
+            assertFalse(firstName.isEmpty());
+            assertArrayEquals(firstName.getBytes(StandardCharsets.UTF_8), session.symbolNameAtBytes(0));
             assertNotNull(session.symbolIsTerminal(0));
-            byte[] varName = session.variableNameAt(0);
+            String varName = session.variableNameAt(0);
             assertNotNull(varName);
+            assertFalse(varName.isEmpty());
+            assertArrayEquals(varName.getBytes(StandardCharsets.UTF_8), session.variableNameAtBytes(0));
             assertNull(session.symbolNameAt(1_000_000_000L));
+            assertNull(session.symbolNameAtBytes(1_000_000_000L));
             assertNull(session.variableNameAt(1_000_000_000L));
+            assertNull(session.variableNameAtBytes(1_000_000_000L));
         }
     }
 
@@ -622,8 +680,28 @@ public class GalleyTest {
             s.parse("alpha:12");
             s.close();
             s.close();
-            assertThrows(IllegalStateException.class, () -> s.parse("alpha:12"));
-            assertThrows(IllegalStateException.class, () -> s.rootNode());
+            GalleyClosedException closed = assertThrows(GalleyClosedException.class, () -> s.parse("alpha:12"));
+            assertTrue(closed.getMessage().contains("session"));
+            assertThrows(GalleyClosedException.class, () -> s.rootNode());
+        }
+
+        @Test
+        void closedObjectsNameThemselves() {
+            Session s = parser.openSession();
+            s.parse("alpha:12,beta:3");
+            Node root = s.rootNode();
+            assertNotNull(root);
+            Walker walker = s.walk(root, false);
+            assertNotNull(walker);
+            walker.close();
+            walker.close();
+            GalleyClosedException walkerClosed = assertThrows(GalleyClosedException.class, walker::hasNext);
+            assertTrue(walkerClosed.getMessage().contains("walker"));
+            assertEquals("walker", walkerClosed.getObjectName());
+            s.close();
+            GalleyClosedException sessionClosed = assertThrows(GalleyClosedException.class, () -> root.text());
+            assertTrue(sessionClosed.getMessage().contains("session"));
+            assertEquals("node's session", sessionClosed.getObjectName());
         }
 
         @Test
@@ -632,8 +710,8 @@ public class GalleyTest {
             s.parse("alpha:12,beta:3");
             Node root = s.rootNode();
             s.close();
-            assertThrows(IllegalStateException.class, () -> root.children());
-            assertThrows(IllegalStateException.class, () -> root.text());
+            assertThrows(GalleyClosedException.class, () -> root.children());
+            assertThrows(GalleyClosedException.class, () -> root.text());
         }
 
         @Test
@@ -750,6 +828,17 @@ public class GalleyTest {
 
     @Nested
     class IsolationTests {
+        @Test
+        void missingArtifactNamesPathCodeAndBuildHint() {
+            String missing = "/tmp/galley-java-no-such-dir-7f3a/libgalley-java.so";
+            MissingArtifactException ex = assertThrows(MissingArtifactException.class,
+                    () -> Galley.load(missing));
+            assertEquals("galley:missing-artifact", ex.getCode());
+            assertInstanceOf(FileNotFoundException.class, ex);
+            assertTrue(ex.getMessage().contains(missing));
+            assertTrue(ex.getMessage().contains("GalleyBuild <language-dir>"));
+        }
+
         @Test
         void loadCachesByCanonicalPath() throws Exception {
             String path = fixtureLibraryPath();
