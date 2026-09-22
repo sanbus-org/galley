@@ -1,54 +1,84 @@
 # Binding contracts
 
-Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md); this file covers loading, wiring, errors, and repo conventions. Shared values cross in host-idiomatic types, and host mechanics live in the language folders (`bindings/python/CONTRACTS.md`, `bindings/js/CONTRACTS.md`).
+Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md); this file covers loading, wiring, walking, failures, and repo conventions (the Builds and Examples sections constrain repo content, not runtime behavior). Cross-host values keep one meaning and take one shape per host: this file states what crosses, the language folders (`bindings/python/CONTRACTS.md`, `bindings/js/CONTRACTS.md`) state how it is spelled, and a language file's spelling always wins where it differs.
 
 ## Loading
 
-- Importing a language package wires its bundled hooks automatically. Hook namespaces are imported from their hook file.
-- Bare loads take an artifact and return a handle without scanning for hook files. Hooks arrive explicitly only.
-- Loading acquires the artifact, and sessions open from the handle, so callers always have a moment to install hooks between the two steps.
-- The same source always yields the identical handle object. Failed loads bind nothing and rebind nothing.
+- Importing a language package wires its bundled hooks automatically.
+- Bare loads take an artifact and return a handle without scanning for hook files; hooks arrive explicitly only.
+- Loading and opening are two steps: loading acquires the artifact and returns the handle, and sessions open from that handle, so hook installs fit between them.
+- The same source always yields the identical handle object.
+- A failed load hands out no handle and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
 
 ## Hooks
 
-- Each artifact owns one hook table shared by its sessions, managed through functions that install, list, look up, and clear hooks.
-- Hook names are `reduction`, `reduction_<Variable>`, and `hook_<name>`. Anything else is ignored, and names that look like mistyped hooks produce a warning naming the export and the rule.
-- Later installs win per hook name, and explicit installs win over bundled scans.
-- Unregistered hooks never cross into the host. Per-hook gates are checked on the native side and default to off.
-- Hooks receive an arguments object or nothing. The channel exposes the current node, redirecting it, reading hook position, reporting semantic errors, and asking whether the session is closed. Tree edits inside hooks go through the session spelling.
-- Installs and clears made mid-parse apply to later parses only. Nested parses restore the enclosing hook set on unwind. A throwing hook never aborts the parse.
+- Each artifact owns one hook table, shared by all of its sessions.
+- The table is managed through functions that install, list, look up, and clear hooks.
+- Hook names are `reduction`, `reduction_<Variable>`, and `hook_<name>`.
+- A scan ignores any other name; a scanned name that looks like a mistyped hook produces a warning naming the export and the rule.
+- Later installs win per hook name; explicit installs win over bundled scans.
+- Unregistered hooks never cross into the host; per-hook gates default to off.
+- Hooks are called with an arguments object or with no arguments at all.
+- The arguments object exposes the current node and a redirect for it, the hook's position, a way to report a semantic error, and a way to ask whether the session is closed.
+- Hook code reads the session from its arguments object.
+- Tree edits inside hooks are session operations.
+- Installs and clears made mid-parse apply to later parses only.
+- Nested parses restore the enclosing hook set on unwind.
+- A throwing hook never aborts the parse.
 
 ## Walking and snapshots
 
-- Walkers yield named steps with the node, the depth, and the semantic-error flag, starting at depth zero. Pruning skips the last yielded subtree.
-- A walk from an invalid root yields the host empty value. A walker is bound to its parse generation: use after close and stepping after a re-parse raise a catchable host error, never a stale read. Parsing with an abandoned open walker still succeeds; the walker fails at its next step. Walkers close explicitly or through resource blocks, and closing stays idempotent.
-- Snapshots bulk-read the last successful parse in a single crossing: parentage, child counts, variables, and spans. Sessions retain the last input that snapshot spans index, so bulk text extraction reads the snapshot plus the retained input instead of issuing one call per node.
+- Walkers yield named steps carrying the node, the depth, and the semantic-error flag; the first step is at depth zero.
+- Pruning skips the last yielded subtree.
+- A walk from an invalid root yields the host empty value.
+- A walker belongs to the parse generation that created it: stepping it after a re-parse, or after it is closed, raises a catchable host error, never a stale read.
+- Parsing with an abandoned open walker succeeds; the walker fails at its next step.
+- Walkers and sessions close explicitly, each through the mechanism its language file names, and closing is idempotent in both.
+- Snapshots bulk-read the last successful parse in a single crossing: parentage, child counts, variables, and spans.
+- A session retains the input of its most recent successful parse; snapshots index into that retained input.
 
 ## Names, values, and codes
 
-- Grammar names arrive as host text, while token content stays raw bytes everywhere. Integers use wide types where addresses require them, sequences are arrays, mappings are records, and empty is null.
-- Status codes, parser families, recovery modes, diagnostic kinds, recovery targets, resume sides, and the invalid-node sentinel are all named. Branching code never hard-codes integers.
+- Grammar names cross in one canonical form per host; each language file names that form and any raw-bytes form beside it.
+- A host that turns name bytes into text decodes them as UTF-8 — a charset decode, never an escape-unescape — with replacement (U+FFFD), so decoding never throws; the raw bytes are never modified.
+- Token content is raw bytes in every host.
+- A node address crosses as a wide integer in every host.
+- Sequences, mappings, and the empty value take each host's idiomatic types; the language files name them.
+- Status codes, parser families, recovery modes, diagnostic kinds, recovery targets, resume sides, and the invalid-node sentinel cross as named values in every host, never as bare integers.
 
 ## Failures
 
-- One failure type carries a numeric code plus a frozen diagnostic snapshot. Its text is fixed at raise time; the snapshot carries structured detail.
-- A missing artifact reports the path plus the exact build command, with a machine-readable code shared across hosts. Anything else surfaces the underlying error.
-- Use after close raises a catchable error idiomatic to the host, naming the closed object. Closing is idempotent everywhere.
+- A failure raises the host's failure type: a numeric code plus a frozen diagnostic snapshot, with its text fixed at raise time and structured detail in the snapshot.
+- A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
+- Failures other than a missing artifact surface the underlying error unchanged.
+- Use after close raises a catchable error idiomatic to the host, naming the closed object; the type each host uses is in its language file.
 
 ## Inputs and nodes
 
-- Entries accept their host idiomatic input forms and reject the rest loudly at the boundary. Message inputs accept text or raw bytes without silent re-encoding.
-- Handles come from sessions, and every session method also accepts a raw address wherever a handle is expected. Nodes expose their address through a named read-only accessor and compare by owning session plus address. Collection keying follows host semantics. Hook code reads the session from its arguments object.
-- Tree edits are session operations, with a convenience sugar on nodes for the common pair. Parsing copies input into session ownership, and interior NUL bytes are data.
+- Entries accept their host-idiomatic input forms and reject the rest at the boundary, with no silent coercion.
+- Message inputs accept text or raw bytes without silent re-encoding.
+- Handles come from sessions, and every session method also accepts a raw address wherever a handle is expected.
+- Nodes expose their address through a named read-only accessor and compare by owning session plus address.
+- A node handle is bound to the parse generation that created it: reading through it after a re-parse raises a catchable host error, never a stale read.
+- A raw address carries no generation and passes every such guard by design.
+- Node keying in collections follows each host's default semantics; the language files spell it out.
+- Tree edits are session operations, with a convenience sugar on nodes for the common pair.
+- Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.
+- Interior NUL bytes are data, not terminators.
 
 ## Builds
 
 - Every build links a dispatch shim generated from the metadata hook list (non-empty even when the grammar disables procedures), so a hook installed later fires without a rebuild.
-- `procedures.c` / `procedures.cpp` next to a grammar is a fatal build error naming the host file to use instead.
-- Every generated file carries its marker banner, and builders refuse to overwrite a file without it. Guards are checked before anything is written.
-- Generated code uses explicit errors, never `assert`, for control flow. Library import writes nothing to stdout, and diagnostics go to stderr only when they say something no other channel carries.
+- A `procedures.c` / `procedures.cpp` next to a grammar is a fatal build error naming the host file to use instead.
+- Every generated file carries its marker banner, builders refuse to overwrite a file without it, and guards are checked before anything is written.
+- Generated code reports explicit errors, never `assert`, for control flow.
+- Library import writes nothing to stdout; a diagnostic goes to stderr only when no other channel carries it.
 
 ## Examples and surface
 
-- One grammar per package directory (`kv/`, `json/`), with containers per language. Example output is byte-identical across bindings on stdout and stderr separately, and comments never reference the other language files.
-- Only documented entries are public API. Generated entries expose their surface through named exports, and artifact paths are always explicit.
+- One grammar per package directory (`kv/`, `json/`), with containers per language.
+- Example output is byte-identical across bindings, comparing stdout and stderr separately.
+- Comments in an example never reference the other language's files.
+- Only documented entries are public API.
+- Generated entries expose their surface through named exports.
+- Artifact paths are always explicit.

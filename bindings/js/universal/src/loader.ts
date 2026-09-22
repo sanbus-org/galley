@@ -127,10 +127,17 @@ export interface ResolvedBackend {
 
 let warnedWasm = false;
 
-function compileGuidance(directory: string | undefined): Error {
-  return new Error(
-    "galley: no parser artifact found (tried native library, then WebAssembly).\n" +
-      `Build one first: npx galley build ${directory ?? "<language-dir>"}`,
+/**
+ * The both-legs-miss failure: an aggregate `MissingArtifactError`, so the
+ * machine-readable code is identical here and at the adapters that threw
+ * the per-leg misses it swallows. Carries the path and the exact build
+ * command the contract requires.
+ */
+function compileGuidance(directory: string | undefined): MissingArtifactError {
+  const target = directory ?? "<language-dir>";
+  return new MissingArtifactError(
+    `at ${target} (tried native library, then WebAssembly)`,
+    `Build one first: npx galley build ${target}`,
   );
 }
 

@@ -13,7 +13,7 @@ import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
 import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError } from "@sanbus/galley-core";
+import { GalleyError, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { ensureDispatchFor } from "./dispatch.ts";
 
@@ -588,12 +588,12 @@ export class BunPort implements FfiPort {
         handle as NativeHandle, ptr(parent), ptr(firstChild), ptr(next), ptr(childCount),
         ptr(variable), ptr(spanStart), ptr(spanLen), BigInt(count),
       );
-      if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total));
+      if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total) as Status);
       if (total === BigInt(count)) {
         return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
       }
     }
-    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
+    throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
   // -- walker ------------------------------------------------------------

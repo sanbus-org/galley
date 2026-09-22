@@ -221,13 +221,17 @@ await test("backend pin selects the wasm leg", async () => {
 });
 
 await test("missing everything explains how to build", async () => {
-  await assert.rejects(
-    openLanguageDirectory(path.join(nativeDir, "no-such-dir")),
-    /Build one first/,
-  );
+  const missingArtifact = (expectedPath) => (error) => {
+    assert.equal(error.code, "galley:missing-artifact");
+    assert.ok(error.message.includes(expectedPath));
+    assert.ok(error.message.includes(`npx galley build ${expectedPath}`));
+    return true;
+  };
+  const noSuchDir = path.join(nativeDir, "no-such-dir");
+  await assert.rejects(openLanguageDirectory(noSuchDir), missingArtifact(noSuchDir));
   await assert.rejects(
     openLanguageDirectory(nativeDir, { backend: "wasm" }),
-    /no parser artifact found/,
+    missingArtifact(nativeDir),
   );
 });
 

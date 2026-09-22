@@ -1,22 +1,42 @@
 import type { Diagnostic } from "./diagnostic.ts";
+import type { Status } from "./constants.ts";
+
+/**
+ * Freeze the snapshot at raise time, one level deep: the diagnostic
+ * object plus every array field it holds (`expectedTokens`, `context`,
+ * and the recovery tuples), so no holder can push into or reshape
+ * them. Byte fields stay `Uint8Array`s because `Object.freeze` throws
+ * on non-empty typed arrays; their contents are read-only by
+ * convention, and each raise builds fresh copies, so a write can only
+ * ever corrupt the holder's own snapshot — never session state.
+ */
+function freezeSnapshot(diagnostic: Diagnostic): Diagnostic {
+  for (const value of Object.values(diagnostic)) {
+    if (Array.isArray(value)) Object.freeze(value);
+  }
+  return Object.freeze(diagnostic);
+}
 
 /**
  * Failure reported by a Galley operation.
  * Mirrors Python's `galley.Error` (code + diagnostic snapshot).
+ * `code` is the named status, never a bare integer: status codes cross
+ * as named values in every host.
  */
 export class GalleyError extends Error {
-  readonly code: number;
+  readonly code: Status;
+  /** Frozen at raise time: object and array fields frozen, text never changes. */
   readonly diagnostic: Diagnostic | null;
 
   constructor(
     message: string,
-    code: number,
+    code: Status,
     diagnostic: Diagnostic | null = null,
   ) {
     super(message);
     this.name = "GalleyError";
     this.code = code;
-    this.diagnostic = diagnostic;
+    this.diagnostic = diagnostic === null ? null : freezeSnapshot(diagnostic);
   }
 }
 

@@ -27,7 +27,7 @@ import type {
   TreeSnapshot,
   WalkedStep,
 } from "@sanbus/galley-core";
-import { GalleyError } from "@sanbus/galley-core";
+import { GalleyError, Status } from "@sanbus/galley-core";
 import { resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
 import { checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
 
@@ -399,6 +399,8 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
           const hostProcess = nodeProcess();
           if (isNode() && hostProcess?.stdout && hostProcess?.stderr) {
             (fd === 1 ? hostProcess.stdout : hostProcess.stderr).write(text);
+          } else if (fd === 2) {
+            console.error(text);
           } else {
             console.log(text);
           }
@@ -988,7 +990,7 @@ export class WasmPort implements FfiPort {
           base + offChildCount, base + offVariable, base + offSpanStart,
           base + offSpanLen, BigInt(count),
         );
-        if (isNegative(status)) throw new GalleyError("galley_tree_snapshot failed", Number(status));
+        if (isNegative(status)) throw new GalleyError("galley_tree_snapshot failed", Number(status) as Status);
         if (status !== BigInt(count)) continue;
         const memory = this.memoryBytes();
         const column64 = (offset: number) =>
@@ -1012,7 +1014,7 @@ export class WasmPort implements FfiPort {
         this.free(base, total);
       }
     }
-    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
+    throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
   // -- walker -------------------------------------------------------------------

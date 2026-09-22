@@ -122,8 +122,9 @@ The module is designed so the FFI boundary adds as little as possible:
 Node text, diagnostics, and expected-token data remain valid only until
 the next parse on the same session; every accessor copies before
 returning, so Python-side values never dangle. `Node` methods check that
-their session is still open and raise `ValueError` after `session.close()`
-or exiting a `with` block.
+their session is still open on the node's parse generation and raise
+`ValueError` after `session.close()`, exiting a `with` block, or a
+re-parse.
 
 ## Procedures
 

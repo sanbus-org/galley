@@ -8,13 +8,15 @@
  * this constructor.
  */
 
-import { INVALID_NODE } from "./constants.ts";
+import { INVALID_NODE, Status } from "./constants.ts";
+import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError } from "./errors.ts";
 import type { FfiPort, Handle, SessionCOptions, TreeSnapshot } from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
-import { Node } from "./node.ts";
+import { rejectSessionOptions } from "./internal.ts";
+import { Node, nodeAddress } from "./node.ts";
 import { ProcedureArguments, ProcedureRegistry, registryFor } from "./procedures.ts";
 import type { HookFn } from "./procedures.ts";
 
@@ -40,11 +42,8 @@ function defaultOptions(): Required<SessionOptions> {
   };
 }
 
-function toNodeAddress(node: Node | bigint | number): bigint {
-  if (typeof node === "bigint") return node;
-  if (typeof node === "number") return BigInt(node);
-  return (node as Node).address;
-}
+/** Exactly the keys session construction accepts: the parser tunables. */
+const SESSION_TUNABLES: ReadonlySet<string> = new Set(Object.keys(defaultOptions()));
 
 function isInvalid(addr: bigint): boolean {
   return addr === INVALID_NODE;
@@ -133,9 +132,9 @@ export class Session {
   #closed = false;
   #procedures: ProcedureRegistry;
   /**
-   * Parse generation, bumped by every parse and close. Walkers stamp it at
-   * creation and refuse to step once it moves, so no step ever reads
-   * reallocated storage.
+   * Parse generation, bumped by every parse and close. Nodes and walkers
+   * stamp it at creation and refuse use once it moves, so no accessor or
+   * step ever reads reallocated storage.
    */
   #generation = 0;
 
@@ -147,12 +146,15 @@ export class Session {
    */
   constructor(port: FfiPort, options: SessionOptions = {}) {
     if (!port) throw new TypeError("galley: Session needs a bound port");
-    if ("procedures" in options || "messageOverrides" in options) {
-      throw new TypeError(
-        "galley: Session takes only parser tunables; install hooks on the language handle " +
-          "and set message overrides through setMessageOverride",
-      );
-    }
+    // Same boundary check as every load factory: a backend pin or a
+    // typo'd tunable raises instead of being silently dropped.
+    rejectSessionOptions(
+      options as unknown as Record<string, unknown>,
+      "Session",
+      SESSION_TUNABLES,
+      "it takes only parser tunables: install hooks on the language handle, " +
+        "set message overrides through setMessageOverride, and pin backends on load calls",
+    );
     const merged = { ...defaultOptions(), ...options };
     this.#port = port;
     this.#procedures = registryFor(port);
@@ -184,7 +186,7 @@ export class Session {
 
     const handle = port.createSession(cOptions);
     if (handle === null || handle === undefined) {
-      throw new GalleyError("out of memory", -7, null);
+      throw new GalleyError("out of memory", Status.ErrorOutOfMemory, null);
     }
     this.#handle = handle;
   }
@@ -194,8 +196,9 @@ export class Session {
   }
 
   /**
-   * Current parse generation. Internal: only `Walker` reads this, to fail
-   * steps bound to an older parse instead of walking stale storage.
+   * Current parse generation. Internal: `Node` construction and `Walker`
+   * steps read this, so handles bound to an older parse fail instead of
+   * reading stale storage.
    * @internal
    */
   get parseGeneration(): number {
@@ -237,7 +240,8 @@ export class Session {
       // ignore
     }
     const message = fallback ?? diag?.message ?? this.#statusMessage(status);
-    return new GalleyError(message, status, diag);
+    // Boundary trust: `status` is the port's raw status, already known negative.
+    return new GalleyError(message, status as Status, diag);
   }
 
   #checkStatus(status: number, fallback?: string): void {
@@ -269,7 +273,12 @@ export class Session {
 
   // -- lifecycle -------------------------------------------------------
 
+  /**
+   * Idempotent: closing an already-closed session does nothing — no
+   * second destroy, no generation advance.
+   */
   close(): void {
+    if (this.#closed) return;
     if (this.#handle !== null) {
       this.#port.destroySession(this.#handle);
       this.#handle = null;
@@ -314,8 +323,8 @@ export class Session {
         port.activeDispatch = previous;
       }
     }
-    // Bump even on failure: the storage may have moved, so walkers from
-    // the previous parse fail at their next step instead of reading it.
+    // Bump even on failure: the storage may have moved, so nodes and
+    // walkers from the previous parse fail instead of reading it.
     // Parsing itself never throws merely because a walker is open.
     this.#generation++;
     if (status < 0) {
@@ -324,7 +333,7 @@ export class Session {
     return status;
   }
 
-  parseFile(filePath: string | URL | Uint8Array): number {
+  parseFile(filePath: string | URL): number {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
     const file = checkArtifactPath(filePath, "galley: session.parseFile");
@@ -345,8 +354,8 @@ export class Session {
         port.activeDispatch = previous;
       }
     }
-    // Same invalidation as parse: walkers from the previous parse fail
-    // at their next step instead of reading reallocated storage.
+    // Same invalidation as parse: nodes and walkers from the previous
+    // parse fail instead of reading reallocated storage.
     this.#generation++;
     if (status < 0) {
       throw this.#errorFromStatus(status);
@@ -379,17 +388,17 @@ export class Session {
 
   nodeValid(node: Node | bigint | number): boolean {
     const h = this.#requireHandle();
-    return this.port.nodeValid(h, toNodeAddress(node));
+    return this.port.nodeValid(h, nodeAddress(node));
   }
 
   childCount(node: Node | bigint | number): number {
     const h = this.#requireHandle();
-    return this.port.childCount(h, toNodeAddress(node));
+    return this.port.childCount(h, nodeAddress(node));
   }
 
   children(node: Node | bigint | number): Node[] {
     const h = this.#requireHandle();
-    const addr = toNodeAddress(node);
+    const addr = nodeAddress(node);
     const count = this.childCount(addr);
     const out: Node[] = [];
     let child = this.port.firstChild(h, addr);
@@ -403,27 +412,27 @@ export class Session {
 
   firstChild(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    return optNode(this, this.port.firstChild(h, toNodeAddress(node)));
+    return optNode(this, this.port.firstChild(h, nodeAddress(node)));
   }
 
   lastChild(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    return optNode(this, this.port.lastChild(h, toNodeAddress(node)));
+    return optNode(this, this.port.lastChild(h, nodeAddress(node)));
   }
 
   nextSibling(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    return optNode(this, this.port.nextSibling(h, toNodeAddress(node)));
+    return optNode(this, this.port.nextSibling(h, nodeAddress(node)));
   }
 
   priorSibling(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    return optNode(this, this.port.priorSibling(h, toNodeAddress(node)));
+    return optNode(this, this.port.priorSibling(h, nodeAddress(node)));
   }
 
   parent(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    return optNode(this, this.port.parent(h, toNodeAddress(node)));
+    return optNode(this, this.port.parent(h, nodeAddress(node)));
   }
 
   /**
@@ -446,14 +455,14 @@ export class Session {
    */
   walk(root: Node | bigint | number, skipSemanticErrors = false): Walker | null {
     const h = this.#requireHandle();
-    const handle = this.port.walkerCreate(h, toNodeAddress(root), skipSemanticErrors);
+    const handle = this.port.walkerCreate(h, nodeAddress(root), skipSemanticErrors);
     if (handle === null || handle === undefined) return null;
     return new Walker(this, this.port, handle, this.#generation);
   }
 
   symbolNameBytes(node: Node | bigint | number): Uint8Array | null {
     const h = this.#requireHandle();
-    return this.port.nodeSymbolName(h, toNodeAddress(node));
+    return this.port.nodeSymbolName(h, nodeAddress(node));
   }
 
   symbolName(node: Node | bigint | number): string | null {
@@ -464,22 +473,22 @@ export class Session {
 
   text(node: Node | bigint | number): Uint8Array | null {
     const h = this.#requireHandle();
-    return this.port.nodeText(h, toNodeAddress(node));
+    return this.port.nodeText(h, nodeAddress(node));
   }
 
   span(node: Node | bigint | number): [bigint, bigint] | null {
     const h = this.#requireHandle();
-    return this.port.nodeSpan(h, toNodeAddress(node));
+    return this.port.nodeSpan(h, nodeAddress(node));
   }
 
   lineColumn(node: Node | bigint | number): [number, number] | null {
     const h = this.#requireHandle();
-    return this.port.nodeLineColumn(h, toNodeAddress(node));
+    return this.port.nodeLineColumn(h, nodeAddress(node));
   }
 
   variableIndex(node: Node | bigint | number): number | null {
     const h = this.#requireHandle();
-    const idx = this.port.nodeVariableIndex(h, toNodeAddress(node));
+    const idx = this.port.nodeVariableIndex(h, nodeAddress(node));
     if (idx === -1) return null;
     if (idx < 0) throw this.#errorFromStatus(idx);
     return idx;
@@ -491,8 +500,8 @@ export class Session {
   }
 
   /**
-   * Retained input of the most recent parse as bytes: the buffer that
-   * snapshot spans index. Empty before the first parse.
+   * Retained input of the most recent successful parse as bytes: the
+   * buffer that snapshot spans index. Empty before the first parse.
    */
   lastInput(): Uint8Array {
     const h = this.#requireHandle();
@@ -518,7 +527,7 @@ export class Session {
 
   #buildDiagnosticSingular(): Diagnostic {
     const h = this.#requireHandle();
-    const kind = this.port.diagnosticKind(h);
+    const kind = this.port.diagnosticKind(h) as Kind;
     const pos = this.port.diagnosticPosition(h);
     const line = pos ? pos[0] : 0;
     const col = pos ? pos[1] : 0;
@@ -592,7 +601,7 @@ export class Session {
     const pos = this.port.recordedDiagnosticPosition(h, index);
     if (pos === null) return null;
 
-    const kind = this.port.recordedDiagnosticKind(h, index);
+    const kind = this.port.recordedDiagnosticKind(h, index) as Kind;
     const [line, col] = pos;
 
     const message = this.port.recordedDiagnosticMessage(h, index) ?? "";
@@ -657,10 +666,10 @@ export class Session {
   > {
     const h = handle;
     const kindVal = this.port.diagnosticRecoveryKind(h);
-    const recoveryKind = kindVal === 0 ? null : kindVal;
+    const recoveryKind = kindVal === 0 ? null : (kindVal as RecoveryTarget);
 
     const terminal = this.port.diagnosticRecoveryTerminal(h);
-    const resume = this.port.diagnosticRecoveryResume(h);
+    const resume = this.port.diagnosticRecoveryResume(h) as Resume | null;
     const lhs = this.port.diagnosticRecoveryLhsVariable(h);
     const production = this.port.diagnosticRecoveryProduction(h);
     const occurrence = this.port.diagnosticRecoveryOccurrence(h);
@@ -695,10 +704,10 @@ export class Session {
   > {
     const h = handle;
     const kindVal = this.port.recordedRecoveryKind(h, idx);
-    const recoveryKind = kindVal === 0 ? null : kindVal;
+    const recoveryKind = kindVal === 0 ? null : (kindVal as RecoveryTarget);
 
     const terminal = this.port.recordedRecoveryTerminal(h, idx);
-    const resume = this.port.recordedRecoveryResume(h, idx);
+    const resume = this.port.recordedRecoveryResume(h, idx) as Resume | null;
     const lhs = this.port.recordedRecoveryLhsVariable(h, idx);
     const production = this.port.recordedRecoveryProduction(h, idx);
     const occurrence = this.port.recordedRecoveryOccurrence(h, idx);
@@ -715,66 +724,66 @@ export class Session {
 
   // -- tree editing ----------------------------------------------------
 
-  appendChildren(parent: Node | bigint, chain: Node | bigint): void {
+  appendChildren(parent: Node | bigint | number, chain: Node | bigint | number): void {
     const h = this.#requireHandle();
-    this.#checkStatus(this.port.treeAppendChildren(h, toNodeAddress(parent), toNodeAddress(chain)));
+    this.#checkStatus(this.port.treeAppendChildren(h, nodeAddress(parent), nodeAddress(chain)));
   }
 
-  insertBefore(target: Node | bigint, chain: Node | bigint): void {
+  insertBefore(target: Node | bigint | number, chain: Node | bigint | number): void {
     const h = this.#requireHandle();
-    this.#checkStatus(this.port.treeInsertBefore(h, toNodeAddress(target), toNodeAddress(chain)));
+    this.#checkStatus(this.port.treeInsertBefore(h, nodeAddress(target), nodeAddress(chain)));
   }
 
-  insertAfter(target: Node | bigint, chain: Node | bigint): void {
+  insertAfter(target: Node | bigint | number, chain: Node | bigint | number): void {
     const h = this.#requireHandle();
-    this.#checkStatus(this.port.treeInsertAfter(h, toNodeAddress(target), toNodeAddress(chain)));
+    this.#checkStatus(this.port.treeInsertAfter(h, nodeAddress(target), nodeAddress(chain)));
   }
 
-  removeSiblings(node: Node | bigint, count: number): Node | null {
+  removeSiblings(node: Node | bigint | number, count: number): Node | null {
     const h = this.#requireHandle();
-    const { status, head } = this.port.treeRemoveSiblings(h, toNodeAddress(node), count);
+    const { status, head } = this.port.treeRemoveSiblings(h, nodeAddress(node), count);
     this.#checkStatus(status);
     return optNode(this, head);
   }
 
-  removeSelf(node: Node | bigint): Node | null {
+  removeSelf(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    const { status, head } = this.port.treeRemoveSelf(h, toNodeAddress(node));
+    const { status, head } = this.port.treeRemoveSelf(h, nodeAddress(node));
     this.#checkStatus(status);
     return optNode(this, head);
   }
 
-  promoteChildrenOverWrapper(wrapper: Node | bigint): Node | null {
+  promoteChildrenOverWrapper(wrapper: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    const { status, head } = this.port.treePromoteChildrenOverWrapper(h, toNodeAddress(wrapper));
+    const { status, head } = this.port.treePromoteChildrenOverWrapper(h, nodeAddress(wrapper));
     this.#checkStatus(status);
     return optNode(this, head);
   }
 
-  cleanChildren(node: Node | bigint): Node | null {
+  cleanChildren(node: Node | bigint | number): Node | null {
     const h = this.#requireHandle();
-    const { status, head } = this.port.treeCleanChildren(h, toNodeAddress(node));
+    const { status, head } = this.port.treeCleanChildren(h, nodeAddress(node));
     this.#checkStatus(status);
     return optNode(this, head);
   }
 
-  unlinkWrapper(wrapper: Node | bigint): void {
+  unlinkWrapper(wrapper: Node | bigint | number): void {
     const h = this.#requireHandle();
-    this.#checkStatus(this.port.treeUnlinkWrapper(h, toNodeAddress(wrapper)));
+    this.#checkStatus(this.port.treeUnlinkWrapper(h, nodeAddress(wrapper)));
   }
 
-  insertChildrenAt(parent: Node | bigint, index: number, chain: Node | bigint): void {
+  insertChildrenAt(parent: Node | bigint | number, index: number, chain: Node | bigint | number): void {
     const h = this.#requireHandle();
     this.#checkStatus(
-      this.port.treeInsertChildrenAt(h, toNodeAddress(parent), index, toNodeAddress(chain)),
+      this.port.treeInsertChildrenAt(h, nodeAddress(parent), index, nodeAddress(chain)),
     );
   }
 
-  removeChildrenAt(parent: Node | bigint, index: number, count: number): Node | null {
+  removeChildrenAt(parent: Node | bigint | number, index: number, count: number): Node | null {
     const h = this.#requireHandle();
     const { status, head } = this.port.treeRemoveChildrenAt(
       h,
-      toNodeAddress(parent),
+      nodeAddress(parent),
       index,
       count,
     );

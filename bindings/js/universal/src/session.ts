@@ -77,7 +77,14 @@ export function __resetLanguageCache(): void {
  */
 function languageForPort(port: FfiPort, backend: Backend, scanned: unknown): Language {
   const hit = languageByPort.get(port);
-  if (hit !== undefined) return hit;
+  if (hit !== undefined) {
+    // A directory open over an already-resolved handle (a bare load can
+    // precede it): wire whatever the scan found, filling only names
+    // never installed, so explicit installs keep winning. Bare loads
+    // pass null and never scan.
+    hit.installBundledProcedures(scanned);
+    return hit;
+  }
   const made = Language.create(port, backend, scanned);
   languageByPort.set(port, made);
   return made;

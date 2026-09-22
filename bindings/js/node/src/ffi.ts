@@ -21,7 +21,7 @@ import type {
   TreeSnapshot,
   WalkedStep,
 } from "@sanbus/galley-core";
-import { GalleyError, MissingArtifactError } from "@sanbus/galley-core";
+import { GalleyError, MissingArtifactError, Status } from "@sanbus/galley-core";
 import {
   resolveArtifact,
   resolveArtifactFile,
@@ -524,12 +524,12 @@ export class NodePort implements FfiPort {
           variable, spanStart, spanLen, BigInt(count),
         ),
       );
-      if (total < 0) throw new GalleyError("galley_tree_snapshot failed", total);
+      if (total < 0) throw new GalleyError("galley_tree_snapshot failed", total as Status);
       if (total === count) {
         return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
       }
     }
-    throw new GalleyError("node count changed during galley_tree_snapshot", -8);
+    throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
   // -- walker ------------------------------------------------------------

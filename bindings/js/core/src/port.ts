@@ -85,8 +85,9 @@ export interface FfiPort {
   /** End position of the most recent successful parse; null on failure. */
   lastPosition(handle: Handle): [number, number] | null;
   /**
-   * Retained input of the most recent parse: the buffer snapshot spans
-   * index. Empty before the first parse; null only on native failure.
+   * Retained input of the most recent successful parse: the buffer
+   * snapshot spans index. Empty before the first parse; null only on
+   * native failure.
    */
   lastInput(handle: Handle): Uint8Array | null;
 

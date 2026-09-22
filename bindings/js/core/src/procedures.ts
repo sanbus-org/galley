@@ -16,9 +16,10 @@
  * node accessors on the parsing session).
  */
 
-import { INVALID_NODE } from "./constants.ts";
+import { INVALID_NODE, Status } from "./constants.ts";
 import type { Handle, FfiPort } from "./port.ts";
-import { Node } from "./node.ts";
+import { Node, nodeAddress } from "./node.ts";
+import { GalleyError } from "./errors.ts";
 import type { Session } from "./session.ts";
 import { checkMessageBytes } from "./sources.ts";
 
@@ -44,33 +45,24 @@ export class ProcedureArguments {
     return new Node(this.#session, address);
   }
 
-  setCurrentNode(node: Node | bigint): void {
-    const address = typeof node === "bigint" ? node : node.address;
-    this.#port.procSetCurrentNode(this.#args, address);
+  setCurrentNode(node: Node | bigint | number): void {
+    this.#port.procSetCurrentNode(this.#args, nodeAddress(node));
   }
 
   dropSelf(): void {
-    if (this.#port.procDropSelf(this.#args) < 0) {
-      throw new Error("galley_procedure_drop_self failed");
-    }
+    this.#raiseOnFailure("dropSelf", this.#port.procDropSelf(this.#args));
   }
 
   dropChildren(): void {
-    if (this.#port.procDropChildren(this.#args) < 0) {
-      throw new Error("galley_procedure_drop_children failed");
-    }
+    this.#raiseOnFailure("dropChildren", this.#port.procDropChildren(this.#args));
   }
 
   dropIfEmpty(): void {
-    if (this.#port.procDropIfEmpty(this.#args) < 0) {
-      throw new Error("galley_procedure_drop_if_empty failed");
-    }
+    this.#raiseOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#args));
   }
 
   replaceWithChildren(): void {
-    if (this.#port.procReplaceWithChildren(this.#args) < 0) {
-      throw new Error("galley_procedure_replace_with_children failed");
-    }
+    this.#raiseOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#args));
   }
 
   currentLine(): number {
@@ -91,8 +83,23 @@ export class ProcedureArguments {
       this.#args,
       checkMessageBytes(message, "galley: reportSemanticError"),
     );
-    if (status < 0) throw new Error("galley_procedure_report_semantic_error failed");
+    this.#raiseOnFailure("reportSemanticError", status);
     return status;
+  }
+
+  /**
+   * Raises the host failure type for a negative native status: a
+   * `GalleyError` carrying the status as its named code. Procedure
+   * operations attach no diagnostic, so the snapshot is null — parity
+   * with Python's `check_status` path.
+   */
+  #raiseOnFailure(operation: string, status: number): void {
+    if (status >= 0) return;
+    throw new GalleyError(
+      `galley: ${operation} failed: ${this.#port.statusString(status) ?? "unknown galley error"}`,
+      status as Status,
+      null,
+    );
   }
 }
 
@@ -123,27 +130,33 @@ export class ProcedureRegistry {
   }
 
   /**
-   * Installs hooks from one module, an array of modules, or nested
-   * arrays; nullish entries are skipped. Later entries win per hook
-   * name, so factories pass scanned defaults ahead of explicit user
-   * modules.
+   * Installs bundled scan hooks from one module, an array of modules,
+   * or nested arrays; nullish entries are skipped. Only names with no
+   * existing hook install, so explicit installs win over bundled scans
+   * regardless of order. Returns the number installed.
    */
-  installAll(value: unknown): void {
-    if (value === null || value === undefined) return;
+  installBundled(value: unknown): number {
+    if (value === null || value === undefined) return 0;
     if (Array.isArray(value)) {
-      for (const entry of value) this.installAll(entry);
-      return;
+      let total = 0;
+      for (const entry of value) total += this.installBundled(entry);
+      return total;
     }
-    this.installModule(value as Record<string, unknown>);
+    return this.#scanModule(value as Record<string, unknown>, false);
   }
 
   /**
    * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each function. Returns the
-   * number installed. Mirrors `bindings/python/_galley.c:2339`
-   * `install_procedures`.
+   * `reduction_*`, `hook_*`) and registers each function, later
+   * entries winning per hook name. Returns the number installed.
+   * Mirrors `bindings/python/_galley.c:2339` `install_procedures`.
    */
   installModule(module: Record<string, unknown>): number {
+    return this.#scanModule(module, true);
+  }
+
+  /** Shared module scan: name filter, near-miss warning, overwrite policy. */
+  #scanModule(module: Record<string, unknown>, overwrite: boolean): number {
     if (module === null || typeof module !== "object") throw new TypeError("module must be an object");
     let count = 0;
     for (const [name, value] of Object.entries(module)) {
@@ -152,6 +165,7 @@ export class ProcedureRegistry {
         warnOnNearMissHook(name);
         continue;
       }
+      if (!overwrite && this.#hooks.has(name)) continue;
       this.#hooks.set(name, value as HookFn);
       count++;
     }

@@ -35,17 +35,19 @@ export { encodeUtf8, decodeUtf8, byteLengthUtf8 } from "./text.ts";
 /**
  * Rejects option keys outside the allowed set: option bags are checked
  * at runtime because untyped callers bypass the interfaces. Each
- * factory passes its own allowlist.
+ * factory passes its own allowlist and the hint naming where the
+ * rejected keys do belong.
  */
 export function rejectSessionOptions(
   options: Record<string, unknown>,
   what: string,
   allowed: ReadonlySet<string>,
+  hint = "parser tunables belong to openSession",
 ): void {
   const unexpected = Object.keys(options).filter((key) => !allowed.has(key));
   if (unexpected.length > 0) {
     throw new TypeError(
-      `galley: ${what} does not accept ${unexpected.join(", ")}; parser tunables belong to openSession`,
+      `galley: ${what} does not accept ${unexpected.join(", ")}; ${hint}`,
     );
   }
 }
