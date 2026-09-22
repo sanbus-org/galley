@@ -137,6 +137,58 @@ static PyObject *dispatch_table_for(PyObject *session_obj)
     return py_procedure_table;
 }
 
+/* Decides the hook call shape before invoking: a plain Python function
+ * (or bound method) declaring no positional parameters gets no
+ * arguments; anything else -- including variadic and defaulted
+ * declarations -- gets the ProcedureArguments object. Deciding up front
+ * means a TypeError raised inside a hook body is reported as-is instead
+ * of being cleared and retried as a supposed arity mismatch (which also
+ * ran the hook a second time). Non-function callables (builtins,
+ * partials, callable objects) report -1 and keep the legacy probe
+ * below. */
+static int hook_takes_no_arguments(PyObject *callable)
+{
+    PyObject *func = callable;
+    PyObject *code = NULL;
+    PyObject *count_obj = NULL;
+    PyObject *flags_obj = NULL;
+    long positional;
+    long flags;
+    int bound_self = 0;
+
+    if (PyMethod_Check(func)) {
+        func = PyMethod_GET_FUNCTION(func);
+        bound_self = 1;
+    }
+    if (!PyFunction_Check(func))
+        return -1;
+    code = PyObject_GetAttrString(func, "__code__");
+    if (code == NULL) {
+        PyErr_Clear();
+        return -1;
+    }
+    count_obj = PyObject_GetAttrString(code, "co_argcount");
+    flags_obj = PyObject_GetAttrString(code, "co_flags");
+    Py_DECREF(code);
+    if (count_obj == NULL || flags_obj == NULL) {
+        Py_XDECREF(count_obj);
+        Py_XDECREF(flags_obj);
+        PyErr_Clear();
+        return -1;
+    }
+    positional = PyLong_AsLong(count_obj);
+    flags = PyLong_AsLong(flags_obj);
+    Py_DECREF(count_obj);
+    Py_DECREF(flags_obj);
+    if ((positional == -1 || flags == -1) && PyErr_Occurred()) {
+        PyErr_Clear();
+        return -1;
+    }
+    if (positional - bound_self <= 0 && !(flags & CO_VARARGS))
+        return 1;
+    return 0;
+}
+
 /* Python procedure dispatch: called from the generated Zig shim
  * (procedures_python.zig) for every reduction. The shim holds a
  * single global function pointer registered at module init; when the
@@ -158,8 +210,18 @@ static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
             PyErr_Clear();
         return;
     }
-    /* Pass a ProcedureArguments object; hooks that ignore it or take
-     * no args remain compatible. */
+    /* The call shape is decided before invoking: no-arg hooks are
+     * called empty, so a TypeError from a hook body is never mistaken
+     * for an arity mismatch. Unknown shapes keep the legacy probe. */
+    int no_arguments = hook_takes_no_arguments(callable);
+    if (no_arguments > 0) {
+        PyObject *result = PyObject_CallNoArgs(callable);
+        if (result == NULL)
+            PyErr_Print();
+        else
+            Py_DECREF(result);
+        return;
+    }
     PyObject *arg = make_procedure_args(args);
     if (arg == NULL) {
         PyErr_Clear();
@@ -168,8 +230,12 @@ static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
     PyObject *result = PyObject_CallOneArg(callable, arg);
     Py_DECREF(arg);
     if (result == NULL) {
-        if (PyErr_ExceptionMatches(PyExc_TypeError)) {
-            /* Allow def foo(): hooks that take no args. */
+        if (no_arguments == 0) {
+            /* Arity was decided up front: a genuine hook-body failure. */
+            PyErr_Print();
+        } else if (PyErr_ExceptionMatches(PyExc_TypeError)) {
+            /* Unknown shape (builtin, partial, callable object): allow
+             * hooks that take no args. */
             PyErr_Clear();
             result = PyObject_CallNoArgs(callable);
             if (result == NULL)
@@ -467,12 +533,6 @@ static PyObject *bytes_from_pair(const char *data, size_t length)
 {
     return PyBytes_FromStringAndSize(length > 0 ? data : "",
                                      (Py_ssize_t)length);
-}
-
-static PyObject *unicode_from_pair(const char *data, size_t length)
-{
-    return PyUnicode_FromStringAndSize(length > 0 ? data : "",
-                                       (Py_ssize_t)length);
 }
 
 static inline GalleySession *require_session(PyObject *self)
@@ -797,12 +857,20 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
     filesystem_path = PyOS_FSPath(path);
     if (filesystem_path == NULL)
         return NULL;
+    Py_ssize_t path_length = 0;
     if (PyUnicode_Check(filesystem_path)) {
-        data = PyUnicode_AsUTF8AndSize(filesystem_path, NULL);
+        data = PyUnicode_AsUTF8AndSize(filesystem_path, &path_length);
     } else if (PyBytes_Check(filesystem_path)) {
         data = PyBytes_AS_STRING(filesystem_path);
+        path_length = PyBytes_GET_SIZE(filesystem_path);
     } else {
         PyErr_SetString(PyExc_TypeError, "path must be str or bytes");
+    }
+    /* Paths cross into native code NUL-terminated: an interior NUL
+     * would silently truncate, so reject loudly instead. */
+    if (data != NULL && memchr(data, '\0', (size_t)path_length) != NULL) {
+        PyErr_SetString(PyExc_ValueError, "path contains an interior NUL byte");
+        data = NULL;
     }
     if (data != NULL) {
         PyObject *previous = push_parsing_session(self);
@@ -1187,8 +1255,9 @@ PyDoc_STRVAR(walk_doc,
 "Returns a pre-order Walker over the subtree rooted at ``root``. Each\n"
 "iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
 "with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
-"subtrees rooted at semantic-error nodes. Returns None for an invalid\n"
-"root or a build without AST construction. The walker is bound to the\n"
+"subtrees rooted at semantic-error nodes. Returns None for an unresolvable\n"
+"root or a build without AST construction; a stale node -- its session\n"
+"parsed again or closed -- raises ValueError. The walker is bound to the\n"
 "parse that created it: stepping it after the session parses again or\n"
 "closes raises ValueError, so parsing with an abandoned walker still\n"
 "succeeds and the walker fails at its next step.");
@@ -1381,17 +1450,17 @@ typedef struct {
     PyObject *message_ansi;          /* str */
     PyObject *unexpected_token;      /* bytes | None */
     PyObject *expected_tokens;       /* tuple[bytes, ...] */
-    PyObject *context;               /* tuple[str, ...] */
+    PyObject *context;               /* tuple[bytes, ...] */
     long syntax_error_count;
     long semantic_error_count;
-    PyObject *semantic;              /* (variable str, message str) | None */
+    PyObject *semantic;              /* (variable bytes, message str) | None */
     PyObject *indentation;           /* (spaces, width) | None */
     PyObject *recovery_kind;         /* int | None */
     PyObject *recovery_terminal;     /* bytes | None */
     PyObject *recovery_resume;       /* int | None */
-    PyObject *recovery_lhs_variable; /* str | None */
-    PyObject *recovery_production;   /* (variable, rhs_index) | None */
-    PyObject *recovery_occurrence;   /* (parent, rhs, symbol, variable) | None */
+    PyObject *recovery_lhs_variable; /* bytes | None */
+    PyObject *recovery_production;   /* (variable bytes, rhs_index) | None */
+    PyObject *recovery_occurrence;   /* (parent bytes, rhs, symbol, variable bytes) | None */
 } DiagnosticObject;
 
 static void Diagnostic_dealloc(DiagnosticObject *self)
@@ -1414,7 +1483,7 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
 
 static PyMemberDef Diagnostic_members[] = {
     {"kind", T_LONG, offsetof(DiagnosticObject, kind), READONLY,
-     "diagnostic classification: KIND_NONE, KIND_SYNTAX, KIND_SEMANTIC, KIND_INDENTATION"},
+     "diagnostic classification: Kind.NONE, Kind.SYNTAX, Kind.SEMANTIC, Kind.INDENTATION"},
     {"line", T_LONG, offsetof(DiagnosticObject, line), READONLY,
      "1-based line of the failure"},
     {"column", T_LONG, offsetof(DiagnosticObject, column), READONLY,
@@ -1439,18 +1508,18 @@ static PyMemberDef Diagnostic_members[] = {
      "how many semantic errors the parse recorded"},
     {"semantic", T_OBJECT,
      offsetof(DiagnosticObject, semantic), READONLY,
-     "(variable, message) for semantic errors, else None"},
+     "(variable bytes, message str) for semantic errors, else None"},
     {"indentation", T_OBJECT, offsetof(DiagnosticObject, indentation),
      READONLY,
      "(emitted spaces, indentation width) for indentation errors"},
     {"recovery_kind", T_OBJECT, offsetof(DiagnosticObject, recovery_kind),
-     READONLY, "applied recovery target kind (RECOVERY_TARGET_ constants)"},
+     READONLY, "applied recovery target (RecoveryTarget.NONE, RecoveryTarget.LHS_VARIABLE, RecoveryTarget.PRODUCTION, RecoveryTarget.OCCURRENCE)"},
     {"recovery_terminal", T_OBJECT,
      offsetof(DiagnosticObject, recovery_terminal), READONLY,
      "synchronization terminal bytes chosen by recovery"},
     {"recovery_resume", T_OBJECT,
      offsetof(DiagnosticObject, recovery_resume), READONLY,
-     "RESUME_BEFORE or RESUME_AFTER"},
+     "Resume.BEFORE or Resume.AFTER"},
     {"recovery_lhs_variable", T_OBJECT,
      offsetof(DiagnosticObject, recovery_lhs_variable), READONLY,
      "LHS variable scope of the applied recovery"},
@@ -1579,7 +1648,7 @@ static PyObject *build_diagnostic(GalleySession *session)
             if (galley_diagnostic_context_at(session, index, &text,
                                              &length) != galley_ok)
                 text = NULL; /* Unreachable in practice; keeps the tuple dense. */
-            name = unicode_from_pair(text, length);
+            name = bytes_from_pair(text, length);
             if (name == NULL)
                 goto fail;
             PyTuple_SET_ITEM(context, (Py_ssize_t)index, name);
@@ -1602,7 +1671,7 @@ static PyObject *build_diagnostic(GalleySession *session)
             PyObject *message_obj;
             if (pair == NULL)
                 goto fail;
-            variable_obj = PyUnicode_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
+            variable_obj = PyBytes_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
             message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
             if (variable_obj == NULL || message_obj == NULL) {
                 Py_XDECREF(variable_obj);
@@ -1646,14 +1715,14 @@ static PyObject *build_diagnostic(GalleySession *session)
     }
     if (galley_diagnostic_recovery_lhs_variable(session, &text, &length) ==
         galley_ok) {
-        PyObject *name = unicode_from_pair(text, length);
+        PyObject *name = bytes_from_pair(text, length);
         if (name == NULL)
             goto fail;
         Py_SETREF(diagnostic->recovery_lhs_variable, name);
     }
     if (galley_diagnostic_recovery_production(session, &text, &length,
                                               &first) == galley_ok) {
-        PyObject *name = unicode_from_pair(text, length);
+        PyObject *name = bytes_from_pair(text, length);
         PyObject *pair;
         if (name == NULL)
             goto fail;
@@ -1673,16 +1742,16 @@ static PyObject *build_diagnostic(GalleySession *session)
                 session, &parent_text, &parent_length, &first, &second,
                 &variable_text, &variable_length) == galley_ok) {
             PyObject *parent_name =
-                unicode_from_pair(parent_text, parent_length);
+                bytes_from_pair(parent_text, parent_length);
             PyObject *variable_name =
-                unicode_from_pair(variable_text, variable_length);
+                bytes_from_pair(variable_text, variable_length);
             PyObject *quadruple;
             if (parent_name == NULL || variable_name == NULL) {
                 Py_XDECREF(parent_name);
                 Py_XDECREF(variable_name);
                 goto fail;
             }
-            quadruple = Py_BuildValue("(NIII)", parent_name, first, second,
+            quadruple = Py_BuildValue("(NIIN)", parent_name, first, second,
                                       variable_name);
             if (quadruple == NULL) {
                 Py_DECREF(parent_name);
@@ -1793,7 +1862,7 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
             PyObject *item;
             if (galley_recorded_context_name(session, index, i, &name, &name_len) != galley_ok)
                 name = NULL;
-            item = PyUnicode_FromStringAndSize(name ? name : "", name ? (Py_ssize_t)name_len : 0);
+            item = PyBytes_FromStringAndSize(name ? name : "", name ? (Py_ssize_t)name_len : 0);
             if (item == NULL)
                 goto fail;
             PyTuple_SET_ITEM(context, (Py_ssize_t)i, item);
@@ -1810,7 +1879,7 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
             PyObject *message_obj;
             if (pair == NULL)
                 goto fail;
-            variable_obj = PyUnicode_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
+            variable_obj = PyBytes_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
             message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
             if (variable_obj == NULL || message_obj == NULL) {
                 Py_XDECREF(variable_obj);
@@ -3251,12 +3320,12 @@ static PyObject *module_procedure_hook(PyObject *Py_UNUSED(module),
 static PyMethodDef module_methods[] = {
     {"version", module_version, METH_NOARGS, version_doc},
     {"parser_type", module_parser_type, METH_NOARGS,
-     "parser_type()\n\nReturns the parser family: PARSER_TYPE_LL or\n"
-     "PARSER_TYPE_LR."},
+     "parser_type()\n\nReturns the parser family: ParserType.LL or\n"
+     "ParserType.LR."},
     {"error_recovery_mode", module_error_recovery_mode, METH_NOARGS,
      "error_recovery_mode()\n\nReturns the generated error-recovery mode:\n"
-     "RECOVERY_MODE_DISABLED, RECOVERY_MODE_AUTOMATIC, or\n"
-     "RECOVERY_MODE_EXPLICIT."},
+     "RecoveryMode.DISABLED, RecoveryMode.AUTOMATIC, or\n"
+     "RecoveryMode.EXPLICIT."},
     {"has_ast", module_has_ast, METH_NOARGS,
      "has_ast()\n\nReturns whether the library was built with AST\n"
      "construction."},

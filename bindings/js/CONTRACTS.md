@@ -26,7 +26,7 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 
 ## Inputs and resources
 
-- Parsing accepts strings and byte arrays plus idiomatic view and path forms; file paths accept `URL` objects where the platform defines them.
+- Parsing accepts strings and byte arrays plus idiomatic view and path forms; file paths accept `URL` objects where the platform defines them; rejected interior-NUL paths throw `TypeError`.
 - Nodes compare through an explicit equality method and expose their address as a `bigint` getter.
 - `Map` and `Set` key nodes by reference identity; session-plus-address equality is available only through the explicit method.
 - Walkers close explicitly or through `using` blocks; sessions close explicitly or through disposal blocks.

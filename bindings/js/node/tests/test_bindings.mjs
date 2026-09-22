@@ -111,6 +111,7 @@ await test("missing artifact names the directory", async () => {
 await test("galley.load requires filePath", async () => {
   await assert.rejects(galley.load(""), /filePath/);
   await assert.rejects(galley.load(), /filePath/);
+  await assert.rejects(galley.load("no-such-lib\0"), /interior NUL/);
 });
 
 await test("galley.load missing artifact names the file", async () => {
@@ -269,6 +270,7 @@ await test("parse accepts string and buffers", async () => {
     assert.equal(s.parseFile(p), sample.length);
     assert.equal(s.parseFile(pathToFileURL(p)), sample.length);
     assert.throws(() => s.parseFile(Buffer.from(p)), TypeError);
+    assert.throws(() => s.parseFile(p + "\0"), TypeError);
   } finally {
     s.close();
   }

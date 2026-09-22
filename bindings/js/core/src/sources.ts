@@ -29,12 +29,29 @@ export function checkArtifactPath(filePath: unknown, what: string): string {
 function checkPath(value: unknown, what: string, expectation: string): string {
   if (typeof value === "string") {
     if (value.length === 0) throw new TypeError(`${what} requires ${expectation}`);
-    return value;
+    return rejectInteriorNul(value, what, expectation);
   }
   if (typeof value === "object" && value !== null && typeof (value as { href?: unknown }).href === "string") {
-    return fileUrlToPath(value as { href: string }, what, expectation);
+    return rejectInteriorNul(
+      fileUrlToPath(value as { href: string }, what, expectation),
+      what,
+      expectation,
+    );
   }
   throw new TypeError(`${what} requires ${expectation}`);
+}
+
+/**
+ * Filesystem paths cross into native code as NUL-terminated strings,
+ * so an interior NUL would silently truncate: reject loudly instead.
+ * The single gate for every path entry (language directories, artifact
+ * files, parse inputs by path), string and `file:` URL forms alike.
+ */
+function rejectInteriorNul(path: string, what: string, expectation: string): string {
+  if (path.includes("\0")) {
+    throw new TypeError(`${what} requires ${expectation} without interior NUL bytes`);
+  }
+  return path;
 }
 
 /** Decodes a `file:` URL to a filesystem path without `node:` imports. */

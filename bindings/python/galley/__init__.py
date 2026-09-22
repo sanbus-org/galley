@@ -28,6 +28,7 @@ startup.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -71,8 +72,17 @@ def load(path: str | Path) -> ModuleType:
     No ``procedures.py`` scan: hook wiring beyond the build goes
     through the module's ``install_procedure`` / ``install_procedures``
     directly, where the shared-registry semantics are visible.
+
+    Paths with an interior NUL byte are rejected loudly instead of
+    truncated: like ``Session.parse_file``, this entry never lets a
+    NUL cross into native code.
     """
-    candidate = Path(path)
+    raw = os.fspath(path)
+    if (isinstance(raw, bytes) and b"\0" in raw) or (
+        isinstance(raw, str) and "\0" in raw
+    ):
+        raise ValueError(f"artifact path contains an interior NUL byte: {raw!r}")
+    candidate = Path(raw)
     if not candidate.is_file():
         raise MissingArtifactError(
             f"no compiled grammar at {candidate}; "

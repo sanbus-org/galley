@@ -68,6 +68,27 @@ class ModuleSurfaceTests(unittest.TestCase):
         module_names = [n for n in dir(grammar) if not n.startswith("_")]
         self.assertEqual(sorted(set(names)), sorted(set(module_names)))
 
+    def test_stub_walk_return_allows_none(self):
+        # Runtime returns None for an invalid root (shared contract: host
+        # empty value); the stub must spell the same `Walker | None`.
+        import ast
+        import pathlib
+
+        stub_path = pathlib.Path(grammar.__file__).parent / "__init__.pyi"
+        tree = ast.parse(stub_path.read_text(encoding="utf-8"))
+        session_class = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "Session"
+        )
+        walk = next(
+            node
+            for node in session_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "walk"
+        )
+        assert walk.returns is not None
+        self.assertEqual(ast.unparse(walk.returns), "Walker | None")
+
     def test_version_returns_non_empty_string(self):
         self.assertIsInstance(grammar.version(), str)
         self.assertNotEqual(grammar.version(), "")
@@ -255,7 +276,7 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(
             all(isinstance(token, bytes) for token in diagnostic.expected_tokens)
         )
-        self.assertEqual(diagnostic.context[-1], "Number")
+        self.assertEqual(diagnostic.context[-1], b"Number")
         self.assertIsInstance(diagnostic.syntax_error_count, int)
 
     def test_diagnostic_resets_after_successful_parse(self):
@@ -281,6 +302,14 @@ class SessionTests(unittest.TestCase):
         assert position is not None
         end_line, end_column = position
         self.assertEqual((end_line, end_column), (1, 17))
+
+    def test_file_parsing_rejects_interior_nul(self):
+        # Paths cross into native code NUL-terminated: an interior NUL
+        # is a loud ValueError, never a silent truncation.
+        with self.assertRaises(ValueError):
+            self.session.parse_file("/tmp/galley-python-bindings-test.kv\0")
+        with self.assertRaises(ValueError):
+            self.session.parse_file(b"/tmp/galley-python-bindings-test.kv\0")
 
 
 class SemanticErrorTests(unittest.TestCase):
@@ -321,13 +350,13 @@ class SemanticErrorTests(unittest.TestCase):
         self.assertEqual(diagnostic.kind, grammar.Kind.SEMANTIC)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.semantic_error_count, 2)
-        self.assertEqual(diagnostic.semantic, ("Number", "value out of range"))
+        self.assertEqual(diagnostic.semantic, (b"Number", "value out of range"))
         self.assertIn("SemanticError", diagnostic.message)
         recorded = self.session.diagnostics()
         self.assertEqual(len(recorded), 2)
         self.assertTrue(all(item.kind == grammar.Kind.SEMANTIC for item in recorded))
         self.assertTrue(
-            all(item.semantic == ("Number", "value out of range") for item in recorded)
+            all(item.semantic == (b"Number", "value out of range") for item in recorded)
         )
 
     def test_counts_reset_after_successful_parse(self) -> None:
@@ -349,6 +378,77 @@ class SemanticErrorTests(unittest.TestCase):
             self.assertEqual(len(self.session.diagnostics()), 0)
         finally:
             grammar.clear_procedures()
+
+
+class HookDispatchTests(unittest.TestCase):
+    session: grammar.Session
+    saved_procedures: dict[str, Any]
+
+    def setUp(self) -> None:
+        self.session = grammar.Session(max_errors=10)
+        self.saved_procedures = grammar.list_procedures()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        _restore_procedures(self.saved_procedures)
+
+    def test_throwing_hook_never_aborts_parse(self) -> None:
+        # A hook-body failure is reported, never fatal: the parse
+        # completes and every reduction still ran its hook exactly once.
+        fired: list[int] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            fired.append(int(node))
+            raise ValueError("hook body failure")
+
+        grammar.install_procedure("reduction_Number", reduction_Number)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            grammar.clear_procedures()
+        self.assertEqual(len(fired), 2)
+        self.assertEqual(len(set(fired)), 2)
+
+    def test_body_type_error_is_not_retried_without_args(self) -> None:
+        # A TypeError from inside the hook body must surface as-is: no
+        # silent retry with no arguments, no second invocation.
+        calls: list[bool] = []
+        attempted: set[int] = set()
+
+        def reduction_Number(args: Any = None) -> None:
+            calls.append(args is None)
+            if args is None:
+                return
+            node = int(args.current_node())
+            if node not in attempted:
+                attempted.add(node)
+                raise TypeError("body boom")
+
+        grammar.install_procedure("reduction_Number", reduction_Number)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            grammar.clear_procedures()
+        self.assertEqual(len(attempted), 2)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(any(calls))
+
+    def test_zero_arg_hook_fires_once_per_reduction(self) -> None:
+        # Hooks taking no arguments stay compatible: called empty, once
+        # per reduction.
+        fired: list[bool] = []
+
+        def reduction_Pair() -> None:
+            fired.append(True)
+
+        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            grammar.clear_procedures()
+        self.assertEqual(len(fired), 2)
 
 
 class ProcedureChannelTests(unittest.TestCase):
@@ -603,6 +703,16 @@ class WalkTests(unittest.TestCase):
         walker.skip_children()
         self.assertEqual(list(walker), [])
         self.assertIsNone(self.session.walk(grammar.INVALID_NODE))
+
+    def test_walk_stale_root_raises(self) -> None:
+        # A Node root from a previous parse generation is stale: the
+        # walk refuses it loudly instead of reading reallocated storage.
+        # (Unresolvable int addresses return None; see above.)
+        root = self.session.root_node()
+        assert root is not None
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaises(ValueError):
+            self.session.walk(root)
 
     def test_walker_close_is_idempotent_and_scoped(self) -> None:
         root = self.session.root_node()
@@ -912,6 +1022,10 @@ class LoaderTests(unittest.TestCase):
         self.assertIsInstance(raised.exception, FileNotFoundError)
         self.assertEqual(raised.exception.code, "galley:missing-artifact")
 
+    def test_nul_artifact_path_is_rejected_loudly(self) -> None:
+        with self.assertRaises(ValueError):
+            galley.load("no-such-grammar\0.so")
+
     def test_same_path_returns_same_module(self) -> None:
         impl = self._copy_impl()
         first = galley.load(impl)
@@ -1080,6 +1194,43 @@ class LoaderTests(unittest.TestCase):
         from directlang import procedures as namespace
 
         self.assertEqual(namespace.seen, [b"12"])
+
+
+class BuildGuardTests(unittest.TestCase):
+    """Contracts of the clobber guard.
+
+    The guard is a pure function of file content, so it is tested
+    directly: no generator, no rebuild. Foreign files are a loud fatal
+    and left in place; marked and absent paths pass through.
+    """
+
+    def test_guard_refuses_foreign_files(self) -> None:
+        from galley import build as build_module
+
+        with tempfile.TemporaryDirectory(prefix="galley-guard-test-") as tmp:
+            foreign = Path(tmp) / "procedures_python.zig"
+            foreign.write_text("// hand-written shim\n", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                build_module.assert_generated_or_absent(foreign)
+            self.assertTrue(foreign.is_file())
+            marked = Path(tmp) / "__init__.pyi"
+            marked.write_text(f"# {build_module.GENERATED_MARKER}\n", encoding="utf-8")
+            build_module.assert_generated_or_absent(marked)
+            build_module.assert_generated_or_absent(Path(tmp) / "absent.zig")
+            # Legacy output predates the banner: a bare copy of the stub
+            # source passes, while a foreign file does not.
+            legacy = Path(tmp) / "legacy.pyi"
+            legacy.write_text(
+                '"""\nType stubs for a Galley language package.\n"""\n',
+                encoding="utf-8",
+            )
+            build_module.assert_generated_or_absent(
+                legacy, build_module.STUB_LEGACY_HEAD
+            )
+            with self.assertRaises(SystemExit):
+                build_module.assert_generated_or_absent(
+                    foreign, build_module.STUB_LEGACY_HEAD
+                )
 
 
 if __name__ == "__main__":

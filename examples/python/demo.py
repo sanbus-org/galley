@@ -101,7 +101,7 @@ def main() -> int:
 
         context = "while parsing (innermost first):"
         for name in diagnostic.context:
-            context += f" {name}"
+            context += f" {name.decode()}"
         print(context)
 
         # Multi-error parse: every recorded diagnostic stays addressable.

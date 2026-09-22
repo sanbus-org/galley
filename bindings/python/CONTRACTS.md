@@ -18,7 +18,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 
 ## Inputs and resources
 
-- Parsing accepts `str` plus the buffer protocol; file paths accept path-like objects.
+- Parsing accepts `str` plus the buffer protocol; file paths accept path-like objects; rejected interior-NUL paths raise `ValueError`.
 - Sessions are not thread-safe, and every call holds the GIL.
 - Nodes are hashable by address with session-aware equality, so they work as dict keys and set members.
 - Nodes expose their address as a read-only attribute alongside `int` and `index` conversions.

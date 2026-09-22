@@ -111,7 +111,7 @@ class Diagnostic:
     """
 
     kind: int
-    """``KIND_*`` classification."""
+    """``Kind`` classification (``Kind.SYNTAX``, ...)."""
     line: int
     """1-based line of the failure."""
     column: int
@@ -130,16 +130,16 @@ class Diagnostic:
     """How many syntax errors the recovery-enabled parse recorded."""
     semantic_error_count: int
     """How many semantic errors the parse recorded."""
-    semantic: tuple[str, str] | None
-    """``(variable, message)`` for semantic errors, else ``None``."""
+    semantic: tuple[bytes, str] | None
+    """``(variable bytes, message)`` for semantic errors, else ``None``."""
     indentation: tuple[int, int] | None
     """``(emitted spaces, width)`` for indentation errors, else ``None``."""
     recovery_kind: int | None
-    """``RECOVERY_TARGET_*`` of the applied recovery, if any."""
+    """``RecoveryTarget`` of the applied recovery, if any."""
     recovery_terminal: bytes | None
     """Synchronization terminal bytes chosen by recovery."""
     recovery_resume: int | None
-    """``RESUME_BEFORE`` or ``RESUME_AFTER``."""
+    """``Resume.BEFORE`` or ``Resume.AFTER``."""
     recovery_lhs_variable: bytes | None
     """LHS variable scope of the applied recovery."""
     recovery_production: tuple[bytes, int] | None
@@ -444,11 +444,15 @@ class Session:
     def next_sibling(self, node: Node | int) -> Node | None: ...
     def prior_sibling(self, node: Node | int) -> Node | None: ...
     def parent(self, node: Node | int) -> Node | None: ...
-    def walk(self, root: Node | int, skip_semantic_errors: bool = False) -> Walker:
+    def walk(
+        self, root: Node | int, skip_semantic_errors: bool = False
+    ) -> Walker | None:
         """Pre-order walker over ``root`` yielding step dicts.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
-        semantic-error nodes. Raises ``ValueError`` for an invalid root.
+        semantic-error nodes. Returns ``None`` for an unresolvable root
+        or a build without AST construction; a stale node — its session
+        parsed again or closed — raises ``ValueError``.
         The walker is bound to the current parse: stepping it after the
         session parses again or closes raises ``ValueError``.
         """
