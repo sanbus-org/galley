@@ -144,10 +144,48 @@ const Embedded = struct {
         return @intCast(address);
     }
 
-    /// Copies `input` into the session-owned retained buffer, growing it
-    /// on demand. Returns false when growth was needed and allocation
-    /// failed; the caller then keeps aliasing the live source instead.
-    fn retainInput(self: *Embedded, input: []const u8) bool {
+    /// Takes ownership of the session's just-parsed input buffer on success:
+    /// the retained side keeps the parsed bytes while the session receives
+    /// a scratch buffer for its next parse (the previous spare, or a fresh
+    /// faulted one on the first success, so both buffers are born before
+    /// timed code). No bytes move, so steady-state parses allocate only
+    /// when input outgrows the spare.
+    /// Returns false when the session does not own `source`; the caller
+    /// then falls back to copying.
+    fn adoptSessionInput(self: *Embedded, source: []const u8, bounded_len: usize) bool {
+        const owned = self.session.owned_input orelse return false;
+        if (@intFromPtr(source.ptr) != @intFromPtr(owned.ptr)) return false;
+        if (bounded_len == 0) {
+            self.last_input = self.retained_input[0..0];
+            return true;
+        }
+        const spare = self.retained_input;
+        self.retained_input = owned;
+        if (spare.len == 0) {
+            // First success: allocate the next scratch buffer now, faulted,
+            // so both buffers are born in this parse exactly like the
+            // pre-existing session buffer. Never store the static empty
+            // slice: its capacity helper would later free it.
+            const fresh = std.heap.c_allocator.alloc(u8, owned.len) catch null;
+            if (fresh) |scratch| {
+                @memset(scratch, 0);
+                self.session.owned_input = scratch;
+            } else {
+                self.session.owned_input = null;
+            }
+        } else {
+            self.session.owned_input = spare;
+        }
+        self.last_input = self.retained_input[0..bounded_len];
+        return true;
+    }
+
+    /// Copies `input` into the session-owned retained buffer. Only used for
+    /// sources the session does not own; session-owned inputs move through
+    /// `adoptSessionInput` with no copy. Returns false when growth was
+    /// needed and allocation failed; the caller then keeps aliasing the
+    /// live source instead.
+    fn retainCopiedInput(self: *Embedded, input: []const u8) bool {
         if (input.len == 0) return true;
         if (self.retained_input.len < input.len) {
             // Grow to at least double the current capacity so repeated
@@ -297,16 +335,21 @@ fn finishParse(embedded: *Embedded, result: root.ParseResult, source: []const u8
     // Retain exactly the parsed bytes in a session-owned buffer: the
     // session reuses its input buffer for the next parse (and callers
     // free theirs), so spans and galley_last_input must not alias
-    // either. The owned buffer carries sentinel and zero padding past
-    // the input; exposing exactly parsed keeps node spans and
-    // galley_last_input in agreement with the count parse reported.
+    // either. Ownership of the session's buffer moves to the retained
+    // side while the session receives the previous spare as its next
+    // scratch buffer, so no bytes move in steady state. The owned buffer
+    // carries sentinel and zero padding past the input; exposing exactly
+    // parsed keeps node spans and galley_last_input in agreement with
+    // the count parse reported.
     // Only success paths reach here, so a failed parse can never
     // destroy what the last successful parse retained.
     const bounded = source[0..@min(parsed, source.len)];
-    embedded.last_input = if (embedded.retainInput(bounded))
-        embedded.retained_input[0..bounded.len]
+    if (embedded.adoptSessionInput(source, bounded.len)) {
+        // Ownership transferred (or the parse was empty); last_input is set.
+    } else if (embedded.retainCopiedInput(bounded))
+        embedded.last_input = embedded.retained_input[0..bounded.len]
     else
-        bounded; // allocation failure: alias the live source as before
+        embedded.last_input = bounded; // allocation failure: alias the live source as before
     return @intCast(result.parsed_bytes);
 }
 
