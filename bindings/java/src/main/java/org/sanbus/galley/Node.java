@@ -13,10 +13,17 @@ import java.util.Objects;
 public final class Node implements Iterable<Node> {
     private final Session session;
     private final long address;
+    /**
+     * Parse generation stamped at construction. The constructor is the
+     * single creation gate: every node carries the generation it belongs
+     * to, so no accessor can read storage from an older parse.
+     */
+    private final long generation;
 
     public Node(Session session, long address) {
         this.session = Objects.requireNonNull(session, "session");
         this.address = address;
+        this.generation = session.parseGeneration();
     }
 
     public Session getSession() { return session; }
@@ -24,6 +31,18 @@ public final class Node implements Iterable<Node> {
 
     private void requireOpen() {
         if (session.isClosed()) throw new GalleyClosedException("node's session");
+        if (generation != session.parseGeneration()) throw GalleyClosedException.invalidated("node");
+    }
+
+    /**
+     * Single gate for session crossings that accept a node handle:
+     * validates the handle (a closed session or an older parse generation
+     * raises instead of reading stale storage) and yields the raw address.
+     * Raw addresses carry no generation and pass unguarded by design.
+     */
+    long validatedAddress() {
+        requireOpen();
+        return address;
     }
 
     // Delegated accessors

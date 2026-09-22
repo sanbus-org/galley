@@ -23,7 +23,9 @@ public final class Galley {
      * failed load binds and caches nothing. A null path resolves through
      * {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}, else a
      * loud error naming the exact path. Bare loads wire no hooks.
-     * Loads are not thread-safe: load each artifact once at startup.
+     * Same-path loads serialize against each other; sessions opened from
+     * the handle stay confined to one thread each and must never parse
+     * concurrently (see {@link Parser}).
      *
      * @throws MissingArtifactException when no artifact is where it was told.
      */
@@ -33,8 +35,7 @@ public final class Galley {
         synchronized (lock) {
             Parser existing = PARSER_CACHE.get(canonical);
             if (existing != null) return existing;
-            Parser created = new Parser(canonical, new GalleyLibrary(canonical));
-            created.installDispatchStub();
+            Parser created = Parser.create(canonical, new GalleyLibrary(canonical));
             PARSER_CACHE.put(canonical, created);
             return created;
         }
