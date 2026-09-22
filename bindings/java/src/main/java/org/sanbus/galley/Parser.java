@@ -23,6 +23,11 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * {@link Galley#load}, install hooks, then open sessions. Parsers are cached
  * by canonical artifact path for the process lifetime and the native library
  * cannot unload, so this handle is not closeable.
+ *
+ * Threading: sessions are confined to one thread each, and two sessions of
+ * one parser must never parse concurrently — native hook gates are
+ * artifact-global, so concurrent same-parser parses would race regardless
+ * of host-side locking.
  */
 public final class Parser {
 
@@ -38,17 +43,28 @@ public final class Parser {
     // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
     private MemorySegment dispatchStub = MemorySegment.NULL;
 
-    Parser(String canonicalPath, GalleyLibrary lib) {
+    private Parser(String canonicalPath, GalleyLibrary lib) {
         this.canonicalPath = canonicalPath;
         this.lib = lib;
     }
 
     /**
-     * Installs this parser's upcall stub. Called once by Galley.load for
+     * Fully-wired parser: the only construction path. Installs the upcall
+     * stub before returning so no half-built parser (stubless, hooks inert)
+     * can ever escape.
+     */
+    static Parser create(String canonicalPath, GalleyLibrary lib) {
+        Parser parser = new Parser(canonicalPath, lib);
+        parser.installDispatchStub();
+        return parser;
+    }
+
+    /**
+     * Installs this parser's upcall stub. Called once by {@link #create} for
      * the cache winner only, so racing loads never leave a loser's stub
      * installed natively.
      */
-    void installDispatchStub() {
+    private void installDispatchStub() {
         MemorySegment stub;
         try {
             var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",

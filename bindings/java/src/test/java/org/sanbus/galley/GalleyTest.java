@@ -1,6 +1,7 @@
 package org.sanbus.galley;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.function.Executable;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Behavioral tests for the Galley Java bindings.
@@ -228,6 +230,7 @@ public class GalleyTest {
             Files.writeString(p, "alpha:12,beta:3", StandardCharsets.UTF_8);
             int parsed = session.parseFile(p.toString());
             assertEquals(15, parsed);
+            assertEquals(15, session.parseFile(p));
             int[] pos = session.lastPosition();
             assertNotNull(pos);
             assertArrayEquals(new int[]{1, 17}, pos);
@@ -300,12 +303,18 @@ public class GalleyTest {
             assertThrows(IllegalArgumentException.class, () -> session.parse((ByteBuffer) null));
             assertThrows(IllegalArgumentException.class, () -> session.parseFile((String) null));
             assertThrows(IllegalArgumentException.class, () -> session.parseFile((File) null));
+            assertThrows(IllegalArgumentException.class, () -> session.parseFile((Path) null));
             assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride(null, "x"));
             assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride("Number", (String) null));
             assertThrows(IllegalArgumentException.class, () -> session.setMessageOverride("Number", (byte[]) null));
             assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverride(null, "x"));
             assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverride("Number", (byte[]) null));
             assertThrows(IllegalArgumentException.class, () -> SessionOptions.builder().messageOverrides(null));
+        }
+
+        @Test
+        void parseFileRejectsNulPathLoudly() {
+            assertThrows(IllegalArgumentException.class, () -> session.parseFile("kv\0.txt"));
         }
     }
 
@@ -540,8 +549,8 @@ public class GalleyTest {
             assertTrue(walker.hasNext());
             walker.next();
             assertEquals(15, session.parse("alpha:12,beta:3"));
-            GalleyClosedException invalidated = assertThrows(GalleyClosedException.class, walker::next);
-            assertTrue(invalidated.getMessage().contains("invalidated"));
+            GenerationInvalidatedException invalidated = assertThrows(GenerationInvalidatedException.class, walker::next);
+            assertEquals("walker", invalidated.getObjectName());
             assertThrows(GalleyClosedException.class, walker::skipChildren);
             walker.close();
             walker.close();
@@ -603,6 +612,137 @@ public class GalleyTest {
             assertThrows(GalleyException.class, () -> session.parse("alpha:"));
             assertThrows(GalleyClosedException.class, walker::next);
             walker.close();
+        }
+    }
+
+    @Nested
+    class NodeGenerationTests {
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession();
+            session.parse("alpha:12,beta:3");
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        private static void assertInvalidated(Executable read) {
+            assertThrows(GenerationInvalidatedException.class, read);
+        }
+
+        @Test
+        void nodeReadsAfterReparseRaise() {
+            Node stale = session.rootNode();
+            assertNotNull(stale);
+            Node staleChild = stale.firstChild();
+            assertNotNull(staleChild);
+            assertEquals(7, session.parse("alpha:1"));
+            // Every Node accessor family raises instead of reading stale storage.
+            assertInvalidated(stale::text);
+            assertInvalidated(stale::symbolName);
+            assertInvalidated(stale::symbolNameBytes);
+            assertInvalidated(stale::span);
+            assertInvalidated(stale::lineColumn);
+            assertInvalidated(stale::parent);
+            assertInvalidated(stale::firstChild);
+            assertInvalidated(stale::children);
+            assertInvalidated(stale::childCount);
+            assertInvalidated(stale::variableIndex);
+            assertInvalidated(stale::isValid);
+            assertInvalidated(() -> stale.at(0));
+            assertInvalidated(stale::iterator);
+            assertInvalidated(stale::cleanChildren);
+            assertInvalidated(() -> stale.appendChildren(staleChild));
+            // Session crossings that take the handle raise too.
+            assertInvalidated(() -> session.text(stale));
+            assertInvalidated(() -> session.symbolName(stale));
+            assertInvalidated(() -> session.span(stale));
+            assertInvalidated(() -> session.childCount(stale));
+            assertInvalidated(() -> session.children(stale));
+            assertInvalidated(() -> session.parent(stale));
+            assertInvalidated(() -> session.nodeValid(stale));
+            assertInvalidated(() -> session.cleanChildren(stale));
+            assertInvalidated(() -> session.walk(stale, false));
+            // Fresh handles from the new generation read fine.
+            Node fresh = session.rootNode();
+            assertNotNull(fresh);
+            assertNotNull(fresh.text());
+        }
+
+        @Test
+        void rawAddressesReadTheNewParseAfterReparse() {
+            long address = session.rootNode().getAddress();
+            assertNotNull(session.text(address));
+            assertEquals(7, session.parse("alpha:1"));
+            // Raw addresses carry no generation: they read the new parse, never raise.
+            assertNotNull(session.text(address));
+            assertNotNull(session.symbolName(address));
+            assertNotNull(session.symbolNameBytes(address));
+            assertNotNull(session.span(address));
+            assertNotNull(session.lineColumn(address));
+            assertTrue(session.nodeValid(address));
+            assertNotNull(session.children(address));
+            assertNotNull(session.firstChild(address));
+            assertNull(session.parent(address));
+            // Fresh handles read the same new parse.
+            assertNotNull(session.rootNode().text());
+        }
+
+        @Test
+        void failedParseBumpsGeneration() {
+            Node stale = session.rootNode();
+            assertNotNull(stale);
+            assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            assertInvalidated(stale::text);
+            assertInvalidated(() -> session.text(stale));
+            // The session stays usable: the next parse yields live nodes.
+            assertEquals(7, session.parse("alpha:1"));
+            assertNotNull(session.rootNode().text());
+        }
+
+        @Test
+        void setCurrentNodeValidatesHandle() {
+            Node fresh = session.rootNode();
+            assertNotNull(fresh);
+            session.parse("alpha:1");
+            AtomicReference<Throwable> seen = new AtomicReference<>();
+            // Redirecting to the live node is fine.
+            parser.installProcedure("reduction_Pair", args -> {
+                try {
+                    args.setCurrentNode(args.currentNode());
+                } catch (Throwable t) {
+                    seen.set(t);
+                }
+            });
+            session.parse("alpha:12,beta:3");
+            assertNull(seen.get());
+            // A node left over from an older generation raises.
+            parser.clearProcedures();
+            parser.installProcedure("reduction_Pair", args -> {
+                try {
+                    args.setCurrentNode(fresh);
+                } catch (Throwable t) {
+                    seen.set(t);
+                }
+            });
+            session.parse("alpha:12,beta:3");
+            assertTrue(seen.get() instanceof GenerationInvalidatedException);
+            // A node from another session raises.
+            seen.set(null);
+            Session other = parser.openSession();
+            try {
+                other.parse("alpha:12,beta:3");
+            } finally {
+                other.close();
+            }
+            assertTrue(seen.get() instanceof IllegalArgumentException);
         }
     }
 

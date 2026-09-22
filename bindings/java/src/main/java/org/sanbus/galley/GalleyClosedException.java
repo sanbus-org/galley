@@ -19,18 +19,20 @@ public class GalleyClosedException extends IllegalStateException {
         this(objectName, objectName + " is closed");
     }
 
-    private GalleyClosedException(String objectName, String message) {
+    protected GalleyClosedException(String objectName, String message) {
         super(message);
         this.objectName = objectName;
     }
 
     /**
-     * A walker bound to an older parse generation: unusable after its
+     * A handle bound to an older parse generation: unusable after its
      * session parsed again, never a stale read. Mirrors the Python/JS
-     * {@code "walker is invalidated"} failure.
+     * {@code "walker is invalidated"} failure. Prefer
+     * {@link GenerationInvalidatedException} at throw sites so callers can
+     * discriminate by type.
      */
     public static GalleyClosedException invalidated(String objectName) {
-        return new GalleyClosedException(objectName, objectName + " is invalidated");
+        return new GenerationInvalidatedException(objectName);
     }
 
     /** The closed object named by this failure. */

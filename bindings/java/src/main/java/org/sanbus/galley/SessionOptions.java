@@ -43,7 +43,11 @@ public final class SessionOptions {
     public int getVerbosity() { return verbosity; }
     public double getAstPreallocationRatio() { return astPreallocationRatio; }
     public long getAstPreallocationCap() { return astPreallocationCap; }
-    public Map<String, byte[]> getMessageOverrides() { return messageOverrides; }
+    public Map<String, byte[]> getMessageOverrides() {
+        Map<String, byte[]> copy = new HashMap<>();
+        for (Map.Entry<String, byte[]> e : messageOverrides.entrySet()) copy.put(e.getKey(), e.getValue().clone());
+        return Collections.unmodifiableMap(copy);
+    }
 
     public static Builder builder() { return new Builder(); }
 
@@ -80,6 +84,12 @@ public final class SessionOptions {
         public Builder messageOverrides(Map<String, String> m) {
             if (m == null) throw new IllegalArgumentException("message overrides is null");
             for (Map.Entry<String, String> e : m.entrySet()) messageOverride(e.getKey(), e.getValue());
+            return this;
+        }
+        /** Bulk raw-byte overrides, passed through unmodified. Nulls are rejected loudly. */
+        public Builder messageOverrideBytes(Map<String, byte[]> m) {
+            if (m == null) throw new IllegalArgumentException("message overrides is null");
+            for (Map.Entry<String, byte[]> e : m.entrySet()) messageOverride(e.getKey(), e.getValue());
             return this;
         }
 

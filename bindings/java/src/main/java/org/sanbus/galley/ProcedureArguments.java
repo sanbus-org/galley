@@ -46,8 +46,14 @@ public final class ProcedureArguments {
     }
 
     public void setCurrentNode(Node node) {
-        long addr = node != null ? node.getAddress() : 0xFFFFFFFFFFFFFFFFL;
-        lib.galley_procedure_set_current_node(argsSegment, addr);
+        if (node == null) {
+            lib.galley_procedure_set_current_node(argsSegment, 0xFFFFFFFFFFFFFFFFL);
+            return;
+        }
+        Session hookSession = getSession();
+        if (hookSession == null) throw new GalleyClosedException("session");
+        if (node.getSession() != hookSession) throw new IllegalArgumentException("node belongs to a different session");
+        lib.galley_procedure_set_current_node(argsSegment, node.validatedAddress());
     }
 
     public long dropSelf() {

@@ -1,6 +1,7 @@
 package org.sanbus.galley;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.lang.foreign.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -80,7 +81,7 @@ public final class Session implements AutoCloseable {
         }
     }
 
-    /** Current parse generation. Only Walker reads this, to fail steps bound to an older parse. */
+    /** Current parse generation. Walkers stamp it at creation and Nodes stamp it at construction; both refuse older generations. */
     long parseGeneration() { return generation; }
 
     static Session fromNativePointer(MemorySegment seg, GalleyLibrary lib) {
@@ -244,6 +245,7 @@ public final class Session implements AutoCloseable {
     }
 
     public int parse(String input) {
+        requireOpen();
         if (input == null) throw new IllegalArgumentException("input is null");
         byte[] bytes = input.getBytes(StandardCharsets.UTF_8);
         return parse(bytes);
@@ -264,6 +266,7 @@ public final class Session implements AutoCloseable {
     public int parseFile(String path) {
         requireOpen();
         if (path == null) throw new IllegalArgumentException("path is null");
+        if (path.indexOf('\0') >= 0) throw new IllegalArgumentException("path contains NUL");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment cPath = arena.allocateFrom(path, StandardCharsets.UTF_8);
             return parseWithGates(() -> lib.galley_parse_file(handle, cPath));
@@ -271,8 +274,15 @@ public final class Session implements AutoCloseable {
     }
 
     public int parseFile(File file) {
+        requireOpen();
         if (file == null) throw new IllegalArgumentException("file is null");
         return parseFile(file.getAbsolutePath());
+    }
+
+    public int parseFile(Path path) {
+        requireOpen();
+        if (path == null) throw new IllegalArgumentException("path is null");
+        return parseFile(path.toAbsolutePath().toString());
     }
 
     // -- arena --
@@ -308,9 +318,10 @@ public final class Session implements AutoCloseable {
     }
 
     public boolean nodeValid(Node node) {
+        requireOpen();
         if (node == null) return false;
         if (node.getSession() != this) throw new IllegalArgumentException("node belongs to different session");
-        return nodeValid(node.getAddress());
+        return nodeValid(node.validatedAddress());
     }
 
     public int childCount(long address) {
@@ -321,13 +332,13 @@ public final class Session implements AutoCloseable {
     public int childCount(Node node) {
         requireOpen();
         if (node == null) return 0;
-        return childCount(node.getAddress());
+        return childCount(node.validatedAddress());
     }
 
     public List<Node> children(Node node) {
         requireOpen();
         if (node == null) return new ArrayList<>();
-        long addr = node.getAddress();
+        long addr = node.validatedAddress();
         int count = childCount(addr);
         List<Node> out = new ArrayList<>(count);
         long child = lib.galley_node_first_child(handle, addr);
@@ -359,7 +370,7 @@ public final class Session implements AutoCloseable {
 
     public Node firstChild(Node node) {
         requireOpen();
-        return optNode(lib.galley_node_first_child(handle, node.getAddress()));
+        return optNode(lib.galley_node_first_child(handle, node.validatedAddress()));
     }
 
     public Node firstChild(long address) {
@@ -369,7 +380,7 @@ public final class Session implements AutoCloseable {
 
     public Node lastChild(Node node) {
         requireOpen();
-        return optNode(lib.galley_node_last_child(handle, node.getAddress()));
+        return optNode(lib.galley_node_last_child(handle, node.validatedAddress()));
     }
 
     public Node lastChild(long address) {
@@ -379,7 +390,7 @@ public final class Session implements AutoCloseable {
 
     public Node nextSibling(Node node) {
         requireOpen();
-        return optNode(lib.galley_node_next_sibling(handle, node.getAddress()));
+        return optNode(lib.galley_node_next_sibling(handle, node.validatedAddress()));
     }
 
     public Node nextSibling(long address) {
@@ -389,7 +400,7 @@ public final class Session implements AutoCloseable {
 
     public Node priorSibling(Node node) {
         requireOpen();
-        return optNode(lib.galley_node_prior_sibling(handle, node.getAddress()));
+        return optNode(lib.galley_node_prior_sibling(handle, node.validatedAddress()));
     }
 
     public Node priorSibling(long address) {
@@ -399,7 +410,7 @@ public final class Session implements AutoCloseable {
 
     public Node parent(Node node) {
         requireOpen();
-        return optNode(lib.galley_node_parent(handle, node.getAddress()));
+        return optNode(lib.galley_node_parent(handle, node.validatedAddress()));
     }
 
     public Node parent(long address) {
@@ -470,7 +481,7 @@ public final class Session implements AutoCloseable {
         requireOpen();
         if (node == null) return null;
         if (node.getSession() != this) throw new IllegalArgumentException("node belongs to different session");
-        return walk(node.getAddress(), skipSemanticErrors);
+        return walk(node.validatedAddress(), skipSemanticErrors);
     }
 
     public Walker walk(long address, boolean skipSemanticErrors) {
@@ -529,7 +540,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_node_symbol_name(handle, node.getAddress(), outData, outLen);
+            long st = lib.galley_node_symbol_name(handle, node.validatedAddress(), outData, outLen);
             if (st < 0) return null;
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
@@ -559,7 +570,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_node_text(handle, node.getAddress(), outData, outLen);
+            long st = lib.galley_node_text(handle, node.validatedAddress(), outData, outLen);
             if (st < 0) return null;
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
@@ -585,7 +596,7 @@ public final class Session implements AutoCloseable {
     public long[] span(Node node) {
         requireOpen();
         if (node == null) return null;
-        return span(node.getAddress());
+        return span(node.validatedAddress());
     }
 
     public long[] span(long address) {
@@ -602,7 +613,7 @@ public final class Session implements AutoCloseable {
     public int[] lineColumn(Node node) {
         requireOpen();
         if (node == null) return null;
-        return lineColumn(node.getAddress());
+        return lineColumn(node.validatedAddress());
     }
 
     public int[] lineColumn(long address) {
@@ -619,7 +630,7 @@ public final class Session implements AutoCloseable {
     public Integer variableIndex(Node node) {
         requireOpen();
         if (node == null) return null;
-        long idx = lib.galley_node_variable_index(handle, node.getAddress());
+        long idx = lib.galley_node_variable_index(handle, node.validatedAddress());
         if (idx == -1) return null;
         if (idx < 0) throw errorFromStatus(idx);
         return (int) idx;
@@ -1061,7 +1072,7 @@ public final class Session implements AutoCloseable {
 
     public void appendChildren(Node parent, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_append_children(handle, parent.getAddress(), chain.getAddress()));
+        checkStatus(lib.galley_tree_append_children(handle, parent.validatedAddress(), chain.validatedAddress()));
     }
 
     public void appendChildren(long parentAddr, long chainAddr) {
@@ -1071,12 +1082,12 @@ public final class Session implements AutoCloseable {
 
     public void insertBefore(Node target, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_before(handle, target.getAddress(), chain.getAddress()));
+        checkStatus(lib.galley_tree_insert_before(handle, target.validatedAddress(), chain.validatedAddress()));
     }
 
     public void insertAfter(Node target, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_after(handle, target.getAddress(), chain.getAddress()));
+        checkStatus(lib.galley_tree_insert_after(handle, target.validatedAddress(), chain.validatedAddress()));
     }
 
     public Node removeSiblings(Node node, int count) {
@@ -1084,7 +1095,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_siblings(handle, node.getAddress(), count, outHead);
+            long st = lib.galley_tree_remove_siblings(handle, node.validatedAddress(), count, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1097,7 +1108,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_self(handle, node.getAddress(), outHead);
+            long st = lib.galley_tree_remove_self(handle, node.validatedAddress(), outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1110,7 +1121,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_promote_children_over_wrapper(handle, wrapper.getAddress(), outHead);
+            long st = lib.galley_tree_promote_children_over_wrapper(handle, wrapper.validatedAddress(), outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1123,7 +1134,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_clean_children(handle, node.getAddress(), outHead);
+            long st = lib.galley_tree_clean_children(handle, node.validatedAddress(), outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1133,12 +1144,12 @@ public final class Session implements AutoCloseable {
 
     public void unlinkWrapper(Node wrapper) {
         requireOpen();
-        checkStatus(lib.galley_tree_unlink_wrapper(handle, wrapper.getAddress()));
+        checkStatus(lib.galley_tree_unlink_wrapper(handle, wrapper.validatedAddress()));
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_children_at(handle, parent.getAddress(), index, chain.getAddress()));
+        checkStatus(lib.galley_tree_insert_children_at(handle, parent.validatedAddress(), index, chain.validatedAddress()));
     }
 
     public Node removeChildrenAt(Node parent, int index, int count) {
@@ -1146,7 +1157,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_children_at(handle, parent.getAddress(), index, count, outHead);
+            long st = lib.galley_tree_remove_children_at(handle, parent.validatedAddress(), index, count, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
