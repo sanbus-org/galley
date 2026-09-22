@@ -65,6 +65,7 @@ Rules every host binding follows. Grammar-level procedure semantics live in [pro
 - Tree edits are session operations, with a convenience sugar on nodes for the common pair.
 - Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.
 - Interior NUL bytes are data, not terminators.
+- File paths with interior NUL bytes are rejected loudly at the boundary instead of truncated; each language file names the error its host raises.
 
 ## Builds
 

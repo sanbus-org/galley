@@ -264,8 +264,8 @@ hash by address, and support `int(node)` to recover the raw address.
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `line`, `column`, `message`, `message_ansi`,
 `unexpected_token`, `expected_tokens`, `context`, `syntax_error_count`,
-`semantic_error_count`, `semantic` (a `(variable, message)` pair for
-semantic errors, else `None`),
+`semantic_error_count`, `semantic` (a `(variable bytes, message)` pair
+for semantic errors, else `None`),
 indentation details, and the full structured recovery information — or
 `None` when the last parse succeeded.
 
