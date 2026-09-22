@@ -107,7 +107,13 @@ const Embedded = struct {
     last_result: ?root.ParseResult = null,
     rendered_diagnostic: ?[:0]u8 = null,
     rendered_ansi_diagnostic: ?[:0]u8 = null,
-    /// Input of the most recent parse; node text offsets index it.
+    /// Input retained for the most recent successful parse; node text
+    /// offsets index it. Session-owned so the next parse — which reuses
+    /// the session's input buffer, success or failure — cannot destroy
+    /// the content spans still point at.
+    retained_input: []u8 = &.{},
+    /// What node offsets index outside hooks: the retained input of the
+    /// most recent successful parse.
     last_input: []const u8 = &.{},
 
     fn clearRenderedDiagnostic(self: *Embedded) void {
@@ -136,6 +142,24 @@ const Embedded = struct {
     fn livePointer(self: *Embedded, address: GalleyNodeAddress) ?root.data_structures.Node.Pointer {
         _ = self.nodeAt(address) orelse return null;
         return @intCast(address);
+    }
+
+    /// Copies `input` into the session-owned retained buffer, growing it
+    /// on demand. Returns false when growth was needed and allocation
+    /// failed; the caller then keeps aliasing the live source instead.
+    fn retainInput(self: *Embedded, input: []const u8) bool {
+        if (input.len == 0) return true;
+        if (self.retained_input.len < input.len) {
+            // Grow to at least double the current capacity so repeated
+            // one-byte-larger inputs stay amortized.
+            const target = @max(input.len, self.retained_input.len *| 2);
+            self.retained_input = if (self.retained_input.len == 0)
+                std.heap.c_allocator.alloc(u8, target) catch return false
+            else
+                std.heap.c_allocator.realloc(self.retained_input, target) catch return false;
+        }
+        @memcpy(self.retained_input[0..input.len], input);
+        return true;
     }
 
     fn nodeInput(self: *Embedded) []const u8 {
@@ -198,6 +222,7 @@ export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySess
 export fn galley_session_destroy(session_ptr: ?*GalleySession) void {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return));
     embedded.clearRenderedDiagnostic();
+    if (embedded.retained_input.len != 0) std.heap.c_allocator.free(embedded.retained_input);
     embedded.session.deinit();
     embedded.threaded.deinit();
     std.heap.c_allocator.destroy(embedded);
@@ -266,13 +291,22 @@ fn statusForError(err: anyerror) i64 {
     };
 }
 
-fn finishParse(embedded: *Embedded, result: root.ParseResult) i64 {
+fn finishParse(embedded: *Embedded, result: root.ParseResult, source: []const u8) i64 {
     embedded.last_result = result;
     const parsed: usize = @intCast(result.parsed_bytes);
-    // The owned buffer carries sentinel and zero padding past the input;
-    // expose exactly the parsed bytes so node spans and galley_last_input
-    // agree with the count parse reported.
-    embedded.last_input = embedded.last_input[0..@min(parsed, embedded.last_input.len)];
+    // Retain exactly the parsed bytes in a session-owned buffer: the
+    // session reuses its input buffer for the next parse (and callers
+    // free theirs), so spans and galley_last_input must not alias
+    // either. The owned buffer carries sentinel and zero padding past
+    // the input; exposing exactly parsed keeps node spans and
+    // galley_last_input in agreement with the count parse reported.
+    // Only success paths reach here, so a failed parse can never
+    // destroy what the last successful parse retained.
+    const bounded = source[0..@min(parsed, source.len)];
+    embedded.last_input = if (embedded.retainInput(bounded))
+        embedded.retained_input[0..bounded.len]
+    else
+        bounded; // allocation failure: alias the live source as before
     return @intCast(result.parsed_bytes);
 }
 
@@ -285,8 +319,7 @@ export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const
     const text = std.mem.sliceTo(input orelse return galley_error_null_argument, 0);
     embedded.clearRenderedDiagnostic();
     const result = embedded.session.parseSentinelBytes(text, null) catch |err| return statusForError(err);
-    embedded.last_input = embedded.session.owned_input orelse text;
-    return finishParse(embedded, result);
+    return finishParse(embedded, result, embedded.session.owned_input orelse text);
 }
 
 /// Parses a byte buffer that may contain NUL bytes. Same return contract as
@@ -301,8 +334,7 @@ export fn galley_parse(session_ptr: ?*GalleySession, data: ?[*]const u8, len: us
         return galley_error_null_argument;
     embedded.clearRenderedDiagnostic();
     const result = embedded.session.parseBytes(bytes, null) catch |err| return statusForError(err);
-    embedded.last_input = embedded.session.owned_input orelse bytes;
-    return finishParse(embedded, result);
+    return finishParse(embedded, result, embedded.session.owned_input orelse bytes);
 }
 
 /// Returns the number of AST nodes allocated by the most recent successful
@@ -411,7 +443,7 @@ export fn galley_node_text(
     return galley_ok;
 }
 
-/// Writes the retained input of the most recent parse into
+/// Writes the retained input of the most recent successful parse into
 /// `out_data`/`out_len`: the buffer that snapshot spans and node texts
 /// index. Same lifetime as `galley_node_text`; empty before the first
 /// parse. During hooks it references the live input of that parse.
@@ -878,8 +910,7 @@ export fn galley_parse_file(session_ptr: ?*GalleySession, path: ?[*:0]const u8) 
     defer file.close(embedded.threaded.io());
 
     const result = embedded.session.parseFile(file, path_slice) catch |err| return statusForError(err);
-    embedded.last_input = embedded.session.owned_input orelse &.{};
-    return finishParse(embedded, result);
+    return finishParse(embedded, result, embedded.session.owned_input orelse &.{});
 }
 
 /// Writes the end position (1-based line and column) of the most recent
