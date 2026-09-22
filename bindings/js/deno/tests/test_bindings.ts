@@ -206,11 +206,12 @@ await test("parse accepts string and buffers", async () => {
     assert.equal(s.parse(encoded.buffer.slice(0)), sample.length);
     assert.throws(() => s.parse(123), TypeError);
     assert.throws(() => s.parseFile(123), TypeError);
-    // File paths accept file URLs and byte content alike.
+    // File paths accept strings and file URLs; bytes are input, not paths.
     const p = "/tmp/galley-js-test-parse.kv";
     fs.writeFileSync(p, sample);
+    assert.equal(s.parseFile(p), sample.length);
     assert.equal(s.parseFile(pathToFileURL(p)), sample.length);
-    assert.equal(s.parseFile(Buffer.from(p)), sample.length);
+    assert.throws(() => s.parseFile(Buffer.from(p)), TypeError);
   } finally {
     s.close();
   }
@@ -246,7 +247,7 @@ await test("syntax error raises error with code and diagnostic", async () => {
       s.parse("alpha:");
       assert.fail("expected error");
     } catch (err) {
-      assert.equal(err.code, -2);
+      assert.equal(err.code, Status.ErrorSyntax);
       assert.ok(err.diagnostic);
       const d = err.diagnostic;
       assert.equal(d.kind, Kind.Syntax);
@@ -435,6 +436,32 @@ await test("lastInput buffers snapshot spans and starts empty", async () => {
   }
 });
 
+await test("failed parse keeps the input of the last successful parse", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const retained = Buffer.from(s.lastInput());
+    assert.equal(retained.toString(), "alpha:12,beta:3");
+
+    // A failed parse must not clobber the retained input: snapshots
+    // from the last successful parse keep indexing it.
+    assert.throws(() => s.parse("gamma:"), (err) => err.code === Status.ErrorSyntax);
+    assert.deepEqual(Buffer.from(s.lastInput()), retained);
+
+    const snap = s.snapshot();
+    assert.ok(snap.count > 0);
+    for (let i = 0; i < snap.count; i++) {
+      const text = s.text(BigInt(i));
+      assert.ok(text !== null);
+      const start = Number(snap.spanStart[i]);
+      const end = start + Number(snap.spanLen[i]);
+      assert.deepEqual(Buffer.from(retained.subarray(start, end)), Buffer.from(text));
+    }
+  } finally {
+    s.close();
+  }
+});
+
 await test("Node object mirrors Session navigation", async () => {
   const s = await newSession();
   try {
@@ -585,6 +612,24 @@ await test("walker step after re-parse throws", async () => {
     } finally {
       rewound.close();
     }
+  } finally {
+    s.close();
+  }
+});
+
+await test("node read after re-parse throws", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    assert.ok(s.childCount(root) > 0);
+    s.parse("alpha:12,beta:3");
+    assert.throws(() => s.childCount(root), SessionClosedError);
+    assert.throws(() => root.text(), SessionClosedError);
+    const fresh = s.rootNode();
+    assert.ok(fresh !== null);
+    assert.ok(s.childCount(fresh) > 0);
   } finally {
     s.close();
   }

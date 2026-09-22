@@ -197,14 +197,33 @@ await test("backend pin selects the wasm leg", async () => {
 });
 
 await test("missing everything explains how to build", async () => {
-  await assert.rejects(
-    openLanguageDirectory(path.join(nativeDir, "no-such-dir")),
-    /Build one first/,
-  );
+  const missingArtifact = (expectedPath) => (error) => {
+    assert.equal(error.code, "galley:missing-artifact");
+    assert.ok(error.message.includes(expectedPath));
+    assert.ok(error.message.includes(`npx galley build ${expectedPath}`));
+    return true;
+  };
+  const noSuchDir = path.join(nativeDir, "no-such-dir");
+  await assert.rejects(openLanguageDirectory(noSuchDir), missingArtifact(noSuchDir));
   await assert.rejects(
     openLanguageDirectory(nativeDir, { backend: "wasm" }),
-    /no parser artifact found/,
+    missingArtifact(nativeDir),
   );
+});
+
+await test("bare load before directory open still wires bundled hooks", async () => {
+  const artifact = path.join(nativeDir, artifactFileName("galley-js-node", process.platform));
+  const bare = await galley.load(artifact);
+  assert.deepEqual(bare.listProcedures(), {});
+  const explicit = () => {};
+  bare.installProcedure("reduction_Pair", explicit);
+
+  const { result: lang, lines } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
+  assert.equal(lines.length, 0);
+  assert.equal(lang, bare);
+  // The late scan fills the uninstalled names but keeps the explicit one.
+  assert.equal(lang.procedureHook("reduction_Pair"), explicit);
+  assert.equal(typeof lang.procedureHook("hook_print"), "function");
 });
 
 await test("GALLEY_QUIET suppresses the fallback notice", async () => {
@@ -419,6 +438,19 @@ await test("browser entries have no node: specifiers", () => {
       }
     }
   }
+});
+
+// The fixture's generated entry is written by the real builder gate on
+// every run, so these pins read actual build output, never a copy.
+await test("generated package entry follows the hook contracts", () => {
+  const entry = fs.readFileSync(path.join(nativeDir, "index.mjs"), "utf-8");
+  // The bundled scan fills only names never installed, so initialize()
+  // cannot clobber explicit installs made before it: explicit installs
+  // win over bundled scans, and later installs win per hook name.
+  assert.ok(entry.includes(".installBundledProcedures("));
+  assert.ok(!entry.includes(".installProcedures("));
+  // Generated example content never names another language.
+  assert.ok(!/\bpython\b/i.test(entry));
 });
 
 console.log(`\n${passed} passed, ${failed} failed, ${skipped} skipped`);

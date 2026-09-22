@@ -167,8 +167,9 @@ The FFI boundary is the only overhead over the C API:
 
 Node text, diagnostics, and expected-token data remain valid only until the
 next parse on the same session; every accessor copies before returning.
-`Node` methods check that their session is still open and throw after
-`session.close()` or exiting a `using` block.
+`Node` methods check that their session is still open on the node's parse
+generation and throw `SessionClosedError` after `close()`, exiting a `using`
+block, or a re-parse.
 
 ## Procedures
 

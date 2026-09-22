@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Parses a small key/value document through the Galley TypeScript bindings,
- * mirroring examples/c, examples/python, etc. byte-for-byte in output.
+ * Parses a small key/value document through the Galley TypeScript bindings;
+ * output is byte-identical across bindings.
  */
 
 import * as fs from "node:fs";

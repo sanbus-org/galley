@@ -5,15 +5,23 @@ import { SessionClosedError } from "./errors.ts";
 /**
  * Session-bound handle for a node in the non-relocating AST storage.
  * Mirrors Python's `galley.Node`: keeps a strong reference to its Session
- * and raises after the session is closed.
+ * and raises after the session is closed or parses again — nodes read
+ * only the parse generation that created them.
  */
 export class Node {
   readonly #session: Session;
   readonly #address: bigint;
+  /**
+   * Parse generation stamped at construction. The constructor is the
+   * single creation gate: every node carries the generation it belongs
+   * to, so no accessor can read storage from an older parse.
+   */
+  readonly #generation: number;
 
   constructor(session: Session, address: bigint | number) {
     this.#session = session;
     this.#address = typeof address === "bigint" ? address : BigInt(address);
+    this.#generation = session.parseGeneration;
   }
 
   /** Raw address (stable index in the session's node storage). */
@@ -21,9 +29,18 @@ export class Node {
     return this.#address;
   }
 
-  private ensureAlive(): void {
+  /**
+   * The single use gate: a closed session or a node left over from a
+   * previous parse generation throws instead of reading stale storage.
+   * Internal: {@link nodeAddress} runs it at every session crossing.
+   * @internal
+   */
+  ensureAlive(): void {
     if (this.#session.isClosed) {
       throw new SessionClosedError("node's session is closed");
+    }
+    if (this.#generation !== this.#session.parseGeneration) {
+      throw new SessionClosedError("node is invalidated");
     }
   }
 
@@ -96,7 +113,7 @@ export class Node {
     return this.#session.cleanChildren(this);
   }
 
-  appendChildren(chain: Node | bigint): void {
+  appendChildren(chain: Node | bigint | number): void {
     this.ensureAlive();
     this.#session.appendChildren(this, chain);
   }
@@ -123,7 +140,12 @@ export class Node {
     for (const child of this.children()) yield child;
   }
 
-  /** Raw address for `Number(node)` / `BigInt(node)`. */
+  /**
+   * Raw address for `Number(node)` / `BigInt(node)`. Comparison
+   * belongs in {@link equals}: loose `==` against a bigint or number
+   * coerces through the primitive conversion below and compares by
+   * address alone, with no session check.
+   */
   valueOf(): bigint {
     return this.#address;
   }
@@ -141,10 +163,25 @@ export class Node {
     return false;
   }
 
-  // allow `Number(node)` and `+node`
+  // Conversion for `Number(node)`, `+node`, and template strings.
+  // `==` also routes here (default hint), so it stays address-only;
+  // equals() is the sanctioned comparison.
   [Symbol.toPrimitive](hint: string): bigint | string | number {
     if (hint === "number") return Number(this.#address);
     if (hint === "string") return this.toString();
     return this.#address;
   }
+}
+
+/**
+ * The single gate for every crossing that accepts a node: a `Node`
+ * handle must reference an open session on its own parse generation,
+ * then yields its address. Raw addresses carry no generation and pass
+ * through unguarded by design.
+ */
+export function nodeAddress(node: Node | bigint | number): bigint {
+  if (typeof node === "bigint") return node;
+  if (typeof node === "number") return BigInt(node);
+  node.ensureAlive();
+  return node.address;
 }

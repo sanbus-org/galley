@@ -8,7 +8,7 @@
  * factory (e.g. `"galley: galley.load"`) for error messages.
  */
 
-import { decodeUtf8, encodeUtf8 } from "./text.ts";
+import { encodeUtf8 } from "./text.ts";
 
 export function checkLanguagePath(languagePath: unknown, what: string): string {
   return checkPath(languagePath, what, "languagePath naming the language directory");
@@ -20,10 +20,11 @@ export function checkArtifactPath(filePath: unknown, what: string): string {
 }
 
 /**
- * A filesystem path in host-idiomatic form: a string, a `file:` URL, or
- * byte content decoding to a path. Anything else is a loud error naming
- * the expected shape. Deliberately dependency-free: no `node:` imports,
- * so browser graphs stay clean.
+ * A filesystem path in host-idiomatic form: a string or a `file:` URL.
+ * Byte views are not paths — bytes are parse input, not filenames —
+ * so anything else is a loud error naming the expected shape.
+ * Deliberately dependency-free: no `node:` imports, so browser graphs
+ * stay clean.
  */
 function checkPath(value: unknown, what: string, expectation: string): string {
   if (typeof value === "string") {
@@ -32,13 +33,6 @@ function checkPath(value: unknown, what: string, expectation: string): string {
   }
   if (typeof value === "object" && value !== null && typeof (value as { href?: unknown }).href === "string") {
     return fileUrlToPath(value as { href: string }, what, expectation);
-  }
-  if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(value)) {
-    const view = value as unknown as { buffer: ArrayBufferLike; byteOffset: number; byteLength: number };
-    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-    const decoded = decodeUtf8(bytes);
-    if (decoded.length === 0) throw new TypeError(`${what} requires ${expectation}`);
-    return decoded;
   }
   throw new TypeError(`${what} requires ${expectation}`);
 }

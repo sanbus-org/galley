@@ -239,10 +239,14 @@ await test("backend pin selects the wasm leg", async () => {
 });
 
 await test("missing everything explains how to build", async () => {
-  await assert.rejects(
-    openLanguageDirectory(path.join(nativeDir, "no-such-dir")),
-    /Build one first/,
-  );
+  const noSuchDir = path.join(nativeDir, "no-such-dir");
+  await assert.rejects(openLanguageDirectory(noSuchDir), (error: unknown) => {
+    const failure = error as { code?: unknown; message?: unknown };
+    assert.equal(failure.code, "galley:missing-artifact");
+    assert.ok(String(failure.message).includes(noSuchDir));
+    assert.ok(String(failure.message).includes(`npx galley build ${noSuchDir}`));
+    return true;
+  });
 });
 
 await test("GALLEY_QUIET suppresses the fallback notice", async () => {
