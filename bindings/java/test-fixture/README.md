@@ -1,6 +1,6 @@
 # Java binding test fixture
 
-Keyvalue `procedures.java` copied from `examples/java`; `ll.grm` and `config.zig` are symlinks to the one shared grammar in `bindings/test-fixture` when the binding suite
+Keyvalue `procedures.java` copied from `examples/java/kv`; `ll.grm` and `config.zig` are symlinks to the one shared grammar in `bindings/test-fixture` when the binding suite
 was decoupled from the user-facing examples. No rewrites: the hooks
 only ever import `org.sanbus.galley.*`.
 

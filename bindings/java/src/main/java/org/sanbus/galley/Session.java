@@ -151,8 +151,9 @@ public final class Session implements AutoCloseable {
      * Single gate for every parse leg: snapshots the hook table (installs
      * and clears made mid-parse apply to later parses only), syncs the
      * native gates from the snapshot, marks this session parsing, runs
-     * the native call, then restores the enclosing dispatch table so
-     * nested parses restore the enclosing hook set on unwind.
+     * the native call, then pops the level and re-syncs the native gates
+     * from the enclosing table so nested parses restore the enclosing
+     * hook set on unwind.
      */
     private int parseWithGates(NativeParse nativeParse) {
         Map<String, Consumer<ProcedureArguments>> table = parser.snapshotHooks();
@@ -169,7 +170,7 @@ public final class Session implements AutoCloseable {
             }
             return completeParse(status);
         } finally {
-            parser.popDispatchTable();
+            parser.popAndRestoreGates(table);
         }
     }
 
@@ -454,8 +455,8 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Retained input of the most recent parse: the buffer snapshot spans
-     * index. Empty before the first parse.
+     * Retained input of the most recent successful parse: the buffer
+     * snapshot spans index. Empty before the first parse.
      */
     public byte[] lastInput() {
         requireOpen();
@@ -1072,7 +1073,7 @@ public final class Session implements AutoCloseable {
 
     public void appendChildren(Node parent, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_append_children(handle, parent.validatedAddress(), chain.validatedAddress()));
+        appendChildren(parent.validatedAddress(), chain.validatedAddress());
     }
 
     public void appendChildren(long parentAddr, long chainAddr) {
@@ -1082,20 +1083,35 @@ public final class Session implements AutoCloseable {
 
     public void insertBefore(Node target, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_before(handle, target.validatedAddress(), chain.validatedAddress()));
+        insertBefore(target.validatedAddress(), chain.validatedAddress());
+    }
+
+    public void insertBefore(long targetAddr, long chainAddr) {
+        requireOpen();
+        checkStatus(lib.galley_tree_insert_before(handle, targetAddr, chainAddr));
     }
 
     public void insertAfter(Node target, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_after(handle, target.validatedAddress(), chain.validatedAddress()));
+        insertAfter(target.validatedAddress(), chain.validatedAddress());
+    }
+
+    public void insertAfter(long targetAddr, long chainAddr) {
+        requireOpen();
+        checkStatus(lib.galley_tree_insert_after(handle, targetAddr, chainAddr));
     }
 
     public Node removeSiblings(Node node, int count) {
         requireOpen();
+        return removeSiblings(node.validatedAddress(), count);
+    }
+
+    public Node removeSiblings(long nodeAddr, int count) {
+        requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_siblings(handle, node.validatedAddress(), count, outHead);
+            long st = lib.galley_tree_remove_siblings(handle, nodeAddr, count, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1105,10 +1121,15 @@ public final class Session implements AutoCloseable {
 
     public Node removeSelf(Node node) {
         requireOpen();
+        return removeSelf(node.validatedAddress());
+    }
+
+    public Node removeSelf(long nodeAddr) {
+        requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_self(handle, node.validatedAddress(), outHead);
+            long st = lib.galley_tree_remove_self(handle, nodeAddr, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1118,10 +1139,15 @@ public final class Session implements AutoCloseable {
 
     public Node promoteChildrenOverWrapper(Node wrapper) {
         requireOpen();
+        return promoteChildrenOverWrapper(wrapper.validatedAddress());
+    }
+
+    public Node promoteChildrenOverWrapper(long wrapperAddr) {
+        requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_promote_children_over_wrapper(handle, wrapper.validatedAddress(), outHead);
+            long st = lib.galley_tree_promote_children_over_wrapper(handle, wrapperAddr, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1131,10 +1157,15 @@ public final class Session implements AutoCloseable {
 
     public Node cleanChildren(Node node) {
         requireOpen();
+        return cleanChildren(node.validatedAddress());
+    }
+
+    public Node cleanChildren(long nodeAddr) {
+        requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_clean_children(handle, node.validatedAddress(), outHead);
+            long st = lib.galley_tree_clean_children(handle, nodeAddr, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;
@@ -1144,20 +1175,35 @@ public final class Session implements AutoCloseable {
 
     public void unlinkWrapper(Node wrapper) {
         requireOpen();
-        checkStatus(lib.galley_tree_unlink_wrapper(handle, wrapper.validatedAddress()));
+        unlinkWrapper(wrapper.validatedAddress());
+    }
+
+    public void unlinkWrapper(long wrapperAddr) {
+        requireOpen();
+        checkStatus(lib.galley_tree_unlink_wrapper(handle, wrapperAddr));
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
         requireOpen();
-        checkStatus(lib.galley_tree_insert_children_at(handle, parent.validatedAddress(), index, chain.validatedAddress()));
+        insertChildrenAt(parent.validatedAddress(), index, chain.validatedAddress());
+    }
+
+    public void insertChildrenAt(long parentAddr, int index, long chainAddr) {
+        requireOpen();
+        checkStatus(lib.galley_tree_insert_children_at(handle, parentAddr, index, chainAddr));
     }
 
     public Node removeChildrenAt(Node parent, int index, int count) {
         requireOpen();
+        return removeChildrenAt(parent.validatedAddress(), index, count);
+    }
+
+    public Node removeChildrenAt(long parentAddr, int index, int count) {
+        requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
             outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            long st = lib.galley_tree_remove_children_at(handle, parent.validatedAddress(), index, count, outHead);
+            long st = lib.galley_tree_remove_children_at(handle, parentAddr, index, count, outHead);
             checkStatus(st);
             long head = outHead.get(ValueLayout.JAVA_LONG, 0);
             if (head == INVALID_NODE) return null;

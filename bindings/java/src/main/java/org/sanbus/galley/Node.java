@@ -112,7 +112,4 @@ public final class Node implements Iterable<Node> {
         try { name = symbolName(); } catch (Exception ignored) {}
         return "Node@" + Long.toHexString(address) + "(" + (name != null ? name : "?") + ")";
     }
-
-    // For JNA convenience, allow passing Node where long expected
-    public long addressForNative() { return address; }
 }

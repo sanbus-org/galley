@@ -4,16 +4,15 @@
 // and source position, plus dropIfEmpty on empty tails. Author-defined
 // grammar hooks arrive as hook_<name> — Key is annotated @print.
 //
-// This file is the Java counterpart of examples/python/procedures.py,
-// examples/go/demo/procedures.go, examples/rust/procedures.rs, and
-// examples/js/node/procedures.ts. Hooks install onto a parser handle at
-// runtime via parser.installProcedure; the file's existence next to the
-// grammar triggers the build tool to generate the Zig shim
-// (procedures_java.zig) that dispatches through those registrations,
+// This file supplies the Java hook implementations for the keyvalue
+// grammar. Hooks install onto a parser handle at
+// runtime via parser.installProcedure. The build tool always generates
+// the dispatch shim from the metadata hook list;
 // plus the packaged Parser wiring them in one explicit call per hook.
 
 package test_fixture;
 
+import org.sanbus.galley.HookDigits;
 import org.sanbus.galley.Node;
 import org.sanbus.galley.ProcedureArguments;
 
@@ -38,21 +37,12 @@ public final class procedures {
         return p != null ? p : new int[]{0, 0};
     }
 
-    private static int parseU(String text) {
-        int value = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= '0' && c <= '9') value = value * 10 + (c - '0');
-        }
-        return value;
-    }
-
     private static int[] countPairs(Node node) {
         if ("Pair".equals(nameOf(node))) {
             String text = textOf(node);
             int colon = text.indexOf(':');
             String number = colon >= 0 ? text.substring(colon + 1) : "";
-            return new int[]{1, parseU(number)};
+            return new int[]{1, Math.max(0, HookDigits.cappedDigits(number))};
         }
         int count = 0, total = 0;
         for (Node child : node) {
@@ -96,12 +86,11 @@ public final class procedures {
         Node node = args.currentNode();
         if (node == null) return;
         int[] pos = posOf(node);
-        emit("Number " + textOf(node) + " at " + pos[0] + ":" + pos[1]);
-        try {
-            if (Long.parseLong(textOf(node)) > 999) {
-                args.reportSemanticError("value out of range");
-            }
-        } catch (NumberFormatException ignored) {}
+        String text = textOf(node);
+        emit("Number " + text + " at " + pos[0] + ":" + pos[1]);
+        if (HookDigits.cappedDigits(text) > 999) {
+            args.reportSemanticError("value out of range");
+        }
     }
 
     public static void reduction_Pair(ProcedureArguments args) {
