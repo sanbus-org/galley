@@ -68,7 +68,7 @@ jobs:
         run: |
           if [ -n "$R2_PACKAGES_HOSTNAME" ]; then
             sed -i "s|<R2_PACKAGES_HOSTNAME>|$R2_PACKAGES_HOSTNAME|g" \
-              docs/bindings_javascript.md docs/bindings_python.md
+              docs/bindings_javascript.md docs/bindings_python.md docs/bindings_java.md
           fi
 
       - name: Build site
