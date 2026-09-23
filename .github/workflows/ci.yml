@@ -1588,6 +1588,21 @@ jobs:
           R2_PACKAGES_HOSTNAME: ${{ vars.R2_PACKAGES_HOSTNAME }}
         run: ./scripts/registry/publish_python_registry.sh "${{ runner.temp }}/pkg-python"
 
+      - name: Download Java jar
+        uses: actions/download-artifact@v4
+        with:
+          name: pkg-java
+          path: ${{ runner.temp }}/pkg-java
+
+      - name: Publish Maven dev repo
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PACKAGES_BUCKET_NAME: ${{ vars.R2_PACKAGES_BUCKET_NAME }}
+          R2_PACKAGES_HOSTNAME: ${{ vars.R2_PACKAGES_HOSTNAME }}
+        run: ./scripts/registry/publish_maven_registry.sh "${{ runner.temp }}/pkg-java"
+
   test:
     name: test
     if: ${{ always() }}

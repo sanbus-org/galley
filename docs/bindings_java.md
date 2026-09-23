@@ -307,8 +307,33 @@ session.variableNameAt(0);                 // String / null
 
 ## Development builds
 
-Every green CI run uploads
-the built jar as a workflow artifact (Actions → the run → Artifacts →
+Every green `main` push publishes dev versions to the static Maven
+repository. Dev versions look like
+`0.1.3-dev.42.gabc123456789` (the npm flavor, used verbatim — a valid
+Maven qualifier):
+
+```xml
+<repositories>
+  <repository>
+    <id>galley-dev</id>
+    <url>https://<R2_PACKAGES_HOSTNAME>/maven/</url>
+  </repository>
+</repositories>
+```
+
+```xml
+<dependency>
+  <groupId>com.sassanh.sanbus</groupId>
+  <artifactId>galley</artifactId>
+  <version>0.1.3-dev.42.gabc123456789</version>
+</dependency>
+```
+
+Dev versions are ephemeral: they expire after about 48 hours, and only
+the newest ~20 are kept.
+Stable releases stay on Maven Central; pin a stable release for anything durable.
+Every CI run also uploads the built jar
+as a workflow artifact (Actions → the run → Artifacts →
 `pkg-java`). Download it and depend on it like any Central release.
 Versioned releases go to Maven Central as usual.
 
