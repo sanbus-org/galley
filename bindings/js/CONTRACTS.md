@@ -8,6 +8,7 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 - Generated language entries export the `Session` value for namespace mirroring; adapter and universal entries expose it type-only and construct sessions exclusively from language handles.
 - The `galley` object loads explicit artifact files, raw module bytes, and fetched module URLs.
 - Byte and URL forms compile off the event loop through a shared module cache, so a source is never built twice.
+- The same source always resolves to the identical handle, and repeated loads of that source share one hook table.
 - The generated entry opens sessions against its own directory with bundled hooks. `initialize` preloads those hooks where no synchronous scan exists and is a no-op elsewhere, so it can be called unconditionally.
 - The file form of a package import works on every runtime; directory-form imports resolve only where the toolchain performs index resolution.
 
