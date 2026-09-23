@@ -19,9 +19,6 @@ import java.nio.file.StandardOpenOption;
  * JSON throughput through the Galley Java bindings: no AST, no procedures,
  * no error recovery. Parses languages/json/samples/code-02.json 10 times
  * on one session and reports bytes/s.
- *
- * Mirrors examples/python/benchmark.py, examples/go/benchmark/benchmark.go,
- * examples/js/node/benchmark.ts, and examples/rust/src/benchmark.rs.
  */
 public final class Benchmark {
 
@@ -47,7 +44,7 @@ public final class Benchmark {
         String prop = System.getProperty("galley.library.path");
         if (prop != null && !prop.isEmpty()) return prop;
         return Paths.get(System.getProperty("user.dir", "."),
-                "examples", "java", "benchmark", GalleyLibraryLoader.libFileName()).toString();
+                "examples", "java", "json", GalleyLibraryLoader.libFileName()).toString();
     }
 
     private static String withThousands(long n) {

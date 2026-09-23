@@ -43,8 +43,10 @@ system cache, but that cache is examples-only, not part of the bindings.
 It generates the parser (`--emit-metadata`), builds the shared library
 through `bindings/c/consumer/build.zig` directly next to the grammar,
 and detects optional hook files next to your
-grammar (`procedures.java` for native Java hooks, `procedures.c` for legacy
-C hooks, `ll_error_messages.zig`). Regenerate after changing the grammar;
+grammar (`procedures.java` for native Java hooks,
+`ll_error_messages.zig`). A `procedures.c`/`procedures.cpp` next to the
+grammar is a fatal build error naming `procedures.java` instead.
+Regenerate after changing the grammar;
 commit nothing it generates. One library embeds one parser — split grammars
 across language directories exactly like the other bindings.
 
@@ -52,13 +54,13 @@ Run the demo:
 
 ```sh
 javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/kv
 javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 # With file argument
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo path/to/file
 # Benchmark (no AST/procedures/recovery)
-java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/benchmark
+java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/json
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
 ```
 
@@ -162,6 +164,10 @@ Legacy `procedures.c` / `procedures.cpp` hooks continue to work exactly like
 the C/C++ consumers: the build compiles the C file into the shared library
 when no `procedures.java` is present. If both Java and C files exist, Java
 takes precedence and a warning is emitted.
+
+Example hooks share one overflow-safe digit scan,
+`org.sanbus.galley.HookDigits.cappedDigits`: `-1` for digit-less text,
+otherwise the digit value capped so huge inputs can never overflow an `int`.
 
 ## Semantic Errors
 

@@ -179,14 +179,22 @@ public final class Parser {
         return new HashMap<>(hooks);
     }
 
-    /** Pushes a parse level's entry table; restored by {@link #popDispatchTable}. */
+    /** Pushes a parse level's entry table; restored by {@link #popAndRestoreGates}. */
     void pushDispatchTable(Map<String, Consumer<ProcedureArguments>> table) {
         dispatchStack.push(new HashMap<>(table));
     }
 
-    /** Pops a parse level's entry table, restoring the enclosing one. */
-    void popDispatchTable() {
+    /**
+     * Pops a parse level's entry table and re-syncs the native gates from
+     * the now-enclosing table (the unwinding level's own table at the
+     * outermost level), mirroring JS popGates: nested parses restore the
+     * enclosing hook set on unwind instead of clobbering it. The poll runs
+     * first so the stack unwinds even if the re-sync throws.
+     */
+    void popAndRestoreGates(Map<String, Consumer<ProcedureArguments>> ownTable) {
         dispatchStack.poll();
+        Map<String, Consumer<ProcedureArguments>> outer = dispatchStack.peek();
+        syncGates(outer != null ? outer : ownTable);
     }
 
     /**

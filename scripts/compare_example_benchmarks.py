@@ -502,13 +502,13 @@ def main() -> int:
                 missing.append(f"{name}: examples/java/out")
             elif (
                 not (
-                    root / "examples" / "java" / "benchmark" / "libgalley-java.so"
+                    root / "examples" / "java" / "json" / "libgalley-java.so"
                 ).is_file()
                 and not (
-                    root / "examples" / "java" / "benchmark" / "libgalley-java.dylib"
+                    root / "examples" / "java" / "json" / "libgalley-java.dylib"
                 ).is_file()
             ):
-                missing.append(f"{name}: examples/java/benchmark/libgalley-java.*")
+                missing.append(f"{name}: examples/java/json/libgalley-java.*")
             continue
         program = Path(runner.argv[0])
         if not program.is_file():

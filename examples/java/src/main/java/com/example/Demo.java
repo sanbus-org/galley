@@ -11,10 +11,9 @@ import java.nio.file.Paths;
 import java.util.List;
 
 /**
- * Parses a small key/value document through the Galley Java bindings,
- * mirroring examples/python/demo.py, examples/go/demo/demo.go,
- * examples/rust/src/demo.rs, and examples/js/node/demo.ts
- * byte-for-byte in output.
+ * Parses a small key/value document through the Galley Java bindings.
+ * Standard output and standard error match the canonical demo transcript
+ * byte-for-byte; compare the two streams separately.
  */
 public final class Demo {
 
@@ -32,7 +31,7 @@ public final class Demo {
         String prop = System.getProperty("galley.library.path");
         if (prop != null && !prop.isEmpty()) return prop;
         return Paths.get(System.getProperty("user.dir", "."),
-                "examples", "java", GalleyLibraryLoader.libFileName()).toString();
+                "examples", "java", "kv", GalleyLibraryLoader.libFileName()).toString();
     }
 
     private static void printTree(Node node, int depth) {
@@ -52,9 +51,8 @@ public final class Demo {
     }
 
     public static void main(String[] args) throws Exception {
-        // Load the parser, then install the bundled procedure hooks
-        // (mirrors Python's auto-import of procedures.py). Explicit
-        // installs after this win per hook name.
+        // Load the parser, then install the bundled procedure hooks.
+        // Explicit installs after this win per hook name.
         Parser parser;
         try {
             parser = Galley.load(libraryPath());

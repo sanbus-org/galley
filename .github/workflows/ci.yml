@@ -422,7 +422,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/kv
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 
@@ -490,11 +490,11 @@ jobs:
             echo "$name: $count distinct variants"
             test "$count" = 1 || { echo "::error::$name differs across examples"; exit 1; }
           }
-          same ll.grm examples/{c,cpp,rust,zig,java}/ll.grm examples/python/kv/ll.grm examples/js/kv/ll.grm examples/go/demo/ll.grm
-          same config.zig examples/{c,cpp,rust,zig,java}/config.zig examples/python/kv/config.zig examples/js/kv/config.zig examples/go/demo/config.zig
-          same json/ll.grm examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/json/ll.grm examples/js/json/ll.grm
-          same json/config.zig examples/{c,cpp,rust,zig,java}/benchmark/config.zig examples/python/json/config.zig examples/js/json/config.zig
-          for f in examples/{c,cpp,rust,zig,java}/benchmark/ll.grm examples/python/json/ll.grm examples/js/json/ll.grm; do
+          same ll.grm examples/{c,cpp,rust,zig}/ll.grm examples/{python,js,java}/kv/ll.grm examples/go/demo/ll.grm
+          same config.zig examples/{c,cpp,rust,zig}/config.zig examples/{python,js,java}/kv/config.zig examples/go/demo/config.zig
+          same json/ll.grm examples/{c,cpp,rust,zig}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm
+          same json/config.zig examples/{c,cpp,rust,zig}/benchmark/config.zig examples/{python,js,java}/json/config.zig
+          for f in examples/{c,cpp,rust,zig}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -573,17 +573,18 @@ jobs:
       - name: Generated parser artifacts are identical across bindings
         run: |
           zig build -Doptimize=ReleaseFast install
-          for lang in c cpp rust java; do
+          for lang in c cpp rust; do
             ./zig-out/bin/galley --emit-metadata "examples/$lang" >/dev/null
           done
-          ./zig-out/bin/galley --emit-metadata "examples/python/kv" >/dev/null
-          ./zig-out/bin/galley --emit-metadata "examples/js/kv" >/dev/null
+          for lang in python js java; do
+            ./zig-out/bin/galley --emit-metadata "examples/$lang/kv" >/dev/null
+          done
           ./zig-out/bin/galley "examples/zig" >/dev/null
-          unique=$(sha256sum examples/{c,cpp,rust,zig,java}/_ll-parser.zig examples/python/kv/_ll-parser.zig examples/js/kv/_ll-parser.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust,zig}/_ll-parser.zig examples/java/kv/_ll-parser.zig examples/python/kv/_ll-parser.zig examples/js/kv/_ll-parser.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "_ll-parser.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated _ll-parser.zig differs across examples despite identical grammar and options"; exit 1; }
-          unique=$(sha256sum examples/{c,cpp,rust,java}/procedures.zig examples/python/kv/procedures.zig examples/js/kv/procedures.zig | awk '{print $1}' | sort -u)
+          unique=$(sha256sum examples/{c,cpp,rust}/procedures.zig examples/java/kv/procedures.zig examples/python/kv/procedures.zig examples/js/kv/procedures.zig | awk '{print $1}' | sort -u)
           count=$(printf '%s\n' "$unique" | wc -l)
           echo "procedures.zig: $count distinct variants"
           test "$count" = 1 || { echo "::error::generated procedures.zig differs across bindings despite identical grammar and options"; exit 1; }
@@ -599,7 +600,7 @@ jobs:
           names examples/go/demo/procedures.go > /tmp/names-go.txt
           names examples/python/kv/procedures.py > /tmp/names-python.txt
           names examples/js/kv/procedures.ts > /tmp/names-js.txt
-          names examples/java/procedures.java > /tmp/names-java.txt
+          names examples/java/kv/procedures.java > /tmp/names-java.txt
           diff /tmp/names-c.txt /tmp/names-cpp.txt || { echo "::error::C and C++ procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-rust.txt || { echo "::error::C and Rust procedure entry points differ"; exit 1; }
           diff /tmp/names-c.txt /tmp/names-go.txt || { echo "::error::C and Go procedure entry points differ"; exit 1; }
@@ -685,7 +686,7 @@ jobs:
           zig-out/bin/demo >/tmp/out-zig.txt 2>/tmp/err-zig.txt
           cd ../..
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-          GALLEY_CHECKOUT="$PWD" java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java
+          GALLEY_CHECKOUT="$PWD" java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/kv
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo >/tmp/out-java.txt 2>/tmp/err-java.txt
 
@@ -776,7 +777,7 @@ jobs:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/benchmark
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/json
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           cmake -S examples/c -B /tmp/build-c -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"
           cmake --build /tmp/build-c --target benchmark

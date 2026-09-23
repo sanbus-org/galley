@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Behavioral tests for the Galley Java bindings.
@@ -131,6 +132,59 @@ public class GalleyTest {
             });
             session.parse("alpha:12,beta:3");
             assertEquals(2, seen.size());
+        }
+
+        @Test
+        void nestedParseRestoresOuterGates() {
+            List<String> outerSeen = new ArrayList<>();
+            List<String> innerSeen = new ArrayList<>();
+            boolean[] nested = {false};
+            AtomicReference<Consumer<ProcedureArguments>> outerHook = new AtomicReference<>();
+            outerHook.set(args -> {
+                Node node = args.currentNode();
+                assertNotNull(node);
+                outerSeen.add(new String(node.text(), StandardCharsets.UTF_8));
+                if (!nested[0]) {
+                    nested[0] = true;
+                    Session innerSession = parser.openSession();
+                    try {
+                        parser.clearProcedures();
+                        parser.installProcedure("reduction_Number", innerArgs -> {
+                            Node innerNode = innerArgs.currentNode();
+                            assertNotNull(innerNode);
+                            innerSeen.add(new String(innerNode.text(), StandardCharsets.UTF_8));
+                        });
+                        try {
+                            innerSession.parse("alpha:9");
+                        } finally {
+                            parser.clearProcedures();
+                            parser.installProcedure("reduction_Pair", outerHook.get());
+                        }
+                    } finally {
+                        innerSession.close();
+                    }
+                }
+            });
+            parser.installProcedure("reduction_Pair", outerHook.get());
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(List.of("alpha:12", "beta:3"), outerSeen);
+            assertEquals(List.of("9"), innerSeen);
+        }
+
+        @Test
+        void hookArgumentsReportSessionOpen() {
+            List<Boolean> seen = new ArrayList<>();
+            parser.installProcedure("reduction_Pair", args -> seen.add(args.isClosed()));
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(List.of(false, false), seen);
         }
 
         @Test
@@ -747,6 +801,39 @@ public class GalleyTest {
     }
 
     @Nested
+    class FixtureHookTests {
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession();
+            test_fixture.procedures.register(parser);
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        @Test
+        void hugeDigitStringsReportOutOfRange() {
+            // Old parseLong logic went silent past Long.MAX; digit extraction reports.
+            GalleyException ex = assertThrows(GalleyException.class,
+                    () -> session.parse("alpha:99999999999999999999999"));
+            assertEquals(StatusCode.ERROR_SEMANTIC, ex.getCode());
+            assertTrue(ex.getMessage().contains("value out of range"));
+        }
+
+        @Test
+        void ordinaryNumbersStillPassWithRealHooks() {
+            assertEquals(8, session.parse("alpha:12"));
+        }
+    }
+
+    @Nested
     class EditTests {
         Session session;
         Parser parser;
@@ -857,6 +944,60 @@ public class GalleyTest {
             } else {
                 assertNotEquals(wrapper.getAddress(), first.getAddress());
             }
+        }
+
+        @Test
+        void rawAddressOverloadsMirrorNodeOverloads() {
+            long rootAddr = root.getAddress();
+            int before = session.childCount(rootAddr);
+            Node head = session.cleanChildren(rootAddr);
+            assertNotNull(head);
+            assertEquals(0, session.childCount(rootAddr));
+            session.appendChildren(rootAddr, head.getAddress());
+            assertEquals(before, session.childCount(rootAddr));
+
+            Node wrapper = session.firstChild(rootAddr);
+            assertNotNull(wrapper);
+            long wrapperAddr = wrapper.getAddress();
+            Node pair = session.firstChild(wrapperAddr);
+            assertNotNull(pair);
+            Node tail = session.nextSibling(pair.getAddress());
+            assertNotNull(tail);
+            Node detached = session.removeSiblings(tail.getAddress(), 1);
+            assertNotNull(detached);
+            session.insertBefore(pair.getAddress(), detached.getAddress());
+            assertEquals(tail.getAddress(), session.firstChild(wrapperAddr).getAddress());
+            session.insertAfter(pair.getAddress(), detached.getAddress());
+            assertEquals(detached.getAddress(), session.nextSibling(pair.getAddress()).getAddress());
+
+            Node removedSelf = session.removeSelf(pair.getAddress());
+            assertEquals(pair.getAddress(), removedSelf.getAddress());
+            assertNull(session.parent(pair.getAddress()));
+
+            Node grandchildrenHead = session.cleanChildren(wrapperAddr);
+            assertNotNull(grandchildrenHead);
+            session.appendChildren(wrapperAddr, grandchildrenHead.getAddress());
+            Node promoted = session.promoteChildrenOverWrapper(wrapperAddr);
+            assertNotNull(promoted);
+
+            int original = session.childCount(rootAddr);
+            Node childrenHead = session.cleanChildren(rootAddr);
+            assertNotNull(childrenHead);
+            session.insertChildrenAt(rootAddr, 0, childrenHead.getAddress());
+            assertEquals(original, session.childCount(rootAddr));
+            Node removed = session.removeChildrenAt(rootAddr, 0, original);
+            assertNotNull(removed);
+            assertEquals(0, session.childCount(rootAddr));
+
+            // Fresh tree for the unlink path.
+            session.parse("alpha:12,beta:3");
+            root = session.rootNode();
+            assertNotNull(root);
+            Node freshWrapper = session.firstChild(root.getAddress());
+            assertNotNull(freshWrapper);
+            int wrapperKids = session.childCount(freshWrapper.getAddress());
+            session.unlinkWrapper(freshWrapper.getAddress());
+            assertEquals(wrapperKids, session.childCount(freshWrapper.getAddress()));
         }
     }
 

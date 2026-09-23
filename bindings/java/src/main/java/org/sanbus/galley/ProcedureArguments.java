@@ -23,8 +23,6 @@ public final class ProcedureArguments {
         this.lib = lib;
     }
 
-    public MemorySegment getSegment() { return argsSegment; }
-
     /**
      * The session currently parsing, or null.
      */
@@ -32,6 +30,15 @@ public final class ProcedureArguments {
         MemorySegment sessAddr = lib.galley_procedure_session(argsSegment);
         if (sessAddr == null || sessAddr.equals(MemorySegment.NULL)) return null;
         return Session.fromNativeSegment(sessAddr, lib);
+    }
+
+    /**
+     * Whether the session currently parsing is closed. False inside a
+     * live hook; true when no session is attached.
+     */
+    public boolean isClosed() {
+        Session session = getSession();
+        return session == null || session.isClosed();
     }
 
     /**
