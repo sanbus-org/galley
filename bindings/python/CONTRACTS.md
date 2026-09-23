@@ -6,7 +6,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 
 - Everything is synchronous.
 - Importing a language package scans the sibling hook file and wires hooks at import time.
-- `galley.load` takes an explicit artifact path and returns the module for that file.
+- `galley.load` takes an explicit artifact path and returns the module for that file; repeated loads of the same resolved path return that same module object, cached for the process lifetime.
 - Hook registries are module-global: installs target the module, not individual sessions.
 
 ## Types and errors
