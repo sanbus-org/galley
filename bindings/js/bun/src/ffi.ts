@@ -67,6 +67,7 @@ interface GalleySymbols {
     outVariable: number,
     outSpanStart: number,
     outSpanLen: number,
+    outIsSemanticError: number,
     capacity: bigint,
   ): bigint;
   galley_walker_create(session: NativeHandle, node: bigint, skipSemanticErrors: number): NativeHandle;
@@ -232,7 +233,7 @@ const BASE_SYMBOLS = {
   galley_node_prior_sibling: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
   galley_node_parent: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
   galley_tree_snapshot: {
-    args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
+    args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
     returns: FFIType.i64,
   },
   galley_walker_create: { args: [FFIType.ptr, FFIType.u64, FFIType.i32], returns: FFIType.ptr },
@@ -584,13 +585,14 @@ export class BunPort implements FfiPort {
       const variable = new BigInt64Array(count);
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
+      const isSemanticError = new Int32Array(count);
       const total = this.native.galley_tree_snapshot(
         handle as NativeHandle, ptr(parent), ptr(firstChild), ptr(next), ptr(childCount),
-        ptr(variable), ptr(spanStart), ptr(spanLen), BigInt(count),
+        ptr(variable), ptr(spanStart), ptr(spanLen), ptr(isSemanticError), BigInt(count),
       );
       if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total) as Status);
       if (total === BigInt(count)) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

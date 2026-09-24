@@ -1571,7 +1571,9 @@ export fn galley_node_variable_index(session_ptr: ?*GalleySession, address: Gall
 /// `galley_node_count`; 0 without AST construction). When `capacity` is
 /// smaller than the count only the `[0, capacity)` prefix is written.
 /// Null arrays skip that column; a null session reports
-/// `galley_error_null_argument`.
+/// `galley_error_null_argument`. The `out_is_semantic_error` column
+/// carries 1 where the node carries a semantic error, else 0 — the flag
+/// `galley_walker_next` yields.
 export fn galley_tree_snapshot(
     session_ptr: ?*GalleySession,
     out_parent: ?[*]GalleyNodeAddress,
@@ -1581,6 +1583,7 @@ export fn galley_tree_snapshot(
     out_variable: ?[*]i64,
     out_span_start: ?[*]u64,
     out_span_len: ?[*]u64,
+    out_is_semantic_error: ?[*]i32,
     capacity: u64,
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
@@ -1599,6 +1602,7 @@ export fn galley_tree_snapshot(
         if (out_variable) |variables| variables[index] = if (node.variable == no_variable) -1 else @intCast(node.variable);
         if (out_span_start) |starts| starts[index] = @intCast(node.text_start);
         if (out_span_len) |lens| lens[index] = @intCast(node.text_length);
+        if (out_is_semantic_error) |flag| flag[index] = if (node.is_semantic_error) 1 else 0;
     }
     return @intCast(total);
 }

@@ -35,8 +35,10 @@ export interface WalkedStep {
  * Flat bulk read of the most recent successful parse, one slot per node
  * address. `parent` holds `INVALID_NODE` for the root, `firstChild`/`next`
  * hold `INVALID_NODE` where the link does not exist, `variable` holds -1
- * for nodes without a variable, and `spanStart`/`spanLen` are byte
- * offsets into the parsed input. Parent, firstChild, and next alone
+ * for nodes without a variable, `spanStart`/`spanLen` are byte
+ * offsets into the parsed input, and `isSemanticError` holds 1 where the
+ * node carries a semantic error, 0 elsewhere — `WalkedStep`'s flag as a
+ * raw column. Parent, firstChild, and next alone
  * describe the whole tree with no further calls.
  */
 export interface TreeSnapshot {
@@ -48,6 +50,7 @@ export interface TreeSnapshot {
   variable: BigInt64Array;
   spanStart: BigUint64Array;
   spanLen: BigUint64Array;
+  isSemanticError: Int32Array;
 }
 
 /** Native dispatch callback installed by the adapter; receives a decoded hook name. */

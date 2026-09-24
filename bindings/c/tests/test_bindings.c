@@ -191,9 +191,11 @@ static void test_snapshot(void) {
     static GalleyNodeAddress first_child[1024];
     static GalleyNodeAddress next[1024];
     static unsigned int child_count[1024];
+    static int is_semantic_error[1024];
     CHECK(count < 1024);
     CHECK(galley_tree_snapshot(session, parent, first_child, next, child_count,
-                               NULL, NULL, NULL, count) == (long long)count);
+                                  NULL, NULL, NULL, is_semantic_error,
+                                  count) == (long long)count);
     GalleyNodeAddress root = galley_root_node(session);
     CHECK(parent[root] == GALLEY_INVALID_NODE);
     /* first_child/next chains from the root revisit every reachable
@@ -214,8 +216,20 @@ static void test_snapshot(void) {
     }
     CHECK(visited == 33);
     CHECK(child_sum == visited - 1);
+    /* The snapshot's semantic flag reads what the walker yields, node
+     * for node, over the same reachable set. */
+    GalleyWalker *walker = galley_walker_create(session, root, 0);
+    CHECK(walker != NULL);
+    GalleyNodeAddress walked_node = GALLEY_INVALID_NODE;
+    unsigned int walked_depth = 0;
+    int walked_flag = 0;
+    while (galley_walker_next(walker, &walked_node, &walked_depth, &walked_flag)) {
+        CHECK(walked_flag == is_semantic_error[walked_node]);
+    }
+    galley_walker_destroy(walker);
     CHECK(galley_tree_snapshot(NULL, parent, first_child, next, child_count,
-                               NULL, NULL, NULL, count) == galley_error_null_argument);
+                                  NULL, NULL, NULL, is_semantic_error,
+                                  count) == galley_error_null_argument);
     galley_session_destroy(session);
 }
 

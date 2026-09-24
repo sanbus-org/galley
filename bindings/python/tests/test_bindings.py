@@ -641,6 +641,7 @@ class WalkTests(unittest.TestCase):
             "variable",
             "span_start",
             "span_len",
+            "is_semantic_error",
         ):
             self.assertEqual(len(snap[key]), count)
         for address in range(count):

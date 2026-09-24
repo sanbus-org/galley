@@ -85,6 +85,7 @@ extern "C" {
         out_variable: *mut i64,
         out_span_start: *mut u64,
         out_span_len: *mut u64,
+        out_is_semantic_error: *mut i32,
         capacity: u64,
     ) -> i64;
     fn galley_last_input(
@@ -368,8 +369,9 @@ pub struct WalkStep {
 
 /// Flat bulk read of the last successful parse (see
 /// [`Session::snapshot`]): one entry per node address. Missing links read
-/// as [`NodeHandle::INVALID`], missing variables as -1, and spans index
-/// [`Session::last_input`].
+/// as [`NodeHandle::INVALID`], missing variables as -1, spans index
+/// [`Session::last_input`], and `is_semantic_error` carries the flag
+/// [`WalkStep`] yields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeSnapshot {
     pub count: u64,
@@ -380,6 +382,7 @@ pub struct TreeSnapshot {
     pub variable: Vec<i64>,
     pub span_start: Vec<u64>,
     pub span_len: Vec<u64>,
+    pub is_semantic_error: Vec<bool>,
 }
 
 /// Borrowing pre-order walker over the last successful parse's tree. Walks
@@ -610,6 +613,7 @@ impl Session {
         let mut variable = vec![-1i64; count];
         let mut span_start = vec![0u64; count];
         let mut span_len = vec![0u64; count];
+        let mut is_semantic_error = vec![0i32; count];
         let total = unsafe {
             galley_tree_snapshot(
                 self.inner,
@@ -620,6 +624,7 @@ impl Session {
                 variable.as_mut_ptr(),
                 span_start.as_mut_ptr(),
                 span_len.as_mut_ptr(),
+                is_semantic_error.as_mut_ptr(),
                 count as u64,
             )
         };
@@ -640,6 +645,10 @@ impl Session {
             variable,
             span_start,
             span_len,
+            is_semantic_error: is_semantic_error
+                .into_iter()
+                .map(|flag| flag != 0)
+                .collect(),
         }
     }
 

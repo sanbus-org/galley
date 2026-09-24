@@ -438,8 +438,9 @@ public final class Session implements AutoCloseable {
             MemorySegment variable = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment spanStart = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment spanLen = arena.allocate(ValueLayout.JAVA_LONG, count);
+            MemorySegment semantic = arena.allocate(ValueLayout.JAVA_INT, count);
             long total = lib.galley_tree_snapshot(handle, parent, firstChild, next,
-                    childCount, variable, spanStart, spanLen, count);
+                    childCount, variable, spanStart, spanLen, semantic, count);
             if (total < 0) throw errorFromStatus(total);
             if (total != count) throw new IllegalStateException("node count changed during snapshot");
             long[] parentArray = parent.toArray(ValueLayout.JAVA_LONG);
@@ -449,8 +450,13 @@ public final class Session implements AutoCloseable {
             long[] variableArray = variable.toArray(ValueLayout.JAVA_LONG);
             long[] spanStartArray = spanStart.toArray(ValueLayout.JAVA_LONG);
             long[] spanLenArray = spanLen.toArray(ValueLayout.JAVA_LONG);
+            boolean[] semanticArray = new boolean[(int) count];
+            for (int i = 0; i < semanticArray.length; i++) {
+                semanticArray[i] = semantic.get(ValueLayout.JAVA_INT, (long) i * Integer.BYTES) != 0;
+            }
             return new TreeSnapshot(count, parentArray, firstChildArray, nextArray,
-                    childCountArray, variableArray, spanStartArray, spanLenArray);
+                    childCountArray, variableArray, spanStartArray, spanLenArray,
+                    semanticArray);
         }
     }
 

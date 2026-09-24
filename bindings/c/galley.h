@@ -233,8 +233,10 @@ long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress n
  * address (GALLEY_INVALID_NODE for the root), out_first_child the first
  * child, out_next the next sibling, out_child_count the direct child
  * count, out_variable the variable index (-1 when the node has none),
- * out_span_start/out_span_len the source span. Together parent,
- * first_child, and next describe the whole tree without further calls. */
+ * out_span_start/out_span_len the source span, out_is_semantic_error 1
+ * where the node carries a semantic error (the flag galley_walker_next
+ * yields), else 0. Together parent, first_child, and next describe the
+ * whole tree without further calls. */
 long long galley_tree_snapshot(GalleySession *session,
                                GalleyNodeAddress *out_parent,
                                GalleyNodeAddress *out_first_child,
@@ -243,6 +245,7 @@ long long galley_tree_snapshot(GalleySession *session,
                                long long *out_variable,
                                unsigned long long *out_span_start,
                                unsigned long long *out_span_len,
+                               int *out_is_semantic_error,
                                unsigned long long capacity);
 
 /* Writes the source text matched by a node into *out_data / *out_len. The
