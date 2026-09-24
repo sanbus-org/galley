@@ -43,7 +43,7 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
 
     /**
      * Single gate for steps: closed walkers, closed sessions, and walkers
-     * left over from a previous parse generation all raise instead of
+     * left over from a previous parse generation all throw instead of
      * touching reallocated storage.
      */
     private void requireOpen() {

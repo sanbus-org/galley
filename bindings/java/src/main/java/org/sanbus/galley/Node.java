@@ -37,7 +37,7 @@ public final class Node implements Iterable<Node> {
     /**
      * Single gate for session crossings that accept a node handle:
      * validates the handle (a closed session or an older parse generation
-     * raises instead of reading stale storage) and yields the raw address.
+     * throws instead of reading stale storage) and yields the raw address.
      * Raw addresses carry no generation and pass unguarded by design.
      */
     long validatedAddress() {

@@ -185,9 +185,9 @@ if (Long.parseLong(text) > 999) {
 
 Read them through `session.diagnostic()` / `session.diagnostics()`; the
 snapshot carries `getKind() == DiagnosticKind.SEMANTIC` and
-`getSemantic()` returning `[variable, message]`. The snapshot is frozen at
-raise time: later parses cannot mutate the `Diagnostic` carried by a
-`GalleyException`.
+`getSemantic()` returning `[variable, message]`. The snapshot is frozen when
+the failure is created: later parses cannot mutate the `Diagnostic` carried
+by a `GalleyException`.
 
 ## Tree Walking
 
