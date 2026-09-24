@@ -1,9 +1,8 @@
 /**
  * Galley JavaScript bindings for Node — public surface.
  *
- * Binds the runtime-neutral `@sanbus/galley-core` to the addon port. Mirrors the
- * layout of `bindings/python/galley.pyi` and the C header
- * `bindings/c/galley.h`.
+ * Binds the runtime-neutral `@sanbus/galley-core` to the addon port, over
+ * the C header `bindings/c/galley.h`.
  */
 
 // Core surface: sessions come from the universal entry or the generated

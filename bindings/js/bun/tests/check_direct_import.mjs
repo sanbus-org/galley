@@ -29,9 +29,9 @@ await kv.initialize();
 assert.equal("procedures" in kv, false);
 assert.equal("default" in kv, false);
 
-// Parity pin with the built Python package namespace: every type and
-// constant the grammar module exposes, with hook and query functions
-// living on the language handle like the module, not the session.
+// Namespace pin: every type and constant the grammar module exposes,
+// with hook and query functions living on the language handle like the
+// module, not the session.
 const surface = [
   "Session",
   "Node",

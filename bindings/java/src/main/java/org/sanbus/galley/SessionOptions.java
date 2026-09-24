@@ -6,8 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Runtime options for Session. Mirrors GalleyCOptions in galley.h and
- * SessionOptions in Rust/Go/Python/TypeScript.
+ * Runtime options for Session. Mirrors GalleyCOptions in galley.h.
  *
  * Message-override UTF-8 policy: text messages are encoded as UTF-8 once
  * at the boundary; raw-byte messages pass through unmodified with no

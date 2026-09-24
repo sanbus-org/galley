@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Behavioral tests for the Galley Bun bindings.
- * Mirrors `bindings/python/tests/test_bindings.py`.
  *
  * Run:
  *   bun bindings/js/bun/tests/test_bindings.mjs

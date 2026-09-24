@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Parses a small key/value document through the Galley TypeScript bindings;
- * output is byte-identical across bindings.
+ * Parses a small key/value document through the Galley TypeScript bindings.
  */
 
 import * as fs from "node:fs";
@@ -69,7 +68,7 @@ async function main(): Promise<number> {
   }
   console.log(`galley version: ${language.version()}`);
 
-  // emulate Python's `with` via try/finally close
+  // scoped lifetime via try/finally
   try {
     try {
       session.setMessageOverride(

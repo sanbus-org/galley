@@ -1,12 +1,11 @@
 package org.sanbus.galley;
 
 /**
- * Status codes returned by parse and accessor functions, mirroring
- * Python's {@code Status} and the {@code galley_ok} /
- * {@code galley_error_*} constants in the C ABI. Non-negative values are
- * success; negative values are failures. Converted once at the FFI
- * boundary via {@link #fromCode}; branching code uses these names, never
- * integers.
+ * Status codes returned by parse and accessor functions, per the
+ * {@code galley_ok} / {@code galley_error_*} constants in the C ABI.
+ * Non-negative values are success; negative values are failures. Converted
+ * once at the FFI boundary via {@link #fromCode}; branching code uses
+ * these names, never integers.
  */
 public enum StatusCode {
     OK(0),

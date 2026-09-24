@@ -20,7 +20,7 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Node addresses are `long`, sequences are `List`, mappings are `Map`, and empty is `null`.
 - Every named category the shared contracts define is a Java enum with `getCode()`; branching code never hard-codes integers. The invalid-node sentinel is the named constant `Galley.INVALID_NODE`.
 - Failures throw `GalleyException`: a numeric code plus a frozen diagnostic snapshot. A missing artifact throws `MissingArtifactException` with the path, the exact build command, and the shared machine-readable code. Lifecycle misuse throws `GalleyClosedException`, including use after close and generation invalidation.
-- Snake-case aliases (`has_ast()` and siblings) exist beside the camelCase queries for Python-doc parity; both spellings are documented API.
+- Snake-case aliases (`has_ast()` and siblings) exist beside the camelCase queries; both spellings are documented API.
 
 ## Inputs and resources
 

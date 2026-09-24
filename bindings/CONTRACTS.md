@@ -84,7 +84,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 - One grammar per package directory (`kv/`, `json/`), with containers per language.
 - Example output is byte-identical across bindings, comparing stdout and stderr separately.
-- Comments in an example never reference the other language's files.
+- Comments in a binding never reference another binding — its files or its behavior; cross-binding guarantees live in this contract.
 - Only documented entries are public API.
 - Generated entries expose their surface through named exports.
 - Artifact paths are always explicit.

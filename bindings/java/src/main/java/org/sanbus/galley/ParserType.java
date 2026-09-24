@@ -1,10 +1,10 @@
 package org.sanbus.galley;
 
 /**
- * Parser families reported by {@code galley_parser_type}, mirroring
- * Python's {@code ParserType} and the {@code galley_parser_type_*}
- * constants in the C ABI. Converted once at the FFI boundary via
- * {@link #fromCode}; branching code uses these names, never integers.
+ * Parser families reported by {@code galley_parser_type}, per the
+ * {@code galley_parser_type_*} constants in the C ABI. Converted once at
+ * the FFI boundary via {@link #fromCode}; branching code uses these names,
+ * never integers.
  */
 public enum ParserType {
     LL(0),

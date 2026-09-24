@@ -1,6 +1,5 @@
 /**
- * Parsing session bound to this library's parser.
- * Mirrors Python/Rust/Go sessions over `bindings/c/galley.h`.
+ * Parsing session bound to this library's parser over `bindings/c/galley.h`.
  *
  * Runtime-neutral: all native calls go through the injected {@link FfiPort}.
  * Factories (`galley` on the universal entry, `openSession` on generated
@@ -255,7 +254,7 @@ export class Session {
    * Published on the port as `activeDispatch` for the duration of each
    * parse so native callbacks reach the language's shared registry.
    * Hook exceptions are logged and swallowed so a throwing hook never
-   * aborts the parse (mirrors Python's PyErr_Print behavior).
+   * aborts the parse.
    */
   #dispatchProcedure(name: string, args: Handle, table: Map<string, HookFn>): void {
     const fn = table.get(name);

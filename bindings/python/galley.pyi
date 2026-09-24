@@ -627,8 +627,7 @@ def install_procedure(name: str | bytes, callable: Any) -> None:
     with no args for compatibility). Hooks are no-ops until installed; reinstalling replaces
     the previous callable. An install made while a parse is active applies
     to parses entered after it, never to the in-flight one (clears behave
-    the same). Mirrors Go's ``hooks/procedures.go`` and Rust's
-    ``procedures.rs`` registration.
+    the same).
     """
     ...
 

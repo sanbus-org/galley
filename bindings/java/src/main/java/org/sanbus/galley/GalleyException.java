@@ -1,8 +1,8 @@
 package org.sanbus.galley;
 
 /**
- * Failure reported by a Galley operation. Mirrors Python's GalleyError and
- * the JS GalleyError: a status code plus a frozen diagnostic snapshot.
+ * Failure reported by a Galley operation: a status code plus a frozen
+ * diagnostic snapshot.
  *
  * The message text is fixed when the failure is created and the
  * diagnostic is deep-copied eagerly, so later parses cannot mutate what

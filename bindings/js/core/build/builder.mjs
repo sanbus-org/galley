@@ -13,15 +13,14 @@
  *
  * The language directory must contain `ll.grm` (or `lr.grm` under
  * `--parser-type lr`) and may contain
- * `config.zig`, procedures, and `ll_error_messages.zig`, mirroring the
- * other bindings:
+ * `config.zig`, procedures, and `ll_error_messages.zig`:
  *
  * * `procedures.ts` / `procedures.js` — JavaScript hooks
  *   (`export function reduction_<Variable>(args)` /
  *   `export function hook_<name>(args)`), dispatched through a generated
  *   shim shared by the Node, Bun, and Deno adapters (native emitter) or
  *   through the wasm import (wasm emitter). This is the native-language
- *   path mirroring Rust's `procedures.rs`.
+ *   path.
  * * `procedures.c` / `procedures.cpp` — rejected: not a JavaScript
  *   hook source (implement hooks in `procedures.ts`).
  * * `ll_error_messages.zig` / `lr_error_messages.zig` — custom syntax-error
@@ -31,8 +30,7 @@
  * JavaScript hook source and fails loudly: implement hooks in
  * `procedures.ts` (or `procedures.js`). The gate always generates the
  * shim as a no-op fallback so the artifact links (hooks stay no-ops
- * until JavaScript registers them), mirroring the always-shim model of
- * the other bindings.
+ * until JavaScript registers them).
  *
  * The tool generates the parser (`--emit-metadata`) and builds the artifact
  * through the generic consumer build directly next to the grammar, so the

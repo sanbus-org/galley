@@ -14,15 +14,13 @@ it would park the build inside the generator's watch loop and never
 compile.
 
 The language dir must contain ll.grm and config.zig (generation options)
-and may contain procedure hook implementations and custom message hooks,
-mirroring the C, C++, Rust, and Go consumers:
+and may contain procedure hook implementations and custom message hooks:
 
 * `procedures.py` — Python hooks (``def
   reduction_<Var>(args)`` / ``def hook_<name>(args)``), dispatched through
   a generated Python shim. Hooks wire automatically on direct package
   import and can also be managed explicitly via the artifact's
   ``install_procedure``. Bare ``galley.load()`` never scans this file.
-  This is the native-language path mirroring Rust's ``procedures.rs``.
 * `ll_error_messages.zig` / `lr_error_messages.zig` — custom syntax-error
   message hooks.
 
@@ -509,7 +507,7 @@ def main() -> None:
         )
     # Check every clobber guard before generating anything: a hand-written
     # file in a generated path survives a rebuild instead of being
-    # half-overwritten (mirrors the JS builder's check-all-guards-first).
+    # half-overwritten.
     assert_generated_or_absent(language_dir / "__init__.py")
     assert_generated_or_absent(language_dir / "procedures_python.zig")
     assert_generated_or_absent(language_dir / "__init__.pyi", STUB_LEGACY_HEAD)
@@ -543,8 +541,8 @@ def main() -> None:
     # disables procedures: the generator always lists the general
     # `reduction` fallback), so the archive links and hooks stay no-ops
     # until Python registers them via the artifact's install_procedure —
-    # no rebuild needed, mirroring Go's always-shim model. Without the
-    # shim the weak dispatch symbols are absent and manual installs
+    # no rebuild needed. Without the shim, the weak dispatch symbols are
+    # absent and manual installs
     # would record without ever firing. A procedures.c file next to the
     # grammar is not a Python hook source: rejected above, so only the
     # shim feeds the consumer build.

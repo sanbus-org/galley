@@ -16,8 +16,7 @@ A complete, runnable consumer lives in
 [`examples/python`](https://github.com/sanbus-org/galley/tree/main/examples/python):
 the `kv` keyvalue package behind `demo.py` and the `json` JSON
 package behind `benchmark.py`.
-It is built and executed by CI on every push, byte-for-byte identical in
-output to the C, C++, Rust, and Go examples.
+It is built and executed by CI on every push.
 
 ## Getting Started
 
@@ -91,8 +90,8 @@ not part of the bindings. The grammar archive (`libgalley-python.a`) links
 into the extension next to the grammar, so the artifact is self-contained.
 Regenerate
 after changing the grammar; commit nothing the command generates. One
-package embeds one parser — split grammars across language directories
-exactly like the other bindings. Two packages coexist in one process with
+package embeds one parser — split grammars across language directories.
+Two packages coexist in one process with
 independent hooks: each package import is its own module object. Bare
 loads share one `sys.modules` key with last-load-wins semantics while
 the loader cache holds every object; pickling across processes is
@@ -132,8 +131,7 @@ Set `pub const procedures = true;` in your grammar's `config.zig` and
 implement the hooks in Python in a `procedures.py` file next to your
 grammar — an ordinary Python module wired by the generated package init
 on direct import only. Bare `galley.load()` never scans it.
-No C anywhere on the consumer side, mirroring Rust's `procedures.rs` and
-Go's `procedures.go`:
+No C anywhere on the consumer side:
 
 ```python
 # procedures.py
@@ -190,8 +188,8 @@ parser.clear_procedures()
 
 When no `procedures.py` exists, the shim is still generated
 as a no-op fallback so the archive links; hooks are simply no-ops until
-registered via `parser.install_procedure` without requiring a rebuild,
-mirroring Go's always-shim model. `parser.has_procedures()` reports whether
+registered via `parser.install_procedure` without requiring a rebuild.
+`parser.has_procedures()` reports whether
 the library was built with procedure hooks compiled in.
 
 Reduction hooks
@@ -203,8 +201,8 @@ payloads are unavailable through bindings.
 
 `session.walk(root)` returns a pre-order `Walker` over the last successful
 parse, yielding `{"node", "depth", "is_semantic_error"}` dicts with the
-root at depth 0 — the shared runtime walker, so order and depths match
-every other binding. `walker.skip_children()` prunes the last yielded
+root at depth 0 — the shared runtime walker. `walker.skip_children()`
+prunes the last yielded
 node's children; `session.walk(root, skip_semantic_errors=True)` prunes
 subtrees rooted at semantic-error nodes:
 

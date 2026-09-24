@@ -2,10 +2,9 @@ package org.sanbus.galley;
 
 /**
  * Error-recovery modes reported by {@code galley_error_recovery_mode},
- * mirroring Python's {@code RecoveryMode} and the
- * {@code galley_recovery_mode_*} constants in the C ABI. Converted once at
- * the FFI boundary via {@link #fromCode}; branching code uses these names,
- * never integers.
+ * per the {@code galley_recovery_mode_*} constants in the C ABI. Converted
+ * once at the FFI boundary via {@link #fromCode}; branching code uses
+ * these names, never integers.
  */
 public enum RecoveryMode {
     DISABLED(0),

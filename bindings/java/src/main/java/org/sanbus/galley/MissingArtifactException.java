@@ -4,16 +4,13 @@ import java.io.FileNotFoundException;
 
 /**
  * The parser artifact a binding was told to load is not where it was told.
- * Thrown by artifact resolution instead of searching elsewhere. Mirrors
- * Python's {@code MissingArtifactError} and the JS
- * {@code MissingArtifactError}: same shared machine-readable code,
- * same message shape (path plus the exact build command for this binding).
+ * Thrown by artifact resolution instead of searching elsewhere: carries
+ * the machine-readable code and the message shape (path plus the exact
+ * build command for this binding).
  */
 public class MissingArtifactException extends FileNotFoundException {
     /**
-     * Shared machine-readable code, verbatim across bindings: Python's
-     * {@code MissingArtifactError.code} and the JS
-     * {@code galley:missing-artifact}.
+     * Machine-readable failure code: {@code galley:missing-artifact}.
      */
     public static final String CODE = "galley:missing-artifact";
 
@@ -37,7 +34,7 @@ public class MissingArtifactException extends FileNotFoundException {
         this.artifactPath = artifactPath;
     }
 
-    /** Shared machine-readable code ({@link #CODE}). */
+    /** Machine-readable failure code ({@link #CODE}). */
     public String getCode() { return CODE; }
 
     /** Exact path that held no artifact; null when no path was given. */

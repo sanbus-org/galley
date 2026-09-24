@@ -5,8 +5,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Read-only snapshot of a parse diagnostic, mirroring Python's Diagnostic
- * and the C API's recorded diagnostics.
+ * Read-only snapshot of a parse diagnostic, from the C API's recorded
+ * diagnostics.
  *
  * Frozen when the failure is created: every array is deep-copied on
  * construction and every getter returns a copy, so later parses — and
@@ -115,7 +115,7 @@ public final class Diagnostic {
     public RecoveryProduction getRecoveryProduction() { return recoveryProduction; }
     public RecoveryOccurrence getRecoveryOccurrence() { return recoveryOccurrence; }
 
-    // Python-doc attribute names; not unused duplicates of the getters.
+    // Short attribute spellings; not unused duplicates of the getters.
     public String message() { return message; }
     public String messageAnsi() { return messageAnsi; }
     public byte[] unexpectedToken() { return getUnexpectedToken(); }

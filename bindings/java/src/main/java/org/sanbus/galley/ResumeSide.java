@@ -2,9 +2,9 @@ package org.sanbus.galley;
 
 /**
  * Resume sides reported by {@code galley_diagnostic_recovery_resume},
- * mirroring Python's {@code Resume} and the {@code galley_resume_*}
- * constants in the C ABI. Converted once at the FFI boundary via
- * {@link #fromCode}; branching code uses these names, never integers.
+ * per the {@code galley_resume_*} constants in the C ABI. Converted once
+ * at the FFI boundary via {@link #fromCode}; branching code uses these
+ * names, never integers.
  */
 public enum ResumeSide {
     BEFORE(0),

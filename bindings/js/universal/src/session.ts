@@ -161,8 +161,7 @@ export class Session extends CoreSession {
 
 /**
  * Bare artifact loading: the only way to open an explicit file, raw
- * bytes, or a fetched module. Never scans; hooks arrive explicitly
- * only. Mirrors Python's `galley` loader namespace.
+ * bytes, or a fetched module. Never scans; hooks arrive explicitly only.
  */
 export const galley = {
   async load(filePath: string, options: UniversalFileOptions = {}): Promise<Language> {
