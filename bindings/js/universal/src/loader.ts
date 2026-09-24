@@ -49,7 +49,7 @@ export type NativeRuntime = "node" | "bun" | "deno";
 export interface SessionSource {
   /** Language directory holding the standard-named artifact file. */
   languagePath?: string;
-  /** Explicit artifact file. Never scanned; install explicitly on the language. */
+  /** Explicit artifact file. Never scanned; install explicitly on the parser. */
   filePath?: string;
   /** Module URL for `fetch`. */
   url?: string | URL;

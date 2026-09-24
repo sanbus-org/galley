@@ -151,7 +151,7 @@ export class Session {
       options as unknown as Record<string, unknown>,
       "Session",
       SESSION_TUNABLES,
-      "it takes only parser tunables: install hooks on the language handle, " +
+      "it takes only parser tunables: install hooks on the parser, " +
         "set message overrides through setMessageOverride, and pin backends on load calls",
     );
     const merged = { ...defaultOptions(), ...options };
@@ -247,12 +247,12 @@ export class Session {
     if (status < 0) throw this.#errorFromStatus(status, fallback);
   }
 
-  // -- procedures (this session reads its language's shared registry) --
+  // -- procedures (this session reads its parser's shared registry) --
 
   /**
    * Runs the shared hook for `name` (silent no-op when unregistered).
    * Published on the port as `activeDispatch` for the duration of each
-   * parse so native callbacks reach the language's shared registry.
+   * parse so native callbacks reach the parser's shared registry.
    * Hook exceptions are logged and swallowed so a throwing hook never
    * aborts the parse.
    */

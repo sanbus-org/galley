@@ -7,7 +7,7 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Everything is synchronous.
 - `Galley.load` takes an explicit artifact path and returns the `Parser` for that file; the no-arg form resolves through `GALLEY_LIBRARY_PATH` / `galley.library.path`.
 - Parsers are cached by canonical artifact path for the process lifetime.
-- Sessions open from the handle via `parser.openSession()`, with `SessionOptions` for the non-default shape.
+- Sessions open from the `Parser` via `parser.openSession()`, with `SessionOptions` for the non-default shape.
 - `Parser` is not closeable: it owns no unloadable native state. `Session` and `Walker` are `AutoCloseable`.
 - Hook registries are per-artifact instance state on the `Parser`: `installProcedure` / `installProcedures` / `listProcedures` / `lookupProcedure` / `clearProcedures`.
 - Bulk installs take a `Map<String, hook>`; single installs take a name plus a hook. Hooks are `Consumer<ProcedureArguments>` or zero-arg `Runnable`.

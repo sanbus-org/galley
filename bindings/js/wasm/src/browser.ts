@@ -8,7 +8,7 @@
 export {
   Walker,
   Node,
-  Language,
+  Parser,
   GalleyError,
   MissingArtifactError,
   SessionClosedError,

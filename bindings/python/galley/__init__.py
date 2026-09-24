@@ -2,10 +2,10 @@
 
 ``python -m galley <language-dir>`` builds a language package
 whose inner extension (``galley_impl``) links the grammar statically.
-This loader binds that file directly: ``.so`` in, module out. No scan,
-no hook wiring, no merging. Prefer the returned module over importing
+This loader binds that file directly: ``.so`` in, parser out. No scan,
+no hook wiring, no merging. Prefer the returned parser over importing
 ``galley_impl``: the ``sys.modules`` key aliases the most recent load
-while every loaded object stays alive in the cache.
+while every loaded parser stays alive in the cache.
 
 ```python
 import galley
@@ -17,10 +17,10 @@ parser.install_procedure("reduction_Pair", lambda args: print("Pair"))
 Bundled ``procedures.py`` hooks wire only through direct package
 import (``import my_language``), never through this loader. A missing
 file raises ``MissingArtifactError`` naming the path and the build
-command; anything else surfaces the underlying error. Loaded modules
+command; anything else surfaces the underlying error. Loaded parsers
 stay cached by real path for the process lifetime under the single
 ``sys.modules`` key: last load wins the key, the cache holds every
-object. A failed load restores the previous entry instead of evicting
+parser. A failed load restores the previous entry instead of evicting
 it. Loads are not thread-safe: load every artifact once at
 startup.
 """
@@ -67,10 +67,10 @@ def _load_extension(path: Path) -> ModuleType:
 
 
 def load(path: str | Path) -> ModuleType:
-    """Load the bare extension file at ``path`` and return its module.
+    """Load the bare extension file at ``path`` and return its parser.
 
     No ``procedures.py`` scan: hook wiring beyond the build goes
-    through the module's ``install_procedure`` / ``install_procedures``
+    through the parser's ``install_procedure`` / ``install_procedures``
     directly, where the shared-registry semantics are visible.
 
     Paths with an interior NUL byte are rejected loudly instead of
@@ -90,9 +90,9 @@ def load(path: str | Path) -> ModuleType:
         )
     key = str(candidate.resolve())
     if key in _artifact_cache:
-        module = _artifact_cache[key]
-        sys.modules[_IMPL_MODULE_NAME] = module
-        return module
-    module = _load_extension(candidate)
-    _artifact_cache[key] = module
-    return module
+        parser = _artifact_cache[key]
+        sys.modules[_IMPL_MODULE_NAME] = parser
+        return parser
+    parser = _load_extension(candidate)
+    _artifact_cache[key] = parser
+    return parser

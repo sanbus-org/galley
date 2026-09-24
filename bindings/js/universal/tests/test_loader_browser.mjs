@@ -13,7 +13,7 @@
  * realm serves only the cached wasm backend and rejects everything else,
  * proving browsers never touch FFI.
  *
- * What it proves: `galley.loadBytes(bytes)` resolves a language whose
+ * What it proves: `galley.loadBytes(bytes)` resolves a parser whose
  * sessions parse the shared probe to the same value as the
  * Node/Bun/Deno proofs (15), with the one-time notice, and bad sources
  * reject loudly instead of guessing.
@@ -70,16 +70,16 @@ import { detectRuntime, galley, openLanguageDirectory } from ${JSON.stringify(UN
 
 export async function prove(bytesInput) {
   const runtime = detectRuntime();
-  const language = await galley.loadBytes(bytesInput);
-  const session = await language.openSession();
+  const parser = await galley.loadBytes(bytesInput);
+  const session = await parser.openSession();
   let parsed;
   let version;
   let backend;
   let sessionBackend;
   try {
     parsed = session.parse("alpha:12,beta:3");
-    version = language.version();
-    backend = language.backend;
+    version = parser.version();
+    backend = parser.backend;
     sessionBackend = session.backend;
   } finally {
     session.close();

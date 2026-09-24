@@ -1,5 +1,5 @@
 /**
- * Loaded language handle: the artifact-level namespace sessions open from.
+ * Loaded parser: the artifact-level namespace sessions open from.
  *
  * Owns exactly one hook table shared by every session of the artifact,
  * answers every grammar query, and opens sessions. Acquiring the
@@ -15,19 +15,19 @@ import { registryFor } from "./procedures.ts";
 import type { ProcedureRegistry } from "./procedures.ts";
 import type { HookFn } from "./procedures.ts";
 
-export class Language {
+export class Parser {
   readonly #port: FfiPort;
   readonly #registry: ProcedureRegistry;
 
   /**
    * Takes a bound port: factories resolve the backend first, so a
-   * constructed language is always usable. There is no unready state.
+   * constructed parser is always usable. There is no unready state.
    * `scannedProcedures` carries the factory's language-directory scan
    * (or null where the runtime has none); it fills only hook names
    * never installed, so explicit installs win regardless of order.
    */
   constructor(port: FfiPort, scannedProcedures: unknown = null) {
-    if (!port) throw new TypeError("galley: Language needs a bound port");
+    if (!port) throw new TypeError("galley: Parser needs a bound port");
     this.#port = port;
     this.#registry = registryFor(port);
     this.installBundledProcedures(scannedProcedures);
@@ -35,7 +35,7 @@ export class Language {
 
   /**
    * Wires scanned bundled hooks in bulk for names not yet installed:
-   * at handle creation, on a directory open over an existing handle (a
+   * at parser creation, on a directory open over an existing parser (a
    * bare load can precede it), and from the generated entry's
    * `initialize`. Explicit installs win per hook name regardless of order.
    */
@@ -147,7 +147,7 @@ export class Language {
 
   /**
    * Opens a session on this artifact. Takes only parser tunables;
-   * hooks come from this handle's shared table.
+   * hooks come from this parser's shared table.
    */
   openSession(options: SessionOptions = {}): Session {
     return new Session(this.#port, options);

@@ -5,12 +5,12 @@ if (!languageDir) {
   console.error("usage: node app.bundle.js <language-dir>");
   process.exit(1);
 }
-const language = await openLanguageDirectory(languageDir);
-const session = await language.openSession();
+const parser = await openLanguageDirectory(languageDir);
+const session = await parser.openSession();
 try {
   const parsed = session.parse("alpha:12,beta:3");
   if (parsed !== 15) throw new Error(`expected 15, got ${parsed}`);
-  console.log(`default-entry: parsed ${parsed} bytes via ${language.backend}`);
+  console.log(`default-entry: parsed ${parsed} bytes via ${parser.backend}`);
 } finally {
   session.close();
 }

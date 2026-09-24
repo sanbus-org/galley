@@ -53,8 +53,8 @@ export function rejectSessionOptions(
 }
 
 /**
- * Content hash for byte-fed handles: the same bytes must resolve to the
- * identical handle, and bytes carry no path to key on. cyrb53 over
+ * Content hash for byte-fed parsers: the same bytes must resolve to the
+ * identical parser, and bytes carry no path to key on. cyrb53 over
  * content plus length: fast number ops, no dependencies (`node:crypto`
  * would poison browser import graphs).
  */

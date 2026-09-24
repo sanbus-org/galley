@@ -636,7 +636,7 @@ import {
   Node,
   Walker,
   ProcedureArguments,
-  Language,
+  Parser,
   GalleyError,
   Kind,
   ParserType,
@@ -651,7 +651,7 @@ export {
   Node,
   Walker,
   ProcedureArguments,
-  Language,
+  Parser,
   GalleyError,
   Kind,
   ParserType,
@@ -674,7 +674,7 @@ let bundledProcedures = null;
 
 /**
  * Prepare this package for use. Required on Deno, where no synchronous
- * scan exists: loads the bundled hooks into the shared language handle
+ * scan exists: loads the bundled hooks into the shared parser
  * for later sessions. A no-op on every other runtime, so one program
  * runs everywhere.
  */
@@ -690,28 +690,28 @@ export async function initialize() {
 }
 
 /**
- * The shared language handle for this package's parser. Sessions open
+ * The shared parser for this package's artifact. Sessions open
  * from it, and explicit hook installs target it directly.
  *
- * @returns {Promise<import("@sanbus/galley").Language>}
+ * @returns {Promise<import("@sanbus/galley").Parser>}
  */
-export function language(options = {}) {
+export function parser(options = {}) {
   return openLanguageDirectory(LANGUAGE_DIR, options);
 }
 
 /**
  * Opens a session on this package's parser. Bundled \`procedures\`
- * wire automatically at handle creation, ahead of any explicit
- * installs on the language handle. Backend pins apply to the acquire
- * half only; explicit hooks need \`language()\` first, since one call
+ * wire automatically at parser creation, ahead of any explicit
+ * installs on the parser. Backend pins apply to the acquire
+ * half only; explicit hooks need \`parser()\` first, since one call
  * cannot install and open atomically.
  *
  * @returns {Promise<import("@sanbus/galley").Session>}
  */
 export function openSession(options = {}) {
   const { backend, ...sessionOptions } = options;
-  return openLanguageDirectory(LANGUAGE_DIR, { backend }).then((lang) =>
-    lang.openSession(sessionOptions),
+  return openLanguageDirectory(LANGUAGE_DIR, { backend }).then((parser) =>
+    parser.openSession(sessionOptions),
   );
 }
 `,
@@ -726,7 +726,7 @@ import type {
   Node,
   Walker,
   ProcedureArguments,
-  Language,
+  Parser,
   Diagnostic,
   GalleyError,
   Kind,
@@ -743,7 +743,7 @@ export {
   Node,
   Walker,
   ProcedureArguments,
-  Language,
+  Parser,
   Diagnostic,
   GalleyError,
   Kind,
@@ -757,8 +757,8 @@ export {
 export declare function initialize(): Promise<void>;
 /** See \`openSession\` in \`./index.mjs\`. */
 export declare function openSession(options?: SessionOptions & UniversalDirectoryOptions): Promise<Session>;
-/** See \`language\` in \`./index.mjs\`. */
-export declare function language(options?: UniversalDirectoryOptions): Promise<Language>;
+/** See \`parser\` in \`./index.mjs\`. */
+export declare function parser(options?: UniversalDirectoryOptions): Promise<Parser>;
 `,
     "utf-8",
   );

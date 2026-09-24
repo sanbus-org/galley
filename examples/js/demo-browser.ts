@@ -47,11 +47,11 @@ function printTree(node: Node, depth: number): void {
 }
 
 async function main(): Promise<void> {
-  const language = await galley.loadUrl(wasmUrl());
-  language.installProcedures(procedures as unknown as Record<string, unknown>);
-  const session: Session = await language.openSession({ maxErrors: 10 });
+  const parser = await galley.loadUrl(wasmUrl());
+  parser.installProcedures(procedures as unknown as Record<string, unknown>);
+  const session: Session = await parser.openSession({ maxErrors: 10 });
   try {
-    console.log(`galley version: ${language.version()}`);
+    console.log(`galley version: ${parser.version()}`);
 
     try {
       session.setMessageOverride(
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       fail(`unexpected failure: ${err}`);
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!language.hasAst()) {
+    if (!parser.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     });
 
     // Tree editing: detach the root's children, then reattach them.
-    if (language.hasAst()) {
+    if (parser.hasAst()) {
       const root = session.rootNode();
       if (!root) fail("expected the root to have children");
       const childrenBefore = root.length;

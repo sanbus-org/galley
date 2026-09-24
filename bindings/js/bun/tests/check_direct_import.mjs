@@ -30,14 +30,14 @@ assert.equal("procedures" in kv, false);
 assert.equal("default" in kv, false);
 
 // Namespace pin: every type and constant the grammar module exposes,
-// with hook and query functions living on the language handle like the
+// with hook and query functions living on the parser like the
 // module, not the session.
 const surface = [
   "Session",
   "Node",
   "Walker",
   "ProcedureArguments",
-  "Language",
+  "Parser",
   "GalleyError",
   "Kind",
   "ParserType",
@@ -45,18 +45,18 @@ const surface = [
   "RecoveryTarget",
   "Resume",
 ];
-assert.deepEqual(Object.keys(kv).sort(), ["initialize", "openSession", "language", ...surface].sort());
+assert.deepEqual(Object.keys(kv).sort(), ["initialize", "openSession", "parser", ...surface].sort());
 
 // Construction stays async-only: the bare class needs a bound port.
 assert.throws(() => new kv.Session(), /bound port/);
 
-const lang = await kv.language();
+const parser = await kv.parser();
 const session = await kv.openSession();
 try {
-  assert.ok("reduction_Pair" in lang.listProcedures());
+  assert.ok("reduction_Pair" in parser.listProcedures());
   const parsed = session.parse("alpha:12,beta:3");
   assert.equal(parsed, 15);
-  console.log(`GALLEY_RESULT=${JSON.stringify({ parse: parsed, procedures: Object.keys(lang.listProcedures()).sort() })}`);
+  console.log(`GALLEY_RESULT=${JSON.stringify({ parse: parsed, procedures: Object.keys(parser.listProcedures()).sort() })}`);
 } finally {
   session.close();
 }

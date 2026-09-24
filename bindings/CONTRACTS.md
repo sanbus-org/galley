@@ -6,15 +6,15 @@ Rules every host binding follows. Grammar-level procedure semantics live in [pro
 
 - A load takes its artifact as an explicit argument; a language file that offers a defaulted form names what fills it.
 - A language's bundled hooks are wired automatically on the host's language-use path, named in each language file.
-- The same source always yields the identical handle, and repeated loads of the same source share one hook table.
-- A failed load hands out no handle and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
+- The same source always yields the identical parser, and repeated loads of the same source share one hook table.
+- A failed load hands out no parser and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
 - A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
 - A host that offers both dynamic and static forms of its artifact leaves the choice to the user.
 
 Hosts that acquire native code at load time follow the load/open choreography:
 
-- Bare loads take an artifact and yield a handle without scanning for hook files; hooks arrive explicitly only.
-- Loading and opening are two steps: loading acquires the artifact and yields the handle — returns, or resolves where async — and sessions open from that handle, so hook installs fit between them.
+- Bare loads take an artifact and yield the parser without scanning for hook files; hooks arrive explicitly only.
+- Loading and opening are two steps: loading acquires the artifact and yields the parser — returns, or resolves where async — and sessions open from it, so hook installs fit between them.
 
 ## Hooks
 

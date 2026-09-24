@@ -7,7 +7,7 @@
 
 import { Session, Walker } from "./session.ts";
 import type { SessionOptions, WalkStep } from "./session.ts";
-import { Language } from "./language.ts";
+import { Parser } from "./parser.ts";
 import { Node } from "./node.ts";
 import { GalleyError, MissingArtifactError, SessionClosedError } from "./errors.ts";
 import type { ArtifactHost } from "./artifact.ts";
@@ -21,7 +21,7 @@ export {
   Session,
   Walker,
   Node,
-  Language,
+  Parser,
   GalleyError,
   MissingArtifactError,
   SessionClosedError,

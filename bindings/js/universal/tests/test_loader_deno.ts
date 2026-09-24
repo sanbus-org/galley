@@ -54,7 +54,7 @@ const sharedDir = ensureTestLibrary({
   scope: "universal",
 });
 
-import { detectRuntime, galley, openLanguageDirectory, __resetLanguageCache } from "../src/index.ts";
+import { detectRuntime, galley, openLanguageDirectory, __resetParserCache } from "../src/index.ts";
 import { __resetLoader as resetLoader } from "../src/loader.ts";
 
 let passed = 0;
@@ -65,7 +65,7 @@ class SkipTest extends Error {}
 
 async function test(name: string, fn: () => void | Promise<void>) {
   resetLoader();
-  __resetLanguageCache();
+  __resetParserCache();
   try {
     await fn();
     console.log(`✓ ${name}`);
@@ -117,11 +117,11 @@ await test("factories validate their source", async () => {
   await assert.rejects(galley.loadUrl("data:application/wasm;base64,AA==", { backend: "wasm" }), /backend/);
 });
 
-await test("galley.loadBytes resolves a usable language", async () => {
+await test("galley.loadBytes resolves a usable parser", async () => {
   const bytes = new Uint8Array(Deno.readFileSync(`${wasmDir}/libgalley-js-wasm.wasm`));
-  const lang = await withQuietEnv(() => galley.loadBytes(bytes));
-  assert.equal(lang.backend, "wasm");
-  const session = await lang.openSession();
+  const parser = await withQuietEnv(() => galley.loadBytes(bytes));
+  assert.equal(parser.backend, "wasm");
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -129,13 +129,13 @@ await test("galley.loadBytes resolves a usable language", async () => {
   }
 });
 
-await test("galley.loadUrl resolves a usable language", async () => {
+await test("galley.loadUrl resolves a usable parser", async () => {
   const bytes = new Uint8Array(Deno.readFileSync(`${wasmDir}/libgalley-js-wasm.wasm`));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  const lang = await withQuietEnv(() => galley.loadUrl(`data:application/wasm;base64,${btoa(binary)}`));
-  assert.equal(lang.backend, "wasm");
-  const session = await lang.openSession();
+  const parser = await withQuietEnv(() => galley.loadUrl(`data:application/wasm;base64,${btoa(binary)}`));
+  assert.equal(parser.backend, "wasm");
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -148,12 +148,12 @@ await test("garbage bytes reject loudly", async () => {
 });
 
 await test("openLanguageDirectory resolves native for a language directory", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
-  assert.equal(lang.backend, "native");
+  const { result: parser, lines } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
+  assert.equal(parser.backend, "native");
   assert.equal(lines.length, 1);
   assert.match(lines[0], /procedures/);
-  assert.ok(lang.version().length > 0);
-  const session = await lang.openSession();
+  assert.ok(parser.version().length > 0);
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -162,11 +162,11 @@ await test("openLanguageDirectory resolves native for a language directory", asy
 });
 
 await test("openLanguageDirectory resolves the shared galley-build library natively", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(() => openLanguageDirectory(sharedDir));
-  assert.equal(lang.backend, "native");
+  const { result: parser, lines } = await silenceWarnAsync(() => openLanguageDirectory(sharedDir));
+  assert.equal(parser.backend, "native");
   assert.equal(lines.length, 1);
   assert.match(lines[0], /procedures/);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -182,13 +182,13 @@ await test("galley.load opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(libName)}`);
   fs.renameSync(path.join(fileDir, libName), customLib);
   try {
-    const { result: lang, lines } = await silenceWarnAsync(() => galley.load(customLib));
-    assert.equal(lang.backend, "native");
+    const { result: parser, lines } = await silenceWarnAsync(() => galley.load(customLib));
+    assert.equal(parser.backend, "native");
     // Bare file loads never scan and never warn: hooks arrive
     // explicitly only.
     assert.equal(lines.length, 0);
-    assert.deepEqual(lang.listProcedures(), {});
-    const session = await lang.openSession();
+    assert.deepEqual(parser.listProcedures(), {});
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
@@ -203,12 +203,12 @@ await test("missing native falls back to wasm with notice", async () => {
   const original = console.warn;
   const lines: string[] = [];
   console.warn = (message: unknown) => lines.push(String(message));
-  const lang = await openLanguageDirectory(wasmDir);
+  const parser = await openLanguageDirectory(wasmDir);
   try {
-    assert.equal(lang.backend, "wasm");
+    assert.equal(parser.backend, "wasm");
     assert.equal(lines.length, 1);
     assert.match(lines[0], /WebAssembly/);
-    const session = await lang.openSession();
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
@@ -223,11 +223,11 @@ await test("backend pin selects the wasm leg", async () => {
   const original = console.warn;
   const lines: string[] = [];
   console.warn = (message: unknown) => lines.push(String(message));
-  const lang = await openLanguageDirectory(wasmDir, { backend: "wasm" });
+  const parser = await openLanguageDirectory(wasmDir, { backend: "wasm" });
   try {
-    assert.equal(lang.backend, "wasm");
+    assert.equal(parser.backend, "wasm");
     assert.equal(lines.length, 1);
-    const session = await lang.openSession();
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
@@ -253,10 +253,10 @@ await test("GALLEY_QUIET suppresses the fallback notice", async () => {
   const original = console.warn;
   const lines: string[] = [];
   console.warn = (message: unknown) => lines.push(String(message));
-  const lang = await withQuietEnv(() => openLanguageDirectory(wasmDir));
+  const parser = await withQuietEnv(() => openLanguageDirectory(wasmDir));
   try {
     assert.equal(lines.length, 0);
-    const session = await lang.openSession();
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
@@ -269,31 +269,31 @@ await test("GALLEY_QUIET suppresses the fallback notice", async () => {
 
 await test("explicit procedures dispatch on deno", async () => {
   const hooks = await import(pathToFileURL(path.join(nativeDir, "procedures.ts")).href);
-  const { result: lang } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
-  lang.installProcedures(hooks as Record<string, unknown>);
+  const { result: parser } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
+  parser.installProcedures(hooks as Record<string, unknown>);
   try {
-    assert.ok("reduction_Pair" in lang.listProcedures());
-    const session = await lang.openSession();
+    assert.ok("reduction_Pair" in parser.listProcedures());
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
       session.close();
     }
   } finally {
-    lang.clearProcedures();
+    parser.clearProcedures();
   }
 });
 
 await test("native and wasm sessions parse interleaved", async () => {
-  const { nativeLang, wasmLang } = await withQuietEnv(async () => {
-    const nativeLang = await openLanguageDirectory(nativeDir);
-    const wasmLang = await openLanguageDirectory(wasmDir);
-    return { nativeLang, wasmLang };
+  const { nativeParser, wasmParser } = await withQuietEnv(async () => {
+    const nativeParser = await openLanguageDirectory(nativeDir);
+    const wasmParser = await openLanguageDirectory(wasmDir);
+    return { nativeParser, wasmParser };
   });
-  assert.equal(nativeLang.backend, "native");
-  assert.equal(wasmLang.backend, "wasm");
-  const native = await nativeLang.openSession();
-  const wasm = await wasmLang.openSession();
+  assert.equal(nativeParser.backend, "native");
+  assert.equal(wasmParser.backend, "wasm");
+  const native = await nativeParser.openSession();
+  const wasm = await wasmParser.openSession();
   try {
     assert.equal(native.parse("alpha:12,beta:3"), 15);
     assert.equal(wasm.parse("alpha:12,beta:3"), 15);

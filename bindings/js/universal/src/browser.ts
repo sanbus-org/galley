@@ -3,14 +3,14 @@
  *
  * The same `galley` surface as the default entry with the filesystem
  * steps absent — no `node:` specifier exists anywhere in this module's
- * import graph, so bundlers resolve it without shims. Languages come
+ * import graph, so bundlers resolve it without shims. Parsers come
  * from `galley.loadBytes` (raw module bytes) or `galley.loadUrl`
  * (fetched); there is no `load` and no language directory: browsers
  * have no filesystem. Procedure hooks arrive explicitly through the
- * language handle.
+ * parser.
  */
 
-import { Language as CoreLanguage, Session as CoreSession } from "@sanbus/galley-core";
+import { Parser as CoreParser, Session as CoreSession } from "@sanbus/galley-core";
 import type { SessionOptions } from "@sanbus/galley-core";
 import { checkModuleBytes, checkModuleUrl, hashModuleBytes, rejectSessionOptions } from "@sanbus/galley-core/internal";
 import { portFromBytes, portFromUrl } from "@sanbus/galley-wasm/browser";
@@ -63,14 +63,14 @@ function noteBrowserWasm(): void {
 /** Test-only: clear the one-time notice. */
 export function __resetLoader(): void {
   warned = false;
-  languageCache.clear();
+  parserCache.clear();
 }
 
 /**
- * Wasm-only language handle: this entry serves no other leg, so the
+ * Wasm-only parser: this entry serves no other leg, so the
  * backend reports literally.
  */
-class BrowserLanguage extends CoreLanguage {
+class BrowserParser extends CoreParser {
   /** Always wasm: the browser entry resolves no native leg. */
   get backend(): "wasm" {
     return "wasm";
@@ -88,19 +88,19 @@ class BrowserSession extends CoreSession {
   }
 }
 
-export { BrowserLanguage as Language, BrowserSession as Session };
+export { BrowserParser as Parser, BrowserSession as Session };
 
-// Byte- and URL-fed handles pin by source identity for the process
+// Byte- and URL-fed parsers pin by source identity for the process
 // lifetime, matching the adapter caches beneath.
 const NO_LOAD_OPTIONS: ReadonlySet<string> = new Set([]);
 
-const languageCache = new Map<string, BrowserLanguage>();
+const parserCache = new Map<string, BrowserParser>();
 
-async function cachedLanguage(key: string, make: () => Promise<BrowserLanguage>): Promise<BrowserLanguage> {
-  const hit = languageCache.get(key);
+async function cachedParser(key: string, make: () => Promise<BrowserParser>): Promise<BrowserParser> {
+  const hit = parserCache.get(key);
   if (hit !== undefined) return hit;
   const made = await make();
-  languageCache.set(key, made);
+  parserCache.set(key, made);
   return made;
 }
 
@@ -109,23 +109,23 @@ async function cachedLanguage(key: string, make: () => Promise<BrowserLanguage>)
  * module in a browser. Hooks arrive explicitly only.
  */
 export const galley = {
-  async loadBytes(bytes: Uint8Array, options: BrowserSessionOptions = {}): Promise<BrowserLanguage> {
+  async loadBytes(bytes: Uint8Array, options: BrowserSessionOptions = {}): Promise<BrowserParser> {
     const source = checkModuleBytes(bytes, "galley: galley.loadBytes");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadBytes", NO_LOAD_OPTIONS);
     const key = `bytes:${hashModuleBytes(source)}`;
-    return cachedLanguage(key, async () => {
+    return cachedParser(key, async () => {
       noteBrowserWasm();
-      return new BrowserLanguage(await portFromBytes(source, "galley"));
+      return new BrowserParser(await portFromBytes(source, "galley"));
     });
   },
 
-  async loadUrl(url: string | URL, options: BrowserSessionOptions = {}): Promise<BrowserLanguage> {
+  async loadUrl(url: string | URL, options: BrowserSessionOptions = {}): Promise<BrowserParser> {
     const source = checkModuleUrl(url, "galley: galley.loadUrl");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadUrl", NO_LOAD_OPTIONS);
     const key = `url:${typeof source === "string" ? source : source.href}`;
-    return cachedLanguage(key, async () => {
+    return cachedParser(key, async () => {
       noteBrowserWasm();
-      return new BrowserLanguage(await portFromUrl(source, "galley"));
+      return new BrowserParser(await portFromUrl(source, "galley"));
     });
   },
 };

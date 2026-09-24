@@ -45,7 +45,7 @@ const sharedDir = ensureTestLibrary({
   scope: "universal",
 });
 
-const { detectRuntime, galley, openLanguageDirectory, __resetLanguageCache } = await import("../dist/index.js");
+const { detectRuntime, galley, openLanguageDirectory, __resetParserCache } = await import("../dist/index.js");
 const browserEntry = await import("../dist/browser.js");
 const { __resetLoader: resetLoader } = await import("../dist/loader.js");
 
@@ -57,7 +57,7 @@ class SkipTest extends Error {}
 
 async function test(name, fn) {
   resetLoader();
-  __resetLanguageCache();
+  __resetParserCache();
   browserEntry.__resetLoader();
   try {
     await fn();
@@ -139,11 +139,11 @@ await test("factories validate their source", async () => {
 });
 
 await test("openLanguageDirectory resolves native for a language directory", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
-  assert.equal(lang.backend, "native");
+  const { result: parser, lines } = await silenceWarnAsync(() => openLanguageDirectory(nativeDir));
+  assert.equal(parser.backend, "native");
   assert.equal(lines.length, 0);
-  assert.ok(lang.version().length > 0);
-  const session = await lang.openSession();
+  assert.ok(parser.version().length > 0);
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -152,10 +152,10 @@ await test("openLanguageDirectory resolves native for a language directory", asy
 });
 
 await test("openLanguageDirectory resolves the shared galley-build library natively", async () => {
-  const { result: sharedLang, lines: sharedLines } = await silenceWarnAsync(() => openLanguageDirectory(sharedDir));
-  assert.equal(sharedLang.backend, "native");
+  const { result: sharedParser, lines: sharedLines } = await silenceWarnAsync(() => openLanguageDirectory(sharedDir));
+  assert.equal(sharedParser.backend, "native");
   assert.equal(sharedLines.length, 0);
-  const sharedSession = await sharedLang.openSession();
+  const sharedSession = await sharedParser.openSession();
   try {
     assert.equal(sharedSession.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -171,12 +171,12 @@ await test("galley.load opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(libName)}`);
   fs.renameSync(path.join(fileDir, libName), customLib);
   try {
-    const { result: lang, lines } = await silenceWarnAsync(() => galley.load(customLib));
-    assert.equal(lang.backend, "native");
+    const { result: parser, lines } = await silenceWarnAsync(() => galley.load(customLib));
+    assert.equal(parser.backend, "native");
     assert.equal(lines.length, 0);
     // Bare file loads never scan: hooks arrive explicitly only.
-    assert.deepEqual(lang.listProcedures(), {});
-    const session = await lang.openSession();
+    assert.deepEqual(parser.listProcedures(), {});
+    const session = await parser.openSession();
     try {
       assert.equal(session.parse("alpha:12,beta:3"), 15);
     } finally {
@@ -195,11 +195,11 @@ await test("galley.load missing artifact fails loudly", async () => {
 });
 
 await test("missing native falls back to wasm with notice", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(() => openLanguageDirectory(wasmDir));
-  assert.equal(lang.backend, "wasm");
+  const { result: parser, lines } = await silenceWarnAsync(() => openLanguageDirectory(wasmDir));
+  assert.equal(parser.backend, "wasm");
   assert.equal(lines.length, 1);
   assert.match(lines[0], /WebAssembly/);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -208,11 +208,11 @@ await test("missing native falls back to wasm with notice", async () => {
 });
 
 await test("backend pin selects the wasm leg", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(
+  const { result: parser, lines } = await silenceWarnAsync(
     () => openLanguageDirectory(wasmDir, { backend: "wasm" }),
   );
   assert.equal(lines.length, 1);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -236,11 +236,11 @@ await test("missing everything explains how to build", async () => {
 });
 
 await test("GALLEY_QUIET suppresses the fallback notice", async () => {
-  const { result: lang, lines } = await silenceWarnAsync(
+  const { result: parser, lines } = await silenceWarnAsync(
     () => withQuietEnv(() => openLanguageDirectory(wasmDir)),
   );
   assert.equal(lines.length, 0);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -251,9 +251,9 @@ await test("GALLEY_QUIET suppresses the fallback notice", async () => {
 await test("native and wasm sessions parse interleaved", async () => {
   const { lines, restore } = captureWarn();
   const { native, wasm } = await withQuietEnv(async () => {
-    const nativeLang = await openLanguageDirectory(nativeDir);
-    const wasmLang = await openLanguageDirectory(wasmDir);
-    return { native: await nativeLang.openSession(), wasm: await wasmLang.openSession() };
+    const nativeParser = await openLanguageDirectory(nativeDir);
+    const wasmParser = await openLanguageDirectory(wasmDir);
+    return { native: await nativeParser.openSession(), wasm: await wasmParser.openSession() };
   });
   try {
     assert.equal(native.parse("alpha:12,beta:3"), 15);
@@ -268,14 +268,14 @@ await test("native and wasm sessions parse interleaved", async () => {
   assert.equal(lines.length, 0);
 });
 
-await test("galley.loadUrl resolves a usable language", async () => {
+await test("galley.loadUrl resolves a usable parser", async () => {
   const wasmBytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
   await withServer(wasmBytes, async (url) => {
     const { lines, restore } = captureWarn();
-    const lang = await withQuietEnv(() => galley.loadUrl(url));
+    const parser = await withQuietEnv(() => galley.loadUrl(url));
     try {
-      assert.equal(lang.backend, "wasm");
-      const session = await lang.openSession();
+      assert.equal(parser.backend, "wasm");
+      const session = await parser.openSession();
       try {
         assert.equal(session.parse("alpha:12,beta:3"), 15);
       } finally {
@@ -294,12 +294,12 @@ await test("unreachable url rejects loudly", async () => {
   );
 });
 
-await test("galley.loadBytes resolves a usable language", async () => {
+await test("galley.loadBytes resolves a usable parser", async () => {
   const bytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
-  const { result: lang, lines } = await silenceWarnAsync(() => withQuietEnv(() => galley.loadBytes(bytes)));
-  assert.equal(lang.backend, "wasm");
+  const { result: parser, lines } = await silenceWarnAsync(() => withQuietEnv(() => galley.loadBytes(bytes)));
+  assert.equal(parser.backend, "wasm");
   assert.equal(lines.length, 0);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -313,11 +313,11 @@ await test("garbage bytes reject loudly", async () => {
 
 await test("browser entry parses from bytes", async () => {
   const bytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
-  const { result: lang, lines } = await silenceWarnAsync(
+  const { result: parser, lines } = await silenceWarnAsync(
     () => withQuietEnv(() => browserEntry.galley.loadBytes(bytes)),
   );
   assert.equal(lines.length, 0);
-  const session = await lang.openSession();
+  const session = await parser.openSession();
   try {
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   } finally {
@@ -333,7 +333,7 @@ await test("browser entry warns once without quiet", async () => {
     const second = await browserEntry.galley.loadBytes(bytes);
     assert.equal(lines.length, 1);
     assert.match(lines[0], /WebAssembly/);
-    // Identical bytes resolve to the identical handle.
+    // Identical bytes resolve to the identical parser.
     assert.equal(second, first);
     const s1 = await first.openSession();
     const s2 = await second.openSession();
@@ -356,8 +356,8 @@ await test("browser entry exposes galley without filesystem loads", () => {
 await test("browser entry parses from url", async () => {
   const wasmBytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
   await withServer(wasmBytes, async (url) => {
-    const lang = await withQuietEnv(() => browserEntry.galley.loadUrl(url));
-    await using session = await lang.openSession();
+    const parser = await withQuietEnv(() => browserEntry.galley.loadUrl(url));
+    await using session = await parser.openSession();
     assert.equal(session.parse("alpha:12,beta:3"), 15);
   });
 });
