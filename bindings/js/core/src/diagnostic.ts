@@ -1,7 +1,7 @@
 /**
  * Read-only snapshot of a parse diagnostic: every field is readonly
  * and the whole snapshot — array fields included — freezes when it
- * rides on a raised `GalleyError`; byte contents are read-only by
+ * rides on a thrown `GalleyError`; byte contents are read-only by
  * convention (the language cannot freeze typed-array elements).
  * All `Uint8Array` fields are copies that remain valid after the next parse.
  */

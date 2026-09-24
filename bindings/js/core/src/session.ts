@@ -147,7 +147,7 @@ export class Session {
   constructor(port: FfiPort, options: SessionOptions = {}) {
     if (!port) throw new TypeError("galley: Session needs a bound port");
     // Same boundary check as every load factory: a backend pin or a
-    // typo'd tunable raises instead of being silently dropped.
+    // typo'd tunable throws instead of being silently dropped.
     rejectSessionOptions(
       options as unknown as Record<string, unknown>,
       "Session",

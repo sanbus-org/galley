@@ -8,9 +8,9 @@ import java.util.List;
  * Read-only snapshot of a parse diagnostic, mirroring Python's Diagnostic
  * and the C API's recorded diagnostics.
  *
- * Frozen at raise time: every array is deep-copied on construction and
- * every getter returns a copy, so later parses — and callers — cannot
- * mutate a diagnostic carried by a {@link GalleyException}.
+ * Frozen when the failure is created: every array is deep-copied on
+ * construction and every getter returns a copy, so later parses — and
+ * callers — cannot mutate a diagnostic carried by a {@link GalleyException}.
  */
 public final class Diagnostic {
     private final DiagnosticKind kind;

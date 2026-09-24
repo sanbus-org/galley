@@ -266,7 +266,7 @@ await test("message inputs accept bytes", async () => {
   }
 });
 
-await test("syntax error raises error with code and diagnostic", async () => {
+await test("syntax error throws error with code and diagnostic", async () => {
   const s = await newSession();
   try {
     try {
