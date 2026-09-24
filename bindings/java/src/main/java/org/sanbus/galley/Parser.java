@@ -17,12 +17,12 @@ import java.util.function.Consumer;
 import org.sanbus.galley.internal.GalleyLibrary;
 
 /**
- * Loaded parser handle: the artifact-level namespace sessions open from.
+ * Loaded parser: the artifact-level namespace sessions open from.
  *
  * Owns one hook table shared by every session of the artifact. Acquire with
  * {@link Galley#load}, install hooks, then open sessions. Parsers are cached
  * by canonical artifact path for the process lifetime and the native library
- * cannot unload, so this handle is not closeable.
+ * cannot unload, so a parser is not closeable.
  *
  * Threading: sessions are confined to one thread each, and two sessions of
  * one parser must never parse concurrently — native hook gates are

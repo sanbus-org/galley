@@ -62,7 +62,7 @@ with my_language.Session(max_errors=10) as session:
 ```
 
 Bare file loads take any path to the built inner extension and never
-scan for hooks — wire them manually through the module API:
+scan for hooks — wire them manually through the parser API:
 
 ```python
 import galley
@@ -92,7 +92,7 @@ Regenerate
 after changing the grammar; commit nothing the command generates. One
 package embeds one parser — split grammars across language directories.
 Two packages coexist in one process with
-independent hooks: each package import is its own module object. Bare
+independent hooks: each package import is its own parser. Bare
 loads share one `sys.modules` key with last-load-wins semantics while
 the loader cache holds every object; pickling across processes is
 unsupported. Rename non-identifier folders to import them directly:
@@ -163,7 +163,7 @@ Mechanically, `python -m galley` reads the generator's hook list
 (`procedures` in metadata.json) and produces a Zig shim module containing
 one dispatch slot;
 the generated init registers the Python callables into that slot from
-`procedures.py` beside the package. Extra hooks go through the module's
+`procedures.py` beside the package. Extra hooks go through the parser's
 `install_procedures` directly, where the shared-registry semantics are
 visible (later installs win per hook name).
 `procedures.py` uses relative imports: it always executes as a submodule
@@ -172,7 +172,7 @@ same `GalleyError` class the parser raises. The parser calls through the slot
 directly, so hook code executes in the host's Python interpreter.
 Unregistered slots are no-ops.
 
-Explicit registration is also available. On a bare-loaded module it is
+Explicit registration is also available. On a bare-loaded parser it is
 the only wiring; on a package it composes with the scan:
 
 ```python
@@ -180,7 +180,7 @@ import galley
 
 parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 parser.install_procedure("reduction_Pair", lambda args: print("Pair"))
-parser.install_procedures(my_hooks)  # all reduction_*/hook_* in module
+parser.install_procedures(my_hooks)  # all reduction_*/hook_* in my_hooks
 parser.list_procedures()   # {name: callable}
 parser.procedure_hook("reduction_Pair")   # the callable, or None
 parser.clear_procedures()

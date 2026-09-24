@@ -17,14 +17,14 @@ public final class Galley {
     private static final ConcurrentHashMap<String, Object> LOAD_LOCKS = new ConcurrentHashMap<>();
 
     /**
-     * Loads the parser artifact at {@code path} and returns its handle.
-     * Handles are cached by canonical artifact path for the process
+     * Loads the parser artifact at {@code path} and returns the parser.
+     * Parsers are cached by canonical artifact path for the process
      * lifetime: the same source always yields the identical object, and a
      * failed load binds and caches nothing. A null path resolves through
      * {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}, else a
      * loud error naming the exact path. Bare loads wire no hooks.
      * Same-path loads serialize against each other; sessions opened from
-     * the handle stay confined to one thread each and must never parse
+     * the parser stay confined to one thread each and must never parse
      * concurrently (see {@link Parser}).
      *
      * @throws MissingArtifactException when no artifact is where it was told.

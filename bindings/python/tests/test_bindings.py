@@ -47,7 +47,7 @@ def _restore_procedures(saved: dict[str, Any]) -> None:
         grammar.install_procedures(saved)
 
 
-class ModuleSurfaceTests(unittest.TestCase):
+class ParserSurfaceTests(unittest.TestCase):
     def test_stub_matches_extension_surface(self):
         # __init__.pyi is a hand-kept mirror of the package API: it must
         # name exactly what the module exposes, in either direction, or
@@ -992,7 +992,7 @@ class LoaderTests(unittest.TestCase):
     """Contracts of the bare-file loader.
 
     Copies of the already-built fixture extension stand in for distinct
-    grammars: same content, separate module objects — which is exactly
+    grammars: same content, separate parser objects — which is exactly
     what per-artifact isolation rests on. No rebuilds, no examples.
     Bare loads never scan: a `procedures.py` next to the file is
     ignored, and hooks arrive only through explicit installs.
@@ -1027,7 +1027,7 @@ class LoaderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             galley.load("no-such-grammar\0.so")
 
-    def test_same_path_returns_same_module(self) -> None:
+    def test_same_path_returns_same_parser(self) -> None:
         impl = self._copy_impl()
         first = galley.load(impl)
         second = galley.load(impl)
@@ -1072,15 +1072,15 @@ class LoaderTests(unittest.TestCase):
             "    seen.append(text)\n",
             encoding="utf-8",
         )
-        module = galley.load(impl)
-        self.assertFalse(hasattr(module, "procedures"))
-        self.assertEqual(module.list_procedures(), {})
-        with module.Session() as session:
+        parser = galley.load(impl)
+        self.assertFalse(hasattr(parser, "procedures"))
+        self.assertEqual(parser.list_procedures(), {})
+        with parser.Session() as session:
             session.parse("alpha:12")
-        self.assertEqual(module.list_procedures(), {})
+        self.assertEqual(parser.list_procedures(), {})
 
     def test_manual_dict_install_fires(self) -> None:
-        module = galley.load(self._copy_impl())
+        parser = galley.load(self._copy_impl())
         fired: list[bytes] = []
 
         def reduction_Number(args: Any) -> None:
@@ -1090,28 +1090,28 @@ class LoaderTests(unittest.TestCase):
             assert text is not None
             fired.append(text)
 
-        module.install_procedures({"reduction_Number": reduction_Number})
+        parser.install_procedures({"reduction_Number": reduction_Number})
         try:
-            self.assertIn("reduction_Number", module.list_procedures())
-            with module.Session() as session:
+            self.assertIn("reduction_Number", parser.list_procedures())
+            with parser.Session() as session:
                 session.parse("alpha:12")
             self.assertEqual(fired, [b"12"])
         finally:
-            module.clear_procedures()
+            parser.clear_procedures()
 
     def test_near_miss_hook_names_warn(self) -> None:
-        module = galley.load(self._copy_impl())
+        parser = galley.load(self._copy_impl())
 
         def reductionPair(args: Any) -> None:
             pass
 
         try:
             with self.assertWarns(RuntimeWarning):
-                installed = module.install_procedures({"reductionPair": reductionPair})
+                installed = parser.install_procedures({"reductionPair": reductionPair})
             self.assertEqual(installed, 0)
-            self.assertNotIn("reductionPair", module.list_procedures())
+            self.assertNotIn("reductionPair", parser.list_procedures())
         finally:
-            module.clear_procedures()
+            parser.clear_procedures()
 
     def test_failed_load_preserves_previous_entry(self) -> None:
         import importlib.machinery

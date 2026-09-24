@@ -7,7 +7,7 @@
  * forwarder decodes the hook name and calls the port's `activeDispatch`
  * slot, which the parsing session set around its parse.
  *
- * Registries live on the language handle: every `Language` owns one
+ * Registries live on the parser: every `Parser` owns one
  * table shared by all of its sessions, and publishes per-parse dispatch
  * through the session's gate brackets. There is no per-session table.
  *
@@ -112,7 +112,7 @@ export function isProcedureName(name: string): boolean {
 }
 
 /**
- * One artifact's procedure hooks. Languages build one from the
+ * One artifact's procedure hooks. Parsers build one from the
  * directory scan; hooks never cross artifacts.
  */
 export class ProcedureRegistry {

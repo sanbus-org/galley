@@ -2,11 +2,11 @@
  * Universal Galley JavaScript bindings — public surface.
  *
  * One package for Node, Bun, Deno, and browsers over `@sanbus/galley-core`,
- * with native-first backend selection and WebAssembly fallback. Languages
+ * with native-first backend selection and WebAssembly fallback. Parsers
  * come from the `galley` object — `load` (an explicit artifact file),
  * `loadBytes` (raw wasm), `loadUrl` (fetched) — or from a generated
  * package entry, which opens its own directory with bundled hooks.
- * Sessions open from a language and share its hook table.
+ * Sessions open from a parser and share its hook table.
  */
 
 import { createRequire } from "node:module";
@@ -22,7 +22,7 @@ seedEngineLegs({
 });
 
 // Core surface, minus the base Session value (a type-only Session is
-// exported below; construct sessions from a language handle). Language
+// exported below; construct sessions from a parser). Parser
 // is shadowed by the backend-carrying subclass in ./session.ts.
 export {
   Walker,
@@ -39,7 +39,7 @@ export {
   RecoveryTarget,
   Resume,
 } from "@sanbus/galley-core";
-export { galley, openLanguageDirectory, Language, __resetLanguageCache } from "./session.ts";
+export { galley, openLanguageDirectory, Parser, __resetParserCache } from "./session.ts";
 export type { Session };
 export { detectRuntime, seedEngineLegs } from "./loader.ts";
 export type { Runtime, Backend, SessionSource, EngineLegs } from "./loader.ts";

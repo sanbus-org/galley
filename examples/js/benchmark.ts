@@ -65,8 +65,8 @@ async function main(): Promise<number> {
     await json.initialize();
     const wasm = jsonWasmBytes();
     if (wasm !== null && wasm !== "dir") {
-      const language = await galley.loadBytes(wasm);
-      session = await language.openSession();
+      const parser = await galley.loadBytes(wasm);
+      session = await parser.openSession();
     } else {
       session =
         wasm === null

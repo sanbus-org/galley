@@ -48,25 +48,25 @@ function printTree(node: import("@sanbus/galley").Node, depth: number): void {
 
 async function main(): Promise<number> {
   let session: Session;
-  let language: import("@sanbus/galley").Language;
+  let parser: import("@sanbus/galley").Parser;
   try {
     await kv.initialize();
     const wasm = wasmBytes();
     const hooks = procedures as unknown as Record<string, unknown>;
     if (wasm === null) {
-      language = await kv.language();
+      parser = await kv.parser();
     } else if (wasm === "dir") {
-      language = await kv.language({ backend: "wasm" });
+      parser = await kv.parser({ backend: "wasm" });
     } else {
-      language = await galley.loadBytes(wasm);
+      parser = await galley.loadBytes(wasm);
     }
-    language.installProcedures(hooks);
-    session = await language.openSession({ maxErrors: 10 });
+    parser.installProcedures(hooks);
+    session = await parser.openSession({ maxErrors: 10 });
   } catch {
     console.error("failed to create a parser session");
     return 1;
   }
-  console.log(`galley version: ${language.version()}`);
+  console.log(`galley version: ${parser.version()}`);
 
   // scoped lifetime via try/finally
   try {
@@ -107,7 +107,7 @@ async function main(): Promise<number> {
       return 1;
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!language.hasAst()) {
+    if (!parser.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -187,7 +187,7 @@ async function main(): Promise<number> {
     console.log(`file parse: ${parsed} bytes, ended at ${endLine}:${endColumn}`);
 
     // Tree editing: detach the root's children, then reattach them.
-    if (language.hasAst()) {
+    if (parser.hasAst()) {
       const root = session.rootNode();
       if (!root) {
         console.error("expected the root to have children");
