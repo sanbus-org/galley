@@ -34,9 +34,8 @@ public final class Parser {
     private final String canonicalPath;
     private final GalleyLibrary lib;
     private final ConcurrentHashMap<String, Consumer<ProcedureArguments>> hooks = new ConcurrentHashMap<>();
-    // Entry-dispatch stack: one snapshot per active parse level (innermost
-    // last), mirroring Python's gate_snapshots and the JS entry table.
-    // Dispatch reads the innermost snapshot so mid-parse installs and
+    // Entry-dispatch stack: one snapshot per active parse level, innermost
+    // last. Dispatch reads the innermost snapshot so mid-parse installs and
     // clears apply to later parses only; nested parses push their own and
     // the enclosing table is restored on unwind.
     private final Deque<Map<String, Consumer<ProcedureArguments>>> dispatchStack = new ArrayDeque<>();
@@ -187,9 +186,9 @@ public final class Parser {
     /**
      * Pops a parse level's entry table and re-syncs the native gates from
      * the now-enclosing table (the unwinding level's own table at the
-     * outermost level), mirroring JS popGates: nested parses restore the
-     * enclosing hook set on unwind instead of clobbering it. The poll runs
-     * first so the stack unwinds even if the re-sync throws.
+     * outermost level): nested parses restore the enclosing hook set on
+     * unwind instead of clobbering it. The poll runs first so the stack
+     * unwinds even if the re-sync throws.
      */
     void popAndRestoreGates(Map<String, Consumer<ProcedureArguments>> ownTable) {
         dispatchStack.poll();
@@ -267,8 +266,7 @@ public final class Parser {
     /**
      * True for names that look like mistyped hooks ({@code reductionPair},
      * {@code hookPrint}, {@code reducton_X}): a warning, not an install.
-     * Anything else (helpers, data) stays silent. Mirrors the JS
-     * {@code isNearMissHookName}.
+     * Anything else (helpers, data) stays silent.
      */
     private static boolean isNearMissHookName(String name) {
         if (name == null || isHookName(name)) return false;

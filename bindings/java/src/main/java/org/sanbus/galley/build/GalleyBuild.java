@@ -23,7 +23,7 @@ import java.util.*;
  * procedures.java (Java hooks dispatched through generated shim;
  * the packaged layout <package>/procedures.java is canonical and also
  * yields the generated per-grammar Parser wiring),
- * ll_error_messages.zig, etc, mirroring the other bindings. A
+ * ll_error_messages.zig, etc. A
  * procedures.c/procedures.cpp next to the grammar is a fatal build
  * error naming procedures.java as the host file to use instead.
  *

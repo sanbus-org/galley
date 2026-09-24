@@ -7,8 +7,7 @@ import java.util.Objects;
 
 /**
  * Session-bound handle for a node in the non-relocating AST storage.
- * Keeps a strong reference to its Session, mirroring Python's galley.Node
- * and TypeScript's Node.
+ * Keeps a strong reference to its Session.
  */
 public final class Node implements Iterable<Node> {
     private final Session session;
@@ -90,7 +89,7 @@ public final class Node implements Iterable<Node> {
         return kids.iterator();
     }
 
-    // Java equivalent of Python's __len__, __getitem__, __iter__
+    // Collection spelling of length(); not an unused duplicate.
     public int size() { return length(); }
 
     @Override

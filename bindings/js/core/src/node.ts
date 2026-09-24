@@ -4,9 +4,9 @@ import { SessionClosedError } from "./errors.ts";
 
 /**
  * Session-bound handle for a node in the non-relocating AST storage.
- * Mirrors Python's `galley.Node`: keeps a strong reference to its Session
- * and throws after the session is closed or parses again — nodes read
- * only the parse generation that created them.
+ * Keeps a strong reference to its Session and throws after the session is
+ * closed or parses again — nodes read only the parse generation that
+ * created them.
  */
 export class Node {
   readonly #session: Session;

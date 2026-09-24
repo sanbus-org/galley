@@ -12,8 +12,7 @@ The bindings live in
 [`bindings/java`](https://github.com/sanbus-org/galley/tree/main/bindings/java).
 A complete, runnable consumer lives in
 [`examples/java`](https://github.com/sanbus-org/galley/tree/main/examples/java);
-it is built and executed by CI on every push, byte-for-byte identical in
-output to the Python, Go, Rust, and TypeScript examples.
+it is built and executed by CI on every push.
 
 ## Getting Started
 
@@ -48,7 +47,7 @@ grammar (`procedures.java` for native Java hooks,
 grammar is a fatal build error naming `procedures.java` instead.
 Regenerate after changing the grammar;
 commit nothing it generates. One library embeds one parser — split grammars
-across language directories exactly like the other bindings.
+across language directories.
 
 Run the demo:
 
@@ -82,7 +81,7 @@ The Panama FFI boundary is the only overhead over the C API:
   (`symbolNameBytes`, `symbolNameAtBytes`, `variableNameAtBytes`,
   `getContextBytes`). Token content (`text`, unexpected/expected tokens)
   stays `byte[]` copies with no UTF-8 decoding; decode on demand.
-- `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput, mirroring Go's `unsafe.Pointer(&input[0])`, Rust's `as_ptr()`, and Python's `PyBytes_AS_STRING`. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
+- `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
 - `parse(String)` encodes to UTF-8 once per call (`String.getBytes(UTF_8)`). The session copies into its own storage so node text stays valid after return.
 
 Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their session is still open and throw after `session.close()`.
@@ -194,7 +193,7 @@ by a `GalleyException`.
 `session.walk(node, skipSemanticErrors)` returns a pre-order `Walker` over
 the last successful parse, yielding one `Walker.WalkStep{node, depth,
 isSemanticError}` per step with the root at depth 0 — the shared runtime
-walker, so order and depths match every other binding. `Walker` is
+walker. `Walker` is
 `Iterable` and `AutoCloseable`: close it (try-with-resources) before
 closing the session or parsing again. The walker is bound to the parse
 generation that created it: stepping after the session parses again or

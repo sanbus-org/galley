@@ -2,10 +2,9 @@ package org.sanbus.galley;
 
 /**
  * Recovery targets reported by {@code galley_diagnostic_recovery_kind},
- * mirroring Python's {@code RecoveryTarget} and the
- * {@code galley_recovery_target_*} constants in the C ABI. Converted once
- * at the FFI boundary via {@link #fromCode}; branching code uses these
- * names, never integers.
+ * per the {@code galley_recovery_target_*} constants in the C ABI.
+ * Converted once at the FFI boundary via {@link #fromCode}; branching code
+ * uses these names, never integers.
  */
 public enum RecoveryTarget {
     NONE(0),

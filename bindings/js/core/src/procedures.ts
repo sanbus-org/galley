@@ -90,8 +90,7 @@ export class ProcedureArguments {
   /**
    * Throws the host failure type for a negative native status: a
    * `GalleyError` carrying the status as its named code. Procedure
-   * operations attach no diagnostic, so the snapshot is null — parity
-   * with Python's `check_status` path.
+   * operations attach no diagnostic, so the snapshot is null.
    */
   #throwOnFailure(operation: string, status: number): void {
     if (status >= 0) return;
@@ -149,7 +148,6 @@ export class ProcedureRegistry {
    * Scans `module` for exported procedure hooks (`reduction`,
    * `reduction_*`, `hook_*`) and registers each function, later
    * entries winning per hook name. Returns the number installed.
-   * Mirrors `bindings/python/_galley.c:2339` `install_procedures`.
    */
   installModule(module: Record<string, unknown>): number {
     return this.#scanModule(module, true);

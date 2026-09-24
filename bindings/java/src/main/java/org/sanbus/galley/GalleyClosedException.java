@@ -3,9 +3,8 @@ package org.sanbus.galley;
 /**
  * Use after close: the named object is already closed. Thrown instead of a
  * generic {@link IllegalStateException} so catch sites can name the failure
- * instead of matching message text. Mirrors Python's closed-session
- * {@code ValueError} and the JS {@code SessionClosedError}. Closes stay
- * idempotent: closing twice never throws.
+ * instead of matching message text. Closes stay idempotent: closing twice
+ * never throws.
  */
 public class GalleyClosedException extends IllegalStateException {
     private final String objectName;
@@ -26,8 +25,7 @@ public class GalleyClosedException extends IllegalStateException {
 
     /**
      * A handle bound to an older parse generation: unusable after its
-     * session parsed again, never a stale read. Mirrors the Python/JS
-     * {@code "walker is invalidated"} failure. Prefer
+     * session parsed again, never a stale read. Prefer
      * {@link GenerationInvalidatedException} at throw sites so callers can
      * discriminate by type.
      */

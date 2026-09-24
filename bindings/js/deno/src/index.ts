@@ -1,9 +1,9 @@
 /**
  * Galley JavaScript bindings for Deno — public surface.
  *
- * Binds the runtime-neutral `@sanbus/galley-core` to the `Deno.dlopen` port.
- * Mirrors the layout of `bindings/python/galley.pyi` and the C header
- * `bindings/c/galley.h`. Requires `--allow-ffi --allow-read`.
+ * Binds the runtime-neutral `@sanbus/galley-core` to the `Deno.dlopen`
+ * port, over the C header `bindings/c/galley.h`. Requires `--allow-ffi
+ * --allow-read`.
  */
 
 // Core surface: sessions come from the universal entry or the generated

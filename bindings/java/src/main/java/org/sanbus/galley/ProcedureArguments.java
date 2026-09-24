@@ -8,7 +8,6 @@ import org.sanbus.galley.internal.GalleyLibrary;
 
 /**
  * Parse-time arguments passed to a procedure hook.
- * Mirrors Go's galley.ProcedureArgs and Rust's procedure::ProcedureArguments.
  *
  * Tree queries use {@link #getSession()} with the ordinary Session APIs;
  * drop/replace use the dedicated methods on this object, not Session's

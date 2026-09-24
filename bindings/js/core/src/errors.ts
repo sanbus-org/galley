@@ -19,10 +19,8 @@ function freezeSnapshot(diagnostic: Diagnostic): Diagnostic {
 }
 
 /**
- * Failure reported by a Galley operation.
- * Mirrors Python's `galley.Error` (code + diagnostic snapshot).
- * `code` is the named status, never a bare integer: status codes cross
- * as named values in every host.
+ * Failure reported by a Galley operation (code + diagnostic snapshot).
+ * `code` is the named status, never a bare integer.
  */
 export class GalleyError extends Error {
   readonly code: Status;

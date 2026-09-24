@@ -3120,8 +3120,7 @@ PyDoc_STRVAR(install_procedure_doc,
 "for compatibility). Hooks are\n"
 "no-ops until installed; reinstalling replaces the previous callable.\n"
 "An install or clear made while a parse is active applies to parses\n"
-"entered after it, never to the in-flight one. Mirrors Go's\n"
-"hooks/procedures.go and Rust's procedures.rs registration.");
+"entered after it, never to the in-flight one.");
 
 static PyObject *module_install_procedure(PyObject *Py_UNUSED(module),
                                           PyObject *args)
@@ -3161,7 +3160,7 @@ PyDoc_STRVAR(install_procedures_doc,
 
 /* True for export names that look like mistyped hooks
  * (`reductionPair`, `hookPrint`): warn, do not install. Anything else
- * (helpers, data) stays silent. Mirrors the JavaScript binding. */
+ * (helpers, data) stays silent. */
 static int is_near_miss_hook_name(const char *name)
 {
     char lower[7];

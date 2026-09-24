@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Parses a small key/value document through the Galley Python bindings,
-mirroring examples/c, examples/cpp, examples/rust, and examples/go
-byte-for-byte in output."""
+"""Parses a small key/value document through the Galley Python bindings."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ import org.sanbus.galley.internal.GalleyLibrary;
 import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
- * Module-level queries mirroring galley.h and the Python/TypeScript bindings.
+ * Module-level queries mirroring galley.h.
  */
 public final class Galley {
     public static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
@@ -76,7 +76,7 @@ public final class Galley {
     public static String statusString(long status) throws MissingArtifactException { return load().statusString(status); }
     public static String statusString(StatusCode status) throws MissingArtifactException { return load().statusString(status); }
 
-    // Snake_case aliases for Python-doc parity; not unused duplicates.
+    // Snake_case aliases of the camelCase queries; not unused duplicates.
     public static boolean has_ast() throws MissingArtifactException { return hasAst(); }
     public static boolean has_procedures() throws MissingArtifactException { return hasProcedures(); }
     public static boolean has_position_tracking() throws MissingArtifactException { return hasPositionTracking(); }

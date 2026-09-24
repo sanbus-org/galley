@@ -2,9 +2,9 @@ package org.sanbus.galley;
 
 /**
  * Diagnostic classifications reported by {@code galley_diagnostic_kind},
- * mirroring Python's {@code Kind} and the {@code galley_diagnostic_kind_*}
- * constants in the C ABI. Converted once at the FFI boundary via
- * {@link #fromCode}; branching code uses these names, never integers.
+ * per the {@code galley_diagnostic_kind_*} constants in the C ABI.
+ * Converted once at the FFI boundary via {@link #fromCode}; branching code
+ * uses these names, never integers.
  */
 public enum DiagnosticKind {
     NONE(0),

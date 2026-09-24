@@ -14,8 +14,8 @@ import java.util.function.Consumer;
 import org.sanbus.galley.internal.GalleyLibrary;
 
 /**
- * Parsing session bound to this library's parser. Mirrors Python/Go/Rust/TypeScript Sessions
- * over bindings/c/galley.h. Not thread-safe. Panama FFI (Java 22+, no JNA).
+ * Parsing session bound to this library's parser over bindings/c/galley.h.
+ * Not thread-safe. Panama FFI (Java 22+, no JNA).
  */
 public final class Session implements AutoCloseable {
 
@@ -886,7 +886,7 @@ public final class Session implements AutoCloseable {
             if (lib.galley_recorded_diagnostic_message(handle, diagIndex, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
-                // No recorded-ANSI entry in the C ABI; Python/JS copy the recorded message too.
+                // No recorded-ANSI entry in the C ABI; the plain message stands in.
                 messageAnsi = message;
             }
         }
