@@ -132,7 +132,7 @@ public final class Session implements AutoCloseable {
     /**
      * Single gate ending every parse leg: bumps the parse generation on
      * any status (success or failure, so pre-parse walkers fail at their
-     * next step instead of reading reallocated storage), then raises or
+     * next step instead of reading reallocated storage), then throws or
      * returns the parsed byte count. Parsing itself never throws merely
      * because a walker is open.
      */

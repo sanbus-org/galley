@@ -89,7 +89,6 @@ public class GalleyTest {
     @Test
     void diagnosticTypeIsNotDirectlyConstructible() {
         // Diagnostic is a plain data holder; ensure it requires args
-        // This mirrors Python's test that Diagnostic() raises TypeError – in Java we expect no no-arg constructor
         try {
             Diagnostic.class.getDeclaredConstructor().newInstance();
             fail("expected no no-arg constructor");
@@ -205,7 +204,7 @@ public class GalleyTest {
         }
 
         @Test
-        void syntaxErrorRaisesWithCodeAndDiagnostic() {
+        void syntaxErrorThrowsWithCodeAndDiagnostic() {
             GalleyException ex = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
             assertEquals(StatusCode.ERROR_SYNTAX, ex.getCode());
             Diagnostic d = ex.getDiagnostic();
@@ -250,7 +249,7 @@ public class GalleyTest {
             List<String> contextBefore = List.copyOf(frozen.getContext());
             List<byte[]> contextBytesBefore = new ArrayList<>();
             for (byte[] name : frozen.getContextBytes()) contextBytesBefore.add(name.clone());
-            // A later successful parse cannot mutate the raised snapshot.
+            // A later successful parse cannot mutate the snapshot this failure carries.
             session.parse("alpha:12,beta:3");
             assertFalse(session.hasDiagnostic());
             assertEquals(message, frozen.getMessage());
@@ -692,13 +691,13 @@ public class GalleyTest {
         }
 
         @Test
-        void nodeReadsAfterReparseRaise() {
+        void nodeReadsAfterReparseThrow() {
             Node stale = session.rootNode();
             assertNotNull(stale);
             Node staleChild = stale.firstChild();
             assertNotNull(staleChild);
             assertEquals(7, session.parse("alpha:1"));
-            // Every Node accessor family raises instead of reading stale storage.
+            // Every Node accessor family throws instead of reading stale storage.
             assertInvalidated(stale::text);
             assertInvalidated(stale::symbolName);
             assertInvalidated(stale::symbolNameBytes);
@@ -714,7 +713,7 @@ public class GalleyTest {
             assertInvalidated(stale::iterator);
             assertInvalidated(stale::cleanChildren);
             assertInvalidated(() -> stale.appendChildren(staleChild));
-            // Session crossings that take the handle raise too.
+            // Session crossings that take the handle throw too.
             assertInvalidated(() -> session.text(stale));
             assertInvalidated(() -> session.symbolName(stale));
             assertInvalidated(() -> session.span(stale));
@@ -735,7 +734,7 @@ public class GalleyTest {
             long address = session.rootNode().getAddress();
             assertNotNull(session.text(address));
             assertEquals(7, session.parse("alpha:1"));
-            // Raw addresses carry no generation: they read the new parse, never raise.
+            // Raw addresses carry no generation: they read the new parse, never throw.
             assertNotNull(session.text(address));
             assertNotNull(session.symbolName(address));
             assertNotNull(session.symbolNameBytes(address));
@@ -777,7 +776,7 @@ public class GalleyTest {
             });
             session.parse("alpha:12,beta:3");
             assertNull(seen.get());
-            // A node left over from an older generation raises.
+            // A node left over from an older generation throws.
             parser.clearProcedures();
             parser.installProcedure("reduction_Pair", args -> {
                 try {
@@ -788,7 +787,7 @@ public class GalleyTest {
             });
             session.parse("alpha:12,beta:3");
             assertTrue(seen.get() instanceof GenerationInvalidatedException);
-            // A node from another session raises.
+            // A node from another session throws.
             seen.set(null);
             Session other = parser.openSession();
             try {

@@ -19,7 +19,7 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Grammar names arrive as `String` decoded from UTF-8 with replacement (U+FFFD), never a throw; `symbolNameBytes` exposes the raw bytes beside them. Token content stays `byte[]`.
 - Node addresses are `long`, sequences are `List`, mappings are `Map`, and empty is `null`.
 - Every named category the shared contracts define is a Java enum with `getCode()`; branching code never hard-codes integers. The invalid-node sentinel is the named constant `Galley.INVALID_NODE`.
-- Failures raise `GalleyException`: a numeric code plus a frozen diagnostic snapshot. A missing artifact raises `MissingArtifactException` with the path, the exact build command, and the shared machine-readable code. Lifecycle misuse raises `GalleyClosedException`, including use after close and generation invalidation.
+- Failures throw `GalleyException`: a numeric code plus a frozen diagnostic snapshot. A missing artifact throws `MissingArtifactException` with the path, the exact build command, and the shared machine-readable code. Lifecycle misuse throws `GalleyClosedException`, including use after close and generation invalidation.
 - Snake-case aliases (`has_ast()` and siblings) exist beside the camelCase queries for Python-doc parity; both spellings are documented API.
 
 ## Inputs and resources
@@ -27,8 +27,8 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Parsing accepts `byte[]`, `String` (UTF-8), and `ByteBuffer`; file parses accept `Path`, `File`, and `String`. Anything else is rejected at the earliest boundary Java offers — compile time where an overload catches it, otherwise call entry before the native crossing — with no silent coercion. File paths with interior NUL bytes are rejected with `IllegalArgumentException` instead of truncated.
 - Message overrides accept text (`String`, encoded once as UTF-8) or raw bytes (`byte[]`, passed through unmodified).
 - Every session method also accepts the same call with every `Node` parameter replaced by a raw `long`; a handle becomes an address through `getAddress()`. Raw addresses carry no generation and pass every guard by design.
-- Nodes expose their address via `getAddress()` and compare by owning session plus address, so they work as `Map` keys and set members. Identity ignores generation by design: a stale handle equals its fresh counterpart, but reads through it still raise.
-- A node handle is bound to the parse generation that created it: reading through it after a re-parse raises `GalleyClosedException`, never a stale read.
+- Nodes expose their address via `getAddress()` and compare by owning session plus address, so they work as `Map` keys and set members. Identity ignores generation by design: a stale handle equals its fresh counterpart, but reads through it still throw.
+- A node handle is bound to the parse generation that created it: reading through it after a re-parse throws `GalleyClosedException`, never a stale read.
 - Tree edits are `Session` operations, with `cleanChildren` / `appendChildren` sugar on `Node`.
 - Sessions are not thread-safe.
 - Sessions and walkers close explicitly or through try-with-resources, and closing is idempotent. A walk from an invalid root returns `null`.
