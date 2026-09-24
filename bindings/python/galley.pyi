@@ -402,7 +402,7 @@ class Session:
     # -- arena --
 
     def snapshot(self) -> dict[str, Any]:
-        """Flat bulk read of the most recent successful parse: ``count`` plus per-node-address ``parent``, ``first_child``, ``next``, ``child_count``, ``variable``, ``span_start`` and ``span_len`` entries."""
+        """Flat bulk read of the most recent successful parse: ``count`` plus per-node-address ``parent``, ``first_child``, ``next``, ``child_count``, ``variable``, ``span_start``, ``span_len`` and ``is_semantic_error`` entries (booleans, the flag ``walk`` yields)."""
         ...
 
     def last_input(self) -> bytes:

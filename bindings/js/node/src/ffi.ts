@@ -105,6 +105,7 @@ export interface AddonApi {
     outVariable: BigInt64Array,
     outSpanStart: BigUint64Array,
     outSpanLen: BigUint64Array,
+    outIsSemanticError: Int32Array,
     capacity: bigint,
   ): bigint;
 
@@ -518,15 +519,16 @@ export class NodePort implements FfiPort {
       const variable = new BigInt64Array(count);
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
+      const isSemanticError = new Int32Array(count);
       const total = toNumber(
         this.api.galley_tree_snapshot(
           handle as bigint, parent, firstChild, next, childCount,
-          variable, spanStart, spanLen, BigInt(count),
+          variable, spanStart, spanLen, isSemanticError, BigInt(count),
         ),
       );
       if (total < 0) throw new GalleyError("galley_tree_snapshot failed", total as Status);
       if (total === count) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

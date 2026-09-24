@@ -1114,7 +1114,8 @@ PyDoc_STRVAR(snapshot_doc,
 "Returns the most recent successful parse as flat tuples in a single\n"
 "call: a dict with ``count`` and one entry per node address for\n"
 "``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
-"``span_start`` and ``span_len``. Missing links and variables are None.\n"
+"``span_start``, ``span_len`` and ``is_semantic_error`` (the flag\n"
+"``walk`` yields). Missing links and variables are None.\n"
 "Walk ``parent``/``first_child``/``next`` directly instead of one call\n"
 "per node; resolve spans against ``last_input()``.");
 
@@ -1129,6 +1130,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     long long *variable = NULL;
     unsigned long long *span_start = NULL;
     unsigned long long *span_len = NULL;
+    int *is_semantic_error = NULL;
     long long total;
     PyObject *result = NULL;
     PyObject *t_parent = NULL;
@@ -1138,6 +1140,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     PyObject *t_variable = NULL;
     PyObject *t_span_start = NULL;
     PyObject *t_span_len = NULL;
+    PyObject *t_semantic = NULL;
     unsigned long long i;
 
     if (session == NULL)
@@ -1151,16 +1154,18 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         variable = PyMem_Malloc(count * sizeof(*variable));
         span_start = PyMem_Malloc(count * sizeof(*span_start));
         span_len = PyMem_Malloc(count * sizeof(*span_len));
+        is_semantic_error = PyMem_Malloc(count * sizeof(*is_semantic_error));
         if (parent == NULL || first_child == NULL || next == NULL ||
             child_count == NULL || variable == NULL ||
-            span_start == NULL || span_len == NULL) {
+            span_start == NULL || span_len == NULL ||
+            is_semantic_error == NULL) {
             PyErr_NoMemory();
             goto done;
         }
     }
     total = galley_tree_snapshot(session, parent, first_child, next,
                                  child_count, variable, span_start,
-                                 span_len, count);
+                                 span_len, is_semantic_error, count);
     if (total < 0) {
         set_error_from_status(total);
         goto done;
@@ -1177,9 +1182,10 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     t_variable = PyTuple_New((Py_ssize_t)count);
     t_span_start = PyTuple_New((Py_ssize_t)count);
     t_span_len = PyTuple_New((Py_ssize_t)count);
+    t_semantic = PyTuple_New((Py_ssize_t)count);
     if (t_parent == NULL || t_first == NULL || t_next == NULL ||
         t_child_count == NULL || t_variable == NULL ||
-        t_span_start == NULL || t_span_len == NULL)
+        t_span_start == NULL || t_span_len == NULL || t_semantic == NULL)
         goto done;
     for (i = 0; i < count; ++i) {
         PyObject *item;
@@ -1207,6 +1213,9 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         item = PyLong_FromUnsignedLongLong(span_len[i]);
         if (item == NULL) goto done;
         PyTuple_SET_ITEM(t_span_len, (Py_ssize_t)i, item);
+        item = PyBool_FromLong(is_semantic_error[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_semantic, (Py_ssize_t)i, item);
     }
     result = PyDict_New();
     if (result == NULL)
@@ -1229,7 +1238,8 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         PyDict_SetItemString(result, "child_count", t_child_count) < 0 ||
         PyDict_SetItemString(result, "variable", t_variable) < 0 ||
         PyDict_SetItemString(result, "span_start", t_span_start) < 0 ||
-        PyDict_SetItemString(result, "span_len", t_span_len) < 0)
+        PyDict_SetItemString(result, "span_len", t_span_len) < 0 ||
+        PyDict_SetItemString(result, "is_semantic_error", t_semantic) < 0)
         Py_CLEAR(result);
 done:
     Py_XDECREF(t_parent);
@@ -1239,6 +1249,7 @@ done:
     Py_XDECREF(t_variable);
     Py_XDECREF(t_span_start);
     Py_XDECREF(t_span_len);
+    Py_XDECREF(t_semantic);
     PyMem_Free(parent);
     PyMem_Free(first_child);
     PyMem_Free(next);
@@ -1246,6 +1257,7 @@ done:
     PyMem_Free(variable);
     PyMem_Free(span_start);
     PyMem_Free(span_len);
+    PyMem_Free(is_semantic_error);
     return result;
 }
 

@@ -9,6 +9,10 @@
   - Example: `git commit -m "test(generator): add generated parser matrix validation" -m $'Generate parser variants through the galley_generator API.\nRun parser API and error-path validation.\nFold benchmark compilation into zig build test.'`
 - Commit bodies should be concise, typically 1-4 lines.
 
+## Compatibility
+
+We are pre-alpha and seek ZERO backward compatibility while in alpha. Public surfaces — the C ABI, host-language APIs, generated wrappers — evolve in place: change signatures, rename, delete. Never add `_ex` twins, legacy variants, or deprecation shims to spare old callers; every consumer in the repo moves in lockstep in the same change.
+
 ## Testing
 
 - Avoid running the full `zig build test` matrix unless the change broadly affects all generated parsers.

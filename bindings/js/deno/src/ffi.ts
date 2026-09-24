@@ -18,7 +18,7 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 /** Callable view of the native symbols (see `BASE_SYMBOLS` below). */
-type FfiOut = Uint8Array | Uint32Array | BigUint64Array | BigInt64Array;
+type FfiOut = Uint8Array | Uint32Array | Int32Array | BigUint64Array | BigInt64Array;
 
 interface GalleySymbols {
   galley_version(): Deno.PointerValue;
@@ -66,6 +66,7 @@ interface GalleySymbols {
     outVariable: FfiOut,
     outSpanStart: FfiOut,
     outSpanLen: FfiOut,
+    outIsSemanticError: FfiOut,
     capacity: bigint,
   ): bigint;
   galley_walker_create(session: Deno.PointerValue, node: bigint, skipSemanticErrors: number): Deno.PointerValue;
@@ -239,7 +240,7 @@ const BASE_SYMBOLS = {
   galley_node_prior_sibling: { parameters: ["pointer", "u64"], result: "u64" },
   galley_node_parent: { parameters: ["pointer", "u64"], result: "u64" },
   galley_tree_snapshot: {
-    parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
+    parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
     result: "i64",
   },
   galley_walker_create: { parameters: ["pointer", "u64", "i32"], result: "pointer" },
@@ -594,13 +595,14 @@ export class DenoPort implements FfiPort {
       const variable = new BigInt64Array(count);
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
+      const isSemanticError = new Int32Array(count);
       const total = this.native.galley_tree_snapshot(
         handle as Deno.PointerValue, parent, firstChild, next, childCount,
-        variable, spanStart, spanLen, BigInt(count),
+        variable, spanStart, spanLen, isSemanticError, BigInt(count),
       );
       if (total < 0n) throw new GalleyError("galley_tree_snapshot failed", Number(total) as Status);
       if (total === BigInt(count)) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

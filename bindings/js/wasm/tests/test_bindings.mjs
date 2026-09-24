@@ -421,6 +421,7 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
     }
     assert.equal(snap.childCount.length, snap.count);
     assert.equal(snap.variable.length, snap.count);
+    assert.equal(snap.isSemanticError.length, snap.count);
     for (let i = 0; i < snap.count; i++) {
       const node = BigInt(i);
       const parent = s.parent(node);

@@ -2,7 +2,8 @@
 use galley::{NodeHandle, Session};
 
 fn opt_addr(node: Option<NodeHandle>) -> u64 {
-    node.map(|n| n.index()).unwrap_or(NodeHandle::INVALID.index())
+    node.map(|n| n.index())
+        .unwrap_or(NodeHandle::INVALID.index())
 }
 
 #[test]
@@ -24,6 +25,7 @@ fn snapshot_matches_per_node_accessors() {
     }
     assert_eq!(snap.child_count.len(), count);
     assert_eq!(snap.variable.len(), count);
+    assert_eq!(snap.is_semantic_error.len(), count);
     for address in 0..count as u64 {
         let node = NodeHandle::from_index(address);
         assert_eq!(

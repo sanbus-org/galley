@@ -525,6 +525,7 @@ public class GalleyTest {
             assertEquals(count, snap.variable().length);
             assertEquals(count, snap.spanStart().length);
             assertEquals(count, snap.spanLen().length);
+            assertEquals(count, snap.isSemanticError().length);
             for (long address = 0; address < count; address++) {
                 int slot = (int) address;
                 Node parent = session.parent(address);

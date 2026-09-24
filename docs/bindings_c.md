@@ -246,10 +246,10 @@ parsing again.
 `galley_node_variable_index` complete the read surface. `galley_tree_snapshot`
 reads the same columns for every node in one call into caller-owned flat
 arrays (parent, first child, next sibling, child count, variable index,
-span start, span length); it returns the node count and writes up to
-`capacity` entries, so size with `galley_node_count` first and pass null
-for columns you do not need. Spans index the retained input, readable in
-one call with `galley_last_input`.
+span start, span length, semantic-error flag); it returns the node count
+and writes up to `capacity` entries, so size with `galley_node_count`
+first and pass null for columns you do not need. Spans index the retained
+input, readable in one call with `galley_last_input`.
 
 ### Editing the Tree
 

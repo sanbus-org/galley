@@ -89,6 +89,7 @@ interface GalleyWasmExports {
     outVariable: number,
     outSpanStart: number,
     outSpanLen: number,
+    outIsSemanticError: number,
     capacity: bigint,
   ): bigint;
   galley_walker_create(session: number, node: bigint, skipSemanticErrors: number): number;
@@ -969,11 +970,13 @@ export class WasmPort implements FfiPort {
         variable: new BigInt64Array(0),
         spanStart: new BigUint64Array(0),
         spanLen: new BigUint64Array(0),
+        isSemanticError: new Int32Array(0),
       };
       if (count === 0) return empty;
       // Eight-byte columns first (parent, firstChild, next, spanStart,
-      // spanLen, variable), then the u32 childCount tail: every column
-      // stays naturally aligned for bulk typed-array copies.
+      // spanLen, variable), then the u32 childCount tail and the i32
+      // semantic-flag tail: every column stays naturally aligned for
+      // bulk typed-array copies.
       const stride = count * 8;
       const offParent = 0;
       const offFirst = stride;
@@ -982,13 +985,14 @@ export class WasmPort implements FfiPort {
       const offSpanLen = stride * 4;
       const offVariable = stride * 5;
       const offChildCount = stride * 6;
-      const total = offChildCount + count * 4;
+      const offSemantic = offChildCount + count * 4;
+      const total = offSemantic + count * 4;
       const base = this.malloc(total);
       try {
         const status = this.wasm.galley_tree_snapshot(
           handle as number, base + offParent, base + offFirst, base + offNext,
           base + offChildCount, base + offVariable, base + offSpanStart,
-          base + offSpanLen, BigInt(count),
+          base + offSpanLen, base + offSemantic, BigInt(count),
         );
         if (isNegative(status)) throw new GalleyError("galley_tree_snapshot failed", Number(status) as Status);
         if (status !== BigInt(count)) continue;
@@ -1009,7 +1013,9 @@ export class WasmPort implements FfiPort {
         variable.set(new BigInt64Array(memory.buffer, memory.byteOffset + base + offVariable, count));
         const childCount = new Uint32Array(count);
         childCount.set(new Uint32Array(memory.buffer, memory.byteOffset + base + offChildCount, count));
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen };
+        const isSemanticError = new Int32Array(count);
+        isSemanticError.set(new Int32Array(memory.buffer, memory.byteOffset + base + offSemantic, count));
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
       } finally {
         this.free(base, total);
       }

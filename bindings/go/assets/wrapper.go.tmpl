@@ -304,6 +304,7 @@ func (s *Session) Snapshot() (Snapshot, error) {
 		(*C.longlong)(unsafe.Pointer(&snap.Variable[0])),
 		(*C.ulonglong)(unsafe.Pointer(&snap.SpanStart[0])),
 		(*C.ulonglong)(unsafe.Pointer(&snap.SpanLen[0])),
+		nil,
 		C.ulonglong(count),
 	)
 	if total < 0 {
