@@ -2,13 +2,14 @@ import type { Diagnostic } from "./diagnostic.ts";
 import type { Status } from "./constants.ts";
 
 /**
- * Freeze the snapshot at raise time, one level deep: the diagnostic
- * object plus every array field it holds (`expectedTokens`, `context`,
- * and the recovery tuples), so no holder can push into or reshape
- * them. Byte fields stay `Uint8Array`s because `Object.freeze` throws
- * on non-empty typed arrays; their contents are read-only by
- * convention, and each raise builds fresh copies, so a write can only
- * ever corrupt the holder's own snapshot — never session state.
+ * Freeze the snapshot when the failure is created, one level deep:
+ * the diagnostic object plus every array field it holds
+ * (`expectedTokens`, `context`, and the recovery tuples), so no holder
+ * can push into or reshape them. Byte fields stay `Uint8Array`s
+ * because `Object.freeze` throws on non-empty typed arrays; their
+ * contents are read-only by convention, and each failure builds fresh
+ * copies, so a write can only ever corrupt the holder's own snapshot —
+ * never session state.
  */
 function freezeSnapshot(diagnostic: Diagnostic): Diagnostic {
   for (const value of Object.values(diagnostic)) {
@@ -25,7 +26,7 @@ function freezeSnapshot(diagnostic: Diagnostic): Diagnostic {
  */
 export class GalleyError extends Error {
   readonly code: Status;
-  /** Frozen at raise time: object and array fields frozen, text never changes. */
+  /** Frozen when the failure is created: object and array fields frozen, text never changes. */
   readonly diagnostic: Diagnostic | null;
 
   constructor(

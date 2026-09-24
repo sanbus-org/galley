@@ -4,9 +4,9 @@ package org.sanbus.galley;
  * Failure reported by a Galley operation. Mirrors Python's GalleyError and
  * the JS GalleyError: a status code plus a frozen diagnostic snapshot.
  *
- * The message text is fixed at raise time and the diagnostic is
- * deep-copied eagerly at throw, so later parses cannot mutate what this
- * exception carries.
+ * The message text is fixed when the failure is created and the
+ * diagnostic is deep-copied eagerly, so later parses cannot mutate what
+ * this exception carries.
  */
 public class GalleyException extends RuntimeException {
     private final StatusCode code;

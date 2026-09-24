@@ -50,19 +50,19 @@ export class ProcedureArguments {
   }
 
   dropSelf(): void {
-    this.#raiseOnFailure("dropSelf", this.#port.procDropSelf(this.#args));
+    this.#throwOnFailure("dropSelf", this.#port.procDropSelf(this.#args));
   }
 
   dropChildren(): void {
-    this.#raiseOnFailure("dropChildren", this.#port.procDropChildren(this.#args));
+    this.#throwOnFailure("dropChildren", this.#port.procDropChildren(this.#args));
   }
 
   dropIfEmpty(): void {
-    this.#raiseOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#args));
+    this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#args));
   }
 
   replaceWithChildren(): void {
-    this.#raiseOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#args));
+    this.#throwOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#args));
   }
 
   currentLine(): number {
@@ -83,17 +83,17 @@ export class ProcedureArguments {
       this.#args,
       checkMessageBytes(message, "galley: reportSemanticError"),
     );
-    this.#raiseOnFailure("reportSemanticError", status);
+    this.#throwOnFailure("reportSemanticError", status);
     return status;
   }
 
   /**
-   * Raises the host failure type for a negative native status: a
+   * Throws the host failure type for a negative native status: a
    * `GalleyError` carrying the status as its named code. Procedure
    * operations attach no diagnostic, so the snapshot is null — parity
    * with Python's `check_status` path.
    */
-  #raiseOnFailure(operation: string, status: number): void {
+  #throwOnFailure(operation: string, status: number): void {
     if (status >= 0) return;
     throw new GalleyError(
       `galley: ${operation} failed: ${this.#port.statusString(status) ?? "unknown galley error"}`,
