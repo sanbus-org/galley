@@ -30,6 +30,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Tree edits inside hooks are session operations.
 - Installs and clears made mid-parse apply to later parses only.
 - Nested parses restore the enclosing hook set on unwind.
+- Gates restore from one last-in-first-out stack of hook sets, scoped to the artifact where the gates live: a parse pushes its entry set, and unwind pops it, restoring the enclosing frame, never a session's own prior state.
 - A failing hook never aborts the parse.
 
 ## Walking and snapshots
