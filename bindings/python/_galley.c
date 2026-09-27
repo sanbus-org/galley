@@ -76,6 +76,10 @@ static PyTypeObject ProcedureArgs_Type;
 
 static PyObject *build_diagnostic(GalleySession *session);
 
+/* Defined with the gate-frame stack it reads; declared here because
+ * active_hook_table runs before that block. */
+static PyObject *top_gate_frame(void);
+
 /* Defined after Diagnostic_Type; new reference to the snapshot's rendered
  * message, or NULL when it is not a unicode string. */
 static PyObject *diagnostic_rendered_message(PyObject *diagnostic);
@@ -89,11 +93,6 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     GalleySession *session;
-    /* Active-parse hook snapshots, innermost last. Each entry is the hook
-     * table copied on parse entry (empty when the live table was empty),
-     * so nested parses restore the enclosing level instead of sharing one
-     * process-global stack. */
-    PyObject *gate_snapshots;
     /* Parse generation, bumped by every parse and close. Nodes and walkers
      * stamp it at creation and refuse to touch reallocated storage once it
      * moves, so no step or accessor ever reads a stale parse. */
@@ -123,17 +122,14 @@ static PyObject *make_procedure_args(void *args)
 }
 
 /* The hook table dispatch and the native gates both read: the innermost
- * active parse level's entry snapshot, or the live table when no parse
- * is active. One gate owns both halves, so a mid-parse install stays
+ * active parse's entry table, or the live table when no parse is
+ * active. One owner for both halves, so a mid-parse install stays
  * invisible in-flight exactly like a mid-parse clear does. */
-static PyObject *dispatch_table_for(PyObject *session_obj)
+static PyObject *active_hook_table(void)
 {
-    if (session_obj != NULL) {
-        SessionObject *session_object = (SessionObject *)session_obj;
-        PyObject *snapshots = session_object->gate_snapshots;
-        if (snapshots != NULL && PyList_GET_SIZE(snapshots) > 0)
-            return PyList_GET_ITEM(snapshots, PyList_GET_SIZE(snapshots) - 1);
-    }
+    PyObject *innermost = top_gate_frame();
+    if (innermost != NULL)
+        return innermost;
     return py_procedure_table;
 }
 
@@ -195,7 +191,7 @@ static int hook_takes_no_arguments(PyObject *callable)
  * library was built without Python support the pointer stays NULL and
  * hooks are no-ops. */
 static void py_dispatch_impl(const char *name, size_t name_len, void *args) {
-    PyObject *table = dispatch_table_for(parsing_session);
+    PyObject *table = active_hook_table();
     if (table == NULL)
         return;
     PyObject *key = PyUnicode_FromStringAndSize(name, (Py_ssize_t)name_len);
@@ -262,12 +258,12 @@ static void try_install_python_dispatch(void) {
 
 /* Selective dispatch gates (see galley/build.py shim): only
  * enabled hooks cross into Python; unenabled slots return after one
- * boolean check. Each parse level snapshots the hook table on entry and
- * syncs from the snapshot, so installs and clears take effect on the
- * next parse with no per-install bookkeeping, and a nested parse
- * restores the enclosing level's gates on exit instead of clobbering
- * them. Missing symbols (C procedures or stale libraries) are silent
- * no-ops. */
+ * boolean check. Every parse pushes its entry hook table as a frame on
+ * the one module-level stack and syncs the gates from that frame, so
+ * installs and clears take effect on the next parse with no
+ * per-install bookkeeping, and a nested parse restores the enclosing
+ * frame's gates on unwind instead of clobbering them. Missing symbols
+ * (C procedures or stale libraries) are silent no-ops. */
 typedef int (*proc_enable_fn)(const char *, size_t);
 typedef void (*proc_clear_fn)(void);
 static proc_enable_fn py_procedure_enable = NULL;
@@ -312,63 +308,91 @@ static void sync_procedure_gates_from(PyObject *table) {
     }
 }
 
-/* Nested-parse gate snapshots: each active parse level copies the hook
- * table onto its own session and the native gates always reflect the
- * innermost level's entry state. A hook that installs or clears hooks
- * mid-parse (for example around a nested parse on another session)
- * therefore cannot clobber the enclosing parse: exiting a level pops its
- * snapshot and re-syncs the enclosing one. Dispatch reads the same
- * snapshots, so installs and clears made mid-parse stay invisible
- * in-flight alike and apply to parses entered after the edit.
- * Snapshots ride on the session, mirroring the push/pop parsing-session
- * chain with no depth limit: the exit restores the enclosing parsing
- * session's gates, and the outermost exit syncs nothing because the next
- * parse entry re-syncs from the live table. Sessions are not thread-safe
- * and every call holds the GIL. */
-static int enter_parse_gates(PyObject *session_obj)
+/* Parse gate frames: one stack of entry hook-table copies for the whole
+ * artifact -- the scope the native gates live in -- innermost parse
+ * last, with the live table standing in whenever the stack holds no
+ * frame. The three operations below are the only things that touch the
+ * container, and they absorb every empty and not-yet-created state, so
+ * no caller guards it. Each frame owns its copy, never the live table
+ * itself, so installs and clears take effect on the next parse with no
+ * per-install bookkeeping, a nested parse (on this session or another)
+ * can never clobber the enclosing parse's gates, and no session's own
+ * prior state is what comes back. Dispatch reads the same innermost
+ * frame, so a mid-parse edit stays invisible in-flight alike. Sessions
+ * are not thread-safe and every call holds the GIL. */
+static PyObject *gate_frames = NULL;
+
+/* The innermost active parse's entry table, or NULL when the stack holds
+ * none and the caller stands in the live table. */
+static PyObject *top_gate_frame(void)
 {
-    SessionObject *session_object = (SessionObject *)session_obj;
-    PyObject *snapshot;
+    if (gate_frames == NULL || PyList_GET_SIZE(gate_frames) == 0)
+        return NULL;
+    return PyList_GET_ITEM(gate_frames, PyList_GET_SIZE(gate_frames) - 1);
+}
+
+/* Copies the live table and pushes it as the innermost frame. A -1
+ * return leaves everything as it was, gates included: the copy, the
+ * stack's own creation and the append all happen here, so a rejected
+ * push never reaches the caller's sync. */
+static int push_gate_frame(void)
+{
+    PyObject *entry_table;
 
     if (py_procedure_table == NULL) {
-        snapshot = PyDict_New();
-        if (snapshot == NULL)
+        entry_table = PyDict_New();
+        if (entry_table == NULL)
             return -1;
     } else {
-        snapshot = PyDict_Copy(py_procedure_table);
-        if (snapshot == NULL)
+        entry_table = PyDict_Copy(py_procedure_table);
+        if (entry_table == NULL)
             return -1;
     }
-    if (session_object->gate_snapshots == NULL) {
-        session_object->gate_snapshots = PyList_New(0);
-        if (session_object->gate_snapshots == NULL) {
-            Py_DECREF(snapshot);
+    if (gate_frames == NULL) {
+        gate_frames = PyList_New(0);
+        if (gate_frames == NULL) {
+            Py_DECREF(entry_table);
             return -1;
         }
     }
-    if (PyList_Append(session_object->gate_snapshots, snapshot) < 0) {
-        Py_DECREF(snapshot);
+    if (PyList_Append(gate_frames, entry_table) < 0) {
+        Py_DECREF(entry_table);
         return -1;
     }
-    Py_DECREF(snapshot);
-    sync_procedure_gates_from(dispatch_table_for(session_obj));
+    Py_DECREF(entry_table);
     return 0;
 }
 
-static void exit_parse_gates(PyObject *session_obj, PyObject *enclosing_session)
+/* Pops the innermost frame and reports whether there was one. Callers
+ * pair one pop with every successful push, so a stack with no frame is
+ * unreachable: it is reported rather than raised, and the caller then
+ * syncs nothing rather than from a frame it never pushed. */
+static int pop_gate_frame(void)
 {
-    SessionObject *session_object = (SessionObject *)session_obj;
-    /* The list is non-empty after a successful enter, but a re-entrant
-     * Session_init mid-parse would have cleared it: pop only when present
-     * and still restore the enclosing gates either way. */
-    if (session_object->gate_snapshots != NULL &&
-        PyList_GET_SIZE(session_object->gate_snapshots) > 0) {
-        if (PySequence_DelItem(session_object->gate_snapshots,
-                               PyList_GET_SIZE(session_object->gate_snapshots) - 1) < 0)
-            PyErr_Clear();
+    if (gate_frames == NULL || PyList_GET_SIZE(gate_frames) == 0)
+        return 0;
+    if (PySequence_DelItem(gate_frames, PyList_GET_SIZE(gate_frames) - 1) < 0) {
+        PyErr_Clear();
+        return 0;
     }
-    if (enclosing_session != NULL)
-        sync_procedure_gates_from(dispatch_table_for(enclosing_session));
+    return 1;
+}
+
+/* One push per parse entry, synced from the frame it just pushed. */
+static int enter_parse_gates(void)
+{
+    if (push_gate_frame() < 0)
+        return -1;
+    sync_procedure_gates_from(active_hook_table());
+    return 0;
+}
+
+/* One pop per successful push, synced from the frame the pop revealed:
+ * the enclosing parse's, or the live table once the stack empties. */
+static void exit_parse_gates(void)
+{
+    if (pop_gate_frame())
+        sync_procedure_gates_from(active_hook_table());
 }
 
 /* Sets ErrorException from a negative galley status code. The instance
@@ -691,9 +715,6 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     /* A re-init orphans prior nodes and walkers: bump the generation so
      * their next access raises instead of reading the new storage. */
     self->generation++;
-    /* A re-init outside any parse owns no snapshots; drop the chain
-     * defensively so a reused object never inherits gate state. */
-    Py_CLEAR(self->gate_snapshots);
     return 0;
 }
 
@@ -784,7 +805,6 @@ static PyObject *Session_exit(SessionObject *self, PyObject *Py_UNUSED(args),
 static void Session_dealloc(SessionObject *self)
 {
     close_session(self);
-    Py_CLEAR(self->gate_snapshots);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -824,7 +844,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     }
     /* A zero-length input must not present a NULL pointer. */
     PyObject *previous = push_parsing_session(self);
-    if (enter_parse_gates(self) < 0) {
+    if (enter_parse_gates() < 0) {
         pop_parsing_session(previous);
         if (have_view)
             PyBuffer_Release(&view);
@@ -832,7 +852,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     }
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
     bump_generation(self);
-    exit_parse_gates(self, previous);
+    exit_parse_gates();
     pop_parsing_session(previous);
     if (have_view)
         PyBuffer_Release(&view);
@@ -874,13 +894,13 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
     }
     if (data != NULL) {
         PyObject *previous = push_parsing_session(self);
-        if (enter_parse_gates(self) < 0) {
+        if (enter_parse_gates() < 0) {
             pop_parsing_session(previous);
         } else {
             long long status = galley_parse_file(session, data);
             bump_generation(self);
             result = status_to_parsed_with_session(status, session);
-            exit_parse_gates(self, previous);
+            exit_parse_gates();
             pop_parsing_session(previous);
         }
     }
