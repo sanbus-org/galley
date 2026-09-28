@@ -80,6 +80,7 @@ pub const AddParserModuleOptions = common.AddParserModuleOptions;
 pub const addParserModule = common.addParserModule;
 
 pub fn build(b: *std.Build) void {
+    _ = common.sharedSignalsModule(b);
     _ = b.standardTargetOptions(.{});
     _ = b.standardOptimizeOption(.{});
 }

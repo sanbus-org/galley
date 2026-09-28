@@ -35,9 +35,14 @@ pub const GalleyCOptions = extern struct {
     /// Debug-build parse tracing level; ignored in release builds.
     verbosity: c_int = 0,
     /// Nodes preallocated per byte of input. Negative selects the runtime
-    /// default (2.0); 0 disables preallocation.
+    /// default (2.0); 0 disables the ratio contribution (the floor still applies).
+    /// The scaled contribution reserves address space without committed
+    /// pages on reserved-arena platforms; on segment platforms (Windows,
+    /// wasm) it is ignored and only the floor below is prepared eagerly.
     ast_preallocation_ratio: f64 = -1.0,
-    /// Upper bound on preallocation in nodes; 0 selects the runtime default.
+    /// Minimum ready node storage per parse; 0 selects the runtime default.
+    /// Demand past the reservation appends segments, so this bounds the
+    /// fast path rather than total capacity.
     ast_preallocation_cap: u64 = 0,
 };
 

@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    _ = common.sharedSignalsModule(b);
     const generator = common.addGeneratorModules(b, target, optimize);
     _ = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,

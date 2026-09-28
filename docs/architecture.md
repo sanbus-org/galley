@@ -11,6 +11,7 @@
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Self-Repeating Decisions](#self-repeating-decisions)
 - [Ambiguity Diagnostics](#ambiguity-diagnostics)
+- [Concurrency](/concurrency)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
 - [Self-Hosting](#self-hosting)
 
@@ -72,7 +73,7 @@ The recovery scope installs an alternate signal stack and temporary `SIGSEGV`/`S
 
 ## Dense Integer Node Pooling
 
-When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from the `ASTAllocator`'s node storage, which never relocates: on platforms with lazy-commit anonymous mappings (macOS, Linux, the BSDs) one contiguous address-space region is reserved up front and backed by the OS on first touch; other platforms use fixed-size segments that are allocated once and never moved.
+When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from the `ASTAllocator`'s node storage, which never relocates: on platforms with lazy-commit anonymous mappings (macOS, Linux, the BSDs) an address-space region sized to the requested capacity (page-rounded) is reserved up front and backed by the OS on first touch, with demand past the reservation covered by appended fixed-size segments; other platforms use segments throughout. Because neither region ever moves, integer node addresses stay valid for the allocator's lifetime. The only hard wall is address exhaustion (the pointer width minus the invalid sentinel), reported as `ASTCapacityExceeded`.
 
 Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Because the storage never relocates, element addresses are stable for the allocator's lifetime: pointers resolved from an address (for example `args.currentNode()` inside a procedure hook) remain valid across subsequent node allocations. Session reuse retains the allocated storage, although reset currently clears the previously used node range before rewinding it.
 

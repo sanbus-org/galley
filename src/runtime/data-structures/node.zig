@@ -25,7 +25,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
     return struct {
         const NodeType = NodeWithPointer(PayloadType, PointerType, true);
         pub const max_node_capacity: usize = std.math.maxInt(NodeType.Pointer) - 1;
-        const supports_reserved_arena = switch (builtin.os.tag) {
+        pub const supports_reserved_arena = switch (builtin.os.tag) {
             .linux, .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .openbsd, .netbsd, .dragonfly, .illumos => true,
             else => false,
         };
@@ -64,10 +64,19 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             return flags;
         }
 
-        fn reserveArena(self: *Self) !void {
+        fn reserveArena(self: *Self, node_count: usize) !void {
+            // Reservations are sized to the request (page-rounded), never the
+            // maximum: a session per thread must not cost the full arena in
+            // address space. `mmap` failure (cgroup limits, overcommit
+            // accounting) surfaces as `OutOfMemory`, the only fallback
+            // trigger. Storage never relocates mid-parse; re-reservation
+            // happens only between parses via `ensureCapacity`.
+            const count = @min(@max(node_count, 1), capacity_limit);
+            const wide_product: u128 = @as(u128, count) * @sizeOf(NodeType);
+            const product: usize = @intCast(@min(wide_product, std.math.maxInt(usize)));
             const bytes = std.mem.alignForward(
                 usize,
-                capacity_limit * @sizeOf(NodeType),
+                product,
                 std.heap.pageSize(),
             );
             const raw = std.posix.mmap(
@@ -83,11 +92,25 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             self.memory = base[0..usable_nodes];
         }
 
+        fn unmap(memory: []NodeType) void {
+            if (memory.len > 0) std.posix.munmap(@ptrCast(@alignCast(memory)));
+        }
+
+        fn unreserveArena(self: *Self) void {
+            unmap(self.memory);
+            self.memory = &.{};
+        }
+
+        /// First-use reservation for parses that skip capacity planning
+        /// (they never called `ensureCapacity`). Matches the session floor
+        /// (`root.default_ast_preallocation_floor`) so both entry paths
+        /// start from the same ready storage; further demand appends
+        /// segments incrementally.
         pub fn initWithCapacity(allocator: std.mem.Allocator, capacity: usize) !ASTAllocatorWithPointer(PayloadType, PointerType) {
             if (capacity > capacity_limit) return error.ASTCapacityTooLarge;
             var self = ASTAllocatorWithPointer(PayloadType, PointerType){ .allocator = allocator };
             if (comptime supports_reserved_arena) {
-                if (capacity > 0) try self.reserveArena();
+                if (capacity > 0) try self.reserveArena(capacity);
             } else {
                 try self.resizeSegments(std.math.divCeil(usize, capacity, segment_size) catch unreachable);
             }
@@ -96,7 +119,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         pub fn totalNodeCapacity(self: *const Self) usize {
             if (comptime supports_reserved_arena) {
-                return self.memory.len;
+                return self.memory.len + self.segments.len * segment_size;
             } else {
                 return self.segments.len * segment_size;
             }
@@ -106,14 +129,37 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             if (required_capacity <= self.totalNodeCapacity()) return;
             if (required_capacity > capacity_limit) return error.ASTCapacityTooLarge;
             if (comptime supports_reserved_arena) {
-                if (self.memory.len == 0) try self.reserveArena();
-            } else {
-                try self.resizeSegments(std.math.divCeil(usize, required_capacity, segment_size) catch unreachable);
+                if (self.memory.len == 0) return self.reserveArena(required_capacity);
+                if (self.counter == 0) {
+                    // Between parses the previous tree is dead by contract,
+                    // so re-reserving larger only remaps address space.
+                    // Map the new region first: a failed mmap keeps the old
+                    // reservation and its segments coherent instead of
+                    // leaving addresses able to alias a later mapping.
+                    // Demand past this point is covered by appended segments.
+                    const old_memory = self.memory;
+                    self.memory = &.{};
+                    self.reserveArena(required_capacity) catch |err| {
+                        self.memory = old_memory;
+                        return err;
+                    };
+                    unmap(old_memory);
+                    return;
+                }
             }
+            // Reserved storage never relocates and segments are never moved,
+            // so covering further demand with appended segments keeps every
+            // resolved pointer and integer address stable. The early return
+            // above guarantees `required_capacity` exceeds the held total,
+            // so the subtraction below cannot underflow; segments already
+            // held are not counted again.
+            const held = self.totalNodeCapacity();
+            const needed = required_capacity - held;
+            const total_segments = self.segments.len + (std.math.divCeil(usize, needed, segment_size) catch unreachable);
+            try self.resizeSegments(total_segments);
         }
 
         fn resizeSegments(self: *Self, count: usize) !void {
-            if (comptime supports_reserved_arena) unreachable;
             const old_count = self.segments.len;
             if (count <= old_count) return;
             const new_segments = try self.allocator.alloc([]NodeType, count);
@@ -132,11 +178,18 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         fn grow(self: *Self) !void {
             if (comptime supports_reserved_arena) {
-                if (self.memory.len == 0) try self.reserveArena();
-            } else {
-                if (self.counter >= max_node_capacity) return error.ASTCapacityExceeded;
-                try self.resizeSegments(self.segments.len + 1);
+                if (self.memory.len == 0) {
+                    // First use without a capacity hint reserves a modest
+                    // working set; further demand appends segments below.
+                    return self.reserveArena(root.default_ast_preallocation_floor);
+                }
             }
+            // Address exhaustion is the only hard wall: node addresses must
+            // never alias `invalid_pointer`.
+            if (self.counter >= max_node_capacity) return error.ASTCapacityExceeded;
+            // Mid-parse growth appends a segment. Reserved storage is never
+            // remapped while nodes are live, so resolved pointers stay put.
+            try self.resizeSegments(self.segments.len + 1);
         }
 
         pub fn reset(self: *Self) void {
@@ -150,11 +203,10 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             if (comptime supports_reserved_arena) {
-                if (self.memory.len > 0) std.posix.munmap(@ptrCast(@alignCast(self.memory)));
-            } else {
-                for (self.segments) |segment| allocator.free(segment);
-                if (self.segments.len > 0) allocator.free(self.segments);
+                self.unreserveArena();
             }
+            for (self.segments) |segment| allocator.free(segment);
+            if (self.segments.len > 0) allocator.free(self.segments);
             self.memory = &.{};
             self.segments = &.{};
             self.counter = 0;
@@ -163,7 +215,13 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         pub inline fn at(self: *Self, address: NodeType.Pointer) *NodeType {
             @setEvalBranchQuota(100000);
             if (comptime supports_reserved_arena) {
-                return &self.memory[address];
+                // Overflow segments extend the address space past the
+                // reservation. Addresses arrive monotonically within a parse,
+                // so the taken branch dominates and resolved storage on
+                // either side never moves.
+                if (@as(usize, address) < self.memory.len) return &self.memory[address];
+                const overflow = @as(usize, address) - self.memory.len;
+                return &self.segments[overflow >> segment_shift][overflow & segment_mask];
             } else {
                 return &self.segments[@as(usize, address) >> segment_shift][@as(usize, address) & segment_mask];
             }
@@ -172,7 +230,9 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         pub inline fn atConst(self: *const Self, address: NodeType.Pointer) *const NodeType {
             @setEvalBranchQuota(100000);
             if (comptime supports_reserved_arena) {
-                return &self.memory[address];
+                if (@as(usize, address) < self.memory.len) return &self.memory[address];
+                const overflow = @as(usize, address) - self.memory.len;
+                return &self.segments[overflow >> segment_shift][overflow & segment_mask];
             } else {
                 return &self.segments[@as(usize, address) >> segment_shift][@as(usize, address) & segment_mask];
             }
@@ -181,15 +241,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         pub inline fn create(self: *Self, start: usize, variable: u16) error{ ASTCapacityExceeded, OutOfMemory }!NodeType.Pointer {
             if (@as(usize, self.counter) >= self.totalNodeCapacity()) {
                 @branchHint(.unlikely);
-                if (comptime supports_reserved_arena) {
-                    if (self.memory.len == 0) {
-                        try self.reserveArena();
-                    } else {
-                        return error.ASTCapacityExceeded;
-                    }
-                } else {
-                    try self.grow();
-                }
+                try self.grow();
             }
 
             const address = self.counter;
@@ -1078,6 +1130,28 @@ test "AST allocator keeps resolved node pointers stable across growth" {
     try std.testing.expectEqual(@as(usize, 41), node_allocator.at(0).text_length);
     retained.text_length = 42;
     try std.testing.expectEqual(@as(usize, 42), node_allocator.at(0).text_length);
+}
+
+test "AST reservation tracks the request instead of the maximum" {
+    if (comptime !root.parser.is_ast_enabled) return;
+    if (comptime !TestASTAllocator.supports_reserved_arena) return;
+    var node_allocator = try TestASTAllocator.initWithCapacity(std.testing.allocator, 0);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    try node_allocator.ensureCapacity(2048);
+    try std.testing.expect(node_allocator.totalNodeCapacity() >= 2048);
+    try std.testing.expect(node_allocator.totalNodeCapacity() < TestASTAllocator.capacity_limit);
+
+    // Between parses the counter is rewound, so a larger request re-reserves.
+    try node_allocator.ensureCapacity(9000);
+    try std.testing.expect(node_allocator.totalNodeCapacity() >= 9000);
+
+    // Demand past the reservation appends segments without relocating
+    // anything: the earlier node still reads back.
+    _ = try node_allocator.create(0, 1);
+    node_allocator.at(0).text_length = 41;
+    try node_allocator.ensureCapacity(node_allocator.totalNodeCapacity() + 5000);
+    try std.testing.expectEqual(@as(usize, 41), node_allocator.at(0).text_length);
 }
 
 test "procedure hook current node pointer survives node allocation" {

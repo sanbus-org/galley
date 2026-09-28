@@ -397,13 +397,14 @@ if (session.parseBytes(input, "input")) |_| {
 }
 ```
 
-Fail-fast parsers populate `SessionReadGuard.lastDiagnostic()` and report a
+Fail-fast parsers populate `SessionDiagnosticsGuard.lastDiagnostic()` and report a
 syntax-error count of one. `lastRenderedMessage()` is the already-rendered text
 of that diagnostic (what the C ABI returns). A recovery-enabled parse that
 encounters errors still returns `ParseError.SyntaxError`; acquire
 `session.readLatest()` before allowing another reuse, then use
 `syntaxErrorCount()`, `lastDiagnostic()`, and `recordedDiagnostics()` on that
-guard.
+guard. The diagnostics guard's accessors expose no node storage: only `read(result)`
+after a successful parse exposes `astAllocator()`.
 
 `SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
 
@@ -416,8 +417,11 @@ Each call resets the session's transient parsing state while retaining reusable 
 - `parseSentinelBytes` and `session.parseSentinelBytes` accept caller-owned `[:0]const u8` input and avoid the copy performed by `parseBytes`.
 
 The sentinel-terminated input must remain valid for the complete parse. When
-AST generation is enabled, the parse result exposes `ast_root`, and a matching
-session read guard exposes the AST allocator through `astAllocator()`.
+AST generation is enabled, the parse result exposes `ast_root`, and the
+`read(result)` guard exposes the AST allocator through `astAllocator()`.
+
+See [Concurrency](/concurrency) for the full threading contract: scope
+table, host obligations, and the fail-fast contention rules.
 
 ## Understand the Package Boundary
 

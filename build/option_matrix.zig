@@ -144,6 +144,7 @@ fn addOptionVariantTests(
         config_mod,
         error_messages_mod,
         generator.runtime_options_mod,
+        generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{

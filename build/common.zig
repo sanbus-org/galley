@@ -6,6 +6,10 @@ pub const GeneratorModules = struct {
     runtime_options_mod: *std.Build.Module,
     ast_memory_benchmark: bool,
     syntax_error_stack_depth: usize,
+    /// Process-wide signal registry shared by every runtime instantiation
+    /// in this build. One instance per build graph is what makes the
+    /// SIGSEGV/SIGBUS disposition registry process-wide.
+    signals_mod: *std.Build.Module,
     generator_common_mod: *std.Build.Module,
     generator_switch_plan_mod: *std.Build.Module,
     generator_config_file_mod: *std.Build.Module,
@@ -20,6 +24,16 @@ pub const GeneratedParserModule = struct {
     runtime_mod: *std.Build.Module,
     parser_mod: *std.Build.Module,
 };
+
+/// The process-wide signal registry, registered once per build graph and
+/// shared by every runtime instantiation in it. Idempotent: repeated calls
+/// return the existing registration instead of silently overwriting it.
+pub fn sharedSignalsModule(b: *std.Build) *std.Build.Module {
+    if (b.modules.get("galley_signals")) |existing| return existing;
+    return b.addModule("galley_signals", .{
+        .root_source_file = b.path("src/runtime/process/signals.zig"),
+    });
+}
 
 pub fn runtimeLinkLibC(target: std.Build.ResolvedTarget) ?bool {
     return switch (target.result.os.tag) {
@@ -39,6 +53,7 @@ pub fn addGeneratedParserModule(
     config_mod: *std.Build.Module,
     error_messages_mod: *std.Build.Module,
     runtime_options_mod: *std.Build.Module,
+    signals_mod: *std.Build.Module,
 ) GeneratedParserModule {
     const parser_mod = b.addModule(parser_module_name, .{
         .root_source_file = parser_source,
@@ -56,6 +71,7 @@ pub fn addGeneratedParserModule(
             .{ .name = "error_messages", .module = error_messages_mod },
             .{ .name = "parser", .module = parser_mod },
             .{ .name = "runtime_options", .module = runtime_options_mod },
+            .{ .name = "signals", .module = signals_mod },
         },
     });
     connectParserModules(runtime_mod, procedures_mod, config_mod, error_messages_mod, parser_mod);
@@ -153,6 +169,7 @@ pub fn addParserModule(
     const runtime_options_mod = options.runtime_options orelse b.createModule(.{
         .root_source_file = galley.path("src/runtime/default_runtime_options.zig"),
     });
+    const signals_mod = galley.module("galley_signals");
     const runtime_mod = b.createModule(.{
         .root_source_file = galley.path("src/runtime/api.zig"),
         .target = options.target,
@@ -164,6 +181,7 @@ pub fn addParserModule(
             .{ .name = "error_messages", .module = error_messages_mod },
             .{ .name = "parser", .module = parser_mod },
             .{ .name = "runtime_options", .module = runtime_options_mod },
+            .{ .name = "signals", .module = signals_mod },
         },
     });
     connectParserModules(runtime_mod, procedures_mod, config_mod, error_messages_mod, parser_mod);
@@ -257,6 +275,7 @@ pub fn addGeneratorModules(
     runtime_options.addOption(bool, "ast_memory_benchmark", ast_memory_benchmark);
     runtime_options.addOption(usize, "syntax_error_stack_depth", syntax_error_stack_depth);
     const runtime_options_mod = runtime_options.createModule();
+    const signals_mod = sharedSignalsModule(b);
 
     const generator_common_mod = b.addModule("generator_common", .{
         .root_source_file = b.path("src/generator/common.zig"),
@@ -326,6 +345,7 @@ pub fn addGeneratorModules(
         galley_grammar_config_mod,
         galley_grammar_error_messages_mod,
         runtime_options_mod,
+        signals_mod,
     );
     const galley_grammar_library_mod = galley_grammar.runtime_mod;
 
@@ -346,6 +366,7 @@ pub fn addGeneratorModules(
         .runtime_options_mod = runtime_options_mod,
         .ast_memory_benchmark = ast_memory_benchmark,
         .syntax_error_stack_depth = syntax_error_stack_depth,
+        .signals_mod = signals_mod,
         .generator_common_mod = generator_common_mod,
         .generator_switch_plan_mod = generator_switch_plan_mod,
         .generator_config_file_mod = generator_config_file_mod,
@@ -530,6 +551,7 @@ pub fn addLanguageParserFromFile(
         config_mod,
         error_messages_mod,
         generator.runtime_options_mod,
+        generator.signals_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
     const parser_mod = generated_parser.parser_mod;

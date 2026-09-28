@@ -54,7 +54,7 @@ fn printTree(
 /// Bindings record diagnostics; they do not print them during parse.
 fn ignoreDiagnostic(_: []const u8) void {}
 
-fn diagnosticMessage(reader: parser.SessionReadGuard, gpa: std.mem.Allocator, diagnostic: parser.ParseDiagnostic) !struct { []const u8, bool } {
+fn diagnosticMessage(reader: parser.SessionDiagnosticsGuard, gpa: std.mem.Allocator, diagnostic: parser.ParseDiagnostic) !struct { []const u8, bool } {
     if (reader.lastRenderedMessage()) |message| return .{ message, false };
     return .{ try parser.renderParseDiagnostic(gpa, diagnostic, .plain), true };
 }

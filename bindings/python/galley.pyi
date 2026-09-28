@@ -350,8 +350,8 @@ class Session:
         stack_overflow_recovery: allow stack-overflow recovery (False).
         syntax_error_stack_depth: extra stack frames to keep for diagnostics (0).
         verbosity: diagnostic verbosity (0).
-        ast_preallocation_ratio: preallocation ratio (``-1.0`` selects default).
-        ast_preallocation_cap: preallocation cap in nodes (0 = no cap).
+        ast_preallocation_ratio: preallocation ratio (``-1.0`` selects default; ``0`` drops the scaled contribution, the floor still applies; the scaled contribution is ignored on segment platforms such as Windows/wasm, where only the floor is prepared eagerly).
+        ast_preallocation_cap: minimum ready node storage per parse in nodes (0 = default).
     """
 
     def __init__(
