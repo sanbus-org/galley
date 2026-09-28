@@ -326,3 +326,153 @@ test "procedure-hooks AST nodes retain source text lengths" {
     const text = try parser.data_structures.Node.augmentedText(root, &context);
     try std.testing.expectEqualStrings(input, text);
 }
+
+var contention_in_hook = std.atomic.Value(bool).init(false);
+var contention_attempted = std.atomic.Value(bool).init(false);
+var contention_outcome: ?anyerror = null;
+
+fn contentionHook(args: *parser.data_structures.ProcedureArguments) !void {
+    _ = args;
+    contention_in_hook.store(true, .seq_cst);
+    while (!contention_attempted.load(.seq_cst)) try std.Thread.yield();
+}
+
+fn contentionAttempt(session: *parser.Session) void {
+    while (!contention_in_hook.load(.seq_cst)) std.Thread.yield() catch {};
+    _ = session.parseBytes("k", "contended") catch |err| {
+        contention_outcome = err;
+        contention_attempted.store(true, .seq_cst);
+        return;
+    };
+    contention_outcome = error.ExpectedSessionInUse;
+    contention_attempted.store(true, .seq_cst);
+}
+
+test "procedure-hooks same session contends fail-fast across threads" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    contention_in_hook.store(false, .seq_cst);
+    contention_attempted.store(false, .seq_cst);
+    contention_outcome = null;
+    procedures.setNestedCallback(contentionHook);
+    defer procedures.setNestedCallback(null);
+
+    const contender = try std.Thread.spawn(.{}, contentionAttempt, .{&session});
+    const result = try session.parseBytes("k", "owner");
+    try std.testing.expectEqual(@as(usize, 1), result.parsed_bytes);
+    contender.join();
+
+    try std.testing.expect(contention_outcome.? == error.SessionInUse);
+}
+
+test "procedure-hooks stale results are nameable and distinct from parse failures" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    const first = try session.parseBytes("k", "first");
+    const second = try session.parseBytes("k", "second");
+    try std.testing.expectError(error.StaleParseResult, session.read(first));
+    var read_guard = try session.read(second);
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), second.parsed_bytes);
+}
+
+test "procedure-hooks sequential protected parses stay usable" {
+    if (!parser.stack_overflow_recovery_available) return error.SkipZigTest;
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .stack_overflow_recovery = true });
+    defer session.deinit();
+
+    const first = try session.parseBytes("k", "first");
+    try std.testing.expectEqual(@as(usize, 1), first.parsed_bytes);
+    const second = try session.parseBytes("k", "second");
+    try std.testing.expectEqual(@as(usize, 1), second.parsed_bytes);
+}
+
+var protected_nested_session: ?*parser.Session = null;
+var protected_nested_called = false;
+
+fn exerciseProtectedNesting(args: *parser.data_structures.ProcedureArguments) !void {
+    _ = args;
+    protected_nested_called = true;
+
+    const inner = protected_nested_session orelse return error.MissingNestedSession;
+    const nested_result = try inner.parseBytes("c", "inner");
+    try std.testing.expectEqual(@as(usize, 1), nested_result.parsed_bytes);
+}
+
+test "procedure-hooks protected parse stacks a protected nested parse" {
+    if (!parser.stack_overflow_recovery_available) return error.SkipZigTest;
+
+    var outer_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .stack_overflow_recovery = true });
+    defer outer_session.deinit();
+    var inner_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .stack_overflow_recovery = true });
+    defer inner_session.deinit();
+
+    protected_nested_session = &inner_session;
+    protected_nested_called = false;
+    procedures.setNestedCallback(exerciseProtectedNesting);
+    defer procedures.setNestedCallback(null);
+    defer protected_nested_session = null;
+
+    const result = try outer_session.parseBytes("k", "outer");
+    try std.testing.expectEqual(@as(usize, 1), result.parsed_bytes);
+    try std.testing.expect(protected_nested_called);
+
+    // Disarm the nesting hook before reuse: it would otherwise re-enter
+    // the sessions under test.
+    procedures.setNestedCallback(null);
+
+    // Session reuse proves both scopes cleaned up.
+    const outer_again = try outer_session.parseBytes("k", "outer-again");
+    try std.testing.expectEqual(@as(usize, 1), outer_again.parsed_bytes);
+    const inner_again = try inner_session.parseBytes("k", "inner-again");
+    try std.testing.expectEqual(@as(usize, 1), inner_again.parsed_bytes);
+}
+
+fn exerciseProtectedRejectsUnprotected(args: *parser.data_structures.ProcedureArguments) !void {
+    _ = args;
+    protected_nested_called = true;
+
+    const inner = protected_nested_session orelse return error.MissingNestedSession;
+    try std.testing.expectError(error.NestedParseDuringStackOverflowRecovery, inner.parseBytes("c", "inner"));
+}
+
+test "procedure-hooks protected parse rejects an unprotected nested parse" {
+    if (!parser.stack_overflow_recovery_available) return error.SkipZigTest;
+
+    var outer_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .stack_overflow_recovery = true });
+    defer outer_session.deinit();
+    var inner_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer inner_session.deinit();
+
+    protected_nested_session = &inner_session;
+    protected_nested_called = false;
+    procedures.setNestedCallback(exerciseProtectedRejectsUnprotected);
+    defer procedures.setNestedCallback(null);
+    defer protected_nested_session = null;
+
+    const result = try outer_session.parseBytes("k", "outer");
+    try std.testing.expectEqual(@as(usize, 1), result.parsed_bytes);
+    try std.testing.expect(protected_nested_called);
+
+    // The rejected nested parse ran before any session mutation: the inner
+    // session's generation, node storage, owned input, and input path are
+    // untouched, so it reuses cleanly.
+    try std.testing.expectEqual(@as(usize, 0), inner_session.generation);
+    try std.testing.expect(inner_session.owned_input == null);
+    try std.testing.expect(inner_session.runtime_context.input_path == null);
+    if (comptime parser.parser.is_ast_enabled) {
+        try std.testing.expectEqual(@as(usize, 0), inner_session.node_allocator.totalNodeCapacity());
+    }
+
+    // Disarm the nesting hook before reuse: it would otherwise re-enter
+    // the sessions under test.
+    procedures.setNestedCallback(null);
+
+    const outer_again = try outer_session.parseBytes("k", "outer-again");
+    try std.testing.expectEqual(@as(usize, 1), outer_again.parsed_bytes);
+    const inner_again = try inner_session.parseBytes("k", "inner-again");
+    try std.testing.expectEqual(@as(usize, 1), inner_again.parsed_bytes);
+}

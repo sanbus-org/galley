@@ -7,7 +7,7 @@ const ParsedError = struct {
     session: parser.Session,
     context: parser.data_structures.Context,
 
-    fn read(self: *ParsedError) !parser.SessionReadGuard {
+    fn read(self: *ParsedError) !parser.SessionDiagnosticsGuard {
         return try self.session.readLatest();
     }
 };
@@ -20,7 +20,7 @@ fn parseError(input: [:0]const u8) !ParsedError {
     return .{ .session = session, .context = context };
 }
 
-fn syntaxDiagnostic(read_guard: *const parser.SessionReadGuard) parser.SyntaxDiagnostic {
+fn syntaxDiagnostic(read_guard: *const parser.SessionDiagnosticsGuard) parser.SyntaxDiagnostic {
     return switch (read_guard.lastDiagnostic().?) {
         .syntax => |syntax| syntax,
         .semantic, .indentation => unreachable,

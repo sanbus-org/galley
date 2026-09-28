@@ -52,6 +52,7 @@ export default defineConfig({
         text: 'Advanced Architecture & Performance',
         items: [
           { text: 'Architecture', link: '/architecture' },
+          { text: 'Concurrency', link: '/concurrency' },
           { text: 'Syntax-Error Recovery & Messages', link: '/syntax_error_recovery' },
           { text: 'AST Node Allocations', link: '/ast_node_allocations' },
           { text: 'Benchmarks', link: '/benchmarks' },

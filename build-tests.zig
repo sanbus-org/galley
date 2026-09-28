@@ -318,6 +318,7 @@ pub fn add(b: *std.Build, options: Options) !void {
                 .{ .name = "error_messages", .module = runtime_test_error_messages_mod },
                 .{ .name = "parser", .module = runtime_test_parser_mod },
                 .{ .name = "runtime_options", .module = runtime_options.createModule() },
+                .{ .name = "signals", .module = generator.signals_mod },
             },
         });
         runtime_test_mod.addImport("galley", runtime_test_mod);
@@ -513,6 +514,7 @@ fn addGalleyRecoveryComparisonParser(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 }
 
@@ -565,6 +567,7 @@ fn addSelfRepeatingTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -630,6 +633,7 @@ fn addSymbolKindIdentityTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -698,6 +702,7 @@ fn addProcedureHookTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -765,6 +770,7 @@ fn addManyProceduresTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -832,6 +838,7 @@ fn addSemanticErrorTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -896,6 +903,7 @@ fn addTreeWalkerTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -965,6 +973,7 @@ fn addLeftFactoringTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1031,6 +1040,7 @@ fn addNoAstProcedureTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1094,6 +1104,7 @@ fn addNoAstTreeHelpersTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1157,6 +1168,7 @@ fn addNoAstTerminalTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1220,6 +1232,7 @@ fn addNoAstIndentTextTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1293,6 +1306,7 @@ fn addNewlineAfterBlockEndTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1368,6 +1382,7 @@ fn addExplicitRecoveryTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1439,6 +1454,7 @@ fn addVerbatimTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1508,6 +1524,7 @@ fn addVerbatimNullableTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_mod = b.createModule(.{
@@ -1571,6 +1588,7 @@ fn addGalleyRecoveryTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/galley_recovery_test.zig"),
@@ -1633,6 +1651,7 @@ fn addJsonRecoveryTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/json_recovery_test.zig"),
@@ -1722,6 +1741,7 @@ fn addInputStreamingTests(
         config_mod,
         error_messages_mod,
         options.generator.runtime_options_mod,
+        options.generator.signals_mod,
     );
 
     const test_options = b.addOptions();
@@ -1913,6 +1933,7 @@ fn addLrBackedGenerator(
         config_mod,
         error_messages_mod,
         generator.runtime_options_mod,
+        generator.signals_mod,
     );
 
     const generator_mod = b.createModule(.{

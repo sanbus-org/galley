@@ -36,6 +36,12 @@ pub const input_padding_size = @max(parser.longest_terminal_length, 1);
 pub const input_window_size = read_chunk_size;
 pub const stack_overflow_recovery_available = stack_overflow_utilities.is_supported;
 
+/// Minimum ready node storage per parse when the caller leaves
+/// `ParseOptions.ast_preallocation_cap` at its default. Single source for
+/// the session floor (`ParseOptions`) and the allocator's first-use
+/// reservation (`data-structures/node.zig`).
+pub const default_ast_preallocation_floor: usize = 16_384;
+
 pub const ParseError = error{
     SyntaxError,
     SemanticError,
@@ -43,6 +49,23 @@ pub const ParseError = error{
     StackOverflow,
     ASTCapacityExceeded,
     UnterminatedRawString,
+};
+
+/// Named contention set for session access. Parse failures arrive through
+/// `ParseError` (or generated-parser errors); session misuse and pre-lock
+/// parse rejections arrive here. The two channels are distinct:
+/// `SessionError` is never a parse failure. `SessionInUse` and
+/// `NestedParseDuringStackOverflowRecovery` both run before the lock and
+/// consume no session state.
+pub const SessionError = error{
+    SessionInUse,
+    SessionGenerationExhausted,
+    StaleParseResult,
+    /// A parse without stack-overflow recovery attempted while another
+    /// parse's recovery scope is active on this thread. An inner fault
+    /// would land in the outer scope, skipping this session's cleanup, so
+    /// the inner parse must opt into recovery too.
+    NestedParseDuringStackOverflowRecovery,
 };
 
 pub const SyntaxDiagnosticContext = union(enum) {
@@ -135,8 +158,20 @@ pub const ParseOptions = struct {
     max_errors: usize = 10,
     recovery_window: usize = 500,
     stack_overflow_recovery: bool = false,
+    /// Ready node storage as a multiple of input length. On reserved-arena
+    /// platforms this reserves address space without committed pages, so a
+    /// large estimate is cheap; on segment platforms (Windows, wasm) the
+    /// scaled contribution is ignored and only the floor below is prepared
+    /// eagerly, with demand past it appending segments mid-parse.
     ast_preallocation_ratio: f64 = 2,
-    ast_preallocation_cap: usize = 16_384,
+    /// Minimum ready node storage per parse. The reservation covers input
+    /// length times the ratio above this floor on reserved-arena platforms;
+    /// on segment platforms the floor alone is prepared eagerly. Demand past
+    /// the reservation appends segments, so raise the floor through
+    /// `ParseOptions.ast_preallocation_cap` (the ratio applies to the
+    /// reserved-arena path only) to avoid that slower path for node-dense
+    /// grammars.
+    ast_preallocation_cap: usize = default_ast_preallocation_floor,
     /// Number of in-progress variables (innermost first) reported in LL syntax
     /// error messages. `0` inherits the generated parser's default
     /// (`syntax_error_stack_depth`); a value above 1 enables the stack. A value
@@ -199,11 +234,34 @@ pub const ParseResult = struct {
     _session_identity: ?*const anyopaque = null,
 };
 
+/// One implementation behind both guards' diagnostics accessors. The two
+/// guard types differ only in which capabilities they expose: `read` also
+/// hands out node storage, `readLatest` does not.
+fn guardLastDiagnostic(session: *const Session) ?ParseDiagnostic {
+    return session.runtime_context.lastDiagnostic();
+}
+
+fn guardLastRenderedMessage(session: *const Session) ?[]const u8 {
+    return session.runtime_context.last_rendered_message;
+}
+
+fn guardRecordedDiagnostics(session: *const Session) []const ParseDiagnostic {
+    return session.runtime_context.recorded_diagnostics.items;
+}
+
+fn guardSyntaxErrorCount(session: *const Session) usize {
+    return session.runtime_context.syntax_error_count;
+}
+
+fn guardSemanticErrorCount(session: *const Session) usize {
+    return session.runtime_context.semantic_error_count;
+}
+
 pub const SessionReadGuard = struct {
     session: *Session,
 
     pub fn deinit(self: *SessionReadGuard) void {
-        self.session.session_lock.unlockShared(self.session.io);
+        self.session.releaseSharedGuard();
         self.* = undefined;
     }
 
@@ -215,23 +273,57 @@ pub const SessionReadGuard = struct {
     }
 
     pub fn lastDiagnostic(self: *const SessionReadGuard) ?ParseDiagnostic {
-        return self.session.runtime_context.lastDiagnostic();
+        return guardLastDiagnostic(self.session);
     }
 
     pub fn lastRenderedMessage(self: *const SessionReadGuard) ?[]const u8 {
-        return self.session.runtime_context.last_rendered_message;
+        return guardLastRenderedMessage(self.session);
     }
 
     pub fn recordedDiagnostics(self: *const SessionReadGuard) []const ParseDiagnostic {
-        return self.session.runtime_context.recorded_diagnostics.items;
+        return guardRecordedDiagnostics(self.session);
     }
 
     pub fn syntaxErrorCount(self: *const SessionReadGuard) usize {
-        return self.session.runtime_context.syntax_error_count;
+        return guardSyntaxErrorCount(self.session);
     }
 
     pub fn semanticErrorCount(self: *const SessionReadGuard) usize {
-        return self.session.runtime_context.semantic_error_count;
+        return guardSemanticErrorCount(self.session);
+    }
+};
+
+/// Diagnostics-only guard returned by `readLatest`. Its accessors expose
+/// no node storage, so post-failure reads cannot touch a half-built tree
+/// through this guard. (Zig has no field privacy: `guard.session` remains
+/// reachable, so this is a capability-narrowing convention enforced by the
+/// accessors, not a compiler barrier.)
+pub const SessionDiagnosticsGuard = struct {
+    session: *Session,
+
+    pub fn deinit(self: *SessionDiagnosticsGuard) void {
+        self.session.releaseSharedGuard();
+        self.* = undefined;
+    }
+
+    pub fn lastDiagnostic(self: *const SessionDiagnosticsGuard) ?ParseDiagnostic {
+        return guardLastDiagnostic(self.session);
+    }
+
+    pub fn lastRenderedMessage(self: *const SessionDiagnosticsGuard) ?[]const u8 {
+        return guardLastRenderedMessage(self.session);
+    }
+
+    pub fn recordedDiagnostics(self: *const SessionDiagnosticsGuard) []const ParseDiagnostic {
+        return guardRecordedDiagnostics(self.session);
+    }
+
+    pub fn syntaxErrorCount(self: *const SessionDiagnosticsGuard) usize {
+        return guardSyntaxErrorCount(self.session);
+    }
+
+    pub fn semanticErrorCount(self: *const SessionDiagnosticsGuard) usize {
+        return guardSemanticErrorCount(self.session);
     }
 };
 
@@ -545,7 +637,7 @@ pub const Session = struct {
         self.message_overrides.deinit(self.allocator);
     }
 
-    pub fn read(self: *Session, result: ParseResult) error{ SessionInUse, StaleParseResult }!SessionReadGuard {
+    pub fn read(self: *Session, result: ParseResult) SessionError!SessionReadGuard {
         if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
         if (result._session_identity != @as(*const anyopaque, @ptrCast(self.reader_buffer.ptr)) or
             result._session_generation != self.generation)
@@ -556,18 +648,38 @@ pub const Session = struct {
         return .{ .session = self };
     }
 
-    pub fn readLatest(self: *Session) error{SessionInUse}!SessionReadGuard {
+    pub fn readLatest(self: *Session) SessionError!SessionDiagnosticsGuard {
         if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
         return .{ .session = self };
     }
 
-    fn beginParse(self: *Session) error{ SessionInUse, SessionGenerationExhausted }!void {
+    /// Single parse-acquire site. Every parse entry funnels through here so
+    /// the lock and generation cannot disagree. The nested-recovery gate
+    /// runs first, before the lock, so a rejected nested parse leaves
+    /// generation, node storage, `owned_input`, and
+    /// `runtime_context.input_path` untouched.
+    fn acquireParse(self: *Session) SessionError!void {
+        if (stack_overflow_utilities.isActive() and !self.stack_overflow_recovery) {
+            return error.NestedParseDuringStackOverflowRecovery;
+        }
         if (!self.session_lock.tryLock(self.io)) return error.SessionInUse;
         if (self.generation == std.math.maxInt(usize)) {
             self.session_lock.unlock(self.io);
             return error.SessionGenerationExhausted;
         }
         self.generation += 1;
+    }
+
+    /// Single parse-release site. Unlocks the write lease held by the parse.
+    fn releaseParse(self: *Session) void {
+        self.session_lock.unlock(self.io);
+    }
+
+    /// Single guard-release site. Both guard types delegate here so the
+    /// shared-lock release has one implementation; the narrowing (the
+    /// diagnostics guard exposes no node storage) lives in the accessors.
+    fn releaseSharedGuard(self: *Session) void {
+        self.session_lock.unlockShared(self.io);
     }
 
     fn ensureOwnedInputCapacity(self: *Session, required: usize) ![]u8 {
@@ -585,21 +697,48 @@ pub const Session = struct {
     fn prepareASTCapacity(self: *Session, input_length: usize) !void {
         if (comptime !parser.is_ast_enabled) return;
 
-        const scaled_capacity = @ceil(
-            @as(f64, @floatFromInt(input_length)) * self.ast_preallocation_ratio,
-        );
-        const maximum_capacity = data_structures.ASTAllocator.capacity_limit;
-        const capped_capacity = @min(maximum_capacity, self.ast_preallocation_cap);
-        const capacity = if (scaled_capacity >= @as(f64, @floatFromInt(capped_capacity)))
-            capped_capacity
-        else
-            @as(usize, @intFromFloat(scaled_capacity));
-        try self.node_allocator.ensureCapacity(capacity);
+        // The previous tree is dead by contract and the parse lock is held,
+        // so rewinding first lets `ensureCapacity` re-reserve larger between
+        // parses instead of mistaking a stale counter for live nodes.
+        self.node_allocator.reset();
+        const limit = data_structures.ASTAllocator.capacity_limit;
+        const floor = @min(self.ast_preallocation_cap, limit);
+        if (comptime data_structures.ASTAllocator.supports_reserved_arena) {
+            // Reserved path: the reservation is address space without
+            // committed pages (MAP_NORESERVE), so the cap stays a floor and
+            // the scaled estimate reserves cheaply. Demand past the
+            // reservation appends segments; the only wall is the
+            // address-space limit. Callers with atypical density raise the
+            // ratio or floor through `ParseOptions` to avoid that slower
+            // path. Arithmetic: capacity is the floor when the scaled
+            // estimate is at or below it, the estimate itself (rounded up)
+            // when between floor and limit, and the limit above that — so it
+            // stays within [floor, limit] and covers the estimate whenever
+            // the limit allows.
+            const scaled = @ceil(
+                @as(f64, @floatFromInt(input_length)) * self.ast_preallocation_ratio,
+            );
+            var capacity: usize = floor;
+            if (scaled > @as(f64, @floatFromInt(floor))) {
+                capacity = if (scaled >= @as(f64, @floatFromInt(limit)))
+                    limit
+                else
+                    @as(usize, @intFromFloat(scaled));
+            }
+            try self.node_allocator.ensureCapacity(capacity);
+        } else {
+            // Segment path: every reserved node is heap-allocated and
+            // zeroed, so only the floor is prepared eagerly and the scaled
+            // estimate is ignored. Demand past the floor appends segments
+            // mid-parse; a large input never eagerly allocates length times
+            // ratio nodes here.
+            try self.node_allocator.ensureCapacity(floor);
+        }
     }
 
     pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
-        try self.beginParse();
-        defer self.session_lock.unlock(self.io);
+        try self.acquireParse();
+        defer self.releaseParse();
         return try self.parseBytesUnlocked(input, input_path);
     }
 
@@ -615,8 +754,8 @@ pub const Session = struct {
     }
 
     pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
-        try self.beginParse();
-        defer self.session_lock.unlock(self.io);
+        try self.acquireParse();
+        defer self.releaseParse();
         return try self.parseSentinelBytesUnlocked(input, input_path);
     }
 
@@ -636,8 +775,8 @@ pub const Session = struct {
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
-        try self.beginParse();
-        defer self.session_lock.unlock(self.io);
+        try self.acquireParse();
+        defer self.releaseParse();
         return try self.parseFileUnlocked(file, input_path);
     }
 
@@ -712,8 +851,8 @@ pub const Session = struct {
     }
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
-        try self.beginParse();
-        defer self.session_lock.unlock(self.io);
+        try self.acquireParse();
+        defer self.releaseParse();
         return try self._parseContextUnlocked(context_value);
     }
 

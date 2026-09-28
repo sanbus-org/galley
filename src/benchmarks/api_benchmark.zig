@@ -45,9 +45,11 @@ pub fn main(init: std.process.Init) !void {
 
         var total_parsed_bytes: usize = 0;
         const start = std.Io.Clock.awake.now(init.io);
+        var last_result: ?galley.ParseResult = null;
         for (0..options.iterations) |_| {
             const result = try session.parseSentinelBytes(sentinel_input, input_path);
             total_parsed_bytes += result.parsed_bytes;
+            last_result = result;
         }
         const end = std.Io.Clock.awake.now(init.io);
 
@@ -59,7 +61,7 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("Parsed bytes:  {s}\n", .{try string_utilities.formatFileSize(total_parsed_bytes, &buffer)});
         std.debug.print("Duration:      {s} ns\n", .{try string_utilities.formatWithThousands(elapsed_ns, &buffer)});
         std.debug.print("Throughput:    {s}/s\n", .{try string_utilities.formatFileSize(mbps, &buffer)});
-        var read_guard = try session.readLatest();
+        var read_guard = try session.read(last_result orelse return error.MissingResult);
         defer read_guard.deinit();
         const nodes_allocated = if (comptime galley.parser.is_ast_enabled) read_guard.astAllocator().counter else 0;
         std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(nodes_allocated, &buffer)});

@@ -218,6 +218,7 @@ fn addCase(
         config_mod,
         error_messages_mod,
         options.generator_modules.runtime_options_mod,
+        options.generator_modules.signals_mod,
     );
     const galley_parser_mod = generated_parser.runtime_mod;
 
@@ -302,6 +303,7 @@ fn addCase(
                 recovery_config_mod,
                 recovery_error_messages_mod,
                 options.generator_modules.runtime_options_mod,
+                options.generator_modules.signals_mod,
             );
             const run_recovery_error_tests = addGeneratedParserErrorTest(
                 b,
