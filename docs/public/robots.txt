@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://galley.sassanh.com/sitemap.xml

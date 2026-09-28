@@ -8,6 +8,9 @@ export default defineConfig({
   title: 'Galley',
   description: 'Documentation for the Sanbus Galley parser generators.',
   base: '/',
+  sitemap: {
+    hostname: 'https://galley.sassanh.com'
+  },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]
   ],
