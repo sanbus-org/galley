@@ -1,30 +1,16 @@
 <template>
   <div class="try-it">
     <div class="tabs">
-      <button
-        v-for="checker in checkers"
-        :key="checker.id"
-        class="tab"
-        :class="{ active: checker.id === active }"
-        @click="active = checker.id"
-      >
+      <button v-for="checker in checkers" :key="checker.id" class="tab" :class="{ active: checker.id === active }"
+        @click="active = checker.id">
         {{ checker.title }}
       </button>
     </div>
     <section v-for="checker in checkers" v-show="checker.id === active" :key="checker.id" class="checker">
-      <label
-        class="dropzone"
-        :class="{ over: checker.dragOver, disabled: !checker.ready }"
+      <label class="dropzone" :class="{ over: checker.dragOver, disabled: !checker.ready }"
         @dragover.prevent="(e) => { checker.dragOver = true; e.dataTransfer.dropEffect = 'copy'; }"
-        @dragleave="checker.dragOver = false"
-        @drop.prevent="(e) => dropFile(checker, e)"
-      >
-        <input
-          type="file"
-          hidden
-          :disabled="!checker.ready"
-          @change="(e) => pickFile(checker, e)"
-        />
+        @dragleave="checker.dragOver = false" @drop.prevent="(e) => dropFile(checker, e)">
+        <input type="file" hidden :disabled="!checker.ready" @change="(e) => pickFile(checker, e)" />
         <span>Drop a {{ checker.ext }} file here, or click to browse</span>
       </label>
       <div v-if="checker.file" class="filebar">
@@ -33,49 +19,40 @@
           Clear {{ checker.file.name }} and type instead
         </button>
       </div>
-      <textarea
-        v-else
-        v-model="checker.text"
-        spellcheck="false"
-        rows="8"
-        :disabled="!checker.ready"
-        @input="() => runCheck(checker)"
-      ></textarea>
+      <textarea v-else v-model="checker.text" spellcheck="false" rows="8" :disabled="!checker.ready"
+        @input="() => runCheck(checker)"></textarea>
       <div v-if="checker.id === 'json'" class="modes">
         <span>Count with</span>
-        <button
-          class="tab"
-          :class="{ active: checker.mode === 'hooks' }"
-          @click="() => setMode(checker, 'hooks')"
-        >
+        <button class="tab" :class="{ active: checker.mode === 'hooks' }" @click="() => setMode(checker, 'hooks')">
           Hooks
         </button>
-        <button
-          class="tab"
-          :class="{ active: checker.mode === 'snapshot' }"
-          @click="() => setMode(checker, 'snapshot')"
-        >
+        <button class="tab" :class="{ active: checker.mode === 'snapshot' }"
+          @click="() => setMode(checker, 'snapshot')">
           AST snapshot
         </button>
       </div>
       <div v-if="checker.result" class="status ok">
         <div>valid {{ checker.result.label }} ({{ checker.result.bytes }} bytes)</div>
         <table class="numbers">
-          <tr>
-            <th></th>
-            <th>time</th>
-            <th>throughput</th>
-          </tr>
-          <tr>
-            <td>parse</td>
-            <td>{{ fmtMs(checker.result.parseMs) }}</td>
-            <td>{{ formatRate(checker.result.bytes, checker.result.parseMs) ?? "—" }}</td>
-          </tr>
-          <tr v-if="checker.id === 'json' && checker.mode === 'snapshot'">
-            <td>parse + visit</td>
-            <td>{{ fmtMs(checker.result.parseMs + checker.result.countMs) }}</td>
-            <td>{{ formatRate(checker.result.bytes, checker.result.parseMs + checker.result.countMs) ?? "—" }}</td>
-          </tr>
+          <thead>
+            <tr>
+              <th></th>
+              <th>time</th>
+              <th>throughput</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>parse</td>
+              <td>{{ fmtMs(checker.result.parseMs) }}</td>
+              <td>{{ formatRate(checker.result.bytes, checker.result.parseMs) ?? "—" }}</td>
+            </tr>
+            <tr v-if="checker.id === 'json' && checker.mode === 'snapshot'">
+              <td>parse + visit</td>
+              <td>{{ fmtMs(checker.result.parseMs + checker.result.countMs) }}</td>
+              <td>{{ formatRate(checker.result.bytes, checker.result.parseMs + checker.result.countMs) ?? "—" }}</td>
+            </tr>
+          </tbody>
         </table>
         <div>{{ countsLine(checker.result.stats) }}</div>
       </div>
@@ -83,18 +60,22 @@
     </section>
     <p class="engines">
       Throughput depends on the browser's WebAssembly engine; measured on
-      your machine, your input, right now.
+      your machine, your input, right now. Throughput shows for inputs of
+      256 KB or more.
     </p>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted, watch } from "vue";
+import { galley } from "@sanbus/galley";
 import * as jsonHooks from "../../try-it/lang/json/procedures.js";
 import { countSnapshot } from "../../try-it/lang/json-ast/snapshot-stats.js";
 
 function formatRate(bytes, elapsedMs) {
   if (!(elapsedMs > 0)) return null;
+  // Small-input timings are noise: throughput is meaningful only past this size.
+  if (bytes < MIN_THROUGHPUT_BYTES) return null;
   const perSecond = (bytes / elapsedMs) * 1000;
   if (perSecond >= 1e6) return `${(perSecond / 1e6).toFixed(1)} MB/s`;
   if (perSecond >= 1e3) return `${(perSecond / 1e3).toFixed(1)} kB/s`;
@@ -102,6 +83,10 @@ function formatRate(bytes, elapsedMs) {
 }
 
 const active = ref("lisp");
+
+// Throughput shows only for inputs at or above this size; below it the
+// table renders "—" instead of noise.
+const MIN_THROUGHPUT_BYTES = 256 * 1024;
 
 const checkers = reactive([
   {
@@ -158,8 +143,26 @@ const checkers = reactive([
 const sessions = {};
 const fileInputs = {};
 
-let galley = null;
 const decoder = new TextDecoder();
+
+// Display names for the synthetic control-byte terminals (end of input
+// and the indentation pair), which never occur as user-typable input.
+// Mirrors `displayTokenName` in `bindings/js/core/src/diagnostic.ts`
+// (and `tokenDisplayName` in `src/runtime/string.zig`): the browser entry
+// does not export it, and docs stay on the public surface only.
+function displayToken(token) {
+  if (token.length !== 1) return decoder.decode(token);
+  switch (token[0]) {
+    case 0x00:
+      return "End of input";
+    case 0x01:
+      return "Indent";
+    case 0x02:
+      return "Dedent";
+    default:
+      return decoder.decode(token);
+  }
+}
 
 function showError(checker, diagnostic) {
   checker.result = null;
@@ -168,7 +171,7 @@ function showError(checker, diagnostic) {
   if (diagnostic.expectedTokens && diagnostic.expectedTokens.length > 0) {
     const shown = diagnostic.expectedTokens
       .slice(0, 8)
-      .map((token) => `'${galley.displayTokenName(token) ?? decoder.decode(token)}'`)
+      .map((token) => `'${displayToken(token)}'`)
       .join(", ");
     const more = diagnostic.expectedTokens.length > 8 ? ` (+${diagnostic.expectedTokens.length - 8} more)` : "";
     lines.push(`expected one of: ${shown}${more}`);
@@ -260,7 +263,13 @@ function runCheck(checker) {
     const { bytes, parseMs, countMs, stats } = timeParse(checker, input);
     showOk(checker, label, bytes, parseMs, countMs, stats);
   } catch (error) {
-    const diagnostic = error.diagnostic ?? sessionFor(checker).diagnostic();
+    const diagnostic = error?.diagnostic ?? sessionFor(checker)?.diagnostic?.() ?? null;
+    if (!diagnostic) {
+      checker.result = null;
+      checker.statusClass = "bad";
+      checker.status = error?.message ?? String(error);
+      return;
+    }
     if (checker.file) {
       checker.result = null;
       checker.statusClass = "bad";
@@ -313,17 +322,18 @@ function dropFile(checker, event) {
 const loading = new Set();
 
 async function ensureChecker(checker) {
-  if (checker.ready || loading.has(checker.id) || !galley) return;
+  if (checker.ready || loading.has(checker.id)) return;
   loading.add(checker.id);
   try {
     const url = `${import.meta.env.BASE_URL}try-it/${checker.id}.wasm`;
-    sessions[checker.id] = await galley.Session.fromUrl(url, {
-      procedures: checker.id === "json" ? jsonHooks : undefined,
-      quiet: true,
-    });
+    const parser = await galley.loadUrl(url);
+    if (checker.id === "json") {
+      parser.installProcedures(jsonHooks);
+    }
+    sessions[checker.id] = parser.openSession();
     if (checker.id === "json") {
       const snapshotUrl = `${import.meta.env.BASE_URL}try-it/json-ast.wasm`;
-      sessions["json-snapshot"] = await galley.Session.fromUrl(snapshotUrl, { quiet: true });
+      sessions["json-snapshot"] = (await galley.loadUrl(snapshotUrl)).openSession();
     }
     checker.ready = true;
     runCheck(checker);
@@ -336,15 +346,6 @@ async function ensureChecker(checker) {
 }
 
 onMounted(async () => {
-  try {
-    galley = await import("@sanbus/galley/browser");
-  } catch (error) {
-    for (const checker of checkers) {
-      checker.statusClass = "bad";
-      checker.status = `failed to start: ${error.message ?? error}`;
-    }
-    return;
-  }
   watch(active, (id) => {
     const selected = checkers.find((checker) => checker.id === id);
     if (selected) ensureChecker(selected);
@@ -359,6 +360,7 @@ onMounted(async () => {
   gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
+
 .try-it .tab {
   padding: 0.4rem 1.1rem;
   border: 1px solid var(--vp-c-border);
@@ -368,13 +370,16 @@ onMounted(async () => {
   font-size: 14px;
   cursor: pointer;
 }
+
 .try-it .tab.active {
   border-color: var(--vp-c-brand-1);
   color: var(--vp-c-brand-1);
 }
+
 .try-it .checker {
   margin-bottom: 2.5rem;
 }
+
 .try-it .modes {
   display: flex;
   align-items: center;
@@ -383,6 +388,7 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--vp-c-text-2);
 }
+
 .try-it .modes .tab {
   padding: 0.25rem 0.9rem;
   border: 1px solid var(--vp-c-border);
@@ -392,25 +398,30 @@ onMounted(async () => {
   font-size: 14px;
   cursor: pointer;
 }
+
 .try-it .modes .tab.active {
   border-color: var(--vp-c-brand-1);
   color: var(--vp-c-brand-1);
 }
+
 .try-it table.numbers {
   border-collapse: collapse;
   margin: 0.5rem 0;
   font-size: 14px;
 }
+
 .try-it table.numbers th,
 .try-it table.numbers td {
   border: 1px solid var(--vp-c-border);
   padding: 0.2rem 0.7rem;
   text-align: right;
 }
+
 .try-it table.numbers td:first-child,
 .try-it table.numbers th:first-child {
   text-align: left;
 }
+
 .try-it .dropzone {
   display: block;
   border: 1px dashed var(--vp-c-border);
@@ -421,14 +432,17 @@ onMounted(async () => {
   cursor: pointer;
   margin-bottom: 0.75rem;
 }
+
 .try-it .dropzone.over {
   border-color: var(--vp-c-brand-1);
   color: var(--vp-c-brand-1);
 }
+
 .try-it .dropzone.disabled {
   opacity: 0.5;
   cursor: default;
 }
+
 .try-it .filebar {
   display: flex;
   align-items: center;
@@ -441,6 +455,7 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--vp-c-text-1);
 }
+
 .try-it .filebar .tab {
   padding: 0.25rem 0.9rem;
   border: 1px solid var(--vp-c-border);
@@ -451,6 +466,7 @@ onMounted(async () => {
   cursor: pointer;
   white-space: nowrap;
 }
+
 .try-it textarea {
   display: block;
   width: 100%;
@@ -462,6 +478,7 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 0.5rem;
 }
+
 .try-it .status {
   white-space: pre-wrap;
   margin-top: 0.75rem;
@@ -470,14 +487,17 @@ onMounted(async () => {
   border-radius: 8px;
   min-height: 3rem;
 }
+
 .try-it .status.ok {
   border-color: var(--vp-c-green-1);
   color: var(--vp-c-green-1);
 }
+
 .try-it .status.bad {
   border-color: var(--vp-c-red-1);
   color: var(--vp-c-red-1);
 }
+
 .try-it .engines {
   margin-top: 1rem;
   font-size: 13px;
