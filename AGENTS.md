@@ -9,6 +9,13 @@
   - Example: `git commit -m "test(generator): add generated parser matrix validation" -m $'Generate parser variants through the galley_generator API.\nRun parser API and error-path validation.\nFold benchmark compilation into zig build test.'`
 - Commit bodies should be concise, typically 1-4 lines.
 
+## Workflow
+
+- A commit is one meaningful, self-contained iteration, not a chunk of work. A fix to what the last commit introduced or claimed is amended into it, not added as a follow-up commit.
+- "Ready to push" means the commit is complete and coherent. It does not mean the full test matrix ran locally: CI owns running the full suites, so run only the narrowest relevant checks locally (see Testing).
+- History rewrites are routine: while pre-alpha, amend and force-push `main` freely, including after a CI failure. Once alpha begins, `main` stays linear and changes go through branches; rewriting non-main branches stays routine.
+- Still ask before committing, amending, or pushing, as the global guidelines require; this section only says that rewriting is acceptable, not that it is pre-approved.
+
 ## Compatibility
 
 We are pre-alpha and seek ZERO backward compatibility while in alpha. Public surfaces — the C ABI, host-language APIs, generated wrappers — evolve in place: change signatures, rename, delete. Never add `_ex` twins, legacy variants, or deprecation shims to spare old callers; every consumer in the repo moves in lockstep in the same change.

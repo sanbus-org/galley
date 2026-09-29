@@ -119,8 +119,15 @@ async function main(): Promise<void> {
       console.log(`  [${idx}] ${kindName} at ${diag.line}:${diag.column} near '${unexpected}'`);
     });
 
-    // Tree editing: detach the root's children, then reattach them.
+    // Tree editing: detach the root's children, then reattach them. The tree
+    // belongs to the last successful parse, so parse the valid sample again
+    // after the failures above.
     if (parser.hasAst()) {
+      try {
+        session.parse(VALID_SAMPLE);
+      } catch (err: unknown) {
+        fail(`unexpected failure: ${err}`);
+      }
       const root = session.rootNode();
       if (!root) fail("expected the root to have children");
       const childrenBefore = root.length;

@@ -84,7 +84,7 @@ The Panama FFI boundary is the only overhead over the C API:
 - `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
 - `parse(String)` encodes to UTF-8 once per call (`String.getBytes(UTF_8)`). The session copies into its own storage so node text stays valid after return.
 
-Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their session is still open and throw after `session.close()`.
+Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their door is still open and throw after `session.close()` — nodes reached from a hook throw once that parse has ended. A failed parse counts as a later parse: reading the previous tree throws (`GalleyClosedException` through existing handles, `GalleyException` with `ERROR_INVALID_NODE` from `snapshot()`) until a successful parse, while `lastInput()` keeps the last successful input.
 
 ## Procedures
 
@@ -133,6 +133,10 @@ parser.installProcedure("reduction_Pair", args -> {
     System.err.println(new String(n.text()));
 });
 ```
+
+`ProcedureArguments` is valid only while its hook runs and throws afterwards.
+The nodes it yields belong to the parse: a hook may keep one for later hooks
+of the same parse, and it throws once that parse ends.
 
 Mechanically, the build tool reads the generator's hook list (`procedures`
 in metadata.json) and produces a Zig shim (`procedures_java.zig`)

@@ -48,6 +48,9 @@ const (
 	ErrInvalidNode          Error = -10
 	ErrIO                   Error = -11
 	ErrSemantic             Error = -12
+	// ErrSessionInUse: a parse holds the session exclusively; a post-parse
+	// accessor was called mid-parse (hook code must use the args door).
+	ErrSessionInUse         Error = -13
 )
 
 var errorDescriptions = map[Error]string{
@@ -63,6 +66,7 @@ var errorDescriptions = map[Error]string{
 	ErrInvalidNode:          "invalid node address",
 	ErrIO:                   "I/O error",
 	ErrSemantic:             "semantic error",
+	ErrSessionInUse:         "session in use",
 }
 
 func (e Error) Error() string {
@@ -280,6 +284,8 @@ type Snapshot struct {
 
 // Snapshot returns the most recent successful parse in a single call.
 // Walk Parent/FirstChild/Next directly instead of one call per node.
+// A stale read — after a later parse, successful or failed — fails with
+// ErrInvalidNode instead of returning an empty snapshot.
 func (s *Session) Snapshot() (Snapshot, error) {
 	count := s.NodeCount()
 	snap := Snapshot{
@@ -292,18 +298,31 @@ func (s *Session) Snapshot() (Snapshot, error) {
 		SpanStart:  make([]uint64, count),
 		SpanLen:    make([]uint64, count),
 	}
-	if count == 0 {
-		return snap, nil
+	// Always cross the gate, even at count 0: a stale or contended read
+	// answers here (ErrInvalidNode / ErrSessionInUse) rather than an
+	// empty snapshot that hides the refusal. Columns stay nil at 0.
+	var parent, firstChild, next *C.ulonglong
+	var childCount *C.uint
+	var variable *C.longlong
+	var spanStart, spanLen *C.ulonglong
+	if count > 0 {
+		parent = (*C.ulonglong)(unsafe.Pointer(&snap.Parent[0]))
+		firstChild = (*C.ulonglong)(unsafe.Pointer(&snap.FirstChild[0]))
+		next = (*C.ulonglong)(unsafe.Pointer(&snap.Next[0]))
+		childCount = (*C.uint)(unsafe.Pointer(&snap.ChildCount[0]))
+		variable = (*C.longlong)(unsafe.Pointer(&snap.Variable[0]))
+		spanStart = (*C.ulonglong)(unsafe.Pointer(&snap.SpanStart[0]))
+		spanLen = (*C.ulonglong)(unsafe.Pointer(&snap.SpanLen[0]))
 	}
 	total := C.galley_tree_snapshot(
 		s.ptr,
-		(*C.ulonglong)(unsafe.Pointer(&snap.Parent[0])),
-		(*C.ulonglong)(unsafe.Pointer(&snap.FirstChild[0])),
-		(*C.ulonglong)(unsafe.Pointer(&snap.Next[0])),
-		(*C.uint)(unsafe.Pointer(&snap.ChildCount[0])),
-		(*C.longlong)(unsafe.Pointer(&snap.Variable[0])),
-		(*C.ulonglong)(unsafe.Pointer(&snap.SpanStart[0])),
-		(*C.ulonglong)(unsafe.Pointer(&snap.SpanLen[0])),
+		parent,
+		firstChild,
+		next,
+		childCount,
+		variable,
+		spanStart,
+		spanLen,
 		nil,
 		C.ulonglong(count),
 	)
@@ -329,11 +348,7 @@ func (s *Session) LastInput() []byte {
 
 // Children returns the direct children of a node in document order.
 func (s *Session) Children(node Node) []Node {
-	children := []Node{}
-	for child, ok := s.FirstChild(node); ok; child, ok = s.NextSibling(child) {
-		children = append(children, child)
-	}
-	return children
+	return Children(s, node)
 }
 
 // WalkStep is one pre-order step of a Walker.
@@ -640,8 +655,39 @@ func (s *Session) NodeCapacity() uint64 {
 	return uint64(C.galley_node_capacity(s.ptr))
 }
 
-// ProcedureArgs is the parse-time argument passed to a Go procedure hook.
-// Tree queries use Session methods on the session recovered from Args.
+// NodeDoor is one of the two doors over node storage: a post-parse
+// *Session or the parse's HookDoor. Shared helpers take this interface —
+// hooks pass the door, session code passes the session — so each read has
+// one implementation.
+type NodeDoor interface {
+	ChildCount(node Node) uint32
+	Children(node Node) []Node
+	FirstChild(node Node) (Node, bool)
+	LastChild(node Node) (Node, bool)
+	NextSibling(node Node) (Node, bool)
+	PriorSibling(node Node) (Node, bool)
+	Parent(node Node) (Node, bool)
+	SymbolName(node Node) ([]byte, bool)
+	Text(node Node) ([]byte, bool)
+	Span(node Node) (start uint64, length uint64, ok bool)
+	LineColumn(node Node) (line uint32, column uint32, ok bool)
+}
+
+// Children returns the direct children of a node in document order,
+// through either door: the iteration runs over the door's link
+// primitives, so each door keeps its own gate on every step.
+func Children(door NodeDoor, node Node) []Node {
+	children := []Node{}
+	for child, ok := door.FirstChild(node); ok; child, ok = door.NextSibling(child) {
+		children = append(children, child)
+	}
+	return children
+}
+
+// ProcedureArgs is the per-hook argument passed to a Go procedure hook:
+// the current node, the scanner position, drop and replace, and semantic
+// errors. It is valid only while the hook runs. Tree reads do not go
+// through it: take the parse's door with Door.
 type ProcedureArgs struct {
 	ptr unsafe.Pointer
 }
@@ -653,18 +699,102 @@ func Args(ptr unsafe.Pointer) ProcedureArgs {
 
 func (a ProcedureArgs) cptr() unsafe.Pointer { return a.ptr }
 
-// Session is the session currently parsing, or nil.
-func (a ProcedureArgs) Session() *Session {
-	ptr := C.galley_procedure_session(a.cptr())
-	if ptr == nil {
-		return nil
-	}
-	return &Session{ptr: ptr}
+// HookDoor is the parse-time door over one parse's node storage: node reads
+// go through the galley_hook_* twins on it. Every hook of one parse gets the
+// same door, and it is valid until that parse ends — a value copied out of
+// a hook stays usable while that parse runs and must not be retained past
+// it, because the next parse resets the storage it reads. Keep Node
+// handles for references that outlive the parse.
+type HookDoor struct {
+	ptr unsafe.Pointer
 }
+
+// Door returns the door of the parse this hook belongs to.
+func (a ProcedureArgs) Door() HookDoor {
+	return HookDoor{ptr: unsafe.Pointer(C.galley_procedure_door(a.cptr()))}
+}
+
+func (d HookDoor) cptr() *C.GalleyHookDoor { return (*C.GalleyHookDoor)(d.ptr) }
 
 // CurrentNode is the node being reduced.
 func (a ProcedureArgs) CurrentNode() (Node, bool) {
 	return cToNode(C.galley_procedure_current_node(a.cptr()))
+}
+
+// ChildCount reports node's child count through the parse-time door.
+func (d HookDoor) ChildCount(node Node) uint32 {
+	return uint32(C.galley_hook_node_child_count(d.cptr(), C.ulonglong(node)))
+}
+
+// Children returns node's children, in birth order, through the parse-time door.
+func (d HookDoor) Children(node Node) []Node {
+	return Children(d, node)
+}
+
+// FirstChild returns node's first child through the parse-time door.
+func (d HookDoor) FirstChild(node Node) (Node, bool) {
+	return cToNode(C.galley_hook_node_first_child(d.cptr(), C.ulonglong(node)))
+}
+
+// LastChild returns node's last child through the parse-time door.
+func (d HookDoor) LastChild(node Node) (Node, bool) {
+	return cToNode(C.galley_hook_node_last_child(d.cptr(), C.ulonglong(node)))
+}
+
+// NextSibling returns node's next sibling through the parse-time door.
+func (d HookDoor) NextSibling(node Node) (Node, bool) {
+	return cToNode(C.galley_hook_node_next_sibling(d.cptr(), C.ulonglong(node)))
+}
+
+// PriorSibling returns node's prior sibling through the parse-time door.
+func (d HookDoor) PriorSibling(node Node) (Node, bool) {
+	return cToNode(C.galley_hook_node_prior_sibling(d.cptr(), C.ulonglong(node)))
+}
+
+// Parent returns node's parent through the parse-time door.
+func (d HookDoor) Parent(node Node) (Node, bool) {
+	return cToNode(C.galley_hook_node_parent(d.cptr(), C.ulonglong(node)))
+}
+
+// SymbolName returns the grammar symbol name of a node through the
+// parse-time door (empty for terminal-only nodes).
+func (d HookDoor) SymbolName(node Node) ([]byte, bool) {
+	var data *C.char
+	var length C.size_t
+	if C.galley_hook_node_symbol_name(d.cptr(), C.ulonglong(node), &data, &length) != 0 {
+		return nil, false
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+}
+
+// Text returns the source text matched by a node through the parse-time door.
+func (d HookDoor) Text(node Node) ([]byte, bool) {
+	var data *C.char
+	var length C.size_t
+	if C.galley_hook_node_text(d.cptr(), C.ulonglong(node), &data, &length) != 0 {
+		return nil, false
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+}
+
+// Span returns the byte offset and length of a node's matched source span
+// through the parse-time door.
+func (d HookDoor) Span(node Node) (start uint64, length uint64, ok bool) {
+	var cStart, cLength C.ulonglong
+	if C.galley_hook_node_span(d.cptr(), C.ulonglong(node), &cStart, &cLength) != 0 {
+		return 0, 0, false
+	}
+	return uint64(cStart), uint64(cLength), true
+}
+
+// LineColumn returns the 1-based line and column of a node's first byte
+// through the parse-time door.
+func (d HookDoor) LineColumn(node Node) (line uint32, column uint32, ok bool) {
+	var cLine, cColumn C.uint
+	if C.galley_hook_node_line_column(d.cptr(), C.ulonglong(node), &cLine, &cColumn) != 0 {
+		return 0, 0, false
+	}
+	return uint32(cLine), uint32(cColumn), true
 }
 
 func procedureStatus(status C.longlong) error {

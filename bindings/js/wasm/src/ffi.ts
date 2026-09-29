@@ -235,6 +235,7 @@ interface GalleyWasmExports {
     outHead: number,
   ): bigint;
   galley_procedure_current_node(args: number): bigint;
+  galley_procedure_door(args: number): number;
   galley_procedure_set_current_node(args: number, node: bigint): void;
   galley_procedure_drop_self(args: number): bigint;
   galley_procedure_drop_children(args: number): bigint;
@@ -243,6 +244,19 @@ interface GalleyWasmExports {
   galley_procedure_context_line(args: number): number;
   galley_procedure_context_column(args: number): number;
   galley_procedure_report_semantic_error(args: number, message: number, messageLen: number): bigint;
+  // hook door: parse-time node/tree accessors over the live parse
+  galley_hook_node_child_count(door: number, node: bigint): number;
+  galley_hook_node_first_child(door: number, node: bigint): bigint;
+  galley_hook_node_last_child(door: number, node: bigint): bigint;
+  galley_hook_node_next_sibling(door: number, node: bigint): bigint;
+  galley_hook_node_prior_sibling(door: number, node: bigint): bigint;
+  galley_hook_node_parent(door: number, node: bigint): bigint;
+  galley_hook_node_symbol_name(door: number, node: bigint, outData: number, outLen: number): bigint;
+  galley_hook_node_text(door: number, node: bigint, outData: number, outLen: number): bigint;
+  galley_hook_node_span(door: number, node: bigint, outStart: number, outLen: number): bigint;
+  galley_hook_node_line_column(door: number, node: bigint, outLine: number, outCol: number): bigint;
+  galley_hook_tree_append_children(door: number, parent: bigint, first: bigint): bigint;
+  galley_hook_tree_clean_children(door: number, node: bigint, outHead: number): bigint;
   galley_js_procedure_count?(): number;
   galley_js_procedure_name_ptr?(index: number): number;
   galley_js_procedure_name_len?(index: number): number;
@@ -972,7 +986,15 @@ export class WasmPort implements FfiPort {
         spanLen: new BigUint64Array(0),
         isSemanticError: new Int32Array(0),
       };
-      if (count === 0) return empty;
+      if (count === 0) {
+        // A zero count (nothing parsed yet, or a stale last result)
+        // still crosses with null columns so the gate can answer.
+        const status = toNumber(
+          this.wasm.galley_tree_snapshot(handle as number, 0, 0, 0, 0, 0, 0, 0, 0, 0n),
+        );
+        if (status < 0) throw new GalleyError("galley_tree_snapshot failed", status as Status);
+        return empty;
+      }
       // Eight-byte columns first (parent, firstChild, next, spanStart,
       // spanLen, variable), then the u32 childCount tail and the i32
       // semantic-flag tail: every column stays naturally aligned for
@@ -1597,6 +1619,10 @@ export class WasmPort implements FfiPort {
     return asAddress(this.wasm.galley_procedure_current_node(args as number));
   }
 
+  procDoor(args: Handle): Handle {
+    return this.wasm.galley_procedure_door(args as number);
+  }
+
   procSetCurrentNode(args: Handle, node: bigint): void {
     this.wasm.galley_procedure_set_current_node(args as number, asI64(node));
   }
@@ -1634,6 +1660,80 @@ export class WasmPort implements FfiPort {
       );
     } finally {
       this.free(slot.ptr, Math.max(slot.len, 1));
+    }
+  }
+
+  // -- hook door: parse-time node/tree accessors --------------------------
+
+  hookNodeChildCount(door: Handle, node: bigint): number {
+    return this.wasm.galley_hook_node_child_count(door as number, asI64(node));
+  }
+
+  hookNodeFirstChild(door: Handle, node: bigint): bigint {
+    return asAddress(this.wasm.galley_hook_node_first_child(door as number, asI64(node)));
+  }
+
+  hookNodeLastChild(door: Handle, node: bigint): bigint {
+    return asAddress(this.wasm.galley_hook_node_last_child(door as number, asI64(node)));
+  }
+
+  hookNodeNextSibling(door: Handle, node: bigint): bigint {
+    return asAddress(this.wasm.galley_hook_node_next_sibling(door as number, asI64(node)));
+  }
+
+  hookNodePriorSibling(door: Handle, node: bigint): bigint {
+    return asAddress(this.wasm.galley_hook_node_prior_sibling(door as number, asI64(node)));
+  }
+
+  hookNodeParent(door: Handle, node: bigint): bigint {
+    return asAddress(this.wasm.galley_hook_node_parent(door as number, asI64(node)));
+  }
+
+  hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null {
+    const a = door as number;
+    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_symbol_name(a, asI64(node), data, len));
+  }
+
+  hookNodeText(door: Handle, node: bigint): Uint8Array | null {
+    const a = door as number;
+    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_text(a, asI64(node), data, len));
+  }
+
+  hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null {
+    const out = this.malloc(16);
+    try {
+      const status = this.wasm.galley_hook_node_span(door as number, asI64(node), out, out + 8);
+      if (isNegative(status)) return null;
+      const view = this.dataView();
+      return [view.getBigUint64(out, true), view.getBigUint64(out + 8, true)];
+    } finally {
+      this.free(out, 16);
+    }
+  }
+
+  hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null {
+    const out = this.malloc(8);
+    try {
+      const status = this.wasm.galley_hook_node_line_column(door as number, asI64(node), out, out + 4);
+      if (isNegative(status)) return null;
+      const view = this.dataView();
+      return [view.getUint32(out, true), view.getUint32(out + 4, true)];
+    } finally {
+      this.free(out, 8);
+    }
+  }
+
+  hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_hook_tree_append_children(door as number, asI64(parent), asI64(first)));
+  }
+
+  hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint } {
+    const out = this.malloc(8);
+    try {
+      const status = toNumber(this.wasm.galley_hook_tree_clean_children(door as number, asI64(node), out));
+      return { status, head: this.dataView().getBigUint64(out, true) };
+    } finally {
+      this.free(out, 8);
     }
   }
 

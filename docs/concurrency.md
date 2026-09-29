@@ -34,10 +34,11 @@ language in its own binary.
 
 ## Rules
 
-* One session, one writer at a time. Readers may hold a guard concurrently. No parse may start while a guard is held. Contention returns `SessionInUse`; it never blocks.
+* One session, one writer at a time. Readers may hold a guard concurrently. No parse may start while a guard is held. Contention returns `SessionInUse`; it never blocks, and a reader is refused only while a writer holds the session (`src/runtime/session-lock.zig`).
 * No unprotected nested parse inside a recovery scope. While one thread runs a `stack_overflow_recovery` parse, any parse on that thread whose session did not opt into recovery fails with `NestedParseDuringStackOverflowRecovery` before touching session state (generation, node storage, owned input, and input path stay as they were). Nested parses whose sessions opted in stack scopes instead, so an inner fault is caught by the inner scope.
 * No pointer outlives its guard. Node, text, and diagnostic pointers are valid only while a guard is held. The next parse may reallocate node storage between parses, never mid-parse.
 * Hook-time access runs on the parsing thread. Procedure hooks and the syntax-error reporter run on the parsing thread; they must be thread-safe if a session migrates threads over its life.
+* Two doors, one core. Parse-time access crosses the hook door — the `*_hook_*` entry points over the parse's door (`galley_procedure_door`), ungated because the parse already holds the lease. The door is one per parse, valid for every hook of it and dead once it ends; per-hook state stays on the arguments, which die with their hook. Post-parse access crosses the session door — `galley_node_*`, `galley_tree_*`, walkers, snapshots, diagnostics — behind the guards: `SessionInUse` while a parse holds the session, `StaleParseResult` (reported as `invalid node`) once a later parse, successful or failed, has reset node storage. A session stashed from a hook crosses the same guard; there is no bypass branch.
 
 ## Host obligations
 

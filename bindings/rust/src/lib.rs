@@ -256,6 +256,7 @@ pub enum Error {
     NoDiagnostic,
     InvalidNode,
     Io,
+    SessionInUse,
 }
 
 impl Error {
@@ -273,6 +274,7 @@ impl Error {
             -9 => Error::NoDiagnostic,
             -10 => Error::InvalidNode,
             -11 => Error::Io,
+            -13 => Error::SessionInUse,
             _ => Error::Internal,
         }
     }
@@ -291,6 +293,7 @@ impl Error {
             Error::NoDiagnostic => -9,
             Error::InvalidNode => -10,
             Error::Io => -11,
+            Error::SessionInUse => -13,
         }
     }
 
@@ -604,7 +607,11 @@ impl Session {
     /// entry per node address. Walk `parent`/`first_child`/`next` directly
     /// instead of one call per node; `variable` holds -1 for nodes without
     /// a variable and spans index [`Session::last_input`].
-    pub fn snapshot(&self) -> TreeSnapshot {
+    ///
+    /// Fails with [`Error::InvalidNode`] once a later parse — successful or
+    /// failed — has reset node storage behind the last successful result,
+    /// and with [`Error::SessionInUse`] while a parse holds the session.
+    pub fn snapshot(&self) -> Result<TreeSnapshot, Error> {
         let count = self.node_count() as usize;
         let mut parent = vec![u64::MAX; count];
         let mut first_child = vec![u64::MAX; count];
@@ -628,15 +635,13 @@ impl Session {
                 count as u64,
             )
         };
-        assert!(
-            total >= 0,
-            "galley_tree_snapshot failed with status {total}"
-        );
-        assert_eq!(
-            total as u64, count as u64,
-            "node count changed during snapshot"
-        );
-        TreeSnapshot {
+        if total < 0 {
+            return Err(Error::from_status(total));
+        }
+        if total as u64 != count as u64 {
+            return Err(Error::Internal);
+        }
+        Ok(TreeSnapshot {
             count: count as u64,
             parent,
             first_child,
@@ -649,7 +654,7 @@ impl Session {
                 .into_iter()
                 .map(|flag| flag != 0)
                 .collect(),
-        }
+        })
     }
 
     /// Retained input of the most recent parse: the buffer snapshot spans

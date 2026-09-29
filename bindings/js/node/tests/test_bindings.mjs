@@ -507,11 +507,16 @@ await test("failed parse keeps the input of the last successful parse", async ()
     const retained = Buffer.from(s.lastInput());
     assert.equal(retained.toString(), "alpha:12,beta:3");
 
-    // A failed parse must not clobber the retained input: snapshots
-    // from the last successful parse keep indexing it.
+    // A failed parse must not clobber the retained input. Its own tree
+    // wiped the last successful one when the parse started, so node
+    // reads and snapshots refuse until the next successful parse.
     assert.throws(() => s.parse("gamma:"), (err) => err.code === Status.ErrorSyntax);
     assert.deepEqual(Buffer.from(s.lastInput()), retained);
+    assert.throws(() => s.snapshot(), (err) => err.code === Status.ErrorInvalidNode);
+    assert.equal(s.text(0n), null);
 
+    // The door reopens on the next successful parse over the same input.
+    s.parse("alpha:12,beta:3");
     const snap = s.snapshot();
     assert.ok(snap.count > 0);
     for (let i = 0; i < snap.count; i++) {
@@ -785,6 +790,97 @@ await test("Node clean/append round-trip", async () => {
   }
 });
 
+await test("every edit entry refuses a node from another door", async () => {
+  // Every session is its own door: a node crosses as a bare address and
+  // the native side only bounds-checks it, so a node from another door
+  // would alias whatever node holds that index here. Every entry that
+  // takes a node refuses one from another door, not only Node methods.
+  const parser = await newParser();
+  const s = await parser.openSession();
+  const other = await parser.openSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    other.parse("alpha:12");
+    const root = s.rootNode();
+    const otherRoot = other.rootNode();
+    assert.throws(() => root.appendChildren(otherRoot), TypeError);
+    assert.throws(() => otherRoot.appendChildren(root), TypeError);
+    assert.throws(() => s.appendChildren(root, otherRoot), TypeError);
+    assert.throws(() => s.insertBefore(root, otherRoot), TypeError);
+    assert.throws(() => s.insertAfter(root, otherRoot), TypeError);
+    assert.throws(() => s.insertChildrenAt(root, 0, otherRoot), TypeError);
+    assert.throws(() => s.text(otherRoot), TypeError);
+    assert.throws(() => other.appendChildren(otherRoot, root), TypeError);
+  } finally {
+    s.close();
+    other.close();
+  }
+});
+
+await test("hook and session doors do not mix", async () => {
+  // Post-parse session node versus parse-time hook node, both
+  // directions; the refusal must fire inside the hook.
+  const parser = await newParser();
+  const s = await parser.openSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    const refusals = [];
+    parser.installProcedure("reduction_Pair", (args) => {
+      const hookNode = args.currentNode();
+      if (!hookNode) return;
+      for (const append of [
+        () => root.appendChildren(hookNode),
+        () => hookNode.appendChildren(root),
+      ]) {
+        try {
+          append();
+        } catch (error) {
+          refusals.push(error);
+        }
+      }
+    });
+    try {
+      s.parse("alpha:12,beta:3");
+    } finally {
+      parser.clearProcedures();
+    }
+    assert.equal(refusals.length, 4);
+    assert.ok(refusals.every((error) => error instanceof TypeError));
+  } finally {
+    s.close();
+  }
+});
+
+await test("hooks of one parse share a door", async () => {
+  // A chain detached in one hook can be attached in a later hook of the
+  // same parse: both nodes cross the same parse's door.
+  const parser = await newParser();
+  const stash = [];
+  const outcomes = [];
+  parser.installProcedure("reduction_Pair", (args) => {
+    const node = args.currentNode();
+    if (stash.length === 0) {
+      stash.push(node.cleanChildren());
+      return;
+    }
+    try {
+      node.appendChildren(stash[0]);
+      outcomes.push("ok");
+    } catch (error) {
+      outcomes.push(error);
+    }
+  });
+  const s = await parser.openSession();
+  try {
+    s.parse("alpha:12,beta:3");
+  } finally {
+    parser.clearProcedures();
+    s.close();
+  }
+  assert.deepEqual(outcomes, ["ok"]);
+});
+
 await test("insertBefore reorders siblings", async () => {
   const s = await newSession();
   try {
@@ -1005,6 +1101,62 @@ await test("procedure hook can read node text", async () => {
   } finally {
     s.close();
   }
+});
+
+await test("hook nodes outlive their hook within the parse", async () => {
+  // The tree belongs to the parse, not to the hook that handed out a
+  // node: a node stashed by one hook stays usable from a later hook of
+  // the same parse and refuses once the parse ends.
+  const parser = await newParser();
+  const stashed = [];
+  const seen = [];
+  parser.installProcedure("reduction_Pair", (args) => {
+    if (stashed.length === 0) stashed.push(args.currentNode());
+  });
+  parser.installProcedure("reduction_Document", () => {
+    seen.push(new TextDecoder().decode(stashed[0].text()));
+  });
+  const s = await parser.openSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    assert.deepEqual(seen, ["alpha:12"]);
+    assert.throws(() => stashed[0].text(), SessionClosedError);
+  } finally {
+    s.close();
+  }
+});
+
+await test("procedure arguments die with their hook", async () => {
+  // The arguments carry per-hook state (current node, position, drop and
+  // replace). A reference stashed past its hook refuses instead of
+  // touching a frame that is gone.
+  const parser = await newParser();
+  const stashed = [];
+  const outcomes = [];
+  parser.installProcedure("reduction_Pair", (args) => {
+    if (stashed.length === 0) stashed.push(args);
+  });
+  parser.installProcedure("reduction_Document", (args) => {
+    for (const use of [
+      () => stashed[0].currentLine(),
+      () => stashed[0].currentNode(),
+      () => stashed[0].dropIfEmpty(),
+    ]) {
+      try {
+        use();
+      } catch (error) {
+        outcomes.push(error);
+      }
+    }
+  });
+  const s = await parser.openSession();
+  try {
+    s.parse("alpha:12,beta:3");
+  } finally {
+    s.close();
+  }
+  assert.equal(outcomes.length, 3);
+  assert.ok(outcomes.every((error) => error instanceof SessionClosedError));
 });
 
 await test("hook-reported semantic errors aggregate and fail", async () => {

@@ -125,8 +125,8 @@ interface GalleySymbols {
   galley_tree_unlink_wrapper(session: Deno.PointerValue, wrapper: bigint): bigint;
   galley_tree_insert_children_at(session: Deno.PointerValue, parent: bigint, index: number, first: bigint): bigint;
   galley_tree_remove_children_at(session: Deno.PointerValue, parent: bigint, index: number, count: number, outHead: FfiOut): bigint;
-  galley_procedure_session(args: Deno.PointerValue): Deno.PointerValue;
   galley_procedure_current_node(args: Deno.PointerValue): bigint;
+  galley_procedure_door(args: Deno.PointerValue): Deno.PointerValue;
   galley_procedure_set_current_node(args: Deno.PointerValue, node: bigint): void;
   galley_procedure_drop_self(args: Deno.PointerValue): bigint;
   galley_procedure_drop_children(args: Deno.PointerValue): bigint;
@@ -135,6 +135,19 @@ interface GalleySymbols {
   galley_procedure_context_line(args: Deno.PointerValue): number;
   galley_procedure_context_column(args: Deno.PointerValue): number;
   galley_procedure_report_semantic_error(args: Deno.PointerValue, message: FfiOut, messageLen: number): bigint;
+  // hook door: parse-time node/tree accessors over the live parse
+  galley_hook_node_child_count(door: Deno.PointerValue, node: bigint): number;
+  galley_hook_node_first_child(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_node_last_child(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_node_next_sibling(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_node_prior_sibling(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_node_parent(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_node_symbol_name(door: Deno.PointerValue, node: bigint, outData: FfiOut, outLen: FfiOut): bigint;
+  galley_hook_node_text(door: Deno.PointerValue, node: bigint, outData: FfiOut, outLen: FfiOut): bigint;
+  galley_hook_node_span(door: Deno.PointerValue, node: bigint, outStart: FfiOut, outLen: FfiOut): bigint;
+  galley_hook_node_line_column(door: Deno.PointerValue, node: bigint, outLine: FfiOut, outCol: FfiOut): bigint;
+  galley_hook_tree_append_children(door: Deno.PointerValue, parent: bigint, first: bigint): bigint;
+  galley_hook_tree_clean_children(door: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
   galley_install_js_dispatch(callback: Deno.PointerValue): void;
   galley_install_js_dispatch_id?(callback: Deno.PointerValue): void;
   galley_js_procedure_count?(): number;
@@ -301,8 +314,8 @@ const BASE_SYMBOLS = {
   galley_tree_unlink_wrapper: { parameters: ["pointer", "u64"], result: "i64" },
   galley_tree_insert_children_at: { parameters: ["pointer", "u64", "usize", "u64"], result: "i64" },
   galley_tree_remove_children_at: { parameters: ["pointer", "u64", "usize", "usize", "buffer"], result: "i64" },
-  galley_procedure_session: { parameters: ["pointer"], result: "pointer" },
   galley_procedure_current_node: { parameters: ["pointer"], result: "u64" },
+  galley_procedure_door: { parameters: ["pointer"], result: "pointer" },
   galley_procedure_set_current_node: { parameters: ["pointer", "u64"], result: "void" },
   galley_procedure_drop_self: { parameters: ["pointer"], result: "i64" },
   galley_procedure_drop_children: { parameters: ["pointer"], result: "i64" },
@@ -311,6 +324,18 @@ const BASE_SYMBOLS = {
   galley_procedure_context_line: { parameters: ["pointer"], result: "u32" },
   galley_procedure_context_column: { parameters: ["pointer"], result: "u32" },
   galley_procedure_report_semantic_error: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
+  galley_hook_node_child_count: { parameters: ["pointer", "u64"], result: "u32" },
+  galley_hook_node_first_child: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_hook_node_last_child: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_hook_node_next_sibling: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_hook_node_prior_sibling: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_hook_node_parent: { parameters: ["pointer", "u64"], result: "u64" },
+  galley_hook_node_symbol_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  galley_hook_node_text: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  galley_hook_node_span: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  galley_hook_node_line_column: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  galley_hook_tree_append_children: { parameters: ["pointer", "u64", "u64"], result: "i64" },
+  galley_hook_tree_clean_children: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
 } as const;
 
 const DISPATCH_SYMBOL = {
@@ -1005,6 +1030,10 @@ export class DenoPort implements FfiPort {
     return this.native.galley_procedure_current_node(args as Deno.PointerValue);
   }
 
+  procDoor(args: Handle): Handle {
+    return this.native.galley_procedure_door(args as Deno.PointerValue);
+  }
+
   procSetCurrentNode(args: Handle, node: bigint): void {
     this.native.galley_procedure_set_current_node(args as Deno.PointerValue, node);
   }
@@ -1037,6 +1066,72 @@ export class DenoPort implements FfiPort {
     return Number(
       this.native.galley_procedure_report_semantic_error(args as Deno.PointerValue, message, message.length),
     );
+  }
+
+  // -- hook door: parse-time node/tree accessors --------------------------
+
+  hookNodeChildCount(door: Handle, node: bigint): number {
+    return this.native.galley_hook_node_child_count(door as Deno.PointerValue, node);
+  }
+
+  hookNodeFirstChild(door: Handle, node: bigint): bigint {
+    return this.native.galley_hook_node_first_child(door as Deno.PointerValue, node);
+  }
+
+  hookNodeLastChild(door: Handle, node: bigint): bigint {
+    return this.native.galley_hook_node_last_child(door as Deno.PointerValue, node);
+  }
+
+  hookNodeNextSibling(door: Handle, node: bigint): bigint {
+    return this.native.galley_hook_node_next_sibling(door as Deno.PointerValue, node);
+  }
+
+  hookNodePriorSibling(door: Handle, node: bigint): bigint {
+    return this.native.galley_hook_node_prior_sibling(door as Deno.PointerValue, node);
+  }
+
+  hookNodeParent(door: Handle, node: bigint): bigint {
+    return this.native.galley_hook_node_parent(door as Deno.PointerValue, node);
+  }
+
+  hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null {
+    const a = door as Deno.PointerValue;
+    const outData = ptrOut();
+    const outLen = lenOut();
+    if (this.native.galley_hook_node_symbol_name(a, node, outData, outLen) < 0n) return null;
+    return readBytes(outData[0], outLen[0]);
+  }
+
+  hookNodeText(door: Handle, node: bigint): Uint8Array | null {
+    const a = door as Deno.PointerValue;
+    const outData = ptrOut();
+    const outLen = lenOut();
+    if (this.native.galley_hook_node_text(a, node, outData, outLen) < 0n) return null;
+    return readBytes(outData[0], outLen[0]);
+  }
+
+  hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null {
+    const outStart = lenOut();
+    const outLen = lenOut();
+    if (this.native.galley_hook_node_span(door as Deno.PointerValue, node, outStart, outLen) < 0n) return null;
+    return [outStart[0], outLen[0]];
+  }
+
+  hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null {
+    const outLine = u32Out();
+    const outCol = u32Out();
+    if (this.native.galley_hook_node_line_column(door as Deno.PointerValue, node, outLine, outCol) < 0n) return null;
+    return [outLine[0], outCol[0]];
+  }
+
+  hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number {
+    return Number(this.native.galley_hook_tree_append_children(door as Deno.PointerValue, parent, first));
+  }
+
+  hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint } {
+    const outHead = lenOut();
+    const st = this.native.galley_hook_tree_clean_children(door as Deno.PointerValue, node, outHead);
+    return { status: Number(st), head: outHead[0] };
   }
 }
 

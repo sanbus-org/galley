@@ -26,13 +26,14 @@ use procedure::ProcedureArguments;
 
 #[no_mangle]
 pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
+    let door = arguments.door();
     let Some(node) = arguments.current_node() else { return };
-    let text = arguments.text(node).unwrap_or(b"");
-    let (line, column) = arguments.line_column(node).unwrap_or((0, 0));
+    let text = door.text(node).unwrap_or(b"");
+    let (line, column) = door.line_column(node).unwrap_or((0, 0));
     eprintln!(
         "Pair {} ({} children) at {line}:{column}",
         String::from_utf8_lossy(text),
-        arguments.child_count(node)
+        door.child_count(node)
     );
 }
 
@@ -43,12 +44,16 @@ pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
 
 #[no_mangle]
 pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
+    let door = arguments.door();
     let Some(node) = arguments.current_node() else { return };
-    let text = arguments.text(node).unwrap_or(b"");
-    let (line, column) = arguments.line_column(node).unwrap_or((0, 0));
+    let text = door.text(node).unwrap_or(b"");
+    let (line, column) = door.line_column(node).unwrap_or((0, 0));
     eprintln!("@print \"{}\" at {line}:{column}", String::from_utf8_lossy(text));
 }
 ```
+
+Tree reads go through the parse's door, `arguments.door()`; the arguments
+themselves hold per-hook state and are valid only while the hook runs.
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
@@ -81,7 +86,11 @@ snapshot carries `kind == DiagnosticKind::Semantic` and
 successful parse, yielding one `WalkStep { node, depth, is_semantic_error }`
 per node with the root at depth 0 — the shared runtime walker, so order
 and depths match every other binding. `skip_children` prunes the last
-yielded node's children; passing `true` prunes semantic-error subtrees:
+yielded node's children; passing `true` prunes semantic-error subtrees.
+A failed parse counts as a later parse: `Session::snapshot` fails with
+`Error::InvalidNode` and node accessors fall back to their empty values
+until a successful parse, while `last_input()` keeps the last successful
+input:
 
 ```rust
 let root = session.root_node().expect("root");

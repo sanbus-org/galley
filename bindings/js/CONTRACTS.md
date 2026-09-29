@@ -23,11 +23,12 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 - Grammar names arrive as UTF-8-decoded strings — replacement character U+FFFD on invalid bytes, never a throw — with a raw-bytes primitive beside them; token content stays byte arrays.
 - Wide addresses are big integers, sequences are arrays or typed arrays, mappings are records, and empty is `null`, with `undefined` reserved for absent hook lookups.
 - Failures throw `GalleyError`; lifecycle misuse throws `SessionClosedError`, including use after close.
+- An operation that takes a node refuses one from another door with `TypeError`; raw addresses carry no door and pass unguarded by design.
 - Every named category the shared contracts define is a TypeScript enum.
 
 ## Inputs and resources
 
 - Parsing accepts strings and byte arrays plus idiomatic view and path forms; file paths accept `URL` objects where the platform defines them; rejected interior-NUL paths throw `TypeError`.
-- Nodes compare through an explicit equality method and expose their address as a `bigint` getter.
-- `Map` and `Set` key nodes by reference identity; session-plus-address equality is available only through the explicit method.
+- Nodes compare through an explicit equality method — owning session, crossing door, plus address — and expose their address as a `bigint` getter.
+- `Map` and `Set` key nodes by reference identity; session, door, plus address equality is available only through the explicit method.
 - Walkers close explicitly or through `using` blocks; sessions close explicitly or through disposal blocks.

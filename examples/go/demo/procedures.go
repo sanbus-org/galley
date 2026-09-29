@@ -3,6 +3,10 @@
 // Shows ProcedureArguments in action: the current node, its text, children,
 // and source position, plus DropIfEmpty on empty tails. Author-defined
 // grammar hooks arrive as hook_<name> — Key is annotated @print.
+//
+// Tree queries go through the parse's hook door: take it from the arguments
+// with Door, then use its NodeDoor methods. The door is unshared by
+// construction and valid for the whole parse.
 package main
 
 import (
@@ -18,24 +22,24 @@ import (
 */
 import "C"
 
-func textOf(session *galley.Session, node galley.Node) []byte {
-	text, ok := session.Text(node)
+func textOf(door galley.NodeDoor, node galley.Node) []byte {
+	text, ok := door.Text(node)
 	if !ok {
 		return nil
 	}
 	return text
 }
 
-func nameOf(session *galley.Session, node galley.Node) string {
-	bytes, ok := session.SymbolName(node)
+func nameOf(door galley.NodeDoor, node galley.Node) string {
+	bytes, ok := door.SymbolName(node)
 	if !ok {
 		return ""
 	}
 	return string(bytes)
 }
 
-func posOf(session *galley.Session, node galley.Node) (uint32, uint32) {
-	line, column, _ := session.LineColumn(node)
+func posOf(door galley.NodeDoor, node galley.Node) (uint32, uint32) {
+	line, column, _ := door.LineColumn(node)
 	return line, column
 }
 
@@ -49,9 +53,9 @@ func parseU(bytes []byte) uint {
 	return value
 }
 
-func countPairs(session *galley.Session, node galley.Node) (uint, uint) {
-	if nameOf(session, node) == "Pair" {
-		text := textOf(session, node)
+func countPairs(door galley.NodeDoor, node galley.Node) (uint, uint) {
+	if nameOf(door, node) == "Pair" {
+		text := textOf(door, node)
 		number := text
 		for i, b := range text {
 			if b == ':' {
@@ -62,8 +66,8 @@ func countPairs(session *galley.Session, node galley.Node) (uint, uint) {
 		return 1, parseU(number)
 	}
 	var count, total uint
-	for _, child := range session.Children(node) {
-		childCount, childSum := countPairs(session, child)
+	for _, child := range door.Children(node) {
+		childCount, childSum := countPairs(door, child)
 		count += childCount
 		total += childSum
 	}
@@ -101,27 +105,27 @@ func reduction_PairListTail(ptr unsafe.Pointer) {
 //export hook_print
 func hook_print(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	line, column := posOf(session, node)
-	emit(fmt.Sprintf("@print %q at %d:%d\n", string(textOf(session, node)), line, column))
+	line, column := posOf(door, node)
+	emit(fmt.Sprintf("@print %q at %d:%d\n", string(textOf(door, node)), line, column))
 }
 
 //export reduction_Number
 func reduction_Number(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	line, column := posOf(session, node)
-	emit(fmt.Sprintf("Number %s at %d:%d\n", string(textOf(session, node)), line, column))
+	line, column := posOf(door, node)
+	emit(fmt.Sprintf("Number %s at %d:%d\n", string(textOf(door, node)), line, column))
 	var value uint64
-	for _, digit := range textOf(session, node) {
+	for _, digit := range textOf(door, node) {
 		if digit < '0' || digit > '9' {
 			return
 		}
@@ -135,13 +139,13 @@ func reduction_Number(ptr unsafe.Pointer) {
 //export reduction_Pair
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	line, column := posOf(session, node)
-	text := string(textOf(session, node))
+	line, column := posOf(door, node)
+	text := string(textOf(door, node))
 	key, number := text, ""
 	for i := 0; i < len(text); i++ {
 		if text[i] == ':' {
@@ -150,17 +154,17 @@ func reduction_Pair(ptr unsafe.Pointer) {
 			break
 		}
 	}
-	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, session.ChildCount(node), line, column))
+	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, door.ChildCount(node), line, column))
 }
 
 //export reduction_Document
 func reduction_Document(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	count, total := countPairs(session, node)
+	count, total := countPairs(door, node)
 	emit(fmt.Sprintf("Document %d pairs, sum=%d\n", count, total))
 }

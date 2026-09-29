@@ -109,3 +109,41 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 		t.Fatalf("last input %q", input)
 	}
 }
+
+// A failed parse resets node storage behind the last successful result:
+// Snapshot must answer ErrInvalidNode through the gate — even at count 0,
+// where NodeCount() reports the natural zero — instead of an empty
+// success, and the retained input must survive until a successful
+// re-parse reopens the door.
+func TestSnapshotAfterFailedParseRefuses(t *testing.T) {
+	session, err := galley.New()
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	t.Cleanup(session.Close)
+	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, err := session.Parse([]byte("gamma:")); err == nil {
+		t.Fatal("expected a syntax error for gamma:")
+	}
+	if input := session.LastInput(); !bytes.Equal(input, []byte("alpha:12,beta:3")) {
+		t.Fatalf("last input %q, want the last successful parse", input)
+	}
+	if snap, err := session.Snapshot(); err != galley.ErrInvalidNode || snap.Count != 0 {
+		t.Fatalf("snapshot after failed parse = (count %d, %v), want count 0 and ErrInvalidNode", snap.Count, err)
+	}
+	if text, ok := session.Text(galley.Node(0)); ok {
+		t.Fatalf("text after failed parse = (%q, %v), want no value", text, ok)
+	}
+	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+	snap, err := session.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot after re-parse: %v", err)
+	}
+	if snap.Count == 0 {
+		t.Fatal("expected nodes after a successful re-parse")
+	}
+}

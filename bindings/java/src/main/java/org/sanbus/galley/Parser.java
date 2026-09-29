@@ -37,10 +37,33 @@ public final class Parser {
     // Entry-dispatch stack: one snapshot per active parse level, innermost
     // last. Dispatch reads the innermost snapshot so mid-parse installs and
     // clears apply to later parses only; nested parses push their own and
-    // the enclosing table is restored on unwind.
-    private final Deque<Map<String, Consumer<ProcedureArguments>>> dispatchStack = new ArrayDeque<>();
+    // the enclosing table is restored on unwind. Each frame also carries
+    // the session whose parse owns it and the parse's hook door, so every
+    // hook of one parse hands out nodes on the same door.
+    private final Deque<DispatchFrame> dispatchStack = new ArrayDeque<>();
     // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
     private MemorySegment dispatchStub = MemorySegment.NULL;
+
+    /**
+     * One parse level's dispatch view: its entry table, owning session, and
+     * the parse's hook door — learned from the first hook that needs it and
+     * shared by every later hook of the same parse.
+     */
+    private static final class DispatchFrame {
+        final Map<String, Consumer<ProcedureArguments>> table;
+        final Session session;
+        private HookDoor door;
+
+        DispatchFrame(Map<String, Consumer<ProcedureArguments>> table, Session session) {
+            this.table = table;
+            this.session = session;
+        }
+
+        HookDoor doorFor(GalleyLibrary lib, MemorySegment argsPtr) {
+            if (door == null) door = new HookDoor(lib, lib.galley_procedure_door(argsPtr), session);
+            return door;
+        }
+    }
 
     private Parser(String canonicalPath, GalleyLibrary lib) {
         this.canonicalPath = canonicalPath;
@@ -178,9 +201,9 @@ public final class Parser {
         return new HashMap<>(hooks);
     }
 
-    /** Pushes a parse level's entry table; restored by {@link #popAndRestoreGates}. */
-    void pushDispatchTable(Map<String, Consumer<ProcedureArguments>> table) {
-        dispatchStack.push(new HashMap<>(table));
+    /** Pushes a parse level's entry table and owning session; restored by {@link #popAndRestoreGates}. */
+    void pushDispatchTable(Map<String, Consumer<ProcedureArguments>> table, Session session) {
+        dispatchStack.push(new DispatchFrame(new HashMap<>(table), session));
     }
 
     /**
@@ -192,8 +215,8 @@ public final class Parser {
      */
     void popAndRestoreGates(Map<String, Consumer<ProcedureArguments>> ownTable) {
         dispatchStack.poll();
-        Map<String, Consumer<ProcedureArguments>> outer = dispatchStack.peek();
-        syncGates(outer != null ? outer : ownTable);
+        DispatchFrame outer = dispatchStack.peek();
+        syncGates(outer != null ? outer.table : ownTable);
     }
 
     /**
@@ -232,16 +255,21 @@ public final class Parser {
             // when no parse is active), so mid-parse installs and clears
             // stay invisible in-flight. Hook throwables are logged and
             // swallowed so a throwing hook never aborts the parse.
-            Map<String, Consumer<ProcedureArguments>> table = dispatchStack.peek();
-            if (table == null) table = hooks;
+            DispatchFrame frame = dispatchStack.peek();
+            Map<String, Consumer<ProcedureArguments>> table = frame != null ? frame.table : hooks;
             if (table.isEmpty()) return;
             Consumer<ProcedureArguments> hook = table.get(name);
             if (hook == null) return;
-            ProcedureArguments args = new ProcedureArguments(argsPtr, lib);
+            ProcedureArguments args = new ProcedureArguments(argsPtr, lib, frame != null ? frame.doorFor(lib, argsPtr) : null);
             try {
                 hook.accept(args);
             } catch (Throwable t) {
                 t.printStackTrace(System.err);
+            } finally {
+                // The native arguments die when this hook call returns;
+                // expire the Java reference with them. The tree outlives
+                // the hook on the parse's door.
+                args.expire();
             }
         } catch (Throwable t) {
             t.printStackTrace(System.err);

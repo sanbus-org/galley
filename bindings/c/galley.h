@@ -3,8 +3,15 @@
  *
  * Link against the shared library produced for your language (for example
  * `libgalley-json-c.dylib` / `libgalley-json-c.so`) and include this header.
- * Sessions are not thread-safe: use one session per thread, or guard it
- * externally.
+ *
+ * Two doors, one core: post-parse accessors (galley_node_*, galley_tree_*,
+ * galley_diagnostic_*) take a session handle and refuse with
+ * galley_error_session_in_use while a parse is in flight; parse-time hook
+ * code passes the parse's door (galley_procedure_door) to the galley_hook_*
+ * twins, which take no lock. Concurrent use of one session is refused, not
+ * serialized: a second caller gets galley_error_session_in_use, so hosts
+ * coordinate sharing themselves; independent sessions on independent
+ * threads still need no shared state.
  *
  * Node addresses, text pointers, and diagnostic strings remain valid until
  * the next parse on the same session or session destruction.
@@ -24,6 +31,10 @@ extern "C" {
 
 /* Opaque parsing-session handle. */
 typedef struct GalleySession GalleySession;
+
+/* Opaque parse-time door: the live state of one in-flight parse, obtained
+ * from a hook's arguments with galley_procedure_door. */
+typedef struct GalleyHookDoor GalleyHookDoor;
 
 /* Stable node index into a session's AST storage. */
 typedef unsigned long long GalleyNodeAddress;
@@ -48,6 +59,10 @@ enum {
     galley_error_invalid_node             = -10,
     galley_error_io                       = -11,
     galley_error_semantic                 = -12,
+    /* A parse holds the session exclusively; the call is refused rather than
+     * queued. Post-parse node/tree/diagnostic accessors return this while a
+     * parse is in flight (hook code must use the galley_hook_* door). */
+    galley_error_session_in_use           = -13,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -144,6 +159,11 @@ long long galley_parse_file(GalleySession *session, const char *path);
 /* Writes the end position (1-based line and column) of the most recent
  * successful parse; writes zeros when the parser was built without
  * position tracking. */
+/* Post-parse node access. Each call takes the session's read lock: while a
+ * parse is in flight they refuse (0 / GALLEY_INVALID_NODE /
+ * galley_error_session_in_use), and after a failed parse they refuse with
+ * galley_error_invalid_node — last_result went stale. Hooks use the
+ * galley_hook_* twins instead. */
 long long galley_last_position(GalleySession *session,
                                unsigned int *out_line, unsigned int *out_column);
 
@@ -313,7 +333,10 @@ long long galley_diagnostic_message_ansi(GalleySession *session, const char **ou
 /* Tree editing. Chains passed to these functions must be detached orphans
  * (no parent, no prior). Node addresses are stable, so edits never
  * invalidate other addresses. Removed or detached chains remain allocated
- * and readable but are orphaned. */
+ * and readable but are orphaned. Post-parse edits take the exclusive lock:
+ * galley_error_session_in_use while a parse is in flight,
+ * galley_error_invalid_node for an address from a dead parse; hook-time
+ * edits use the galley_hook_tree_* twins. */
 
 /* Appends first_node (and its next-chain) as the last children of parent. */
 long long galley_tree_append_children(GalleySession *session,
@@ -368,6 +391,11 @@ long long galley_tree_unlink_wrapper(GalleySession *session, GalleyNodeAddress w
 const char *galley_status_string(long long status);
 
 /* Diagnostic classification and structured recovery information.
+ *
+ * Post-parse accessors take the session's read lock without a generation
+ * check: diagnostics outlive the parse that produced them (including a
+ * failed one), but a call during an in-flight parse refuses with
+ * galley_error_session_in_use. Hooks use the galley_hook_* twins.
  *
  * Kinds and enum values: */
 enum {
@@ -487,14 +515,16 @@ long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned l
                                               unsigned int *out_rhs_index, unsigned int *out_symbol_index,
                                               const char **out_variable, size_t *out_variable_len);
 
-/* Procedure hooks receive an opaque ProcedureArguments pointer. Tree queries
- * and edits use the session from galley_procedure_session with the ordinary
- * galley_node_* / galley_tree_* functions. The remaining calls below are
- * parse-time state that does not exist on a finished session: the current
- * node, the reducing rule, scanner line/column, and the drop/replace channel
+/* Procedure hooks receive an opaque ProcedureArguments pointer, valid only
+ * while that hook runs. Parse-time tree access does not go through it: take
+ * the parse's door with galley_procedure_door and pass that to the
+ * galley_hook_* twins below — no session handle, no lock, valid for the
+ * whole parse. The calls directly below are per-hook state that does not
+ * exist on a finished session or outside their hook: the current node, the
+ * reducing rule, scanner line/column, and the drop/replace channel
  * (args.node_address). galley_tree_remove_self is not a substitute for
  * galley_procedure_drop_self. */
-GalleySession *galley_procedure_session(void *args);
+GalleyHookDoor *galley_procedure_door(void *args);
 unsigned long long galley_procedure_current_node(void *args);
 void galley_procedure_set_current_node(void *args, unsigned long long node);
 int galley_procedure_rule_present(void *args);
@@ -511,6 +541,110 @@ long long galley_procedure_replace_with_children(void *args);
 long long galley_procedure_left_recursive_reduction(void *args);
 long long galley_procedure_right_recursive_reduction(void *args);
 long long galley_procedure_report_semantic_error(void *args, const char *message, size_t message_len);
+
+/* ---------------------------------------------------------------------------
+ * Parse-time hook door: the same node/tree/diagnostic cores as above, reached
+ * through the door of the parse instead of a session handle. The current
+ * parse owns the session exclusively, so these take no lock — unshared by
+ * construction. A door is the same pointer for every hook of one parse and
+ * dies when that parse ends: keep it for the parse, drop it after. Text and
+ * input pointers are the exception and are valid only until the hook that
+ * made the call returns; diagnostic strings stay valid until the next parse.
+ * Post-parse code uses the galley_node_* / galley_tree_* /
+ * galley_diagnostic_* session door, which refuses while a parse is in flight
+ * with galley_error_session_in_use.
+ * ------------------------------------------------------------------------- */
+
+/* Node reads. */
+int galley_hook_node_is_valid(GalleyHookDoor *door, GalleyNodeAddress node);
+unsigned int galley_hook_node_child_count(GalleyHookDoor *door, GalleyNodeAddress node);
+GalleyNodeAddress galley_hook_node_first_child(GalleyHookDoor *door, GalleyNodeAddress node);
+GalleyNodeAddress galley_hook_node_last_child(GalleyHookDoor *door, GalleyNodeAddress node);
+GalleyNodeAddress galley_hook_node_next_sibling(GalleyHookDoor *door, GalleyNodeAddress node);
+GalleyNodeAddress galley_hook_node_prior_sibling(GalleyHookDoor *door, GalleyNodeAddress node);
+GalleyNodeAddress galley_hook_node_parent(GalleyHookDoor *door, GalleyNodeAddress node);
+long long galley_hook_node_symbol_name(GalleyHookDoor *door, GalleyNodeAddress node,
+                                        const char **out_data, size_t *out_len);
+long long galley_hook_node_text(GalleyHookDoor *door, GalleyNodeAddress node,
+                                const char **out_data, size_t *out_len);
+long long galley_hook_node_span(GalleyHookDoor *door, GalleyNodeAddress node,
+                                unsigned long long *out_start, unsigned long long *out_len);
+long long galley_hook_node_line_column(GalleyHookDoor *door, GalleyNodeAddress node,
+                                       unsigned int *out_line, unsigned int *out_column);
+long long galley_hook_node_variable_index(GalleyHookDoor *door, GalleyNodeAddress node);
+long long galley_hook_last_input(GalleyHookDoor *door, const char **out_data, size_t *out_len);
+
+/* Tree edits; same contracts as the galley_tree_* door (detached-orphan
+ * chains, stable addresses). */
+long long galley_hook_tree_append_children(GalleyHookDoor *door,
+                                           GalleyNodeAddress parent, GalleyNodeAddress first_node);
+long long galley_hook_tree_insert_before(GalleyHookDoor *door,
+                                         GalleyNodeAddress target, GalleyNodeAddress first_node);
+long long galley_hook_tree_insert_after(GalleyHookDoor *door,
+                                        GalleyNodeAddress target, GalleyNodeAddress first_node);
+long long galley_hook_tree_remove_siblings(GalleyHookDoor *door, GalleyNodeAddress node,
+                                           size_t count, GalleyNodeAddress *out_head);
+long long galley_hook_tree_remove_self(GalleyHookDoor *door, GalleyNodeAddress node,
+                                       GalleyNodeAddress *out_head);
+long long galley_hook_tree_promote_children_over_wrapper(GalleyHookDoor *door,
+                                                         GalleyNodeAddress wrapper,
+                                                         GalleyNodeAddress *out_head);
+long long galley_hook_tree_clean_children(GalleyHookDoor *door, GalleyNodeAddress node,
+                                          GalleyNodeAddress *out_head);
+long long galley_hook_tree_insert_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
+                                              size_t index, GalleyNodeAddress first_node);
+long long galley_hook_tree_remove_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
+                                              size_t index, size_t count,
+                                              GalleyNodeAddress *out_head);
+long long galley_hook_tree_unlink_wrapper(GalleyHookDoor *door, GalleyNodeAddress wrapper);
+long long galley_hook_tree_snapshot(GalleyHookDoor *door,
+                                    GalleyNodeAddress *out_parent,
+                                    GalleyNodeAddress *out_first_child,
+                                    GalleyNodeAddress *out_next,
+                                    unsigned int *out_child_count,
+                                    long long *out_variable,
+                                    unsigned long long *out_span_start,
+                                    unsigned long long *out_span_len,
+                                    int *out_is_semantic_error,
+                                    unsigned long long capacity);
+
+/* Current-diagnostic reads of the in-flight parse (recorded-*
+ * accessors are post-parse only and have no hook twin). */
+int galley_hook_has_diagnostic(GalleyHookDoor *door);
+long long galley_hook_diagnostic_message(GalleyHookDoor *door, const char **out);
+long long galley_hook_diagnostic_message_ansi(GalleyHookDoor *door, const char **out);
+long long galley_hook_diagnostic_position(GalleyHookDoor *door,
+                                          unsigned int *out_line, unsigned int *out_column);
+long long galley_hook_diagnostic_unexpected_token(GalleyHookDoor *door,
+                                                  const char **out_data, size_t *out_len);
+long long galley_hook_diagnostic_expected_count(GalleyHookDoor *door);
+long long galley_hook_diagnostic_expected_at(GalleyHookDoor *door, unsigned long long index,
+                                             const char **out_data, size_t *out_len);
+long long galley_hook_diagnostic_context_count(GalleyHookDoor *door);
+long long galley_hook_diagnostic_context_at(GalleyHookDoor *door, unsigned long long index,
+                                            const char **out_data, size_t *out_len);
+long long galley_hook_diagnostic_kind(GalleyHookDoor *door);
+long long galley_hook_syntax_error_count(GalleyHookDoor *door);
+long long galley_hook_semantic_error_count(GalleyHookDoor *door);
+long long galley_hook_diagnostic_semantic(GalleyHookDoor *door,
+                                          const char **out_variable, size_t *out_variable_len,
+                                          const char **out_message, size_t *out_message_len);
+long long galley_hook_diagnostic_indentation(GalleyHookDoor *door,
+                                             unsigned int *out_spaces,
+                                             unsigned int *out_indentation_width);
+long long galley_hook_diagnostic_recovery_kind(GalleyHookDoor *door);
+long long galley_hook_diagnostic_recovery_terminal(GalleyHookDoor *door,
+                                                   const char **out_data, size_t *out_len);
+long long galley_hook_diagnostic_recovery_resume(GalleyHookDoor *door, long long *out);
+long long galley_hook_diagnostic_recovery_lhs_variable(GalleyHookDoor *door,
+                                                       const char **out_data, size_t *out_len);
+long long galley_hook_diagnostic_recovery_production(GalleyHookDoor *door,
+                                                     const char **out_variable, size_t *out_variable_len,
+                                                     unsigned int *out_rhs_index);
+long long galley_hook_diagnostic_recovery_occurrence(GalleyHookDoor *door,
+                                                     const char **out_parent_variable, size_t *out_parent_variable_len,
+                                                     unsigned int *out_rhs_index, unsigned int *out_symbol_index,
+                                                     const char **out_variable, size_t *out_variable_len);
 
 #ifdef __cplusplus
 } /* extern "C" */

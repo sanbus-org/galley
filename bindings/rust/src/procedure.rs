@@ -7,8 +7,9 @@
 // `include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"))`.
 // (Plain `//` comments: this file is `include!`d inside a module, where
 // inner `//!` docs are illegal.)
-// Tree queries call `galley_node_*` on the session from
-// `galley_procedure_session`.
+// Tree queries call the `galley_hook_*` door of the parse (`ProcedureArguments::door`) —
+// unshared by construction. The arguments themselves are per-hook state and valid only
+// while their hook runs.
 
 use std::ffi::{c_char, c_void};
 
@@ -37,6 +38,7 @@ pub enum Error {
     NoDiagnostic,
     InvalidNode,
     Io,
+    SessionInUse,
 }
 
 impl Error {
@@ -54,6 +56,7 @@ impl Error {
             -9 => Error::NoDiagnostic,
             -10 => Error::InvalidNode,
             -11 => Error::Io,
+            -13 => Error::SessionInUse,
             _ => Error::Internal,
         }
     }
@@ -67,11 +70,18 @@ fn map_status(status: i64) -> Result<(), Error> {
     }
 }
 
-enum GalleySessionRaw {}
-
-/// Opaque procedure-hook argument. Only the pointer is ABI-stable.
+/// Opaque per-hook argument: the current node, the reducing rule, the scanner
+/// position, drop and replace, and semantic errors. Valid only while its hook
+/// runs. Only the pointer is ABI-stable.
 #[repr(C)]
 pub struct ProcedureArguments {
+    _private: [u8; 0],
+}
+
+/// Opaque parse-time door over one parse's node storage: tree reads go
+/// through the `galley_hook_*` twins on it. Only the pointer is ABI-stable.
+#[repr(C)]
+pub struct HookDoor {
     _private: [u8; 0],
 }
 
@@ -82,7 +92,7 @@ pub struct Rule {
 }
 
 extern "C" {
-    fn galley_procedure_session(arguments: *mut c_void) -> *mut GalleySessionRaw;
+    fn galley_procedure_door(arguments: *mut c_void) -> *mut c_void;
     fn galley_procedure_current_node(arguments: *mut c_void) -> u64;
     fn galley_procedure_set_current_node(arguments: *mut c_void, node: u64);
     fn galley_procedure_rule_present(arguments: *mut c_void) -> i32;
@@ -111,33 +121,33 @@ extern "C" {
         message: *const c_char,
         message_len: usize,
     ) -> i64;
-    fn galley_node_text(
-        session: *mut GalleySessionRaw,
+    fn galley_hook_node_text(
+        door: *mut c_void,
         node: u64,
         out_data: *mut *const c_char,
         out_len: *mut usize,
     ) -> i64;
-    fn galley_node_child_count(session: *mut GalleySessionRaw, node: u64) -> u32;
-    fn galley_node_symbol_name(
-        session: *mut GalleySessionRaw,
+    fn galley_hook_node_child_count(door: *mut c_void, node: u64) -> u32;
+    fn galley_hook_node_symbol_name(
+        door: *mut c_void,
         node: u64,
         out_data: *mut *const c_char,
         out_len: *mut usize,
     ) -> i64;
-    fn galley_node_line_column(
-        session: *mut GalleySessionRaw,
+    fn galley_hook_node_line_column(
+        door: *mut c_void,
         node: u64,
         out_line: *mut u32,
         out_column: *mut u32,
     ) -> i64;
-    fn galley_node_parent(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_first_child(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_next_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_last_child(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_prior_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_variable_index(session: *mut GalleySessionRaw, node: u64) -> i64;
-    fn galley_node_span(
-        session: *mut GalleySessionRaw,
+    fn galley_hook_node_parent(door: *mut c_void, node: u64) -> u64;
+    fn galley_hook_node_first_child(door: *mut c_void, node: u64) -> u64;
+    fn galley_hook_node_next_sibling(door: *mut c_void, node: u64) -> u64;
+    fn galley_hook_node_last_child(door: *mut c_void, node: u64) -> u64;
+    fn galley_hook_node_prior_sibling(door: *mut c_void, node: u64) -> u64;
+    fn galley_hook_node_variable_index(door: *mut c_void, node: u64) -> i64;
+    fn galley_hook_node_span(
+        door: *mut c_void,
         node: u64,
         out_start: *mut u64,
         out_len: *mut u64,
@@ -164,13 +174,10 @@ impl ProcedureArguments {
         self as *const _ as *mut c_void
     }
 
-    fn session_ptr(&self) -> Option<*mut GalleySessionRaw> {
-        let ptr = unsafe { galley_procedure_session(self.as_ptr()) };
-        if ptr.is_null() {
-            None
-        } else {
-            Some(ptr)
-        }
+    /// The door of the parse this hook belongs to: tree reads go through it.
+    /// Borrowed from these arguments, so it cannot outlive the hook.
+    pub fn door(&self) -> &HookDoor {
+        unsafe { &*(galley_procedure_door(self.as_ptr()) as *const HookDoor) }
     }
 
     pub fn current_node(&self) -> Option<NodeHandle> {
@@ -280,36 +287,35 @@ impl ProcedureArguments {
         }
     }
 
+}
+
+impl HookDoor {
+    fn as_ptr(&self) -> *mut c_void {
+        self as *const _ as *mut c_void
+    }
+
     pub fn child_count(&self, node: NodeHandle) -> u32 {
-        let Some(session) = self.session_ptr() else {
-            return 0;
-        };
-        unsafe { galley_node_child_count(session, node.0) }
+        unsafe { galley_hook_node_child_count(self.as_ptr(), node.0) }
     }
 
     pub fn parent(&self, node: NodeHandle) -> Option<NodeHandle> {
-        let session = self.session_ptr()?;
-        opt_handle(unsafe { galley_node_parent(session, node.0) })
+        opt_handle(unsafe { galley_hook_node_parent(self.as_ptr(), node.0) })
     }
 
     pub fn first_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        let session = self.session_ptr()?;
-        opt_handle(unsafe { galley_node_first_child(session, node.0) })
+        opt_handle(unsafe { galley_hook_node_first_child(self.as_ptr(), node.0) })
     }
 
     pub fn last_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        let session = self.session_ptr()?;
-        opt_handle(unsafe { galley_node_last_child(session, node.0) })
+        opt_handle(unsafe { galley_hook_node_last_child(self.as_ptr(), node.0) })
     }
 
     pub fn next_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        let session = self.session_ptr()?;
-        opt_handle(unsafe { galley_node_next_sibling(session, node.0) })
+        opt_handle(unsafe { galley_hook_node_next_sibling(self.as_ptr(), node.0) })
     }
 
     pub fn prior_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        let session = self.session_ptr()?;
-        opt_handle(unsafe { galley_node_prior_sibling(session, node.0) })
+        opt_handle(unsafe { galley_hook_node_prior_sibling(self.as_ptr(), node.0) })
     }
 
     pub fn children(&self, node: NodeHandle) -> impl Iterator<Item = NodeHandle> + '_ {
@@ -322,48 +328,46 @@ impl ProcedureArguments {
     }
 
     pub fn text(&self, node: NodeHandle) -> Option<&[u8]> {
-        let session = self.session_ptr()?;
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
-        if unsafe { galley_node_text(session, node.0, &mut data, &mut len) } != 0 {
+        if unsafe { galley_hook_node_text(self.as_ptr(), node.0, &mut data, &mut len) } != 0 {
             return None;
         }
         Some(bytes(data, len))
     }
 
     pub fn symbol_name(&self, node: NodeHandle) -> Option<&[u8]> {
-        let session = self.session_ptr()?;
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
-        if unsafe { galley_node_symbol_name(session, node.0, &mut data, &mut len) } != 0 {
+        if unsafe { galley_hook_node_symbol_name(self.as_ptr(), node.0, &mut data, &mut len) } != 0
+        {
             return None;
         }
         Some(bytes(data, len))
     }
 
     pub fn span(&self, node: NodeHandle) -> Option<(u64, u64)> {
-        let session = self.session_ptr()?;
         let mut start = 0u64;
         let mut len = 0u64;
-        if unsafe { galley_node_span(session, node.0, &mut start, &mut len) } != 0 {
+        if unsafe { galley_hook_node_span(self.as_ptr(), node.0, &mut start, &mut len) } != 0 {
             return None;
         }
         Some((start, len))
     }
 
     pub fn line_column(&self, node: NodeHandle) -> Option<(u32, u32)> {
-        let session = self.session_ptr()?;
         let mut line = 0u32;
         let mut column = 0u32;
-        if unsafe { galley_node_line_column(session, node.0, &mut line, &mut column) } != 0 {
+        if unsafe { galley_hook_node_line_column(self.as_ptr(), node.0, &mut line, &mut column) }
+            != 0
+        {
             return None;
         }
         Some((line, column))
     }
 
     pub fn variable_index(&self, node: NodeHandle) -> Option<u16> {
-        let session = self.session_ptr()?;
-        let value = unsafe { galley_node_variable_index(session, node.0) };
+        let value = unsafe { galley_hook_node_variable_index(self.as_ptr(), node.0) };
         if value < 0 {
             None
         } else {

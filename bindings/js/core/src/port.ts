@@ -194,7 +194,13 @@ export interface FfiPort {
     count: number,
   ): { status: number; head: bigint };
 
-  // -- procedure hooks (parse-time state) ---------------------------------------
+  // -- procedure hooks (per-hook state) ------------------------------------------
+  // `args` is valid only while its hook runs.
+  /**
+   * The parse's door: the same handle for every hook of one parse, valid
+   * until that parse ends. Hook-door accessors below cross through it.
+   */
+  procDoor(args: Handle): Handle;
   procCurrentNode(args: Handle): bigint;
   procSetCurrentNode(args: Handle, node: bigint): void;
   procDropSelf(args: Handle): number;
@@ -205,6 +211,22 @@ export interface FfiPort {
   procContextColumn(args: Handle): number;
   /** Running semantic-error total, or a negative status code. */
   procReportSemanticError(args: Handle, message: Uint8Array): number;
+
+  // -- hook door: parse-time node/tree accessors over the live parse ------
+  // Unshared by construction: the parse holds the session exclusively for
+  // its whole run, so these cross with the parse's door, not a session.
+  hookNodeChildCount(door: Handle, node: bigint): number;
+  hookNodeFirstChild(door: Handle, node: bigint): bigint;
+  hookNodeLastChild(door: Handle, node: bigint): bigint;
+  hookNodeNextSibling(door: Handle, node: bigint): bigint;
+  hookNodePriorSibling(door: Handle, node: bigint): bigint;
+  hookNodeParent(door: Handle, node: bigint): bigint;
+  hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null;
+  hookNodeText(door: Handle, node: bigint): Uint8Array | null;
+  hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null;
+  hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null;
+  hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number;
+  hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint };
   /**
    * Enables exactly `names` in the native procedure gates before a parse
    * (selective dispatch): the adapter clears all gates, then enables each
