@@ -1,5 +1,5 @@
 //! Snapshot parity: `Session::snapshot` matches the per-node accessors.
-use galley::{NodeHandle, Session};
+use galley::{Error, NodeHandle, Session};
 
 fn opt_addr(node: Option<NodeHandle>) -> u64 {
     node.map(|n| n.index())
@@ -10,7 +10,7 @@ fn opt_addr(node: Option<NodeHandle>) -> u64 {
 fn snapshot_matches_per_node_accessors() {
     let mut session = Session::new().expect("session");
     session.parse_sentinel("alpha:12,beta:3").expect("parse");
-    let snap = session.snapshot();
+    let snap = session.snapshot().expect("snapshot");
     let count = session.node_count() as usize;
     assert_eq!(snap.count as usize, count);
     assert!(count > 0);
@@ -80,4 +80,24 @@ fn snapshot_matches_per_node_accessors() {
         &session.last_input()[root_span.0 as usize..(root_span.0 + root_span.1) as usize],
         b"alpha:12,beta:3"
     );
+}
+
+#[test]
+fn snapshot_after_failed_parse_refuses() {
+    let mut session = Session::new().expect("session");
+    session.parse_sentinel("alpha:12,beta:3").expect("parse");
+    session
+        .parse_sentinel("gamma:")
+        .expect_err("gamma: is a syntax error");
+    // The failed parse reset node storage behind the last successful
+    // result; the retained input survives it.
+    assert_eq!(session.last_input(), b"alpha:12,beta:3");
+    assert!(matches!(session.snapshot(), Err(Error::InvalidNode)));
+    assert!(session.text(NodeHandle::from_index(0)).is_none());
+    // A successful re-parse reopens the door.
+    session
+        .parse_sentinel("alpha:12,beta:3")
+        .expect("re-parse");
+    let snap = session.snapshot().expect("snapshot");
+    assert!(snap.count > 0);
 }

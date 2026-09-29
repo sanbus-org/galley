@@ -11,66 +11,199 @@
  * table shared by all of its sessions, and publishes per-parse dispatch
  * through the session's gate brackets. There is no per-session table.
  *
- * Hooks receive a `ProcedureArguments` object. Tree queries use
- * `currentNode()` plus the ordinary `Node` methods (which call the port's
- * node accessors on the parsing session).
+ * Hooks receive a `ProcedureArguments` object: per-hook state (current
+ * node, position, drop and replace) that is valid only while the hook
+ * runs. Node reads and tree edits go through the parse's `HookDoor`, one
+ * per parse and shared by every hook of it, over the galley_hook_*
+ * twins, so `currentNode()` plus the ordinary `Node` methods cross into
+ * the live parse without touching the session door and stay usable for
+ * the rest of that parse.
  */
 
 import { INVALID_NODE, Status } from "./constants.ts";
 import type { Handle, FfiPort } from "./port.ts";
-import { Node, nodeAddress } from "./node.ts";
-import { GalleyError } from "./errors.ts";
+import { Node, nodeAddress, type NodeDoor } from "./node.ts";
+import { GalleyError, SessionClosedError } from "./errors.ts";
 import type { Session } from "./session.ts";
 import { checkMessageBytes } from "./sources.ts";
 
+/**
+ * The parse-time door over one parse's node storage. One per parse, so
+ * every hook of that parse hands out nodes on the same door and two nodes
+ * share a door exactly when they belong to the same parse. Reads and edits
+ * cross the galley_hook_* twins on the native door, which stays valid for
+ * the whole parse; the session's parse generation, stamped here, shows
+ * when that parse has ended.
+ */
+export class HookDoor implements NodeDoor {
+  readonly #door: Handle;
+  readonly #session: Session;
+  readonly #port: FfiPort;
+  /** The parse generation this door belongs to, stamped at creation. */
+  readonly #generation: number;
+
+  constructor(door: Handle, session: Session, port: FfiPort) {
+    this.#door = door;
+    this.#session = session;
+    this.#port = port;
+    this.#generation = session.parseGeneration;
+  }
+
+  /**
+   * The single gate for this door: a closed session or a door left over
+   * from an earlier parse generation throws instead of reading dead
+   * storage, and a node argument must be live and belong to this door.
+   * Every crossing takes its address from here and nowhere else.
+   * @internal
+   */
+  address(node: Node | bigint | number): bigint {
+    if (this.#session.isClosed) {
+      throw new SessionClosedError("session is closed");
+    }
+    if (this.#generation !== this.#session.parseGeneration) {
+      throw new SessionClosedError("hook door is invalidated");
+    }
+    return nodeAddress(node, this);
+  }
+
+  /** Wraps an address on this door; invalid becomes null. @internal */
+  node(address: bigint): Node | null {
+    if (address === INVALID_NODE) return null;
+    return new Node(this.#session, address, this);
+  }
+
+  childCount(node: Node | bigint | number): number {
+    return this.#port.hookNodeChildCount(this.#door, this.address(node));
+  }
+
+  firstChild(node: Node | bigint | number): Node | null {
+    return this.node(this.#port.hookNodeFirstChild(this.#door, this.address(node)));
+  }
+
+  lastChild(node: Node | bigint | number): Node | null {
+    return this.node(this.#port.hookNodeLastChild(this.#door, this.address(node)));
+  }
+
+  nextSibling(node: Node | bigint | number): Node | null {
+    return this.node(this.#port.hookNodeNextSibling(this.#door, this.address(node)));
+  }
+
+  priorSibling(node: Node | bigint | number): Node | null {
+    return this.node(this.#port.hookNodePriorSibling(this.#door, this.address(node)));
+  }
+
+  parent(node: Node | bigint | number): Node | null {
+    return this.node(this.#port.hookNodeParent(this.#door, this.address(node)));
+  }
+
+  text(node: Node | bigint | number): Uint8Array | null {
+    return this.#port.hookNodeText(this.#door, this.address(node));
+  }
+
+  symbolNameBytes(node: Node | bigint | number): Uint8Array | null {
+    return this.#port.hookNodeSymbolName(this.#door, this.address(node));
+  }
+
+  span(node: Node | bigint | number): [bigint, bigint] | null {
+    return this.#port.hookNodeSpan(this.#door, this.address(node));
+  }
+
+  lineColumn(node: Node | bigint | number): [number, number] | null {
+    return this.#port.hookNodeLineColumn(this.#door, this.address(node));
+  }
+
+  cleanChildren(node: Node | bigint | number): Node | null {
+    const { status, head } = this.#port.hookTreeCleanChildren(this.#door, this.address(node));
+    this.#throwOnFailure("cleanChildren", status);
+    return this.node(head);
+  }
+
+  appendChildren(parent: Node | bigint | number, chain: Node | bigint | number): void {
+    this.#throwOnFailure(
+      "appendChildren",
+      this.#port.hookTreeAppendChildren(this.#door, this.address(parent), this.address(chain)),
+    );
+  }
+
+  /**
+   * Throws the host failure type for a negative native status: a
+   * `GalleyError` carrying the status as its named code. Tree operations
+   * attach no diagnostic, so the snapshot is null.
+   */
+  #throwOnFailure(operation: string, status: number): void {
+    if (status >= 0) return;
+    throw new GalleyError(
+      `galley: ${operation} failed: ${this.#port.statusString(status) ?? "unknown galley error"}`,
+      status as Status,
+      null,
+    );
+  }
+}
+
+/**
+ * Per-hook state: the current node and its redirect, the scanner position,
+ * drop and replace, and semantic errors. Valid only while its hook runs;
+ * the dispatcher expires it when the hook returns, so a reference kept
+ * past that throws instead of reading a frame that is gone. What must
+ * outlive the hook — the tree — lives on the parse's `HookDoor`.
+ */
 export class ProcedureArguments {
   readonly #args: Handle;
-  readonly #session: Session | null;
+  readonly #door: HookDoor;
   readonly #port: FfiPort;
+  #expired = false;
 
-  constructor(args: Handle, session: Session | null, port: FfiPort) {
+  constructor(args: Handle, door: HookDoor, port: FfiPort) {
     this.#args = args;
-    this.#session = session;
+    this.#door = door;
     this.#port = port;
   }
 
-  get session(): Session | null {
-    return this.#session;
+  /** Dispatcher hook: the native arguments no longer exist past this call. @internal */
+  expire(): void {
+    this.#expired = true;
+  }
+
+  /**
+   * The single gate for per-hook state: every accessor takes the native
+   * arguments from here and nowhere else.
+   */
+  #live(): Handle {
+    if (this.#expired) throw new SessionClosedError("procedure arguments are invalidated");
+    return this.#args;
   }
 
   currentNode(): Node | null {
-    if (this.#session === null || this.#session.isClosed) return null;
-    const address = this.#port.procCurrentNode(this.#args);
-    if (address === INVALID_NODE) return null;
-    return new Node(this.#session, address);
+    return this.#door.node(this.#port.procCurrentNode(this.#live()));
   }
 
   setCurrentNode(node: Node | bigint | number): void {
-    this.#port.procSetCurrentNode(this.#args, nodeAddress(node));
+    const args = this.#live();
+    this.#port.procSetCurrentNode(args, this.#door.address(node));
   }
 
   dropSelf(): void {
-    this.#throwOnFailure("dropSelf", this.#port.procDropSelf(this.#args));
+    this.#throwOnFailure("dropSelf", this.#port.procDropSelf(this.#live()));
   }
 
   dropChildren(): void {
-    this.#throwOnFailure("dropChildren", this.#port.procDropChildren(this.#args));
+    this.#throwOnFailure("dropChildren", this.#port.procDropChildren(this.#live()));
   }
 
   dropIfEmpty(): void {
-    this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#args));
+    this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#live()));
   }
 
   replaceWithChildren(): void {
-    this.#throwOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#args));
+    this.#throwOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#live()));
   }
 
   currentLine(): number {
-    return this.#port.procContextLine(this.#args);
+    return this.#port.procContextLine(this.#live());
   }
 
   currentColumn(): number {
-    return this.#port.procContextColumn(this.#args);
+    return this.#port.procContextColumn(this.#live());
   }
 
   /**
@@ -80,7 +213,7 @@ export class ProcedureArguments {
    */
   reportSemanticError(message: string | Uint8Array): number {
     const status = this.#port.procReportSemanticError(
-      this.#args,
+      this.#live(),
       checkMessageBytes(message, "galley: reportSemanticError"),
     );
     this.#throwOnFailure("reportSemanticError", status);

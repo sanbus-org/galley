@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import org.sanbus.galley.internal.GalleyLibrary;
@@ -17,11 +16,9 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * Parsing session bound to this library's parser over bindings/c/galley.h.
  * Not thread-safe. Panama FFI (Java 22+, no JNA).
  */
-public final class Session implements AutoCloseable {
+public final class Session extends NodeDoor implements AutoCloseable {
 
     private static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
-
-    private static final ConcurrentHashMap<Long, Session> LIVE_SESSIONS = new ConcurrentHashMap<>();
 
     private MemorySegment handle;
     private final GalleyLibrary lib;
@@ -33,8 +30,6 @@ public final class Session implements AutoCloseable {
      * reallocated storage.
      */
     private long generation = 0;
-
-    private static final ThreadLocal<Session> PARSING_SESSION = new ThreadLocal<>();
 
     public Session(Parser parser) {
         this(parser, SessionOptions.defaults());
@@ -74,7 +69,6 @@ public final class Session implements AutoCloseable {
             throw new GalleyException("out of memory", StatusCode.ERROR_OUT_OF_MEMORY);
         }
         this.handle = h;
-        LIVE_SESSIONS.put(h.address(), this);
 
         for (Map.Entry<String, byte[]> e : options.getMessageOverrides().entrySet()) {
             setMessageOverride(e.getKey(), e.getValue());
@@ -84,32 +78,19 @@ public final class Session implements AutoCloseable {
     /** Current parse generation. Walkers stamp it at creation and Nodes stamp it at construction; both refuse older generations. */
     long parseGeneration() { return generation; }
 
-    static Session fromNativePointer(MemorySegment seg, GalleyLibrary lib) {
-        if (seg == null || seg.equals(MemorySegment.NULL) || seg.address() == 0) return null;
-        long val = seg.address();
-        Session s = LIVE_SESSIONS.get(val);
-        if (s != null) return s;
-        Session tl = PARSING_SESSION.get();
-        if (tl != null && tl.handle != null && tl.handle.address() == val) return tl;
-        return null;
-    }
-
-    // For ProcedureArguments via long address
-    static Session fromNativeSegment(MemorySegment seg, GalleyLibrary lib) {
-        return fromNativePointer(seg, lib);
-    }
-
-    static Session fromNativeAddress(long address, GalleyLibrary lib) {
-        if (address == 0) return null;
-        Session s = LIVE_SESSIONS.get(address);
-        if (s != null) return s;
-        Session tl = PARSING_SESSION.get();
-        if (tl != null && tl.handle != null && tl.handle.address() == address) return tl;
-        return null;
-    }
-
     private void requireOpen() {
         if (closed || handle == null || handle.equals(MemorySegment.NULL)) throw new GalleyClosedException("session");
+    }
+
+    /**
+     * The session door's liveness: the session must be open and the node
+     * must belong to the current parse generation, so a node never reads
+     * storage a later parse reset.
+     */
+    @Override
+    void requireLive(Node node) {
+        if (isClosed()) throw new GalleyClosedException("node's session");
+        if (node.generation() != generation) throw GalleyClosedException.invalidated("node");
     }
 
     private GalleyException errorFromStatus(long status) {
@@ -150,24 +131,16 @@ public final class Session implements AutoCloseable {
     /**
      * Single gate for every parse leg: snapshots the hook table (installs
      * and clears made mid-parse apply to later parses only), syncs the
-     * native gates from the snapshot, marks this session parsing, runs
-     * the native call, then pops the level and re-syncs the native gates
-     * from the enclosing table so nested parses restore the enclosing
-     * hook set on unwind.
+     * native gates from the snapshot, runs the native call, then pops the
+     * level and re-syncs the native gates from the enclosing table so
+     * nested parses restore the enclosing hook set on unwind.
      */
     private int parseWithGates(NativeParse nativeParse) {
         Map<String, Consumer<ProcedureArguments>> table = parser.snapshotHooks();
-        parser.pushDispatchTable(table);
+        parser.pushDispatchTable(table, this);
         try {
             parser.syncGates(table);
-            Session prev = PARSING_SESSION.get();
-            PARSING_SESSION.set(this);
-            long status;
-            try {
-                status = nativeParse.run();
-            } finally {
-                if (prev != null) PARSING_SESSION.set(prev); else PARSING_SESSION.remove();
-            }
+            long status = nativeParse.run();
             return completeParse(status);
         } finally {
             parser.popAndRestoreGates(table);
@@ -179,8 +152,6 @@ public final class Session implements AutoCloseable {
     @Override
     public void close() {
         if (handle != null && !handle.equals(MemorySegment.NULL)) {
-            long val = handle.address();
-            LIVE_SESSIONS.remove(val);
             try { lib.galley_session_destroy(handle); } catch (Exception ignored) {}
             handle = MemorySegment.NULL;
         }
@@ -319,10 +290,8 @@ public final class Session implements AutoCloseable {
     }
 
     public boolean nodeValid(Node node) {
-        requireOpen();
         if (node == null) return false;
-        if (node.getSession() != this) throw new IllegalArgumentException("node belongs to different session");
-        return nodeValid(node.validatedAddress());
+        return nodeValid(address(node));
     }
 
     public int childCount(long address) {
@@ -331,37 +300,20 @@ public final class Session implements AutoCloseable {
     }
 
     public int childCount(Node node) {
-        requireOpen();
         if (node == null) return 0;
-        return childCount(node.validatedAddress());
+        return childCount(address(node));
     }
 
+    @Override
     public List<Node> children(Node node) {
-        requireOpen();
         if (node == null) return new ArrayList<>();
-        long addr = node.validatedAddress();
-        int count = childCount(addr);
-        List<Node> out = new ArrayList<>(count);
-        long child = lib.galley_node_first_child(handle, addr);
-        for (int i = 0; i < count; i++) {
-            if (child == INVALID_NODE) throw new IllegalStateException("child count changed during iteration");
-            out.add(new Node(this, child));
-            child = lib.galley_node_next_sibling(handle, child);
-        }
-        return out;
+        return super.children(node);
     }
 
+    /** Children of a raw address; the iteration is the one both doors share. */
     public List<Node> children(long address) {
         requireOpen();
-        int count = childCount(address);
-        List<Node> out = new ArrayList<>(count);
-        long child = lib.galley_node_first_child(handle, address);
-        for (int i = 0; i < count; i++) {
-            if (child == INVALID_NODE) throw new IllegalStateException("child count changed during iteration");
-            out.add(new Node(this, child));
-            child = lib.galley_node_next_sibling(handle, child);
-        }
-        return out;
+        return collectChildren(childCount(address), firstChild(address));
     }
 
     private Node optNode(long addr) {
@@ -370,8 +322,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node firstChild(Node node) {
-        requireOpen();
-        return optNode(lib.galley_node_first_child(handle, node.validatedAddress()));
+        return optNode(lib.galley_node_first_child(handle, address(node)));
     }
 
     public Node firstChild(long address) {
@@ -380,8 +331,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node lastChild(Node node) {
-        requireOpen();
-        return optNode(lib.galley_node_last_child(handle, node.validatedAddress()));
+        return optNode(lib.galley_node_last_child(handle, address(node)));
     }
 
     public Node lastChild(long address) {
@@ -390,8 +340,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node nextSibling(Node node) {
-        requireOpen();
-        return optNode(lib.galley_node_next_sibling(handle, node.validatedAddress()));
+        return optNode(lib.galley_node_next_sibling(handle, address(node)));
     }
 
     public Node nextSibling(long address) {
@@ -400,8 +349,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node priorSibling(Node node) {
-        requireOpen();
-        return optNode(lib.galley_node_prior_sibling(handle, node.validatedAddress()));
+        return optNode(lib.galley_node_prior_sibling(handle, address(node)));
     }
 
     public Node priorSibling(long address) {
@@ -410,8 +358,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node parent(Node node) {
-        requireOpen();
-        return optNode(lib.galley_node_parent(handle, node.validatedAddress()));
+        return optNode(lib.galley_node_parent(handle, address(node)));
     }
 
     public Node parent(long address) {
@@ -485,10 +432,8 @@ public final class Session implements AutoCloseable {
      * again.
      */
     public Walker walk(Node node, boolean skipSemanticErrors) {
-        requireOpen();
         if (node == null) return null;
-        if (node.getSession() != this) throw new IllegalArgumentException("node belongs to different session");
-        return walk(node.validatedAddress(), skipSemanticErrors);
+        return walk(address(node), skipSemanticErrors);
     }
 
     public Walker walk(long address, boolean skipSemanticErrors) {
@@ -542,17 +487,12 @@ public final class Session implements AutoCloseable {
 
     /** Raw bytes behind {@link #symbolName(Node)}. Null for invalid nodes. */
     public byte[] symbolNameBytes(Node node) {
-        requireOpen();
         if (node == null) return null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_node_symbol_name(handle, node.validatedAddress(), outData, outLen);
-            if (st < 0) return null;
-            MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-            long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-            if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
-            return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+            long st = lib.galley_node_symbol_name(handle, address(node), outData, outLen);
+            return NodeDoor.outBytes(st, outData, outLen);
         }
     }
 
@@ -563,26 +503,17 @@ public final class Session implements AutoCloseable {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
             long st = lib.galley_node_symbol_name(handle, address, outData, outLen);
-            if (st < 0) return null;
-            MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-            long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-            if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
-            return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+            return NodeDoor.outBytes(st, outData, outLen);
         }
     }
 
     public byte[] text(Node node) {
-        requireOpen();
         if (node == null) return null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_node_text(handle, node.validatedAddress(), outData, outLen);
-            if (st < 0) return null;
-            MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-            long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-            if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
-            return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+            long st = lib.galley_node_text(handle, address(node), outData, outLen);
+            return NodeDoor.outBytes(st, outData, outLen);
         }
     }
 
@@ -592,18 +523,13 @@ public final class Session implements AutoCloseable {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
             long st = lib.galley_node_text(handle, address, outData, outLen);
-            if (st < 0) return null;
-            MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-            long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-            if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
-            return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+            return NodeDoor.outBytes(st, outData, outLen);
         }
     }
 
     public long[] span(Node node) {
-        requireOpen();
         if (node == null) return null;
-        return span(node.validatedAddress());
+        return span(address(node));
     }
 
     public long[] span(long address) {
@@ -618,9 +544,8 @@ public final class Session implements AutoCloseable {
     }
 
     public int[] lineColumn(Node node) {
-        requireOpen();
         if (node == null) return null;
-        return lineColumn(node.validatedAddress());
+        return lineColumn(address(node));
     }
 
     public int[] lineColumn(long address) {
@@ -635,9 +560,8 @@ public final class Session implements AutoCloseable {
     }
 
     public Integer variableIndex(Node node) {
-        requireOpen();
         if (node == null) return null;
-        long idx = lib.galley_node_variable_index(handle, node.validatedAddress());
+        long idx = lib.galley_node_variable_index(handle, address(node));
         if (idx == -1) return null;
         if (idx < 0) throw errorFromStatus(idx);
         return (int) idx;
@@ -1078,8 +1002,7 @@ public final class Session implements AutoCloseable {
     // -- tree editing --
 
     public void appendChildren(Node parent, Node chain) {
-        requireOpen();
-        appendChildren(parent.validatedAddress(), chain.validatedAddress());
+        appendChildren(address(parent), address(chain));
     }
 
     public void appendChildren(long parentAddr, long chainAddr) {
@@ -1088,8 +1011,7 @@ public final class Session implements AutoCloseable {
     }
 
     public void insertBefore(Node target, Node chain) {
-        requireOpen();
-        insertBefore(target.validatedAddress(), chain.validatedAddress());
+        insertBefore(address(target), address(chain));
     }
 
     public void insertBefore(long targetAddr, long chainAddr) {
@@ -1098,8 +1020,7 @@ public final class Session implements AutoCloseable {
     }
 
     public void insertAfter(Node target, Node chain) {
-        requireOpen();
-        insertAfter(target.validatedAddress(), chain.validatedAddress());
+        insertAfter(address(target), address(chain));
     }
 
     public void insertAfter(long targetAddr, long chainAddr) {
@@ -1108,8 +1029,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node removeSiblings(Node node, int count) {
-        requireOpen();
-        return removeSiblings(node.validatedAddress(), count);
+        return removeSiblings(address(node), count);
     }
 
     public Node removeSiblings(long nodeAddr, int count) {
@@ -1126,8 +1046,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node removeSelf(Node node) {
-        requireOpen();
-        return removeSelf(node.validatedAddress());
+        return removeSelf(address(node));
     }
 
     public Node removeSelf(long nodeAddr) {
@@ -1144,8 +1063,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node promoteChildrenOverWrapper(Node wrapper) {
-        requireOpen();
-        return promoteChildrenOverWrapper(wrapper.validatedAddress());
+        return promoteChildrenOverWrapper(address(wrapper));
     }
 
     public Node promoteChildrenOverWrapper(long wrapperAddr) {
@@ -1162,8 +1080,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node cleanChildren(Node node) {
-        requireOpen();
-        return cleanChildren(node.validatedAddress());
+        return cleanChildren(address(node));
     }
 
     public Node cleanChildren(long nodeAddr) {
@@ -1180,8 +1097,7 @@ public final class Session implements AutoCloseable {
     }
 
     public void unlinkWrapper(Node wrapper) {
-        requireOpen();
-        unlinkWrapper(wrapper.validatedAddress());
+        unlinkWrapper(address(wrapper));
     }
 
     public void unlinkWrapper(long wrapperAddr) {
@@ -1190,8 +1106,7 @@ public final class Session implements AutoCloseable {
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
-        requireOpen();
-        insertChildrenAt(parent.validatedAddress(), index, chain.validatedAddress());
+        insertChildrenAt(address(parent), index, address(chain));
     }
 
     public void insertChildrenAt(long parentAddr, int index, long chainAddr) {
@@ -1200,8 +1115,7 @@ public final class Session implements AutoCloseable {
     }
 
     public Node removeChildrenAt(Node parent, int index, int count) {
-        requireOpen();
-        return removeChildrenAt(parent.validatedAddress(), index, count);
+        return removeChildrenAt(address(parent), index, count);
     }
 
     public Node removeChildrenAt(long parentAddr, int index, int count) {

@@ -1,6 +1,8 @@
 # C binding test fixture
 
-Verbatim keyvalue `procedures.c` copied from `examples/c`; `ll.grm`
+Keyvalue `procedures.c` copied from `examples/c` (plus the
+`fixture_stash_session` recording the suite drives: the stashed session,
+and a door kept from the first Pair hook and read from a later hook); `ll.grm`
 and `config.zig` are symlinks to the one shared grammar in
 `bindings/test-fixture`. No rewrites: the hooks only ever include
 `galley.h` and libc.

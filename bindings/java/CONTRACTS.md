@@ -27,8 +27,8 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Parsing accepts `byte[]`, `String` (UTF-8), and `ByteBuffer`; file parses accept `Path`, `File`, and `String`. Anything else is rejected at the earliest boundary Java offers — compile time where an overload catches it, otherwise call entry before the native crossing — with no silent coercion. File paths with interior NUL bytes are rejected with `IllegalArgumentException` instead of truncated.
 - Message overrides accept text (`String`, encoded once as UTF-8) or raw bytes (`byte[]`, passed through unmodified).
 - Every session method also accepts the same call with every `Node` parameter replaced by a raw `long`; a handle becomes an address through `getAddress()`. Raw addresses carry no generation and pass every guard by design.
-- Nodes expose their address via `getAddress()` and compare by owning session plus address, so they work as `Map` keys and set members. Identity ignores generation by design: a stale handle equals its fresh counterpart, but reads through it still throw.
+- Nodes expose their address via `getAddress()` and compare by crossing door plus address, so they work as `Map` keys and set members. Identity ignores generation by design: a stale handle equals its fresh counterpart, but reads through it still throw.
 - A node handle is bound to the parse generation that created it: reading through it after a re-parse throws `GalleyClosedException`, never a stale read.
-- Tree edits are `Session` operations, with `cleanChildren` / `appendChildren` sugar on `Node`.
+- Tree edits cross the door they are made through: `Session` methods behind the post-parse gates, `Node` sugar on the door the node was reached through — the parse's hook door during a parse, where the session gates refuse. Every entry that takes a node refuses one from another door with `IllegalArgumentException`; raw addresses carry no door and stay unguarded by design.
 - Sessions are not thread-safe.
 - Sessions and walkers close explicitly or through try-with-resources, and closing is idempotent. A walk from an invalid root returns `null`.

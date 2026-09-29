@@ -82,10 +82,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 # The C++ leg builds from a build-tree copy so the C target keeps
 # compiling as C (LANGUAGE is per source file, not per target).
 enable_testing()
+find_package(Threads REQUIRED)
 add_executable(test_bindings_c "${CMAKE_CURRENT_SOURCE_DIR}/../tests/test_bindings.c")
 set_target_properties(test_bindings_c PROPERTIES BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(test_bindings_c PRIVATE "${GALLEY_INCLUDE_DIR}")
-target_link_libraries(test_bindings_c PRIVATE "${GALLEY_LIBRARY}")
+target_link_libraries(test_bindings_c PRIVATE "${GALLEY_LIBRARY}" Threads::Threads)
 add_dependencies(test_bindings_c galley_c_fixture)
 add_test(NAME bindings-c COMMAND test_bindings_c)
 
@@ -94,6 +95,6 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../tests/test_bindings.c"
 add_executable(test_bindings_cpp "${CMAKE_CURRENT_BINARY_DIR}/test_bindings.cpp")
 set_target_properties(test_bindings_cpp PROPERTIES BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(test_bindings_cpp PRIVATE "${GALLEY_INCLUDE_DIR}")
-target_link_libraries(test_bindings_cpp PRIVATE "${GALLEY_LIBRARY}")
+target_link_libraries(test_bindings_cpp PRIVATE "${GALLEY_LIBRARY}" Threads::Threads)
 add_dependencies(test_bindings_cpp galley_c_fixture)
 add_test(NAME bindings-cpp COMMAND test_bindings_cpp)

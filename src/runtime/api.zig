@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const runtime_options = @import("runtime_options");
+const SessionLock = @import("session-lock.zig");
 
 pub const procedures = @import("procedures");
 pub const config = @import("config");
@@ -61,6 +62,9 @@ pub const SessionError = error{
     SessionInUse,
     SessionGenerationExhausted,
     StaleParseResult,
+    /// No parse on this session has succeeded yet, so there is no published
+    /// result to address (`readCurrent`, `editCurrent`).
+    NoParseResult,
     /// A parse without stack-overflow recovery attempted while another
     /// parse's recovery scope is active on this thread. An inner fault
     /// would land in the outer scope, skipping this session's cleanup, so
@@ -259,6 +263,9 @@ fn guardSemanticErrorCount(session: *const Session) usize {
 
 pub const SessionReadGuard = struct {
     session: *Session,
+    /// The validated result this guard is for: the caller's result in
+    /// `read`, the session's published result in `readCurrent`.
+    result: ParseResult,
 
     pub fn deinit(self: *SessionReadGuard) void {
         self.session.releaseSharedGuard();
@@ -324,6 +331,37 @@ pub const SessionDiagnosticsGuard = struct {
 
     pub fn semanticErrorCount(self: *const SessionDiagnosticsGuard) usize {
         return guardSemanticErrorCount(self.session);
+    }
+};
+
+/// Exclusive guard returned by `edit`, `editResult`, and `editCurrent`. Its
+/// accessors expose only what mutation sites need: node storage for
+/// reservations and edits, and the last diagnostic for cache refills. (As
+/// with the read guards, narrowing is an accessor convention, not a
+/// compiler barrier.)
+pub const SessionEditGuard = struct {
+    session: *Session,
+
+    pub fn deinit(self: *SessionEditGuard) void {
+        self.session.releaseEditGuard();
+        self.* = undefined;
+    }
+
+    /// Mutable node storage: only an exclusive guard reaches it, so
+    /// capacity changes and tree edits cannot race readers.
+    pub fn mutableAstAllocator(self: *SessionEditGuard) if (parser.is_ast_enabled) *data_structures.ASTAllocator else void {
+        if (parser.is_ast_enabled) {
+            return &self.session.node_allocator;
+        }
+        return {};
+    }
+
+    pub fn lastDiagnostic(self: *const SessionEditGuard) ?ParseDiagnostic {
+        return guardLastDiagnostic(self.session);
+    }
+
+    pub fn lastRenderedMessage(self: *const SessionEditGuard) ?[]const u8 {
+        return guardLastRenderedMessage(self.session);
     }
 };
 
@@ -509,6 +547,26 @@ pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiag
     return output.toOwnedSlice();
 }
 
+/// The parse lease: the exclusive door held from parse acquisition until
+/// the caller has finished whatever must land together with the result.
+/// Every leased parse entry funnels through `Session.acquireParse`, which
+/// stamps the generation, and the session publishes the result itself
+/// (`Session.published_result`) inside that same exclusive hold. A host that
+/// pairs the result with state of its own — the C ABI retains the parsed
+/// input — writes that state before `deinit`, so no reader observes the
+/// pair mid-swap and an older parse can never publish over a newer one.
+/// The caller must `deinit` the lease exactly once.
+pub const ParseLease = struct {
+    session: *Session,
+    result: ParseResult,
+
+    /// Single lease-release site: unlocks the write lease.
+    pub fn deinit(self: *ParseLease) void {
+        self.session.releaseParse();
+        self.* = undefined;
+    }
+};
+
 pub const Session = struct {
     io: std.Io,
     allocator: std.mem.Allocator,
@@ -522,10 +580,15 @@ pub const Session = struct {
     stack_overflow_recovery: bool,
     ast_preallocation_ratio: if (parser.is_ast_enabled) f64 else void,
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
-    session_lock: std.Io.RwLock = .init,
+    session_lock: SessionLock = .init,
     generation: usize = 0,
-    /// Host-owned pointer copied onto each parse `Context`. The C ABI stores
-    /// the `GalleySession` here so procedure hooks can call `galley_node_*`.
+    /// The result of the most recent successful parse, written only by
+    /// `_parseContextUnlocked` under the exclusive lock and read only under
+    /// a guard. It goes stale — never null again — the moment a later parse
+    /// (successful or failed) advances `generation`.
+    published_result: ?ParseResult = null,
+    /// Host-owned pointer copied onto each parse `Context` (`Context.user_data`)
+    /// for hooks written in Zig.
     user_data: ?*anyopaque = null,
     /// Live parse context, set only inside `_parseContextUnlocked`.
     active_context: ?*data_structures.Context = null,
@@ -610,8 +673,8 @@ pub const Session = struct {
     }
 
     pub fn tryDeinit(self: *Session) error{SessionInUse}!void {
-        if (!self.session_lock.tryLock(self.io)) return error.SessionInUse;
-        defer self.session_lock.unlock(self.io);
+        if (!self.session_lock.tryLock()) return error.SessionInUse;
+        defer self.session_lock.unlock();
 
         if (self.owned_input) |owned_input| {
             self.allocator.free(owned_input);
@@ -637,20 +700,96 @@ pub const Session = struct {
         self.message_overrides.deinit(self.allocator);
     }
 
-    pub fn read(self: *Session, result: ParseResult) SessionError!SessionReadGuard {
-        if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
-        if (result._session_identity != @as(*const anyopaque, @ptrCast(self.reader_buffer.ptr)) or
-            result._session_generation != self.generation)
-        {
-            self.session_lock.unlockShared(self.io);
-            return error.StaleParseResult;
-        }
+    /// Single result-validation site. A parse result addresses this session
+    /// only while its stamped identity and generation still match; every
+    /// result-taking guard funnels through `resolveResult`, which calls
+    /// this, so a stale result cannot slip through any door.
+    fn validateResult(self: *const Session, result: ParseResult) bool {
+        return result._session_identity == @as(*const anyopaque, @ptrCast(self.reader_buffer.ptr)) and
+            result._session_generation == self.generation;
+    }
+
+    /// Where a result-taking guard gets the result it validates.
+    const ResultSource = union(enum) {
+        /// A result the caller holds.
+        given: ParseResult,
+        /// The session's own published result, loaded under the lock so a
+        /// concurrent publication cannot separate the load from the guard.
+        published,
+    };
+
+    /// Resolves and validates the result for a guard whose lock the caller
+    /// already holds; on failure the caller releases that lock.
+    fn resolveResult(self: *const Session, source: ResultSource) SessionError!ParseResult {
+        const result = switch (source) {
+            .given => |given| given,
+            .published => self.published_result orelse return error.NoParseResult,
+        };
+        if (!self.validateResult(result)) return error.StaleParseResult;
+        return result;
+    }
+
+    fn readGuard(self: *Session, source: ResultSource) SessionError!SessionReadGuard {
+        if (!self.session_lock.tryLockShared()) return error.SessionInUse;
+        const result = self.resolveResult(source) catch |err| {
+            self.session_lock.unlockShared();
+            return err;
+        };
+        return .{ .session = self, .result = result };
+    }
+
+    fn editGuard(self: *Session, source: ResultSource) SessionError!SessionEditGuard {
+        if (!self.session_lock.tryLock()) return error.SessionInUse;
+        _ = self.resolveResult(source) catch |err| {
+            self.session_lock.unlock();
+            return err;
+        };
         return .{ .session = self };
     }
 
+    /// Shared guard for a result the caller holds. Refuses a result from a
+    /// dead parse.
+    pub fn read(self: *Session, result: ParseResult) SessionError!SessionReadGuard {
+        return self.readGuard(.{ .given = result });
+    }
+
+    /// Shared guard for the session's published result: the last successful
+    /// parse, refused as stale once any later parse has begun and as absent
+    /// before the first success.
+    pub fn readCurrent(self: *Session) SessionError!SessionReadGuard {
+        return self.readGuard(.published);
+    }
+
     pub fn readLatest(self: *Session) SessionError!SessionDiagnosticsGuard {
-        if (!self.session_lock.tryLockShared(self.io)) return error.SessionInUse;
+        if (!self.session_lock.tryLockShared()) return error.SessionInUse;
         return .{ .session = self };
+    }
+
+    /// Exclusive guard for mutations that must not race readers: the
+    /// rendered-diagnostic cache and node-storage reservations. No
+    /// result is validated — the caller owns what it writes — so a node
+    /// mutation must go through `editResult` or `editCurrent` instead.
+    /// Fail-fast: a hook reaching back through a stashed session meets its
+    /// own parse's exclusive hold and gets `SessionInUse` rather than
+    /// deadlocking.
+    pub fn edit(self: *Session) error{SessionInUse}!SessionEditGuard {
+        if (!self.session_lock.tryLock()) return error.SessionInUse;
+        return .{ .session = self };
+    }
+
+    /// The mutation door for tree edits: exclusive like `edit`, plus the
+    /// same result validation as `read`, so an address from a dead parse is
+    /// refused before it can index storage the next parse reset.
+    pub fn editResult(self: *Session, result: ParseResult) SessionError!SessionEditGuard {
+        return self.editGuard(.{ .given = result });
+    }
+
+    /// Exclusive twin of `readCurrent`: the tree-edit gate over the
+    /// session's published result. Fail-fast like `edit`, so a hook reaching
+    /// back through a stashed session gets `SessionInUse` rather than
+    /// deadlocking.
+    pub fn editCurrent(self: *Session) SessionError!SessionEditGuard {
+        return self.editGuard(.published);
     }
 
     /// Single parse-acquire site. Every parse entry funnels through here so
@@ -662,9 +801,9 @@ pub const Session = struct {
         if (stack_overflow_utilities.isActive() and !self.stack_overflow_recovery) {
             return error.NestedParseDuringStackOverflowRecovery;
         }
-        if (!self.session_lock.tryLock(self.io)) return error.SessionInUse;
+        if (!self.session_lock.tryLock()) return error.SessionInUse;
         if (self.generation == std.math.maxInt(usize)) {
-            self.session_lock.unlock(self.io);
+            self.session_lock.unlock();
             return error.SessionGenerationExhausted;
         }
         self.generation += 1;
@@ -672,14 +811,20 @@ pub const Session = struct {
 
     /// Single parse-release site. Unlocks the write lease held by the parse.
     fn releaseParse(self: *Session) void {
-        self.session_lock.unlock(self.io);
+        self.session_lock.unlock();
     }
 
     /// Single guard-release site. Both guard types delegate here so the
     /// shared-lock release has one implementation; the narrowing (the
     /// diagnostics guard exposes no node storage) lives in the accessors.
     fn releaseSharedGuard(self: *Session) void {
-        self.session_lock.unlockShared(self.io);
+        self.session_lock.unlockShared();
+    }
+
+    /// Single edit-release site. The edit guards delegate here so the
+    /// exclusive release has one implementation.
+    fn releaseEditGuard(self: *Session) void {
+        self.session_lock.unlock();
     }
 
     fn ensureOwnedInputCapacity(self: *Session, required: usize) ![]u8 {
@@ -736,10 +881,22 @@ pub const Session = struct {
         }
     }
 
-    pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+    /// The leased entry for byte input: acquires the write lease and runs
+    /// the parse under it, returning a lease whose `deinit` releases.
+    /// A caller that pairs state of its own with the published result (the
+    /// C ABI) holds the lease while it writes that state; one that only
+    /// needs the result uses `parseBytes`, which releases on return.
+    pub fn parseBytesLeased(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
-        defer self.releaseParse();
-        return try self.parseBytesUnlocked(input, input_path);
+        errdefer self.releaseParse();
+        const result = try self.parseBytesUnlocked(input, input_path);
+        return .{ .session = self, .result = result };
+    }
+
+    pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+        var lease = try self.parseBytesLeased(input, input_path);
+        defer lease.deinit();
+        return lease.result;
     }
 
     fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
@@ -753,10 +910,18 @@ pub const Session = struct {
         return try self._parseContextUnlocked(&context_value);
     }
 
-    pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+    /// The leased entry for NUL-terminated input; see `parseBytesLeased`.
+    pub fn parseSentinelBytesLeased(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
-        defer self.releaseParse();
-        return try self.parseSentinelBytesUnlocked(input, input_path);
+        errdefer self.releaseParse();
+        const result = try self.parseSentinelBytesUnlocked(input, input_path);
+        return .{ .session = self, .result = result };
+    }
+
+    pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+        var lease = try self.parseSentinelBytesLeased(input, input_path);
+        defer lease.deinit();
+        return lease.result;
     }
 
     fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
@@ -774,10 +939,18 @@ pub const Session = struct {
         return try self._parseContextUnlocked(&context_value);
     }
 
-    pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
+    /// The leased entry for file input; see `parseBytesLeased`.
+    pub fn parseFileLeased(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
-        defer self.releaseParse();
-        return try self.parseFileUnlocked(file, input_path);
+        errdefer self.releaseParse();
+        const result = try self.parseFileUnlocked(file, input_path);
+        return .{ .session = self, .result = result };
+    }
+
+    pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
+        var lease = try self.parseFileLeased(file, input_path);
+        defer lease.deinit();
+        return lease.result;
     }
 
     fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
@@ -905,6 +1078,7 @@ pub const Session = struct {
         var session_result = parsed;
         session_result._session_generation = self.generation;
         session_result._session_identity = @ptrCast(self.reader_buffer.ptr);
+        self.published_result = session_result;
         return session_result;
     }
 };

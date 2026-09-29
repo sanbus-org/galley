@@ -169,7 +169,9 @@ Node text, diagnostics, and expected-token data remain valid only until the
 next parse on the same session; every accessor copies before returning.
 `Node` methods check that their session is still open on the node's parse
 generation and throw `SessionClosedError` after `close()`, exiting a `using`
-block, or a re-parse.
+block, or a re-parse. A failed parse counts: node reads fall back to their
+empty values and `snapshot()` throws `ErrorInvalidNode` until a successful
+parse, while `lastInput()` keeps the last successful input.
 
 ## Procedures
 
@@ -214,6 +216,10 @@ export function hook_print(args: ProcedureArguments): void {
   emit(`@print "${text}" at ${line}:${column}`);
 }
 ```
+
+`ProcedureArguments` is valid only while its hook runs and throws afterwards.
+The nodes it yields belong to the parse: a hook may keep one for later hooks
+of the same parse, and it throws once that parse ends.
 
 Every parser owns its hooks: the generated package entry (and the
 internal `openLanguageDirectory` behind it) loads the language
@@ -352,7 +358,7 @@ node. Editing helpers are available both ways:
 `removeChildrenAt`, `promoteChildrenOverWrapper`, `unlinkWrapper`)
 live on `Session` and accept `Node | bigint`. Missing links return `null`.
 `session.diagnostics()` returns every recorded diagnostic. Nodes compare by
-identity (`a.equals(b)` checks same session and address), and support
+identity (`a.equals(b)` checks same session, door, and address), and support
 `Number(node)` / `BigInt(node)` to recover the raw address.
 
 `session.diagnostic()` returns a frozen snapshot (`Diagnostic`) with `kind`,

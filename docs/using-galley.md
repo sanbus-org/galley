@@ -330,7 +330,9 @@ than waiting if the session is already parsing or has active readers. Call
 `session.read(result)` before inspecting session-owned AST data. Multiple
 readers may coexist, but every reader must be released before parsing again.
 Results carry a session generation, so `read` returns
-`error.StaleParseResult` after a later parse has reused the session.
+`error.StaleParseResult` after a later parse — successful or failed — has
+reused the session: a failed parse resets node storage too, and only a
+successful parse publishes a fresh result.
 `tryDeinit()` similarly returns `error.SessionInUse`; `deinit()` reports
 incorrect active-guard destruction with a clear panic.
 

@@ -123,7 +123,10 @@ the next parse on the same session; every accessor copies before
 returning, so Python-side values never dangle. `Node` methods check that
 their session is still open on the node's parse generation and raise
 `ValueError` after `session.close()`, exiting a `with` block, or a
-re-parse.
+re-parse. A failed parse counts: node methods return their empty values
+and `session.snapshot()` raises `GalleyError` with `ERROR_INVALID_NODE`
+until a successful parse, while `last_input` keeps the last successful
+input.
 
 ## Procedures
 
@@ -158,6 +161,10 @@ def hook_print(args: ProcedureArguments) -> None:
     text = (node.text() or b"").decode()
     print(f'@print "{text}" at {line}:{column}', file=sys.stderr)
 ```
+
+`ProcedureArguments` is valid only while its hook runs and raises `ValueError`
+afterwards. The nodes it yields belong to the parse: a hook may keep one for
+later hooks of the same parse, and it raises once that parse ends.
 
 Mechanically, `python -m galley` reads the generator's hook list
 (`procedures` in metadata.json) and produces a Zig shim module containing
@@ -256,8 +263,9 @@ directly from the node. Editing helpers are available both ways:
 `remove_children_at`, `promote_children_over_wrapper`, `unlink_wrapper`)
 live on `Session` and accept `Node` or `int`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
-snapshots. Nodes compare by identity (`==` checks same session and address),
-hash by address, and support `int(node)` to recover the raw address.
+snapshots. Nodes compare by identity (`==` checks same session, door, and
+address), hash by address, and support `int(node)` to recover the raw
+address.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `line`, `column`, `message`, `message_ansi`,

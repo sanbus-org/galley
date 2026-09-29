@@ -78,6 +78,7 @@ class Status(enum.IntEnum):
     ERROR_INVALID_NODE = -10
     ERROR_IO = -11
     ERROR_SEMANTIC = -12
+    ERROR_SESSION_IN_USE = -13
 
 INVALID_NODE: Final[int]
 """All-ones address marking an absent node link."""
@@ -148,18 +149,21 @@ class Diagnostic:
     """``(parent variable, rhs index, symbol index, variable)``."""
 
 # ---------------------------------------------------------------------------
-# Node handle — session-bound, hashable, indexable, iterable over children
+# Node handle — session-backed, hashable, indexable, iterable over children
 # ---------------------------------------------------------------------------
 
 class Node:
-    """Session-bound handle for a node in the non-relocating AST storage.
+    """Handle for a node in the non-relocating AST storage.
 
     A ``Node`` keeps a strong reference to its ``Session`` and raises
     ``ValueError`` after the session is closed (``close()`` or exiting
     ``with``) or parses again: nodes read only the parse generation that
-    created them. ``int(node)`` and ``operator.index(node)`` return the raw
-    address; plain ``int`` addresses are accepted wherever a ``Node`` is
-    expected.
+    created them. It also carries the door it crosses through: nodes from
+    ``Session`` queries use the session door (which refuses while a parse
+    holds the session), nodes reached from a hook use the hook door over
+    the live parse. ``int(node)`` and ``operator.index(node)`` return the
+    raw address; plain ``int`` addresses are accepted wherever a ``Node``
+    is expected.
     """
 
     address: int
@@ -234,7 +238,7 @@ class Node:
         ...
     def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool:
-        """Equal when same session and same address."""
+        """Equal when same session, same door, and same address."""
         ...
 
     def __ne__(self, other: object) -> bool: ...
@@ -286,15 +290,16 @@ class Walker(Iterator[dict[str, Any]]):
         ...
 
 class ProcedureArguments:
-    """Parse-time arguments passed to a procedure hook.
+    """Per-hook arguments passed to a procedure hook.
 
-    Tree queries use ``current_node()`` and the ordinary ``Node`` methods
-    on the returned handle. Drop/replace talks to the parser through the
-    current-node channel, not ``Session.remove_self``.
+    Valid only while the hook runs: a reference kept past its hook raises
+    ``ValueError``. Tree queries use ``current_node()`` and the ordinary
+    ``Node`` methods on the returned handle. Those nodes cross the parse's
+    hook door, so they read the live parse while the session door refuses,
+    and they stay usable from later hooks of the same parse. Drop/replace
+    talks to the parser through the current-node channel, not
+    ``Session.remove_self``.
     """
-
-    session: Session | None
-    """The ``Session`` currently parsing, or ``None``."""
 
     def current_node(self) -> Node | None:
         """The node being reduced, or ``None``."""

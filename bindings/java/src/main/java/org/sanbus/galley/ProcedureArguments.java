@@ -7,87 +7,80 @@ import java.nio.charset.StandardCharsets;
 import org.sanbus.galley.internal.GalleyLibrary;
 
 /**
- * Parse-time arguments passed to a procedure hook.
- *
- * Tree queries use {@link #getSession()} with the ordinary Session APIs;
- * drop/replace use the dedicated methods on this object, not Session's
- * tree editing.
+ * Per-hook arguments passed to a procedure hook: the current node and its
+ * redirect, the scanner position, drop and replace, and semantic errors.
+ * Valid only while the hook runs — the dispatcher expires them when it
+ * returns, so a reference kept past that throws instead of reading a frame
+ * that is gone. The tree is not per hook: nodes this object yields belong
+ * to the parse's door, stay usable from later hooks of the same parse, and
+ * refuse once that parse ends. Drop/replace use the dedicated methods here,
+ * not Session's tree editing.
  */
 public final class ProcedureArguments {
+    private static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
+
     private final MemorySegment argsSegment;
     private final GalleyLibrary lib;
+    /** The parse's door, or null when the hook ran outside any parse frame. */
+    private final HookDoor door;
+    private boolean expired;
 
-    public ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib) {
+    ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib, HookDoor door) {
         this.argsSegment = argsSegment;
         this.lib = lib;
+        this.door = door;
     }
 
-    /**
-     * The session currently parsing, or null.
-     */
-    public Session getSession() {
-        MemorySegment sessAddr = lib.galley_procedure_session(argsSegment);
-        if (sessAddr == null || sessAddr.equals(MemorySegment.NULL)) return null;
-        return Session.fromNativeSegment(sessAddr, lib);
-    }
+    /** Dispatcher hook: the native arguments no longer exist past this call. */
+    void expire() { expired = true; }
 
     /**
-     * Whether the session currently parsing is closed. False inside a
-     * live hook; true when no session is attached.
+     * The single gate for per-hook state: every accessor takes the native
+     * arguments from here and nowhere else.
      */
-    public boolean isClosed() {
-        Session session = getSession();
-        return session == null || session.isClosed();
+    private MemorySegment live() {
+        if (expired) throw GalleyClosedException.invalidated("procedure arguments");
+        return argsSegment;
+    }
+
+    private HookDoor requireDoor() {
+        if (door == null) throw GalleyClosedException.invalidated("procedure arguments");
+        return door;
     }
 
     /**
      * The node being reduced, or null.
      */
     public Node currentNode() {
-        long addr = lib.galley_procedure_current_node(argsSegment);
-        if (addr == 0xFFFFFFFFFFFFFFFFL) return null;
-        Session sess = getSession();
-        if (sess == null) return null;
-        return new Node(sess, addr);
+        long address = lib.galley_procedure_current_node(live());
+        if (address == INVALID_NODE) return null;
+        return requireDoor().node(address);
     }
 
     public void setCurrentNode(Node node) {
-        if (node == null) {
-            lib.galley_procedure_set_current_node(argsSegment, 0xFFFFFFFFFFFFFFFFL);
-            return;
-        }
-        Session hookSession = getSession();
-        if (hookSession == null) throw new GalleyClosedException("session");
-        if (node.getSession() != hookSession) throw new IllegalArgumentException("node belongs to a different session");
-        lib.galley_procedure_set_current_node(argsSegment, node.validatedAddress());
+        MemorySegment args = live();
+        lib.galley_procedure_set_current_node(args, node == null ? INVALID_NODE : requireDoor().address(node));
     }
 
     public long dropSelf() {
-        long st = lib.galley_procedure_drop_self(argsSegment);
-        if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
-        return st;
+        return succeeded(lib.galley_procedure_drop_self(live()));
     }
 
     public long dropChildren() {
-        long st = lib.galley_procedure_drop_children(argsSegment);
-        if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
-        return st;
+        return succeeded(lib.galley_procedure_drop_children(live()));
     }
 
     public long dropIfEmpty() {
-        long st = lib.galley_procedure_drop_if_empty(argsSegment);
-        if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
-        return st;
+        return succeeded(lib.galley_procedure_drop_if_empty(live()));
     }
 
     public long replaceWithChildren() {
-        long st = lib.galley_procedure_replace_with_children(argsSegment);
-        if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
-        return st;
+        return succeeded(lib.galley_procedure_replace_with_children(live()));
     }
 
-    public int currentLine() { return lib.galley_procedure_context_line(argsSegment); }
-    public int currentColumn() { return lib.galley_procedure_context_column(argsSegment); }
+    public int currentLine() { return lib.galley_procedure_context_line(live()); }
+
+    public int currentColumn() { return lib.galley_procedure_context_column(live()); }
 
     /**
      * Records a semantic error on the current node and returns the running
@@ -95,28 +88,29 @@ public final class ProcedureArguments {
      * error fails with {@link StatusCode#ERROR_SEMANTIC}.
      */
     public int reportSemanticError(String message) {
+        MemorySegment args = live();
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment seg = bytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
-            long st = lib.galley_procedure_report_semantic_error(argsSegment, seg, bytes.length);
-            if (st < 0) throw new GalleyException(lib.galley_status_string(st) != null ? lib.galley_status_string(st) : "procedure error", (int) st);
-            return (int) st;
+            return (int) succeeded(lib.galley_procedure_report_semantic_error(args, seg, bytes.length));
         }
     }
 
-    // Convenience delegations for tree editing via session
+    // Convenience tree editing of the current node through the parse's door.
+
     public Node cleanChildren() {
-        Node n = currentNode();
-        if (n == null) return null;
-        Session s = getSession();
-        if (s == null) return null;
-        return s.cleanChildren(n);
+        Node current = currentNode();
+        return current == null ? null : current.cleanChildren();
     }
 
     public void appendChildren(Node chain) {
-        Node n = currentNode();
-        Session s = getSession();
-        if (n == null || s == null) return;
-        s.appendChildren(n, chain);
+        Node current = currentNode();
+        if (current == null) return;
+        current.appendChildren(chain);
+    }
+
+    private long succeeded(long status) {
+        if (status < 0) throw HookDoor.failure(lib, status);
+        return status;
     }
 }

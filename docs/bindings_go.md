@@ -78,15 +78,15 @@ import (
 //export reduction_Pair
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	text, _ := session.Text(node)
-	line, column, _ := session.LineColumn(node)
+	text, _ := door.Text(node)
+	line, column, _ := door.LineColumn(node)
 	fmt.Fprintf(os.Stderr, "Pair %s (%d children) at %d:%d\n",
-		text, session.ChildCount(node), line, column)
+		text, door.ChildCount(node), line, column)
 }
 
 //export reduction_KeyTail
@@ -97,13 +97,13 @@ func reduction_KeyTail(ptr unsafe.Pointer) {
 //export hook_print
 func hook_print(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
-	session := args.Session()
+	door := args.Door()
 	node, ok := args.CurrentNode()
-	if session == nil || !ok {
+	if !ok {
 		return
 	}
-	text, _ := session.Text(node)
-	line, column, _ := session.LineColumn(node)
+	text, _ := door.Text(node)
+	line, column, _ := door.LineColumn(node)
 	fmt.Fprintf(os.Stderr, "@print %q at %d:%d\n", text, line, column)
 }
 ```
@@ -125,8 +125,10 @@ the corresponding variable is reduced; unregistered slots are no-ops.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings. Tree
-queries use `galley.Args(ptr).Session()` with the ordinary session node
-APIs; drop/replace use `args.DropSelf()` and friends.
+queries use the parse's door, `galley.Args(ptr).Door()`, which implements
+`galley.NodeDoor` like a session does; the door is the same for every hook of
+one parse and valid until that parse ends. The arguments themselves are valid
+only while their hook runs; drop/replace use `args.DropSelf()` and friends.
 
 ## Error Messages
 
@@ -200,7 +202,10 @@ parsed, err := session.ParseSentinel("alpha:12,beta:3")
 Sessions own their IO backend and allocator and are not safe for
 concurrent use — keep one per goroutine or guard it externally. Node
 handles, text slices, and diagnostics remain valid until the next parse on
-the same session or `Close`.
+the same session or `Close`. A failed parse counts as a later parse:
+`Snapshot()` fails with `ErrInvalidNode` and node reads fall back to their
+empty values until a successful parse, while `LastInput()` keeps the last
+successful input.
 
 ## Development builds
 

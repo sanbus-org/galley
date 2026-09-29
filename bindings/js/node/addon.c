@@ -242,8 +242,22 @@ typedef long long (*fn_galley_procedure_drop_if_empty_t)(void *args);
 typedef long long (*fn_galley_procedure_drop_self_t)(void *args);
 typedef long long (*fn_galley_procedure_replace_with_children_t)(void *args);
 typedef long long (*fn_galley_procedure_report_semantic_error_t)(void *args, const char *message, size_t message_len);
-typedef GalleySession * (*fn_galley_procedure_session_t)(void *args);
 typedef void (*fn_galley_procedure_set_current_node_t)(void *args, unsigned long long node);
+typedef void *(*fn_galley_procedure_door_t)(void *args);
+/* Hook door: the parse-time twins of the node/tree session accessors, taking
+ * the parse's door (galley_procedure_door), not the per-hook arguments. */
+typedef unsigned int (*fn_galley_hook_node_child_count_t)(void *door, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_hook_node_first_child_t)(void *door, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_hook_node_last_child_t)(void *door, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_hook_node_next_sibling_t)(void *door, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_hook_node_prior_sibling_t)(void *door, GalleyNodeAddress node);
+typedef GalleyNodeAddress (*fn_galley_hook_node_parent_t)(void *door, GalleyNodeAddress node);
+typedef long long (*fn_galley_hook_node_symbol_name_t)(void *door, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_hook_node_text_t)(void *door, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_hook_node_span_t)(void *door, GalleyNodeAddress node, unsigned long long *out_start, unsigned long long *out_len);
+typedef long long (*fn_galley_hook_node_line_column_t)(void *door, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_hook_tree_append_children_t)(void *door, GalleyNodeAddress parent, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_hook_tree_clean_children_t)(void *door, GalleyNodeAddress node, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_recorded_context_count_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, unsigned long long diag_index, unsigned long long context_index, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
@@ -327,6 +341,18 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_has_input_streaming) \
   X(galley_has_position_tracking) \
   X(galley_has_procedures) \
+  X(galley_hook_node_child_count) \
+  X(galley_hook_node_first_child) \
+  X(galley_hook_node_last_child) \
+  X(galley_hook_node_line_column) \
+  X(galley_hook_node_next_sibling) \
+  X(galley_hook_node_parent) \
+  X(galley_hook_node_prior_sibling) \
+  X(galley_hook_node_span) \
+  X(galley_hook_node_symbol_name) \
+  X(galley_hook_node_text) \
+  X(galley_hook_tree_append_children) \
+  X(galley_hook_tree_clean_children) \
   X(galley_last_input) \
   X(galley_last_position) \
   X(galley_node_capacity) \
@@ -349,12 +375,12 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_procedure_context_column) \
   X(galley_procedure_context_line) \
   X(galley_procedure_current_node) \
+  X(galley_procedure_door) \
   X(galley_procedure_drop_children) \
   X(galley_procedure_drop_if_empty) \
   X(galley_procedure_drop_self) \
   X(galley_procedure_replace_with_children) \
   X(galley_procedure_report_semantic_error) \
-  X(galley_procedure_session) \
   X(galley_procedure_set_current_node) \
   X(galley_recorded_context_count) \
   X(galley_recorded_context_name) \
@@ -629,7 +655,7 @@ static bool session_arg(napi_env env, size_t argc, napi_value *argv, GalleySessi
   return true;
 }
 
-static bool args_arg(napi_env env, size_t argc, napi_value *argv, void **out) {
+static bool native_handle_arg(napi_env env, size_t argc, napi_value *argv, void **out) {
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected args");
     return false;
@@ -817,29 +843,55 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
 #define ARGS_PTR(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     void *args = NULL;                                                                     \
-    if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
+    if (!native_handle_arg(env, argc, argv, &args)) return NULL;                                    \
     return make_u64(env, (uint64_t)(uintptr_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                  \
   }
 
 #define ARGS_U64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     void *args = NULL;                                                                     \
-    if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
+    if (!native_handle_arg(env, argc, argv, &args)) return NULL;                                    \
     return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                            \
   }
 
 #define ARGS_I64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     void *args = NULL;                                                                     \
-    if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
+    if (!native_handle_arg(env, argc, argv, &args)) return NULL;                                    \
     return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                             \
   }
 
 #define ARGS_U32(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     void *args = NULL;                                                                     \
-    if (!args_arg(env, argc, argv, &args)) return NULL;                                    \
+    if (!native_handle_arg(env, argc, argv, &args)) return NULL;                                    \
     return make_u32(env, (uint32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(args));                                            \
+  }
+
+#define DOOR_NODE_U64(cfn)                                                                 \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *door = NULL;                                                                     \
+    if (!native_handle_arg(env, argc, argv, &door)) return NULL;                                    \
+    if (argc < 2) {                                                                        \
+      napi_throw_type_error(env, NULL, "expected node");                                   \
+      return NULL;                                                                         \
+    }                                                                                      \
+    uint64_t node = 0;                                                                     \
+    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
+    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(door, (GalleyNodeAddress)node));                 \
+  }
+
+#define DOOR_NODE_U32(cfn)                                                                 \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *door = NULL;                                                                     \
+    if (!native_handle_arg(env, argc, argv, &door)) return NULL;                                    \
+    if (argc < 2) {                                                                        \
+      napi_throw_type_error(env, NULL, "expected node");                                   \
+      return NULL;                                                                         \
+    }                                                                                      \
+    uint64_t node = 0;                                                                     \
+    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
+    return make_u32(env, (uint32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(door, (GalleyNodeAddress)node));                 \
   }
 
 NO_ARG_I64(galley_parser_type)
@@ -880,8 +932,14 @@ SESS_INDEX_I64(galley_recorded_expected_count)
 SESS_INDEX_I64(galley_recorded_context_count)
 SESS_INDEX_I64(galley_recorded_diagnostic_recovery_kind)
 
-ARGS_PTR(galley_procedure_session)
+DOOR_NODE_U32(galley_hook_node_child_count)
+DOOR_NODE_U64(galley_hook_node_first_child)
+DOOR_NODE_U64(galley_hook_node_last_child)
+DOOR_NODE_U64(galley_hook_node_next_sibling)
+DOOR_NODE_U64(galley_hook_node_prior_sibling)
+DOOR_NODE_U64(galley_hook_node_parent)
 ARGS_U64(galley_procedure_current_node)
+ARGS_PTR(galley_procedure_door)
 ARGS_I64(galley_procedure_drop_self)
 ARGS_I64(galley_procedure_drop_children)
 ARGS_I64(galley_procedure_drop_if_empty)
@@ -1141,6 +1199,86 @@ static napi_value method_galley_node_symbol_name(napi_env env, Lib *lib, size_t 
   size_t len = 0;
   long long status = ((fn_galley_node_symbol_name_t)lib->fn[SLOT_galley_node_symbol_name])(session, (GalleyNodeAddress)node, &data, &len);
   return out_bytes(env, status, data, len);
+}
+
+/* Hook door: door-first twins of the node/tree accessors above. */
+
+static napi_value method_galley_hook_node_text(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected node");
+    return NULL;
+  }
+  uint64_t node = 0;
+  if (!get_u64(env, argv[1], &node)) return NULL;
+  const char *data = NULL;
+  size_t len = 0;
+  long long status = ((fn_galley_hook_node_text_t)lib->fn[SLOT_galley_hook_node_text])(door, (GalleyNodeAddress)node, &data, &len);
+  return out_bytes(env, status, data, len);
+}
+
+static napi_value method_galley_hook_node_symbol_name(napi_env env, Lib *lib, size_t argc,
+                                                napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected node");
+    return NULL;
+  }
+  uint64_t node = 0;
+  if (!get_u64(env, argv[1], &node)) return NULL;
+  const char *data = NULL;
+  size_t len = 0;
+  long long status = ((fn_galley_hook_node_symbol_name_t)lib->fn[SLOT_galley_hook_node_symbol_name])(door, (GalleyNodeAddress)node, &data, &len);
+  return out_bytes(env, status, data, len);
+}
+
+static napi_value method_galley_hook_node_span(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected node");
+    return NULL;
+  }
+  uint64_t node = 0;
+  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long start = 0;
+  unsigned long long len = 0;
+  long long status = ((fn_galley_hook_node_span_t)lib->fn[SLOT_galley_hook_node_span])(door, (GalleyNodeAddress)node, &start, &len);
+  return pair_u64_or_null(env, status, (uint64_t)start, (uint64_t)len);
+}
+
+static napi_value method_galley_hook_node_line_column(napi_env env, Lib *lib, size_t argc,
+                                                napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected node");
+    return NULL;
+  }
+  uint64_t node = 0;
+  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned int line = 0;
+  unsigned int column = 0;
+  long long status = ((fn_galley_hook_node_line_column_t)lib->fn[SLOT_galley_hook_node_line_column])(door, (GalleyNodeAddress)node, &line, &column);
+  return pair_u32_or_null(env, status, line, column);
+}
+
+static napi_value method_galley_hook_tree_append_children(napi_env env, Lib *lib, size_t argc,
+                                                    napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 3) {
+    napi_throw_type_error(env, NULL, "expected parent and first");
+    return NULL;
+  }
+  uint64_t parent = 0;
+  uint64_t first = 0;
+  if (!get_u64(env, argv[1], &parent)) return NULL;
+  if (!get_u64(env, argv[2], &first)) return NULL;
+  return make_i64(env, ((fn_galley_hook_tree_append_children_t)lib->fn[SLOT_galley_hook_tree_append_children])(door, (GalleyNodeAddress)parent,
+                                                   (GalleyNodeAddress)first));
 }
 
 static napi_value method_galley_node_text(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
@@ -1765,6 +1903,21 @@ static napi_value method_galley_tree_promote_children_over_wrapper(napi_env env,
   return head_pair(env, status, head);
 }
 
+static napi_value method_galley_hook_tree_clean_children(napi_env env, Lib *lib, size_t argc,
+                                                   napi_value *argv) {
+  void *door = NULL;
+  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected node");
+    return NULL;
+  }
+  uint64_t node = 0;
+  if (!get_u64(env, argv[1], &node)) return NULL;
+  GalleyNodeAddress head = 0;
+  long long status = ((fn_galley_hook_tree_clean_children_t)lib->fn[SLOT_galley_hook_tree_clean_children])(door, (GalleyNodeAddress)node, &head);
+  return head_pair(env, status, head);
+}
+
 static napi_value method_galley_tree_clean_children(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
   GalleySession *session = NULL;
@@ -1836,7 +1989,7 @@ static napi_value method_galley_tree_remove_children_at(napi_env env, Lib *lib, 
 static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *lib, size_t argc,
                                                           napi_value *argv) {
   void *args = NULL;
-  if (!args_arg(env, argc, argv, &args)) return NULL;
+  if (!native_handle_arg(env, argc, argv, &args)) return NULL;
   if (argc < 2) {
     napi_throw_type_error(env, NULL, "expected node");
     return NULL;
@@ -1852,7 +2005,7 @@ static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *li
 static napi_value method_galley_procedure_report_semantic_error(napi_env env, Lib *lib, size_t argc,
                                                                napi_value *argv) {
   void *args = NULL;
-  if (!args_arg(env, argc, argv, &args)) return NULL;
+  if (!native_handle_arg(env, argc, argv, &args)) return NULL;
   if (argc < 2) {
     napi_throw_type_error(env, NULL, "expected message");
     return NULL;
@@ -2075,6 +2228,18 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_node_span);
   BIND_OR_THROW(api, lib, galley_node_line_column);
   BIND_OR_THROW(api, lib, galley_node_variable_index);
+  BIND_OR_THROW(api, lib, galley_hook_node_child_count);
+  BIND_OR_THROW(api, lib, galley_hook_node_first_child);
+  BIND_OR_THROW(api, lib, galley_hook_node_last_child);
+  BIND_OR_THROW(api, lib, galley_hook_node_next_sibling);
+  BIND_OR_THROW(api, lib, galley_hook_node_prior_sibling);
+  BIND_OR_THROW(api, lib, galley_hook_node_parent);
+  BIND_OR_THROW(api, lib, galley_hook_node_symbol_name);
+  BIND_OR_THROW(api, lib, galley_hook_node_text);
+  BIND_OR_THROW(api, lib, galley_hook_node_span);
+  BIND_OR_THROW(api, lib, galley_hook_node_line_column);
+  BIND_OR_THROW(api, lib, galley_hook_tree_append_children);
+  BIND_OR_THROW(api, lib, galley_hook_tree_clean_children);
   BIND_OR_THROW(api, lib, galley_tree_snapshot);
   BIND_OR_THROW(api, lib, galley_has_diagnostic);
   BIND_OR_THROW(api, lib, galley_diagnostic_kind);
@@ -2123,8 +2288,8 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_tree_unlink_wrapper);
   BIND_OR_THROW(api, lib, galley_tree_insert_children_at);
   BIND_OR_THROW(api, lib, galley_tree_remove_children_at);
-  BIND_OR_THROW(api, lib, galley_procedure_session);
   BIND_OR_THROW(api, lib, galley_procedure_current_node);
+  BIND_OR_THROW(api, lib, galley_procedure_door);
   BIND_OR_THROW(api, lib, galley_procedure_set_current_node);
   BIND_OR_THROW(api, lib, galley_procedure_drop_self);
   BIND_OR_THROW(api, lib, galley_procedure_drop_children);

@@ -1510,40 +1510,11 @@ const Generator = struct {
     }
 
     fn emitTerminalProcedureBlock(self: *Generator, writer: *std.Io.Writer, terminal_index: usize, node_expr: []const u8, occurrence_expr: []const u8, indent: []const u8) !void {
-        if (self.options.with_ast) {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = null,
-                \\{s}    .node_address = {s},
-                \\{s}}};
-            , .{ indent, indent, indent, indent, node_expr, indent });
-        } else {
-            try writer.print(
-                \\{s}var args = data_structures.ProcedureArguments{{
-                \\{s}    .context = context,
-                \\{s}    .rule = null,
-                \\{s}    ._temp_node = &{s},
-                \\{s}}};
-            , .{ indent, indent, indent, indent, node_expr, indent });
-        }
+        try emitter_common.emitProcedureArgsStruct(writer, indent, self.options.with_ast, null, node_expr, false);
         if (self.has_occurrence_procedures) {
             try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
         }
-        try writer.print(
-            \\{s}if (comptime symbol_procedures[{d}]) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\{s}if (comptime reduction_procedure) |procedure_pointer| {{
-            \\{s}    const procedure = @as(*data_structures.Procedure, @constCast(procedure_pointer));
-            \\{s}    try procedure(&args);
-            \\{s}}}
-            \\
-        , .{
-            indent, terminal_index, indent, indent, indent,
-            indent, indent,         indent, indent,
-        });
+        try emitter_common.emitProcedureDispatchTail(writer, indent, null, null, null, terminal_index);
     }
 
     fn emitDebugRuleExpansion(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, indent: []const u8) !void {

@@ -123,7 +123,6 @@ public class GalleyTest {
             parser.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
-                assertNotNull(args.getSession());
                 byte[] text = node.text();
                 assertNotNull(text);
                 assertTrue(text.length > 0);
@@ -175,15 +174,33 @@ public class GalleyTest {
         }
 
         @Test
-        void hookArgumentsReportSessionOpen() {
-            List<Boolean> seen = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> seen.add(args.isClosed()));
+        void hookDoorReadsWhileSessionDoorRefuses() {
+            // Establish a parse result: the refusal below is then the gate
+            // itself, not the no-result default.
+            session.parse("alpha:1");
+            List<Boolean> hookReads = new ArrayList<>();
+            List<StatusCode> refusals = new ArrayList<>();
+            parser.installProcedure("reduction_Pair", args -> {
+                Node node = args.currentNode();
+                hookReads.add(node != null && node.text() != null);
+                // Same address, other door: the parse holds the session, so
+                // the post-parse door refuses with a status. A raw address
+                // carries no door, so no Java identity check stands in the
+                // way and the native refusal is what answers.
+                try {
+                    session.variableIndex(node.getAddress());
+                    refusals.add(null);
+                } catch (GalleyException e) {
+                    refusals.add(e.getCode());
+                }
+            });
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
                 parser.clearProcedures();
             }
-            assertEquals(List.of(false, false), seen);
+            assertEquals(List.of(true, true), hookReads);
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), refusals);
         }
 
         @Test
@@ -788,7 +805,9 @@ public class GalleyTest {
             });
             session.parse("alpha:12,beta:3");
             assertTrue(seen.get() instanceof GenerationInvalidatedException);
-            // A node from another session throws.
+            // No cross-session identity gate: what still refuses the
+            // leftover handle is its generation, whichever session drives
+            // the parse.
             seen.set(null);
             Session other = parser.openSession();
             try {
@@ -796,7 +815,7 @@ public class GalleyTest {
             } finally {
                 other.close();
             }
-            assertTrue(seen.get() instanceof IllegalArgumentException);
+            assertTrue(seen.get() instanceof GenerationInvalidatedException);
         }
     }
 
@@ -872,6 +891,155 @@ public class GalleyTest {
             assertEquals(0, root.length());
             root.appendChildren(head);
             assertEquals(before, root.length());
+        }
+
+        @Test
+        void editsRefuseNodesFromAnotherDoor() {
+            // Every session is its own door: a node crosses as a bare
+            // address and the native side only bounds-checks it, so a node
+            // from another door would alias whatever node holds that index
+            // here. Every entry that takes a node refuses one from another
+            // door, not only the Node convenience methods.
+            Session other = parser.openSession();
+            try {
+                other.parse("alpha:12");
+                Node otherRoot = other.rootNode();
+                assertNotNull(otherRoot);
+                assertThrows(IllegalArgumentException.class, () -> root.appendChildren(otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> otherRoot.appendChildren(root));
+                assertThrows(IllegalArgumentException.class, () -> session.appendChildren(root, otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> session.insertBefore(root, otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> session.insertAfter(root, otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> session.insertChildrenAt(root, 0, otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> session.text(otherRoot));
+                assertThrows(IllegalArgumentException.class, () -> other.appendChildren(otherRoot, root));
+            } finally {
+                other.close();
+            }
+            // A hook's node handed to the session door is refused by door
+            // identity, whatever state the parse is in.
+            AtomicInteger refusals = new AtomicInteger();
+            parser.installProcedure("reduction_Pair", args -> {
+                try {
+                    session.variableIndex(args.currentNode());
+                } catch (IllegalArgumentException expected) {
+                    refusals.incrementAndGet();
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(2, refusals.get());
+        }
+
+        @Test
+        void hookAndSessionDoorsDoNotMix() {
+            // Post-parse session node versus parse-time hook node, both
+            // directions; the refusal must fire inside the hook.
+            AtomicInteger refusals = new AtomicInteger();
+            parser.installProcedure("reduction_Pair", args -> {
+                Node hookNode = args.currentNode();
+                assertNotNull(hookNode);
+                try {
+                    root.appendChildren(hookNode);
+                } catch (IllegalArgumentException expected) {
+                    refusals.incrementAndGet();
+                }
+                try {
+                    hookNode.appendChildren(root);
+                } catch (IllegalArgumentException expected) {
+                    refusals.incrementAndGet();
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(4, refusals.get());
+        }
+
+        @Test
+        void hooksOfOneParseShareADoor() {
+            // A chain detached in one hook can be attached in a later hook
+            // of the same parse: both nodes cross the same parse's door.
+            AtomicReference<Node> detached = new AtomicReference<>();
+            List<String> outcomes = new ArrayList<>();
+            parser.installProcedure("reduction_Pair", args -> {
+                Node node = args.currentNode();
+                assertNotNull(node);
+                if (detached.get() == null) {
+                    detached.set(node.cleanChildren());
+                    return;
+                }
+                try {
+                    node.appendChildren(detached.get());
+                    outcomes.add("ok");
+                } catch (RuntimeException error) {
+                    outcomes.add(error.toString());
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(List.of("ok"), outcomes);
+        }
+
+        @Test
+        void hookNodesOutliveTheirHookWithinTheParse() {
+            // The tree belongs to the parse, not to the hook that handed out
+            // a node: a node stashed by one hook stays usable from a later
+            // hook of the same parse and refuses once the parse ends.
+            AtomicReference<Node> stashed = new AtomicReference<>();
+            List<String> seen = new ArrayList<>();
+            parser.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) stashed.set(args.currentNode());
+            });
+            parser.installProcedure("reduction_Document", args -> {
+                seen.add(new String(stashed.get().text(), StandardCharsets.UTF_8));
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(List.of("alpha:12"), seen);
+            assertThrows(GenerationInvalidatedException.class, () -> stashed.get().text());
+        }
+
+        @Test
+        void procedureArgumentsDieWithTheirHook() {
+            // The arguments carry per-hook state (current node, position,
+            // drop and replace). A reference stashed past its hook refuses
+            // instead of touching a frame that is gone.
+            AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
+            List<Class<?>> outcomes = new ArrayList<>();
+            parser.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) stashed.set(args);
+            });
+            parser.installProcedure("reduction_Document", args -> {
+                for (Runnable use : List.<Runnable>of(
+                        () -> stashed.get().currentLine(),
+                        () -> stashed.get().currentNode(),
+                        () -> stashed.get().dropIfEmpty())) {
+                    try {
+                        use.run();
+                    } catch (GalleyClosedException error) {
+                        outcomes.add(error.getClass());
+                    }
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                parser.clearProcedures();
+            }
+            assertEquals(3, outcomes.size());
+            assertTrue(outcomes.stream().allMatch(GenerationInvalidatedException.class::equals));
         }
 
         @Test

@@ -21,6 +21,8 @@ fn exerciseNestedSessions(args: *parser.data_structures.ProcedureArguments) !voi
     const same_session = nested_same_session orelse return error.MissingNestedSession;
     try std.testing.expectError(error.SessionInUse, same_session.parseBytes("c", "same"));
     try std.testing.expectError(error.SessionInUse, same_session.readLatest());
+    try std.testing.expectError(error.SessionInUse, same_session.readCurrent());
+    try std.testing.expectError(error.SessionInUse, same_session.editCurrent());
     try std.testing.expectError(error.SessionInUse, same_session.tryDeinit());
 
     const separate_session = nested_separate_session orelse return error.MissingSeparateSession;
@@ -376,6 +378,73 @@ test "procedure-hooks stale results are nameable and distinct from parse failure
     var read_guard = try session.read(second);
     defer read_guard.deinit();
     try std.testing.expectEqual(@as(usize, 1), second.parsed_bytes);
+}
+
+fn ignoreDiagnostic(_: []const u8) void {}
+
+test "procedure-hooks current gates address the last successful parse" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    try std.testing.expectError(error.NoParseResult, session.readCurrent());
+    try std.testing.expectError(error.NoParseResult, session.editCurrent());
+
+    const first = try session.parseBytes("k", "first");
+    {
+        var read_guard = try session.readCurrent();
+        defer read_guard.deinit();
+        try std.testing.expectEqual(first.parsed_bytes, read_guard.result.parsed_bytes);
+        try std.testing.expectEqual(first._session_generation, read_guard.result._session_generation);
+    }
+    {
+        var edit_guard = try session.editCurrent();
+        edit_guard.deinit();
+    }
+
+    const second = try session.parseBytes("k", "second");
+    try std.testing.expectError(error.StaleParseResult, session.read(first));
+    var read_guard = try session.readCurrent();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(second._session_generation, read_guard.result._session_generation);
+}
+
+test "procedure-hooks a failed parse leaves the published result stale" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    defer session.deinit();
+
+    _ = try session.parseBytes("k", "first");
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("z", "second"));
+    try std.testing.expectError(error.StaleParseResult, session.readCurrent());
+    try std.testing.expectError(error.StaleParseResult, session.editCurrent());
+
+    _ = try session.parseBytes("k", "third");
+    var read_guard = try session.readCurrent();
+    read_guard.deinit();
+}
+
+test "procedure-hooks a first failed parse publishes nothing" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    defer session.deinit();
+
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("z", "only"));
+    try std.testing.expectError(error.NoParseResult, session.readCurrent());
+    try std.testing.expectError(error.NoParseResult, session.editCurrent());
+}
+
+test "procedure-hooks a lease holds the session until released" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    var lease = try session.parseBytesLeased("k", "leased");
+    try std.testing.expectEqual(@as(usize, 1), lease.result.parsed_bytes);
+    try std.testing.expectError(error.SessionInUse, session.readCurrent());
+    try std.testing.expectError(error.SessionInUse, session.editCurrent());
+    try std.testing.expectError(error.SessionInUse, session.parseBytes("k", "second"));
+    lease.deinit();
+
+    var read_guard = try session.readCurrent();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.result.parsed_bytes);
 }
 
 test "procedure-hooks sequential protected parses stay usable" {

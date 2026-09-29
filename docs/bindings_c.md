@@ -27,36 +27,43 @@ namespacing them away from unrelated symbols:
 #include <stdio.h>
 
 void reduction_Pair(void *args) {
-    GalleySession *session = galley_procedure_session(args);
+    GalleyHookDoor *door = galley_procedure_door(args);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
-    if (session == NULL) return;
-    galley_node_text(session, node, &text, &len);
-    galley_node_line_column(session, node, &line, &column);
+    if (node == GALLEY_INVALID_NODE) return;
+    galley_hook_node_text(door, node, &text, &len);
+    galley_hook_node_line_column(door, node, &line, &column);
     fprintf(stderr, "Pair %.*s (%u children) at %u:%u\n",
-            (int)len, text, galley_node_child_count(session, node), line, column);
+            (int)len, text, galley_hook_node_child_count(door, node), line, column);
 }
 void reduction_KeyTail(void *args) {
     galley_procedure_drop_if_empty(args);
 }
 void hook_print(void *args) {
-    GalleySession *session = galley_procedure_session(args);
+    GalleyHookDoor *door = galley_procedure_door(args);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
-    if (session == NULL) return;
-    galley_node_text(session, node, &text, &len);
-    galley_node_line_column(session, node, &line, &column);
+    if (node == GALLEY_INVALID_NODE) return;
+    galley_hook_node_text(door, node, &text, &len);
+    galley_hook_node_line_column(door, node, &line, &column);
     fprintf(stderr, "@print \"%.*s\" at %u:%u\n", (int)len, text, line, column);
 }
 ```
 
-Each hook receives an opaque `ProcedureArguments` pointer. Recover the
-parsing session with `galley_procedure_session` and inspect nodes with the
-ordinary `galley_node_*` functions. Drop/replace the current node with
+Each hook receives an opaque `ProcedureArguments` pointer, valid only while
+that hook runs. Tree access crosses the parse's door instead: take it with
+`galley_procedure_door(args)` and inspect nodes with the `galley_hook_*`
+twins, which are ungated while the parse runs. The door is the same pointer
+for every hook of one parse and dies when that parse ends, so a hook may keep
+it, and the nodes it reads, for later hooks of the same parse. The session
+door — `galley_node_*`,
+`galley_tree_*`, diagnostics — refuses with `galley_error_session_in_use`
+until the parse finishes, so a session stashed from a hook gains no
+privilege. Drop/replace the current node with
 `galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
 talk to the parser through `args.node_address` and are not the same as
 `galley_tree_remove_self`.
@@ -250,6 +257,13 @@ span start, span length, semantic-error flag); it returns the node count
 and writes up to `capacity` entries, so size with `galley_node_count`
 first and pass null for columns you do not need. Spans index the retained
 input, readable in one call with `galley_last_input`.
+
+Node reads belong to the last successful parse: once a later parse —
+successful or failed — has reset node storage, status-returning reads such
+as `galley_tree_snapshot` answer `galley_error_invalid_node` and the
+value-returning forms fall back to their defaults (`GALLEY_INVALID_NODE`,
+`0`) until a successful parse reopens the tree. `galley_last_input` is
+unaffected: it keeps the last successful input throughout.
 
 ### Editing the Tree
 

@@ -13,6 +13,7 @@
  */
 #include <galley.h>
 
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -337,6 +338,109 @@ static void test_error_paths(void) {
     galley_session_destroy(session);
 }
 
+/* The session door answers from the published result of the last successful
+ * parse. Before one exists, value queries answer neutrally and status
+ * queries report an invalid node; once a later parse has begun, the old
+ * result is stale and refuses the same way. */
+static void test_published_result_gate(void) {
+    GalleySession *session = make_session();
+    const char *data = NULL;
+    size_t len = 0;
+    GalleyNodeAddress head = GALLEY_INVALID_NODE;
+    CHECK(galley_node_count(session) == 0);
+    CHECK(galley_root_node(session) == GALLEY_INVALID_NODE);
+    CHECK(!galley_node_is_valid(session, 0));
+    CHECK(galley_node_child_count(session, GALLEY_INVALID_NODE) == 0);
+    CHECK(galley_node_variable_index(session, GALLEY_INVALID_NODE) == -1);
+    CHECK(galley_tree_snapshot(session, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0) == 0);
+    CHECK(galley_node_text(session, 0, &data, &len) == galley_error_invalid_node);
+    CHECK(galley_tree_clean_children(session, 0, &head) == galley_error_invalid_node);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    GalleyNodeAddress root = galley_root_node(session);
+    CHECK(root != GALLEY_INVALID_NODE);
+    CHECK(galley_node_text(session, root, &data, &len) == galley_ok);
+
+    CHECK(galley_parse_sentinel(session, broken_sample) < 0);
+    CHECK(galley_root_node(session) == GALLEY_INVALID_NODE);
+    CHECK(galley_node_text(session, root, &data, &len) == galley_error_invalid_node);
+    CHECK(galley_tree_clean_children(session, root, &head) == galley_error_invalid_node);
+    CHECK(galley_node_variable_index(session, root) == galley_error_invalid_node);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_root_node(session) != GALLEY_INVALID_NODE);
+    galley_session_destroy(session);
+}
+
+/* The rendered-message cache belongs to one parse: a later parse — failed or
+ * successful — never serves the message of the one before it. */
+static void test_diagnostic_cache_follows_the_parse(void) {
+    GalleySession *session = make_session();
+    const char *message = NULL;
+    char first[512];
+    CHECK(galley_parse_sentinel(session, "alpha:") < 0);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    snprintf(first, sizeof first, "%s", message);
+    CHECK(galley_parse_sentinel(session, "alpha:12,beta:") < 0);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(strcmp(first, message) != 0);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_diagnostic_message(session, &message) == galley_error_no_diagnostic);
+    galley_session_destroy(session);
+}
+
+typedef struct {
+    GalleySession *session;
+    const char *message;
+    const char *ansi;
+    int refused;
+    int mismatched;
+} CacheReader;
+
+/* Concurrent readers of one session hold the shared door together, so a
+ * message already in the cache is never refused as session-in-use. */
+static void *read_cached_messages(void *argument) {
+    CacheReader *reader = (CacheReader *)argument;
+    for (int i = 0; i < 20000; i++) {
+        const char *message = NULL;
+        const char *ansi = NULL;
+        long long status = galley_diagnostic_message(reader->session, &message);
+        long long ansi_status = galley_diagnostic_message_ansi(reader->session, &ansi);
+        if (status == galley_error_session_in_use || ansi_status == galley_error_session_in_use) {
+            reader->refused++;
+        } else if (status != galley_ok || ansi_status != galley_ok ||
+                   message != reader->message || ansi != reader->ansi) {
+            reader->mismatched++;
+        }
+    }
+    return NULL;
+}
+
+static void test_cached_diagnostic_serves_concurrent_readers(void) {
+    GalleySession *session = make_session();
+    const char *message = NULL;
+    const char *ansi = NULL;
+    CHECK(galley_parse_sentinel(session, broken_sample) < 0);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(galley_diagnostic_message_ansi(session, &ansi) == galley_ok);
+    CacheReader readers[4];
+    pthread_t threads[4];
+    for (int i = 0; i < 4; i++) {
+        readers[i].session = session;
+        readers[i].message = message;
+        readers[i].ansi = ansi;
+        readers[i].refused = 0;
+        readers[i].mismatched = 0;
+        CHECK(pthread_create(&threads[i], NULL, read_cached_messages, &readers[i]) == 0);
+    }
+    for (int i = 0; i < 4; i++) {
+        pthread_join(threads[i], NULL);
+        CHECK(readers[i].refused == 0);
+        CHECK(readers[i].mismatched == 0);
+    }
+    galley_session_destroy(session);
+}
+
 static void test_reserve_nodes(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
@@ -361,6 +465,36 @@ static void test_tree_edit(void) {
     galley_session_destroy(session);
 }
 
+/* The two doors of the split node/tree API, recorded mid-parse by
+ * reduction_Document in the fixture's procedures.c after the stash ran
+ * here: the parse-time door reads nodes while the parse holds the lock,
+ * the door taken in an earlier hook of the same parse still reads from a
+ * later hook, and the session door refuses the same call through the
+ * stashed session. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void fixture_stash_session(GalleySession *session);
+long long fixture_hook_text_status(void);
+long long fixture_stashed_kind_status(void);
+int fixture_later_hook_shares_door(void);
+long long fixture_later_hook_child_count(void);
+#ifdef __cplusplus
+}
+#endif
+
+static void test_hook_door(void) {
+    GalleySession *session = make_session();
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(NULL);
+    CHECK(fixture_hook_text_status() == galley_ok);
+    CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
+    CHECK(fixture_later_hook_shares_door() == 1);
+    CHECK(fixture_later_hook_child_count() > 0);
+    galley_session_destroy(session);
+}
+
 int main(void) {
     test_version();
     test_metadata_flags();
@@ -376,8 +510,12 @@ int main(void) {
     test_recorded_diagnostics();
     test_semantic_error();
     test_error_paths();
+    test_published_result_gate();
+    test_diagnostic_cache_follows_the_parse();
+    test_cached_diagnostic_serves_concurrent_readers();
     test_reserve_nodes();
     test_tree_edit();
+    test_hook_door();
     printf("%d tests, %d failures\n", ran, failures);
     return failures == 0 ? 0 : 1;
 }
