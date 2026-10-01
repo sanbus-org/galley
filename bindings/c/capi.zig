@@ -1020,6 +1020,25 @@ export fn galley_root_node(session_ptr: ?*GalleySession) GalleyNodeAddress {
     return galley_invalid_node;
 }
 
+/// Writes the parse generation of the session's published tree to
+/// `out_generation`: the generation every node of that tree carries, and the
+/// one `galley_hook_generation` reported while that parse ran. Writes 0 when
+/// nothing is published (no parse has succeeded) or the tree went stale (a
+/// later parse began); real generations start at 1. Returns
+/// `galley_error_session_in_use` while a parse is in flight, with 0 written.
+export fn galley_published_generation(session_ptr: ?*GalleySession, out_generation: ?*u64) i64 {
+    const out = out_generation orelse return galley_error_null_argument;
+    out.* = 0;
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    var guard = embedded.session.readCurrent() catch |err| switch (err) {
+        error.StaleParseResult, error.NoParseResult => return galley_ok,
+        else => return statusForError(err),
+    };
+    defer guard.deinit();
+    out.* = guard.generation();
+    return galley_ok;
+}
+
 /// Returns nonzero when `address` refers to a live node of the most recent
 /// parse. Refuses with 0 while a parse is in flight or the last result is
 /// stale.
@@ -2920,6 +2939,19 @@ inline fn procedureArguments(args: ?*anyopaque) ?*root.data_structures.Procedure
 export fn galley_procedure_door(args: ?*anyopaque) ?*anyopaque {
     const procedure_arguments = procedureArguments(args) orelse return null;
     return procedure_arguments.context;
+}
+
+/// Writes the parse generation of the parse that owns `hook_door` to
+/// `out_generation`: the generation of every node its hooks see, and of the
+/// tree it publishes if it succeeds (`galley_published_generation` reports it
+/// afterwards). Constant for the whole parse and takes no lock, so a host may
+/// read it once per hook. Returns `galley_error_null_argument` for a null
+/// door or output.
+export fn galley_hook_generation(hook_door: ?*anyopaque, out_generation: ?*u64) i64 {
+    const out = out_generation orelse return galley_error_null_argument;
+    const context: *root.data_structures.Context = @ptrCast(@alignCast(hook_door orelse return galley_error_null_argument));
+    out.* = context.generation;
+    return galley_ok;
 }
 
 export fn galley_procedure_current_node(args: ?*anyopaque) GalleyNodeAddress {

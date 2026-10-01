@@ -12,9 +12,9 @@ import java.util.Objects;
  * session or parsing again. Created by {@link Session#walk}.
  *
  * Single-pass: iteration resumes, never restarts — a second loop
- * continues where the first left off. Bound to the parse generation that
- * created it: stepping after the session parses again or closes throws
- * instead of reading stale storage.
+ * continues where the first left off. Bound to the core's parse generation
+ * of the tree it was created over: stepping after the session parses again
+ * or closes throws instead of reading stale storage.
  */
 public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.WalkStep>, AutoCloseable {
     /** One pre-order step: the node, its depth, and its semantic-error flag. */
@@ -49,7 +49,7 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     private void requireOpen() {
         if (handle == null) throw new GalleyClosedException("walker");
         if (session.isClosed()) throw new GalleyClosedException("walker's session");
-        if (generation != session.parseGeneration()) throw GalleyClosedException.invalidated("walker");
+        session.requireSessionGeneration(generation, "walker");
     }
 
     /**
@@ -66,7 +66,7 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
         requireOpen();
         if (done) return false;
         if (next != null) return true;
-        next = session.walkerNext(handle);
+        next = session.walkerNext(handle, generation);
         if (next == null) done = true;
         return next != null;
     }

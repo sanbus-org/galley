@@ -257,6 +257,18 @@ interface GalleyWasmExports {
   galley_hook_node_line_column(door: number, node: bigint, outLine: number, outCol: number): bigint;
   galley_hook_tree_append_children(door: number, parent: bigint, first: bigint): bigint;
   galley_hook_tree_clean_children(door: number, node: bigint, outHead: number): bigint;
+  galley_hook_node_is_valid(door: number, node: bigint): number;
+  galley_hook_node_variable_index(door: number, node: bigint): bigint;
+  galley_hook_tree_insert_before(door: number, target: bigint, first: bigint): bigint;
+  galley_hook_tree_insert_after(door: number, target: bigint, first: bigint): bigint;
+  galley_hook_tree_remove_siblings(door: number, node: bigint, count: number, outHead: number): bigint;
+  galley_hook_tree_remove_self(door: number, node: bigint, outHead: number): bigint;
+  galley_hook_tree_promote_children_over_wrapper(door: number, wrapper: bigint, outHead: number): bigint;
+  galley_hook_tree_unlink_wrapper(door: number, wrapper: bigint): bigint;
+  galley_hook_tree_insert_children_at(door: number, parent: bigint, index: number, first: bigint): bigint;
+  galley_hook_tree_remove_children_at(door: number, parent: bigint, index: number, count: number, outHead: number): bigint;
+  galley_hook_generation(door: number, outGeneration: number): bigint;
+  galley_published_generation(session: number, outGeneration: number): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): number;
   galley_hooks_name_data(index: number): number;
@@ -1700,6 +1712,84 @@ export class WasmPort implements FfiPort {
     try {
       const status = toNumber(this.wasm.galley_hook_tree_clean_children(door as number, asI64(node), out));
       return { status, head: this.dataView().getBigUint64(out, true) };
+    } finally {
+      this.free(out, 8);
+    }
+  }
+
+  hookNodeValid(door: Handle, node: bigint): boolean {
+    return this.wasm.galley_hook_node_is_valid(door as number, asI64(node)) !== 0;
+  }
+
+  hookNodeVariableIndex(door: Handle, node: bigint): number {
+    return toNumber(this.wasm.galley_hook_node_variable_index(door as number, asI64(node)));
+  }
+
+  hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_hook_tree_insert_before(door as number, asI64(target), asI64(first)));
+  }
+
+  hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_hook_tree_insert_after(door as number, asI64(target), asI64(first)));
+  }
+
+  #hookHeadCall(call: (out: number) => bigint): { status: number; head: bigint } {
+    const out = this.malloc(8);
+    try {
+      const status = toNumber(call(out));
+      return { status, head: this.dataView().getBigUint64(out, true) };
+    } finally {
+      this.free(out, 8);
+    }
+  }
+
+  hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint } {
+    return this.#hookHeadCall((out) =>
+      this.wasm.galley_hook_tree_remove_siblings(door as number, asI64(node), count, out),
+    );
+  }
+
+  hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
+    return this.#hookHeadCall((out) => this.wasm.galley_hook_tree_remove_self(door as number, asI64(node), out));
+  }
+
+  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint } {
+    return this.#hookHeadCall((out) =>
+      this.wasm.galley_hook_tree_promote_children_over_wrapper(door as number, asI64(wrapper), out),
+    );
+  }
+
+  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number {
+    return toNumber(this.wasm.galley_hook_tree_unlink_wrapper(door as number, asI64(wrapper)));
+  }
+
+  hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {
+    return toNumber(
+      this.wasm.galley_hook_tree_insert_children_at(door as number, asI64(parent), index, asI64(first)),
+    );
+  }
+
+  hookTreeRemoveChildrenAt(door: Handle, parent: bigint, index: number, count: number): { status: number; head: bigint } {
+    return this.#hookHeadCall((out) =>
+      this.wasm.galley_hook_tree_remove_children_at(door as number, asI64(parent), index, count, out),
+    );
+  }
+
+  hookGeneration(door: Handle): bigint {
+    const out = this.malloc(8);
+    try {
+      const status = this.wasm.galley_hook_generation(door as number, out);
+      return isNegative(status) ? 0n : this.dataView().getBigUint64(out, true);
+    } finally {
+      this.free(out, 8);
+    }
+  }
+
+  publishedGeneration(handle: Handle): { status: number; generation: bigint } {
+    const out = this.malloc(8);
+    try {
+      const status = toNumber(this.wasm.galley_published_generation(handle as number, out));
+      return { status, generation: this.dataView().getBigUint64(out, true) };
     } finally {
       this.free(out, 8);
     }

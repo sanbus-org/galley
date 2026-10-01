@@ -9,11 +9,13 @@
  *   tuples;
  * - node handles are galley.Node objects that wrap a stable address in the
  *   library's non-relocating node storage, keep a strong reference to
- *   their owning Session, and carry the door they cross through — the
- *   Session itself, or the ProcedureArguments of a live parse reached from
- *   a hook; plain ints are still accepted wherever a node is
- *   expected for backward compatibility, and Node supports int() and
- *   operator.index() to retrieve its address;
+ *   their owning Session, and carry the core's parse generation they
+ *   belong to. Which door a call crosses is chosen when the call is made:
+ *   from inside a hook of the session's running parse, on the thread
+ *   running that hook, a node reads through the parse's hook door;
+ *   everywhere else it reads through the session door. Plain ints are
+ *   still accepted wherever a node is expected for backward compatibility,
+ *   and Node supports int() and operator.index() to retrieve its address;
  * - text accessors copy straight into `bytes` with no UTF-8 decoding;
  * - parse() passes pointer+length into galley_parse;
  *   str inputs use the interpreter's cached UTF-8 buffer.
@@ -70,89 +72,58 @@ static PyObject *build_diagnostic(GalleySession *session);
  * message, or NULL when it is not a unicode string. */
 static PyObject *diagnostic_rendered_message(PyObject *diagnostic);
 
+/* Published-generation cache value meaning "ask the core again". No real
+ * generation reaches it, so no node ever matches it. */
+#define GENERATION_UNKNOWN ((unsigned long long)-1)
+
 typedef struct {
     PyObject_HEAD
     /* The native arguments of one hook call: valid only while that hook
      * runs. NULL once the hook returned, so a reference that escaped
      * refuses instead of reading a dead stack frame. Whatever must outlive
-     * the hook — the tree — lives on the door. */
+     * the hook — the tree — is addressed through the session. */
     void *args;
-    /* The HookDoorObject of the parse this hook belongs to, or NULL when
-     * the hook ran outside any parse frame. */
-    PyObject *door_obj;
+    /* The session whose parse this hook belongs to. */
+    PyObject *session_obj;
 } ProcedureArgsObject;
 
 typedef struct {
     PyObject_HEAD
     GalleySession *session;
-    /* Parse generation, bumped by every parse and close. Nodes and walkers
-     * stamp it at creation and refuse to touch reallocated storage once it
-     * moves, so no step or accessor ever reads a stale parse. */
-    unsigned long long generation;
+    /* The core's generation of the session's published tree, as of the
+     * last time this host read it (after every parse the core did not
+     * refuse, on close, and whenever a node's generation disagrees with
+     * it); 0 when nothing is published, GENERATION_UNKNOWN when a read
+     * failed and the next use must ask the core again. The core owns
+     * generations: the host never counts them, only caches what the core
+     * reported. */
+    unsigned long long published_generation;
+    /* The running parse's hook door and generation, read from the core on
+     * the parse's first dispatch (both are constant for the parse) and
+     * dropped by the parse's finish gate; NULL between parses. */
+    GalleyHookDoor *parse_door;
+    unsigned long long parse_generation;
+    /* Whether a hook is running now, and the thread running it: set per
+     * dispatch. A call made on dispatch_thread while dispatching crosses
+     * parse_door; a call from any other thread crosses the session door,
+     * which the core refuses while the parse runs. */
+    int dispatching;
+    unsigned long dispatch_thread;
     /* This session's hooks by name (str -> callable): replaced whole by every
      * change, never mutated. NULL until Session.__init__ ran. */
     PyObject *hooks;
     /* The same callables by the library's hook index: a list with None for
      * every unhooked index. The dispatch lookup. */
     PyObject *hooks_by_index;
-    /* The running parse's HookDoorObject, created by its first hook and
-     * dropped when the parse returns; NULL between parses. */
-    PyObject *parse_door;
 } SessionObject;
 
-/* The parse-time door: what hook nodes cross through. One per parse
- * frame, so every hook of a parse hands out nodes on the same door and
- * two nodes share a door exactly when they belong to the same parse. */
-typedef struct {
-    PyObject_HEAD
-    /* The native door, learned from the first hook's arguments
-     * (galley_procedure_door); NULL until then. The same pointer serves
-     * every hook of the parse and dies with it. */
-    GalleyHookDoor *door;
-    /* The session generation of the parse that owns the door. The next
-     * parse or a close moves the session's generation past it, which is
-     * how a node that outlived the parse learns the door is dead. */
-    unsigned long long generation;
-    PyObject *session_obj;
-} HookDoorObject;
-
-static PyTypeObject HookDoor_Type;
-
-static PyObject *new_hook_door(PyObject *session_obj)
-{
-    HookDoorObject *object = PyObject_New(HookDoorObject, &HookDoor_Type);
-    if (object == NULL)
-        return NULL;
-    object->door = NULL;
-    object->generation = ((SessionObject *)session_obj)->generation;
-    object->session_obj = Py_NewRef(session_obj);
-    return (PyObject *)object;
-}
-
-static void HookDoor_dealloc(HookDoorObject *self)
-{
-    Py_XDECREF(self->session_obj);
-    Py_TYPE(self)->tp_free((PyObject *)self);
-}
-
-static PyTypeObject HookDoor_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = GALLEY_MODULE_STRING ".HookDoor",
-    .tp_basicsize = sizeof(HookDoorObject),
-    .tp_itemsize = 0,
-    .tp_dealloc = (destructor)HookDoor_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "Parse-time door over one parse's node storage. Internal: "
-              "reached through the nodes a hook yields.",
-};
-
-static PyObject *make_procedure_args(void *args, PyObject *door_obj)
+static PyObject *make_procedure_args(void *args, PyObject *session_obj)
 {
     ProcedureArgsObject *object = PyObject_New(ProcedureArgsObject, &ProcedureArgs_Type);
     if (object == NULL)
         return NULL;
     object->args = args;
-    object->door_obj = door_obj != NULL ? Py_NewRef(door_obj) : NULL;
+    object->session_obj = Py_NewRef(session_obj);
     return (PyObject *)object;
 }
 
@@ -161,24 +132,6 @@ static PyObject *make_procedure_args(void *args, PyObject *door_obj)
 static void retire_procedure_args(PyObject *arg)
 {
     ((ProcedureArgsObject *)arg)->args = NULL;
-}
-
-/* The hook door of the session's running parse (borrowed), created by the
- * first hook that needs it so every hook of that parse hands out nodes on
- * the same door. The first hook teaches the door its native pointer; the
- * parse drops the session's reference when it returns. NULL with an
- * exception set when the door cannot be created. */
-static PyObject *session_hook_door(SessionObject *session, void *args)
-{
-    if (session->parse_door == NULL) {
-        session->parse_door = new_hook_door((PyObject *)session);
-        if (session->parse_door == NULL)
-            return NULL;
-    }
-    HookDoorObject *door = (HookDoorObject *)session->parse_door;
-    if (door->door == NULL)
-        door->door = galley_procedure_door(args);
-    return session->parse_door;
 }
 
 /* Decides the hook call shape before invoking: a plain Python function
@@ -258,8 +211,7 @@ static void run_hook(SessionObject *session, unsigned int index, void *args)
         Py_DECREF(callable);
         return;
     }
-    PyObject *door_obj = session_hook_door(session, args);
-    PyObject *arg = door_obj == NULL ? NULL : make_procedure_args(args, door_obj);
+    PyObject *arg = make_procedure_args(args, (PyObject *)session);
     if (arg == NULL) {
         PyErr_Clear();
         Py_DECREF(callable);
@@ -292,11 +244,29 @@ static void run_hook(SessionObject *session, unsigned int index, void *args)
 
 /* The dispatch callback of every session (the handle is its SessionObject,
  * alive because the parse runs inside one of its own method calls). A parse
- * releases the GIL, so the hook takes it back for the length of its call. */
+ * releases the GIL, so the hook takes it back for the length of its call.
+ * The parse's hook door and generation are read on its first dispatch and
+ * kept until the parse's finish gate; each dispatch only records that a
+ * hook is running and on which thread, which is what lets a call choose its
+ * door when it is made. */
 static void py_dispatch_impl(void *handle, unsigned int index, void *args)
 {
+    SessionObject *session = (SessionObject *)handle;
     PyGILState_STATE gil = PyGILState_Ensure();
-    run_hook((SessionObject *)handle, index, args);
+    if (session->parse_door == NULL) {
+        GalleyHookDoor *door = galley_procedure_door(args);
+        unsigned long long generation = 0;
+        if (door != NULL && galley_hook_generation(door, &generation) == galley_ok) {
+            session->parse_generation = generation;
+            session->parse_door = door;
+        }
+    }
+    if (session->parse_door != NULL) {
+        session->dispatch_thread = PyThread_get_thread_ident();
+        session->dispatching = 1;
+    }
+    run_hook(session, index, args);
+    session->dispatching = 0;
     PyGILState_Release(gil);
 }
 
@@ -405,14 +375,10 @@ static int check_status(long long status)
 typedef struct {
     PyObject_HEAD
     PyObject *session_obj;
-    /* The door this node crosses through: NULL for the session door, or
-     * the HookDoorObject of the parse that reached it. A hook-door node's
-     * accessors call the galley_hook_* twins over the live parse; every
-     * other crossing uses the galley_node_* family behind the session
-     * gate. Links reached through a door stay on that door. */
-    PyObject *door;
-    GalleySession *session;
     GalleyNodeAddress address;
+    /* The core's parse generation this node belongs to, stamped from the
+     * crossing that produced it. Identity is session, generation and
+     * address; the door a node was reached through is not part of it. */
     unsigned long long generation;
 } NodeObject;
 
@@ -431,18 +397,109 @@ static PyTypeObject Walker_Type;
 /* Argument helpers                                                    */
 /* ------------------------------------------------------------------ */
 
-/* What one node crosses with: the session door's handle, or the parse's
- * native hook door when the node was reached through a hook. */
+/* What one call crosses with, chosen when the call is made. */
 typedef struct {
     GalleySession *session;
-    GalleyHookDoor *hook; /* NULL: session door */
+    /* The running parse's native hook door, or NULL for the session door. */
+    GalleyHookDoor *hook;
+    /* The core generation a node must carry to cross here: the running
+     * parse's on the hook door, the published tree's on the session door. */
+    unsigned long long generation;
 } NodeCrossing;
 
-/* The single gate for a node about to cross: a closed session or a node
- * left over from an earlier parse generation raises instead of reading
- * reallocated storage, and the only way to obtain what a crossing needs
- * (the session handle, the native hook door) is through here. A hook
- * node's door is alive exactly while the node's generation matches. */
+/* Chooses the door for a call on an open session: from inside a hook
+ * dispatch of the session's running parse, on the thread running that
+ * hook, the hook twins over that parse's door; otherwise the session door,
+ * which the core refuses while a parse runs. The only place the choice is
+ * made. */
+static void choose_door(SessionObject *session_object, NodeCrossing *cross)
+{
+    cross->session = session_object->session;
+    if (session_object->dispatching &&
+        session_object->dispatch_thread == PyThread_get_thread_ident()) {
+        cross->hook = session_object->parse_door;
+        cross->generation = session_object->parse_generation;
+    } else {
+        cross->hook = NULL;
+        cross->generation = session_object->published_generation;
+    }
+}
+
+/* The session door unconditionally, for what has no hook twin (walkers):
+ * from inside a hook the core refuses it while the parse runs. */
+static void session_door_only(SessionObject *session_object, NodeCrossing *cross)
+{
+    cross->session = session_object->session;
+    cross->hook = NULL;
+    cross->generation = session_object->published_generation;
+}
+
+/* Reads the published generation from the core without raising and
+ * stores it in the cache on success; a refusal (a parse is in flight)
+ * returns the negative status and leaves the cache as it was. */
+static long long read_published_generation(SessionObject *session_object,
+                                           unsigned long long *out)
+{
+    unsigned long long published = 0;
+    long long status = galley_published_generation(session_object->session, &published);
+    if (status < 0)
+        return status;
+    session_object->published_generation = published;
+    *out = published;
+    return 0;
+}
+
+/* Re-reads the published generation from the core into the cache. A
+ * refusal (a parse is in flight) raises and leaves the cache as it was. */
+static int refresh_published_generation(SessionObject *session_object)
+{
+    unsigned long long published = 0;
+    long long status = read_published_generation(session_object, &published);
+    if (status < 0) {
+        set_error_from_status(status);
+        return -1;
+    }
+    return 0;
+}
+
+/* The single generation gate: raises unless `generation` is the one this
+ * crossing accepts. A mismatch on the session door first asks the core
+ * again, because the cache can lag it and a parse in flight must report
+ * `session in use` rather than a stale node. The crossing is updated when
+ * the answer changed, so what it stamps on new nodes is current. */
+static int admit_generation(SessionObject *session_object, NodeCrossing *cross,
+                            unsigned long long generation, const char *what)
+{
+    if (generation != 0 && generation == cross->generation)
+        return 0;
+    if (cross->hook == NULL) {
+        if (refresh_published_generation(session_object) < 0)
+            return -1;
+        cross->generation = session_object->published_generation;
+        if (generation != 0 && generation == cross->generation)
+            return 0;
+    }
+    PyErr_Format(PyExc_ValueError, "%s is invalidated", what);
+    return -1;
+}
+
+/* The gate for a call that takes no node: refuses a closed session and
+ * chooses the door. */
+static int session_crossing(PyObject *session_obj, NodeCrossing *cross)
+{
+    SessionObject *session_object = (SessionObject *)session_obj;
+    if (session_object->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
+        return -1;
+    }
+    choose_door(session_object, cross);
+    return 0;
+}
+
+/* The single gate for a node about to cross: a closed session or a node of
+ * another generation raises instead of reading reallocated storage, and
+ * the only way to obtain what a crossing needs (the session handle, the
+ * native hook door) is through here. */
 static int node_crossing(NodeObject *node, NodeCrossing *cross)
 {
     SessionObject *session_object = (SessionObject *)node->session_obj;
@@ -450,45 +507,33 @@ static int node_crossing(NodeObject *node, NodeCrossing *cross)
         PyErr_SetString(PyExc_ValueError, "node's session is closed");
         return -1;
     }
-    if (node->generation != session_object->generation) {
-        PyErr_SetString(PyExc_ValueError, "node is invalidated");
-        return -1;
-    }
-    cross->session = session_object->session;
-    cross->hook = NULL;
-    if (node->door != NULL) {
-        cross->hook = ((HookDoorObject *)node->door)->door;
-        if (cross->hook == NULL) {
-            PyErr_SetString(PyExc_ValueError, "node is invalidated");
-            return -1;
-        }
-    }
-    return 0;
+    choose_door(session_object, cross);
+    return admit_generation(session_object, cross, node->generation, "node");
 }
 
-/* The single gate for a node-typed argument to an operation that crosses
- * one door: the session door of `session_obj` (`door` NULL) or the hook
- * door `door`. The node must be live and belong to that door: the crossing
- * sends a bare address and native storage only bounds-checks it, so a node
- * from another door would silently alias whichever node holds that index
- * here. Plain integers are raw addresses with no door and pass unguarded
+/* The single gate for a node-typed argument to an operation crossing
+ * `cross`: the node must belong to `session_obj` and carry the generation
+ * the crossing accepts, because the crossing sends a bare address and
+ * native storage only bounds-checks it, so a node of another session or
+ * generation would silently alias whichever node holds that index here.
+ * Plain integers are raw addresses with no generation and pass unguarded
  * by design. */
 static int node_argument(PyObject *object, PyObject *session_obj,
-                         PyObject *door, GalleyNodeAddress *out)
+                         NodeCrossing *cross, GalleyNodeAddress *out)
 {
     int is_node = PyObject_IsInstance(object, (PyObject *)&Node_Type);
     if (is_node < 0)
         return -1;
     if (is_node) {
         NodeObject *node_obj = (NodeObject *)object;
-        NodeCrossing cross;
-        if (node_crossing(node_obj, &cross) < 0)
-            return -1;
-        if (node_obj->session_obj != session_obj || node_obj->door != door) {
+        if (node_obj->session_obj != session_obj) {
             PyErr_SetString(PyExc_ValueError,
-                            "node belongs to a different door than this operation");
+                            "node belongs to a different session than this operation");
             return -1;
         }
+        if (admit_generation((SessionObject *)session_obj, cross,
+                             node_obj->generation, "node") < 0)
+            return -1;
         *out = node_obj->address;
         return 0;
     }
@@ -498,8 +543,6 @@ static int node_argument(PyObject *object, PyObject *session_obj,
     *out = (GalleyNodeAddress)value;
     return 0;
 }
-
-typedef GalleyNodeAddress (*NodeLink)(GalleySession *, GalleyNodeAddress);
 
 /* Copies a (data, length) pair into bytes; NULL pointers become b""/"". */
 static PyObject *bytes_from_pair(const char *data, size_t length)
@@ -518,32 +561,31 @@ static inline GalleySession *require_session(PyObject *self)
     return session_object->session;
 }
 
-/* Bumps the session's parse generation, invalidating nodes and walkers
- * from earlier parses. Call after every native parse (success or failure)
- * and on close; never merely because a walker is open, so parsing with an
- * abandoned walker still succeeds and the walker fails at its next step. */
-static inline void bump_generation(PyObject *self)
+/* Reads the core's published generation into the cache after a native
+ * parse. A parse the core refused (`session in use`) changed nothing, so
+ * it leaves the cache and every node alone; any other outcome (success, or
+ * a failure that leaves nothing published) is whatever the core now says.
+ * Every native parse leg calls this once, with the GIL held. */
+static inline void finish_parse(PyObject *self, long long status)
 {
-    ((SessionObject *)self)->generation++;
+    SessionObject *session_object = (SessionObject *)self;
+    if (status == galley_error_session_in_use)
+        return;
+    /* The parse is over: its door dies with it. A refused parse started
+     * nothing, so it returned above and leaves the running parse's door
+     * alone. A failed read leaves the cache unknown, never 0 ("nothing
+     * published"), so the next use asks the core again. */
+    unsigned long long published = 0;
+    session_object->parse_door = NULL;
+    if (read_published_generation(session_object, &published) < 0)
+        session_object->published_generation = GENERATION_UNKNOWN;
 }
 
-/* Ends a parse: drops the session's reference to the parse's door, then
- * invalidates the parse's nodes and walkers. Every native parse leg calls
- * this once, with the GIL held, whatever the status. */
-static inline void finish_parse(PyObject *self)
-{
-    Py_CLEAR(((SessionObject *)self)->parse_door);
-    bump_generation(self);
-}
-
-/* Single gate for Node creation: stamps the session's parse generation so
- * accessors refuse stale reads after a re-parse. NULL with ValueError when
- * the session is closed. */
-/* Creates a node stamped with the session's current generation and
- * carried through `door`: NULL for the session door, else the
- * ProcedureArguments the node was reached through (links inherit it). */
-static NodeObject *make_node_via(PyObject *session_obj, PyObject *door,
-                                 GalleyNodeAddress address)
+/* Single gate for Node creation: stamps the generation of the crossing the
+ * node was read through, so accessors refuse stale reads after a re-parse.
+ * NULL with ValueError when the session is closed. */
+static NodeObject *make_node(PyObject *session_obj, unsigned long long generation,
+                             GalleyNodeAddress address)
 {
     SessionObject *session_object = (SessionObject *)session_obj;
     if (session_object->session == NULL) {
@@ -554,67 +596,43 @@ static NodeObject *make_node_via(PyObject *session_obj, PyObject *door,
     if (node_obj == NULL)
         return NULL;
     node_obj->session_obj = Py_NewRef(session_obj);
-    node_obj->door = door != NULL ? Py_NewRef(door) : NULL;
-    node_obj->session = session_object->session;
     node_obj->address = address;
-    node_obj->generation = session_object->generation;
+    node_obj->generation = generation;
     return node_obj;
 }
 
-/* Session-door node: crosses through the owning Session. */
-static NodeObject *make_node(PyObject *session_obj, GalleyNodeAddress address)
-{
-    return make_node_via(session_obj, NULL, address);
-}
-
 /* -- door crossing ----------------------------------------------------
- * One crossing per capability: the door decides the family, and the
- * NodeCrossing a caller crosses with only ever comes out of the gate
- * (node_crossing). A session-door node calls galley_node_*; a hook-door
- * node its galley_hook_* twin over the live parse. */
+ * One crossing per capability: the crossing decides the family, and the
+ * NodeCrossing a caller crosses with only ever comes out of a gate
+ * (session_crossing, node_crossing). The session family is galley_<name>,
+ * its hook twin galley_hook_<name>. */
 
-static long long cross_bytes(
-    NodeCrossing cross, GalleyNodeAddress address,
-    const char **data, size_t *length,
-    long long (*on_session)(GalleySession *, GalleyNodeAddress,
-                            const char **, size_t *),
-    long long (*on_hook)(GalleyHookDoor *, GalleyNodeAddress,
-                         const char **, size_t *))
-{
-    return cross.hook != NULL
-               ? on_hook(cross.hook, address, data, length)
-               : on_session(cross.session, address, data, length);
-}
+#define GALLEY_CROSS(cross, name, ...)                                        \
+    ((cross).hook != NULL ? galley_hook_##name((cross).hook, __VA_ARGS__)     \
+                          : galley_##name((cross).session, __VA_ARGS__))
 
-static GalleyNodeAddress cross_link(
-    NodeCrossing cross, GalleyNodeAddress address,
-    GalleyNodeAddress (*on_session)(GalleySession *, GalleyNodeAddress),
-    GalleyNodeAddress (*on_hook)(GalleyHookDoor *, GalleyNodeAddress))
+typedef GalleyNodeAddress (*NodeLink)(GalleySession *, GalleyNodeAddress);
+typedef GalleyNodeAddress (*HookNodeLink)(GalleyHookDoor *, GalleyNodeAddress);
+
+static GalleyNodeAddress cross_link(NodeCrossing cross, GalleyNodeAddress address,
+                                    NodeLink on_session, HookNodeLink on_hook)
 {
     return cross.hook != NULL ? on_hook(cross.hook, address)
                               : on_session(cross.session, address);
 }
 
-static unsigned int cross_child_count(NodeCrossing cross,
-                                      GalleyNodeAddress address)
-{
-    return cross.hook != NULL
-               ? galley_hook_node_child_count(cross.hook, address)
-               : galley_node_child_count(cross.session, address);
-}
-
 /* The one children loop: count-bounded, first to last, every step
- * crossing the same door and every result created on that door. The
- * crossing comes out of the gate, so callers cannot skip it. */
-static PyObject *children_via(PyObject *session_obj, PyObject *door,
-                              NodeCrossing cross, GalleyNodeAddress address)
+ * crossing the same door and every result stamped with its generation. The
+ * crossing comes out of a gate, so callers cannot skip it. */
+static PyObject *children_via(PyObject *session_obj, NodeCrossing cross,
+                              GalleyNodeAddress address)
 {
     GalleyNodeAddress child;
     PyObject *tuple;
     Py_ssize_t count;
     Py_ssize_t i;
 
-    count = (Py_ssize_t)cross_child_count(cross, address);
+    count = (Py_ssize_t)GALLEY_CROSS(cross, node_child_count, address);
     tuple = PyTuple_New(count);
     if (tuple == NULL)
         return NULL;
@@ -627,7 +645,7 @@ static PyObject *children_via(PyObject *session_obj, PyObject *door,
             Py_DECREF(tuple);
             return NULL;
         }
-        NodeObject *node_obj = make_node_via(session_obj, door, child);
+        NodeObject *node_obj = make_node(session_obj, cross.generation, child);
         if (node_obj == NULL) {
             Py_DECREF(tuple);
             return NULL;
@@ -640,11 +658,14 @@ static PyObject *children_via(PyObject *session_obj, PyObject *door,
 }
 
 /* Single gate for walker steps: closed walkers, closed sessions, and
- * walkers left over from a previous parse generation all raise instead of
- * touching reallocated storage. */
+ * walkers whose generation is no longer the core's published one all raise
+ * instead of touching reallocated storage. A walker steps through native
+ * storage with no lock, so it never reads while a parse runs: the check
+ * asks the core again whenever its cache disagrees. */
 static int require_walker(WalkerObject *self)
 {
     SessionObject *session_object = (SessionObject *)self->session_obj;
+    NodeCrossing cross;
     if (self->walker == NULL) {
         PyErr_SetString(PyExc_ValueError, "walker is closed");
         return -1;
@@ -653,41 +674,47 @@ static int require_walker(WalkerObject *self)
         PyErr_SetString(PyExc_ValueError, "session is closed");
         return -1;
     }
-    if (self->generation != session_object->generation) {
-        PyErr_SetString(PyExc_ValueError, "walker is invalidated");
-        return -1;
-    }
-    return 0;
+    session_door_only(session_object, &cross);
+    return admit_generation(session_object, &cross, self->generation, "walker");
 }
 
-/* Shared body of the five session-door link accessors: missing links
- * become None. Hook-door nodes cross through node_link_through instead. */
-static PyObject *node_link_result(PyObject *session_obj, GalleySession *session, PyObject *node,
-                                  NodeLink link)
+/* Shared body of the five session-method link accessors: missing links
+ * become None. */
+static PyObject *node_link_result(PyObject *session_obj, PyObject *node,
+                                  NodeLink on_session, HookNodeLink on_hook)
 {
+    NodeCrossing cross;
     GalleyNodeAddress address;
-    if (node_argument(node, session_obj, NULL, &address) < 0)
+    if (session_crossing(session_obj, &cross) < 0)
         return NULL;
-    address = link(session, address);
+    if (node_argument(node, session_obj, &cross, &address) < 0)
+        return NULL;
+    address = cross_link(cross, address, on_session, on_hook);
     if (address == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(session_obj, address);
+    return (PyObject *)make_node(session_obj, cross.generation, address);
 }
 
 /* Shared body of the two (data, length) accessors: invalid nodes become
  * None. */
 static PyObject *node_bytes_result(
-    PyObject *session_obj, GalleySession *session, PyObject *node,
-    long long (*accessor)(GalleySession *, GalleyNodeAddress,
-                          const char **, size_t *))
+    PyObject *session_obj, PyObject *node,
+    long long (*on_session)(GalleySession *, GalleyNodeAddress,
+                            const char **, size_t *),
+    long long (*on_hook)(GalleyHookDoor *, GalleyNodeAddress,
+                         const char **, size_t *))
 {
+    NodeCrossing cross;
     GalleyNodeAddress address;
     const char *data;
     size_t length;
 
-    if (node_argument(node, session_obj, NULL, &address) < 0)
+    if (session_crossing(session_obj, &cross) < 0)
         return NULL;
-    if (accessor(session, address, &data, &length) != galley_ok)
+    if (node_argument(node, session_obj, &cross, &address) < 0)
+        return NULL;
+    if ((cross.hook != NULL ? on_hook(cross.hook, address, &data, &length)
+                            : on_session(cross.session, address, &data, &length)) != galley_ok)
         Py_RETURN_NONE;
     return bytes_from_pair(data, length);
 }
@@ -695,18 +722,24 @@ static PyObject *node_bytes_result(
 /* Shared body of the pair-valued span and line-column accessors: invalid
  * nodes become None. */
 static PyObject *node_pair_result(
-    PyObject *session_obj, GalleySession *session, PyObject *node,
-    long long (*accessor)(GalleySession *, GalleyNodeAddress,
-                          unsigned int *, unsigned int *),
+    PyObject *session_obj, PyObject *node,
+    long long (*on_session)(GalleySession *, GalleyNodeAddress,
+                            unsigned int *, unsigned int *),
+    long long (*on_hook)(GalleyHookDoor *, GalleyNodeAddress,
+                         unsigned int *, unsigned int *),
     const char *format)
 {
+    NodeCrossing cross;
     GalleyNodeAddress address;
     unsigned int first = 0;
     unsigned int second = 0;
 
-    if (node_argument(node, session_obj, NULL, &address) < 0)
+    if (session_crossing(session_obj, &cross) < 0)
         return NULL;
-    if (accessor(session, address, &first, &second) != galley_ok)
+    if (node_argument(node, session_obj, &cross, &address) < 0)
+        return NULL;
+    if ((cross.hook != NULL ? on_hook(cross.hook, address, &first, &second)
+                            : on_session(cross.session, address, &first, &second)) != galley_ok)
         Py_RETURN_NONE;
     return Py_BuildValue(format, first, second);
 }
@@ -765,9 +798,11 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     if (self->session != NULL)
         galley_session_destroy(self->session);
     self->session = session;
-    /* A re-init orphans prior nodes and walkers: bump the generation so
-     * their next access raises instead of reading the new storage. */
-    self->generation++;
+    /* A re-init orphans prior nodes and walkers: nothing is published on
+     * the new session, so their next access raises instead of reading the
+     * new storage. */
+    self->published_generation = 0;
+    self->parse_door = NULL;
     return 0;
 }
 
@@ -776,7 +811,7 @@ static void close_session(SessionObject *self)
     if (self->session != NULL) {
         galley_session_destroy(self->session);
         self->session = NULL;
-        self->generation++;
+        self->published_generation = 0;
     }
 }
 
@@ -861,7 +896,6 @@ static int Session_traverse(SessionObject *self, visitproc visit, void *arg)
 {
     Py_VISIT(self->hooks);
     Py_VISIT(self->hooks_by_index);
-    Py_VISIT(self->parse_door);
     return 0;
 }
 
@@ -869,7 +903,6 @@ static int Session_clear(SessionObject *self)
 {
     Py_CLEAR(self->hooks);
     Py_CLEAR(self->hooks_by_index);
-    Py_CLEAR(self->parse_door);
     return 0;
 }
 
@@ -922,7 +955,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     Py_BEGIN_ALLOW_THREADS
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
     Py_END_ALLOW_THREADS
-    finish_parse(self);
+    finish_parse(self, status);
     if (have_view)
         PyBuffer_Release(&view);
     return status_to_parsed_with_session(status, session);
@@ -966,7 +999,7 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
         Py_BEGIN_ALLOW_THREADS
         status = galley_parse_file(session, data);
         Py_END_ALLOW_THREADS
-        finish_parse(self);
+        finish_parse(self, status);
         result = status_to_parsed_with_session(status, session);
     }
     Py_DECREF(filesystem_path);
@@ -1031,13 +1064,18 @@ static PyObject *Session_root_node(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     GalleySession *session = require_session(self);
     GalleyNodeAddress root;
+    unsigned long long generation = 0;
 
     if (session == NULL)
         return NULL;
+    /* Stamp from a fresh read of the core, never the cache: a refusal (a
+     * parse is in flight) answers None, like the native refusal. */
+    if (read_published_generation((SessionObject *)self, &generation) < 0)
+        Py_RETURN_NONE;
     root = galley_root_node(session);
     if (root == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, root);
+    return (PyObject *)make_node(self, generation, root);
 }
 
 PyDoc_STRVAR(node_valid_doc,
@@ -1048,14 +1086,14 @@ PyDoc_STRVAR(node_valid_doc,
 
 static PyObject *Session_node_valid(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    return PyBool_FromLong(galley_node_is_valid(session, address));
+    return PyBool_FromLong(GALLEY_CROSS(cross, node_is_valid, address));
 }
 
 PyDoc_STRVAR(child_count_doc,
@@ -1065,14 +1103,14 @@ PyDoc_STRVAR(child_count_doc,
 
 static PyObject *Session_child_count(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    return PyLong_FromUnsignedLong(galley_node_child_count(session, address));
+    return PyLong_FromUnsignedLong(GALLEY_CROSS(cross, node_child_count, address));
 }
 
 PyDoc_STRVAR(children_doc,
@@ -1084,14 +1122,14 @@ PyDoc_STRVAR(children_doc,
 
 static PyObject *Session_children(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    return children_via(self, NULL, (NodeCrossing){ .session = session, .hook = NULL }, address);
+    return children_via(self, cross, address);
 }
 
 PyDoc_STRVAR(first_child_doc,
@@ -1102,10 +1140,7 @@ PyDoc_STRVAR(first_child_doc,
 
 static PyObject *Session_first_child(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_link_result(self, session, node, galley_node_first_child);
+    return node_link_result(self, node, galley_node_first_child, galley_hook_node_first_child);
 }
 
 PyDoc_STRVAR(last_child_doc,
@@ -1116,10 +1151,7 @@ PyDoc_STRVAR(last_child_doc,
 
 static PyObject *Session_last_child(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_link_result(self, session, node, galley_node_last_child);
+    return node_link_result(self, node, galley_node_last_child, galley_hook_node_last_child);
 }
 
 PyDoc_STRVAR(next_sibling_doc,
@@ -1130,10 +1162,7 @@ PyDoc_STRVAR(next_sibling_doc,
 
 static PyObject *Session_next_sibling(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_link_result(self, session, node, galley_node_next_sibling);
+    return node_link_result(self, node, galley_node_next_sibling, galley_hook_node_next_sibling);
 }
 
 PyDoc_STRVAR(prior_sibling_doc,
@@ -1144,10 +1173,7 @@ PyDoc_STRVAR(prior_sibling_doc,
 
 static PyObject *Session_prior_sibling(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_link_result(self, session, node, galley_node_prior_sibling);
+    return node_link_result(self, node, galley_node_prior_sibling, galley_hook_node_prior_sibling);
 }
 
 PyDoc_STRVAR(parent_doc,
@@ -1157,10 +1183,7 @@ PyDoc_STRVAR(parent_doc,
 
 static PyObject *Session_parent(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_link_result(self, session, node, galley_node_parent);
+    return node_link_result(self, node, galley_node_parent, galley_hook_node_parent);
 }
 
 static PyObject *address_or_none(GalleyNodeAddress address)
@@ -1330,7 +1353,8 @@ PyDoc_STRVAR(walk_doc,
 "iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
 "with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
 "subtrees rooted at semantic-error nodes. Returns None for an unresolvable\n"
-"root or a build without AST construction; a stale node -- its session\n"
+"root or a build without AST construction; raises GalleyError with\n"
+"ERROR_SESSION_IN_USE while a parse holds the session; a stale node -- its session\n"
 "parsed again or closed -- raises ValueError. The walker is bound to the\n"
 "parse that created it: stepping it after the session parses again or\n"
 "closes raises ValueError, so parsing with an abandoned walker still\n"
@@ -1351,10 +1375,24 @@ static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords
     if (!PyArg_ParseTupleAndKeywords(args, keywords, "O|$p:walk", names,
                                      &root, &skip))
         return NULL;
-    if (node_argument(root, self, NULL, &address) < 0)
+    NodeCrossing cross;
+    /* Walkers exist only on the session door: from inside a hook a node of
+     * the running parse is refused, because the core refuses the session
+     * door while that parse runs. */
+    session_door_only((SessionObject *)self, &cross);
+    if (node_argument(root, self, &cross, &address) < 0)
         return NULL;
+    /* Stamp from a fresh read of the core, never the cache. A refusal
+     * raises `session in use`. */
+    if (refresh_published_generation((SessionObject *)self) < 0)
+        return NULL;
+    cross.generation = ((SessionObject *)self)->published_generation;
     walker = galley_walker_create(session, address, skip);
     if (walker == NULL) {
+        /* The native NULL is ambiguous: a refusal must raise, only an
+         * invalid root answers None. */
+        if (refresh_published_generation((SessionObject *)self) < 0)
+            return NULL;
         Py_RETURN_NONE;
     }
     walker_obj = PyObject_New(WalkerObject, &Walker_Type);
@@ -1364,7 +1402,7 @@ static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords
     }
     walker_obj->session_obj = Py_NewRef(self);
     walker_obj->walker = walker;
-    walker_obj->generation = ((SessionObject *)self)->generation;
+    walker_obj->generation = cross.generation;
     return (PyObject *)walker_obj;
 }
 
@@ -1376,10 +1414,8 @@ PyDoc_STRVAR(symbol_name_doc,
 
 static PyObject *Session_symbol_name(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_bytes_result(self, session, node, galley_node_symbol_name);
+    return node_bytes_result(self, node, galley_node_symbol_name,
+                             galley_hook_node_symbol_name);
 }
 
 PyDoc_STRVAR(text_doc,
@@ -1390,10 +1426,7 @@ PyDoc_STRVAR(text_doc,
 
 static PyObject *Session_text(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_bytes_result(self, session, node, galley_node_text);
+    return node_bytes_result(self, node, galley_node_text, galley_hook_node_text);
 }
 
 PyDoc_STRVAR(last_input_doc,
@@ -1423,16 +1456,16 @@ PyDoc_STRVAR(span_doc,
 
 static PyObject *Session_span(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
     unsigned long long start = 0;
     unsigned long long length = 0;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    if (galley_node_span(session, address, &start, &length) != galley_ok)
+    if (GALLEY_CROSS(cross, node_span, address, &start, &length) != galley_ok)
         Py_RETURN_NONE;
     return Py_BuildValue("KK", start, length);
 }
@@ -1446,10 +1479,8 @@ PyDoc_STRVAR(line_column_doc,
 
 static PyObject *Session_line_column(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
-    if (session == NULL)
-        return NULL;
-    return node_pair_result(self, session, node, galley_node_line_column, "II");
+    return node_pair_result(self, node, galley_node_line_column,
+                            galley_hook_node_line_column, "II");
 }
 
 PyDoc_STRVAR(variable_index_doc,
@@ -1460,15 +1491,15 @@ PyDoc_STRVAR(variable_index_doc,
 
 static PyObject *Session_variable_index(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
     long long index;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    index = galley_node_variable_index(session, address);
+    index = GALLEY_CROSS(cross, node_variable_index, address);
     if (index == -1)
         Py_RETURN_NONE;
     if (index < 0) {
@@ -2031,18 +2062,18 @@ static PyObject *Session_append_children(PyObject *self,
                                          PyObject *const *arguments,
                                          Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress parent;
     GalleyNodeAddress chain;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("append_children", count, 2) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &parent) < 0 ||
-        node_argument(arguments[1], self, NULL, &chain) < 0)
+    if (node_argument(arguments[0], self, &cross, &parent) < 0 ||
+        node_argument(arguments[1], self, &cross, &chain) < 0)
         return NULL;
-    if (check_status(galley_tree_append_children(session, parent, chain)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_append_children, parent, chain)) < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2056,18 +2087,18 @@ static PyObject *Session_insert_before(PyObject *self,
                                        PyObject *const *arguments,
                                        Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress target;
     GalleyNodeAddress chain;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("insert_before", count, 2) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &target) < 0 ||
-        node_argument(arguments[1], self, NULL, &chain) < 0)
+    if (node_argument(arguments[0], self, &cross, &target) < 0 ||
+        node_argument(arguments[1], self, &cross, &chain) < 0)
         return NULL;
-    if (check_status(galley_tree_insert_before(session, target, chain)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_insert_before, target, chain)) < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2081,18 +2112,18 @@ static PyObject *Session_insert_after(PyObject *self,
                                       PyObject *const *arguments,
                                       Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress target;
     GalleyNodeAddress chain;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("insert_after", count, 2) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &target) < 0 ||
-        node_argument(arguments[1], self, NULL, &chain) < 0)
+    if (node_argument(arguments[0], self, &cross, &target) < 0 ||
+        node_argument(arguments[1], self, &cross, &chain) < 0)
         return NULL;
-    if (check_status(galley_tree_insert_after(session, target, chain)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_insert_after, target, chain)) < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2108,27 +2139,26 @@ static PyObject *Session_remove_siblings(PyObject *self,
                                          PyObject *const *arguments,
                                          Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress node;
     Py_ssize_t sibling_count;
     GalleyNodeAddress head;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("remove_siblings", count, 2) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &node) < 0)
+    if (node_argument(arguments[0], self, &cross, &node) < 0)
         return NULL;
     sibling_count = PyLong_AsSsize_t(arguments[1]);
     if (sibling_count < 0 && PyErr_Occurred())
         return NULL;
-    if (check_status(galley_tree_remove_siblings(session, node,
-                                                 (size_t)sibling_count,
-                                                 &head)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_remove_siblings, node,
+                                  (size_t)sibling_count, &head)) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, head);
+    return (PyObject *)make_node(self, cross.generation, head);
 }
 
 PyDoc_STRVAR(remove_self_doc,
@@ -2139,19 +2169,19 @@ PyDoc_STRVAR(remove_self_doc,
 
 static PyObject *Session_remove_self(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
     GalleyNodeAddress head;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    if (check_status(galley_tree_remove_self(session, address, &head)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_remove_self, address, &head)) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, head);
+    return (PyObject *)make_node(self, cross.generation, head);
 }
 
 PyDoc_STRVAR(promote_children_over_wrapper_doc,
@@ -2164,20 +2194,19 @@ PyDoc_STRVAR(promote_children_over_wrapper_doc,
 static PyObject *Session_promote_children_over_wrapper(PyObject *self,
                                                        PyObject *wrapper)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
     GalleyNodeAddress head;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(wrapper, self, NULL, &address) < 0)
+    if (node_argument(wrapper, self, &cross, &address) < 0)
         return NULL;
-    if (check_status(galley_tree_promote_children_over_wrapper(
-            session, address, &head)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_promote_children_over_wrapper, address, &head)) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, head);
+    return (PyObject *)make_node(self, cross.generation, head);
 }
 
 PyDoc_STRVAR(clean_children_doc,
@@ -2188,19 +2217,19 @@ PyDoc_STRVAR(clean_children_doc,
 
 static PyObject *Session_clean_children(PyObject *self, PyObject *node)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
     GalleyNodeAddress head;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(node, self, NULL, &address) < 0)
+    if (node_argument(node, self, &cross, &address) < 0)
         return NULL;
-    if (check_status(galley_tree_clean_children(session, address, &head)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_clean_children, address, &head)) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, head);
+    return (PyObject *)make_node(self, cross.generation, head);
 }
 
 PyDoc_STRVAR(unlink_wrapper_doc,
@@ -2211,14 +2240,14 @@ PyDoc_STRVAR(unlink_wrapper_doc,
 
 static PyObject *Session_unlink_wrapper(PyObject *self, PyObject *wrapper)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress address;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(wrapper, self, NULL, &address) < 0)
+    if (node_argument(wrapper, self, &cross, &address) < 0)
         return NULL;
-    if (check_status(galley_tree_unlink_wrapper(session, address)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_unlink_wrapper, address)) < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2233,25 +2262,24 @@ static PyObject *Session_insert_children_at(PyObject *self,
                                             PyObject *const *arguments,
                                             Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress parent;
     GalleyNodeAddress chain;
     Py_ssize_t index;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("insert_children_at", count, 3) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &parent) < 0)
+    if (node_argument(arguments[0], self, &cross, &parent) < 0)
         return NULL;
     index = PyLong_AsSsize_t(arguments[1]);
     if (index < 0 && PyErr_Occurred())
         return NULL;
-    if (node_argument(arguments[2], self, NULL, &chain) < 0)
+    if (node_argument(arguments[2], self, &cross, &chain) < 0)
         return NULL;
-    if (check_status(galley_tree_insert_children_at(session, parent,
-                                                    (size_t)index,
-                                                    chain)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_insert_children_at, parent,
+                                  (size_t)index, chain)) < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2266,17 +2294,17 @@ static PyObject *Session_remove_children_at(PyObject *self,
                                             PyObject *const *arguments,
                                             Py_ssize_t count)
 {
-    GalleySession *session = require_session(self);
+    NodeCrossing cross;
     GalleyNodeAddress parent;
     GalleyNodeAddress head;
     Py_ssize_t index;
     Py_ssize_t child_count;
 
-    if (session == NULL)
+    if (session_crossing(self, &cross) < 0)
         return NULL;
     if (expect_arguments("remove_children_at", count, 3) < 0)
         return NULL;
-    if (node_argument(arguments[0], self, NULL, &parent) < 0)
+    if (node_argument(arguments[0], self, &cross, &parent) < 0)
         return NULL;
     index = PyLong_AsSsize_t(arguments[1]);
     if (index < 0 && PyErr_Occurred())
@@ -2284,14 +2312,13 @@ static PyObject *Session_remove_children_at(PyObject *self,
     child_count = PyLong_AsSsize_t(arguments[2]);
     if (child_count < 0 && PyErr_Occurred())
         return NULL;
-    if (check_status(galley_tree_remove_children_at(session, parent,
-                                                    (size_t)index,
-                                                    (size_t)child_count,
-                                                    &head)) < 0)
+    if (check_status(GALLEY_CROSS(cross, tree_remove_children_at, parent,
+                                  (size_t)index, (size_t)child_count,
+                                  &head)) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node(self, head);
+    return (PyObject *)make_node(self, cross.generation, head);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2923,7 +2950,6 @@ static PyTypeObject Session_Type = {
 
 static void Node_dealloc(NodeObject *self)
 {
-    Py_XDECREF(self->door);
     Py_XDECREF(self->session_obj);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -2938,7 +2964,7 @@ static Py_ssize_t Node_length(NodeObject *self)
     NodeCrossing cross;
     if (node_crossing(self, &cross) < 0)
         return -1;
-    return (Py_ssize_t)cross_child_count(cross, self->address);
+    return (Py_ssize_t)GALLEY_CROSS(cross, node_child_count, self->address);
 }
 
 static PyObject *Node_item(NodeObject *self, Py_ssize_t index)
@@ -2946,7 +2972,7 @@ static PyObject *Node_item(NodeObject *self, Py_ssize_t index)
     NodeCrossing cross;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    Py_ssize_t count = (Py_ssize_t)cross_child_count(cross, self->address);
+    Py_ssize_t count = (Py_ssize_t)GALLEY_CROSS(cross, node_child_count, self->address);
     if (index < 0)
         index += count;
     if (index < 0 || index >= count) {
@@ -2963,7 +2989,7 @@ static PyObject *Node_item(NodeObject *self, Py_ssize_t index)
         PyErr_SetString(PyExc_RuntimeError, "child not found");
         return NULL;
     }
-    return (PyObject *)make_node_via(self->session_obj, self->door, child);
+    return (PyObject *)make_node(self->session_obj, cross.generation, child);
 }
 
 static PyObject *Node_subscript(NodeObject *self, PyObject *key)
@@ -2983,7 +3009,7 @@ static PyObject *Node_children(NodeObject *self, PyObject *Py_UNUSED(ignored))
     NodeCrossing cross;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    return children_via(self->session_obj, self->door, cross, self->address);
+    return children_via(self->session_obj, cross, self->address);
 }
 
 static PyObject *Node_iter(NodeObject *self)
@@ -3003,8 +3029,7 @@ static PyObject *Node_text(NodeObject *self, PyObject *Py_UNUSED(ignored))
     NodeCrossing cross;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    if (cross_bytes(cross, self->address, &data, &length,
-                    galley_node_text, galley_hook_node_text) != galley_ok)
+    if (GALLEY_CROSS(cross, node_text, self->address, &data, &length) != galley_ok)
         Py_RETURN_NONE;
     return PyBytes_FromStringAndSize(data, length);
 }
@@ -3016,9 +3041,7 @@ static PyObject *Node_symbol_name(NodeObject *self, PyObject *Py_UNUSED(ignored)
     NodeCrossing cross;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    if (cross_bytes(cross, self->address, &data, &length,
-                    galley_node_symbol_name,
-                    galley_hook_node_symbol_name) != galley_ok)
+    if (GALLEY_CROSS(cross, node_symbol_name, self->address, &data, &length) != galley_ok)
         Py_RETURN_NONE;
     return PyBytes_FromStringAndSize(data, length);
 }
@@ -3031,9 +3054,7 @@ static PyObject *Node_span(NodeObject *self, PyObject *Py_UNUSED(ignored))
     long long status;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    status = cross.hook != NULL
-                 ? galley_hook_node_span(cross.hook, self->address, &start, &len)
-                 : galley_node_span(cross.session, self->address, &start, &len);
+    status = GALLEY_CROSS(cross, node_span, self->address, &start, &len);
     if (status != galley_ok)
         Py_RETURN_NONE;
     return Py_BuildValue("KK", start, len);
@@ -3047,19 +3068,16 @@ static PyObject *Node_line_column(NodeObject *self, PyObject *Py_UNUSED(ignored)
     long long status;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    status = cross.hook != NULL
-                 ? galley_hook_node_line_column(cross.hook, self->address, &line, &column)
-                 : galley_node_line_column(cross.session, self->address, &line, &column);
+    status = GALLEY_CROSS(cross, node_line_column, self->address, &line, &column);
     if (status != galley_ok)
         Py_RETURN_NONE;
     return Py_BuildValue("II", line, column);
 }
 
-/* Shared body of the five link accessors: missing links become None
- * and links reached through a door stay on that door. */
-static PyObject *node_link_through(NodeObject *self,
-                                   GalleyNodeAddress (*on_session)(GalleySession *, GalleyNodeAddress),
-                                   GalleyNodeAddress (*on_hook)(GalleyHookDoor *, GalleyNodeAddress))
+/* Shared body of the five link accessors: missing links become None and
+ * the link carries the generation of the crossing that read it. */
+static PyObject *node_link_through(NodeObject *self, NodeLink on_session,
+                                   HookNodeLink on_hook)
 {
     GalleyNodeAddress link;
     NodeCrossing cross;
@@ -3068,7 +3086,7 @@ static PyObject *node_link_through(NodeObject *self,
     link = cross_link(cross, self->address, on_session, on_hook);
     if (link == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node_via(self->session_obj, self->door, link);
+    return (PyObject *)make_node(self->session_obj, cross.generation, link);
 }
 
 static PyObject *Node_parent(NodeObject *self, PyObject *Py_UNUSED(ignored))
@@ -3107,14 +3125,12 @@ static PyObject *Node_clean_children(NodeObject *self, PyObject *Py_UNUSED(ignor
     long long status;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    status = cross.hook != NULL
-                 ? galley_hook_tree_clean_children(cross.hook, self->address, &head)
-                 : galley_tree_clean_children(cross.session, self->address, &head);
+    status = GALLEY_CROSS(cross, tree_clean_children, self->address, &head);
     if (check_status(status) < 0)
         return NULL;
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    return (PyObject *)make_node_via(self->session_obj, self->door, head);
+    return (PyObject *)make_node(self->session_obj, cross.generation, head);
 }
 
 static PyObject *Node_append_children(NodeObject *self, PyObject *chain)
@@ -3124,11 +3140,9 @@ static PyObject *Node_append_children(NodeObject *self, PyObject *chain)
     long long status;
     if (node_crossing(self, &cross) < 0)
         return NULL;
-    if (node_argument(chain, self->session_obj, self->door, &chain_address) < 0)
+    if (node_argument(chain, self->session_obj, &cross, &chain_address) < 0)
         return NULL;
-    status = cross.hook != NULL
-                 ? galley_hook_tree_append_children(cross.hook, self->address, chain_address)
-                 : galley_tree_append_children(cross.session, self->address, chain_address);
+    status = GALLEY_CROSS(cross, tree_append_children, self->address, chain_address);
     if (check_status(status) < 0)
         return NULL;
     Py_RETURN_NONE;
@@ -3179,16 +3193,14 @@ static PyObject *Node_richcompare(PyObject *a, PyObject *b, int op)
     }
     NodeObject *na = (NodeObject *)a;
     NodeObject *nb = (NodeObject *)b;
+    // Identity is session, core parse generation and address. The door a
+    // node was reached through is not part of it, so a hook node equals the
+    // session's node for the same address once its parse published; and a
+    // node of an earlier parse never equals the node of a later parse that
+    // reuses its address.
     int equal = (na->address == nb->address) &&
-                (na->session_obj == nb->session_obj) &&
-                (na->door == nb->door);
-    if (na->session_obj != nb->session_obj) {
-        // Different sessions are never equal even if address coincides; the
-        // address space is per-session.
-        equal = 0;
-    }
-    // A hook-door node and a session-door node over the same address are
-    // distinct handles: the door decides which crossing reads them.
+                (na->generation == nb->generation) &&
+                (na->session_obj == nb->session_obj);
     int result = 0;
     if (op == Py_EQ)
         result = equal;
@@ -3205,8 +3217,9 @@ static PyObject *Node_richcompare(PyObject *a, PyObject *b, int op)
 
 static Py_hash_t Node_hash(NodeObject *self)
 {
-    // Use address as hash.
-    Py_hash_t h = (Py_hash_t)self->address;
+    // Consistent with equality: the generation and address, mixed so the
+    // nodes of one address across parses do not collide.
+    Py_hash_t h = (Py_hash_t)(self->address ^ (self->generation * 0x9E3779B97F4A7C15ULL));
     if (h == -1)
         h = -2;
     return h;
@@ -3282,7 +3295,7 @@ static PyObject *Walker_iternext(WalkerObject *self)
         return NULL;
     if (!galley_walker_next(self->walker, &address, &depth, &is_semantic_error))
         return NULL;
-    node_obj = make_node(self->session_obj, address);
+    node_obj = make_node(self->session_obj, self->generation, address);
     if (node_obj == NULL)
         return NULL;
     depth_obj = PyLong_FromUnsignedLong(depth);
@@ -3404,9 +3417,26 @@ static void *procedure_args(ProcedureArgsObject *self)
     return self->args;
 }
 
+/* The crossing of the hook that owns `self`: the running parse's hook door
+ * and generation, which per-hook state always addresses regardless of which
+ * thread holds the object. Raises when no dispatch of the session is
+ * recorded. */
+static int procedure_crossing(ProcedureArgsObject *self, NodeCrossing *cross)
+{
+    SessionObject *session_object = (SessionObject *)self->session_obj;
+    if (session_object->session == NULL || !session_object->dispatching) {
+        PyErr_SetString(PyExc_ValueError, "procedure arguments are invalidated");
+        return -1;
+    }
+    cross->session = session_object->session;
+    cross->hook = session_object->parse_door;
+    cross->generation = session_object->parse_generation;
+    return 0;
+}
+
 static void ProcedureArgs_dealloc(ProcedureArgsObject *self)
 {
-    Py_XDECREF(self->door_obj);
+    Py_XDECREF(self->session_obj);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -3415,11 +3445,13 @@ static PyObject *ProcedureArgs_current_node(ProcedureArgsObject *self, PyObject 
     void *args = procedure_args(self);
     if (args == NULL)
         return NULL;
+    NodeCrossing cross;
     GalleyNodeAddress address = galley_procedure_current_node(args);
-    if (address == GALLEY_INVALID_NODE || self->door_obj == NULL)
+    if (address == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
-    HookDoorObject *door = (HookDoorObject *)self->door_obj;
-    return (PyObject *)make_node_via(door->session_obj, self->door_obj, address);
+    if (procedure_crossing(self, &cross) < 0)
+        return NULL;
+    return (PyObject *)make_node(self->session_obj, cross.generation, address);
 }
 
 static PyObject *ProcedureArgs_drop_self(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
@@ -3508,16 +3540,14 @@ static PyObject *ProcedureArgs_report_semantic_error(ProcedureArgsObject *self, 
 static PyObject *ProcedureArgs_set_current_node(ProcedureArgsObject *self, PyObject *node)
 {
     GalleyNodeAddress address;
+    NodeCrossing cross;
     void *args = procedure_args(self);
 
     if (args == NULL)
         return NULL;
-    if (self->door_obj == NULL) {
-        PyErr_SetString(PyExc_ValueError, "procedure arguments have no parse door");
+    if (procedure_crossing(self, &cross) < 0)
         return NULL;
-    }
-    if (node_argument(node, ((HookDoorObject *)self->door_obj)->session_obj,
-                      self->door_obj, &address) < 0)
+    if (node_argument(node, self->session_obj, &cross, &address) < 0)
         return NULL;
     galley_procedure_set_current_node(args, address);
     Py_RETURN_NONE;
@@ -3558,7 +3588,8 @@ static PyTypeObject ProcedureArgs_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_doc = "Per-hook procedure arguments, valid only while the hook runs. Tree "
               "queries use current_node() and the ordinary Node methods; those "
-              "nodes stay usable for the rest of the parse.",
+              "nodes stay usable for the rest of the parse and, when the parse "
+              "succeeds, until the session parses again.",
     .tp_methods = ProcedureArgs_methods,
     .tp_getset = ProcedureArgs_getset,
 };
@@ -3836,8 +3867,6 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
     if (PyType_Ready(&Session_Type) < 0)
         return NULL;
     if (PyType_Ready(&Node_Type) < 0)
-        return NULL;
-    if (PyType_Ready(&HookDoor_Type) < 0)
         return NULL;
     if (PyType_Ready(&ProcedureArgs_Type) < 0)
         return NULL;

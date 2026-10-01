@@ -26,8 +26,9 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Unregistered hooks never cross into the host: a session hands the library its enabled set whenever its hooks change, and every hook starts disabled.
 - Hooks are called with an arguments object or with no arguments at all.
 - The arguments object exposes the current node and a redirect for it, the hook's position, and a way to report a semantic error. It is per-hook state: valid only while its hook runs, and refusing once the hook returns.
-- Hook code reaches the tree through the parse's door, not the arguments object: nodes yielded by the arguments and edits made through those nodes cross the `galley_hook_*` twins in C (each host's named equivalents elsewhere), ungated while the parse runs. The door is one per parse and shared by every hook of it, so a node a hook yields stays usable from later hooks of the same parse and refuses once that parse ends — the parse generation it was created in no longer matches. Two nodes share a door exactly when they belong to the same parse (or the same session, after it); a node handed to an operation on another door is refused, never read as a bare address.
-- The post-parse door (session node reads, tree edits, walkers, snapshots) refuses with `session in use` while a parse holds the session, and with `invalid node` once a later parse — successful or failed — has reset node storage behind the last successful result; no stashed handle bypasses it.
+- Hook code reaches the tree through the session, not the arguments object: the host chooses the door when each call is made. A call made inside a hook dispatch of the session's running parse, on the thread running that hook, crosses the `galley_hook_*` twins over that parse's door in C (each host's named equivalents elsewhere), ungated while the parse runs; every other call crosses the post-parse door.
+- A node is valid by the core's parse generation, never by a host counter: the core stamps one generation per parse when the parse starts, hooks see that generation (`galley_hook_generation`), and a parse that succeeds publishes its tree under it (`galley_published_generation`). Inside a hook dispatch a node is valid when its generation is the running parse's; anywhere else it is valid when its generation is the published tree's. So a node a hook yields stays usable from later hooks of the same parse and, when the parse succeeds, until the next parse; nodes of a failed parse are refused afterwards. A parse the core refuses with `session in use` changes nothing: no node, walker, or running hook loses its validity.
+- The post-parse door (session node reads, tree edits, walkers, snapshots) refuses with `session in use` while a parse holds the session — including a hook node used from a thread other than the one running the hook — and with `invalid node` once a later parse — successful or failed — has reset node storage behind the last successful result; no stashed handle bypasses it. A node of another session or another generation is refused, never read as a bare address.
 - A session's hooks are fixed for the length of a parse: a change attempted while a parse is in flight — from a hook, or from another thread — is refused with `session in use` and leaves the hooks as they were.
 - A nested parse is a parse of another session, so each parse runs with its own session's hooks and neither sees the other's.
 - Sessions of one artifact, and of different artifacts, may parse at the same time on different threads: nothing in hook dispatch is shared between sessions. A hook runs on the thread that parses and must be thread-safe if it shares state with other hooks.
@@ -38,7 +39,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Walkers yield named steps carrying the node, the depth, and the semantic-error flag; the first step is at depth zero.
 - Pruning skips the last yielded subtree.
 - A walk from an invalid root yields the host empty value.
-- A walker belongs to the parse generation that created it: stepping it after a re-parse signals a failure to the caller, never a stale read.
+- A walker belongs to the core's parse generation of the tree it was created over: stepping it after a re-parse signals a failure to the caller, never a stale read.
 - Parsing with an abandoned walker succeeds; the walker fails at its next step.
 - Walkers and sessions that hold resources release them explicitly, through the mechanism the language file names; closing is idempotent in both.
 - Snapshots bulk-read the last successful parse in a single crossing: parentage, child counts, variables, spans, and the semantic-error flag.
@@ -64,11 +65,11 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Entries accept their host-idiomatic input forms and reject the rest at the earliest boundary the host offers — compile time where the type system catches it, otherwise call entry before the native crossing — with no silent coercion.
 - Message inputs accept text or raw bytes without silent re-encoding.
 - Handles come from sessions; every session method also accepts the same call with all handles replaced by raw addresses, obtained through the node's read-only accessor.
-- Nodes expose their address through a named read-only accessor and compare by owning session, crossing door, plus address.
-- A node handle is bound to the parse generation that created it: reading through it after a re-parse signals a failure to the caller, never a stale read.
+- Nodes expose their address through a named read-only accessor and compare by owning session, core parse generation, plus address; the door a node was reached through is neither stored in it nor part of its identity.
+- A node handle is bound to the core's parse generation it was created in: reading through it once that generation is no longer live signals a failure to the caller, never a stale read.
 - A raw address carries no generation and passes every such guard by design.
 - Node keying in collections follows each host's default semantics; the language files spell it out.
-- Tree edits cross the door they are made through: session methods on the post-parse door, node sugar on the door the node was reached through (a hook's arguments object during a parse).
+- Tree edits cross the door chosen when they are made: the parse's hook door inside a hook dispatch on the dispatching thread, the post-parse door everywhere else, for session methods and node sugar alike.
 - Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.
 - Interior NUL bytes are data, not terminators.
 - File paths with interior NUL bytes are rejected loudly at the boundary instead of truncated; each language file names the failure its host signals to the caller.

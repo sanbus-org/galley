@@ -272,6 +272,12 @@ pub const SessionReadGuard = struct {
         self.* = undefined;
     }
 
+    /// The parse generation this guard's result belongs to: the generation
+    /// the parse stamped on its context while it ran.
+    pub fn generation(self: *const SessionReadGuard) usize {
+        return self.result._session_generation;
+    }
+
     pub fn astAllocator(self: *const SessionReadGuard) if (parser.is_ast_enabled) *const data_structures.ASTAllocator else void {
         if (parser.is_ast_enabled) {
             return &self.session.node_allocator;
@@ -1048,6 +1054,7 @@ pub const Session = struct {
 
     fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !ParseResult {
         context_value.runtime_context = &self.runtime_context;
+        context_value.generation = self.generation;
 
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.message_overrides = &self.message_overrides;

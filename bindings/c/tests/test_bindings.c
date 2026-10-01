@@ -479,6 +479,10 @@ long long fixture_hook_text_status(void);
 long long fixture_stashed_kind_status(void);
 int fixture_later_hook_shares_door(void);
 long long fixture_later_hook_child_count(void);
+unsigned long long fixture_hook_generation(void);
+long long fixture_hook_generation_status(void);
+unsigned long long fixture_stashed_published_generation(void);
+long long fixture_stashed_published_status(void);
 #ifdef __cplusplus
 }
 #endif
@@ -492,6 +496,43 @@ static void test_hook_door(void) {
     CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
     CHECK(fixture_later_hook_shares_door() == 1);
     CHECK(fixture_later_hook_child_count() > 0);
+    galley_session_destroy(session);
+}
+
+/* The core stamps one generation per parse: the hook door reports it while
+ * the parse runs, the session door refuses to report anything mid-parse, and
+ * afterwards the published tree carries that same generation until a later
+ * parse begins. A failed parse publishes nothing, so the value reads 0. */
+static void test_generations(void) {
+    GalleySession *session = make_session();
+    unsigned long long published = 99;
+    CHECK(galley_published_generation(session, &published) == galley_ok);
+    CHECK(published == 0);
+
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(NULL);
+    unsigned long long first = fixture_hook_generation();
+    CHECK(fixture_hook_generation_status() == galley_ok);
+    CHECK(first >= 1);
+    CHECK(fixture_stashed_published_status() == galley_error_session_in_use);
+    CHECK(fixture_stashed_published_generation() == 0);
+    CHECK(galley_published_generation(session, &published) == galley_ok);
+    CHECK(published == first);
+
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(NULL);
+    CHECK(fixture_hook_generation() == first + 1);
+    CHECK(galley_published_generation(session, &published) == galley_ok);
+    CHECK(published == first + 1);
+
+    CHECK(galley_parse_sentinel(session, broken_sample) < 0);
+    CHECK(galley_published_generation(session, &published) == galley_ok);
+    CHECK(published == 0);
+
+    CHECK(galley_published_generation(session, NULL) == galley_error_null_argument);
+    CHECK(galley_hook_generation(NULL, &published) == galley_error_null_argument);
     galley_session_destroy(session);
 }
 
@@ -516,6 +557,7 @@ int main(void) {
     test_reserve_nodes();
     test_tree_edit();
     test_hook_door();
+    test_generations();
     printf("%d tests, %d failures\n", ran, failures);
     return failures == 0 ? 0 : 1;
 }

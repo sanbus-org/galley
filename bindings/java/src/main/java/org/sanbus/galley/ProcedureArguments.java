@@ -12,22 +12,25 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * Valid only while the hook runs — the dispatcher expires them when it
  * returns, so a reference kept past that throws instead of reading a frame
  * that is gone. The tree is not per hook: nodes this object yields belong
- * to the parse's door, stay usable from later hooks of the same parse, and
- * refuse once that parse ends. Drop/replace use the dedicated methods here,
- * not Session's tree editing.
+ * to the running parse's core generation, stay usable from later hooks of the
+ * same parse and, when the parse publishes its tree, until the session
+ * parses again. Drop/replace use the dedicated methods here, not Session's
+ * tree editing.
  */
 public final class ProcedureArguments {
     private static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
 
     private final MemorySegment argsSegment;
     private final GalleyLibrary lib;
-    /** The parse's door, or null when the hook ran outside any parse frame. */
-    private final HookDoor door;
+    private final Session session;
+    /** The running parse's hook door for this dispatch, or null when its generation could not be read. */
+    private final NodeDoor door;
     private boolean expired;
 
-    ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib, HookDoor door) {
+    ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib, Session session, NodeDoor door) {
         this.argsSegment = argsSegment;
         this.lib = lib;
+        this.session = session;
         this.door = door;
     }
 
@@ -43,7 +46,7 @@ public final class ProcedureArguments {
         return argsSegment;
     }
 
-    private HookDoor requireDoor() {
+    private NodeDoor requireDoor() {
         if (door == null) throw GalleyClosedException.invalidated("procedure arguments");
         return door;
     }
@@ -54,12 +57,12 @@ public final class ProcedureArguments {
     public Node currentNode() {
         long address = lib.galley_procedure_current_node(live());
         if (address == INVALID_NODE) return null;
-        return requireDoor().node(address);
+        return new Node(session, address, requireDoor().generation());
     }
 
     public void setCurrentNode(Node node) {
         MemorySegment args = live();
-        lib.galley_procedure_set_current_node(args, node == null ? INVALID_NODE : requireDoor().address(node));
+        lib.galley_procedure_set_current_node(args, node == null ? INVALID_NODE : session.address(node, requireDoor()));
     }
 
     public long dropSelf() {
@@ -110,7 +113,7 @@ public final class ProcedureArguments {
     }
 
     private long succeeded(long status) {
-        if (status < 0) throw HookDoor.failure(lib, status);
+        if (status < 0) throw NodeDoor.hookFailure(lib, status);
         return status;
     }
 }

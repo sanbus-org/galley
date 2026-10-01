@@ -181,10 +181,11 @@ class SessionTests(unittest.TestCase):
             self.session.clear_procedures()
         self.assertEqual(len(seen), 2)
 
-    def test_hook_nodes_outlive_their_hook_within_the_parse(self) -> None:
+    def test_hook_nodes_outlive_their_hook_and_their_parse(self) -> None:
         # The tree belongs to the parse, not to the hook that handed out a
         # node: a node stashed by one hook stays usable from a later hook
-        # of the same parse and refuses once the parse ends.
+        # of the same parse, after the parse succeeds, and refuses only
+        # once the session parses again.
         stashed: list[grammar.Node] = []
         seen: list[bytes | None] = []
 
@@ -204,6 +205,8 @@ class SessionTests(unittest.TestCase):
         finally:
             self.session.clear_procedures()
         self.assertEqual(seen, [b"alpha:12"])
+        self.assertEqual(stashed[0].text(), b"alpha:12")
+        self.session.parse("gamma:7")
         with self.assertRaisesRegex(ValueError, "invalidated"):
             stashed[0].text()
 
@@ -886,40 +889,40 @@ class EditTests(unittest.TestCase):
         self.session.append_children(self.root, head)
         self.assertEqual(self.session.child_count(self.root), before)
 
-    def test_edits_refuse_nodes_from_another_door(self) -> None:
-        # Every session is its own door: a node crosses as a bare address
-        # and the native side only bounds-checks it, so a node from another
-        # door would alias whatever node holds that index here. Every entry
-        # that takes a node refuses one from another door, not only the
-        # Node convenience methods.
+    def test_edits_refuse_nodes_from_another_session(self) -> None:
+        # A node crosses as a bare address and the native side only
+        # bounds-checks it, so a node from another session would alias
+        # whatever node holds that index here. Every entry that takes a
+        # node refuses one from another session, not only the Node
+        # convenience methods.
         other = grammar.Session()
         try:
             other.parse("alpha:12")
             other_root = other.root_node()
             self.assertIsNotNone(other_root)
             assert other_root is not None
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.root.append_children(other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 other_root.append_children(self.root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.session.append_children(self.root, other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.session.insert_before(self.root, other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.session.insert_after(self.root, other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.session.insert_children_at(self.root, 0, other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 self.session.text(other_root)
-            with self.assertRaisesRegex(ValueError, "door"):
+            with self.assertRaisesRegex(ValueError, "different session"):
                 other.append_children(other_root, self.root)
         finally:
             other.close()
 
-    def test_hook_and_session_doors_do_not_mix(self) -> None:
-        # Post-parse session node versus parse-time hook node, both
-        # directions; the refusal must fire inside the hook.
+    def test_hook_refuses_nodes_of_an_earlier_parse(self) -> None:
+        # A node of the previous parse against a node of the running parse,
+        # both directions; the refusal must fire inside the hook.
         refusals: list[str] = []
         saved_procedures = grammar.list_procedures()
 
@@ -942,9 +945,9 @@ class EditTests(unittest.TestCase):
             _restore_procedures(saved_procedures)
         self.assertEqual(len(refusals), 4)
 
-    def test_hooks_of_one_parse_share_a_door(self) -> None:
+    def test_chain_detached_in_one_hook_attaches_in_a_later_hook(self) -> None:
         # A chain detached in one hook can be attached in a later hook of
-        # the same parse: both nodes cross the same parse's door.
+        # the same parse: both nodes carry the running parse's generation.
         outcomes: list[str] = []
         stash: list[grammar.Node] = []
         saved_procedures = grammar.list_procedures()
@@ -1041,6 +1044,228 @@ class EditTests(unittest.TestCase):
         self.session.unlink_wrapper(wrapper)
         self.assertEqual(self.session.child_count(wrapper), children_before)
         self.assertNotEqual(self.session.first_child(self.root), wrapper)
+
+
+class GenerationTests(unittest.TestCase):
+    """A node is the owning session, the core's parse generation and an
+    address. Hosts read the generation from the core and choose the door
+    per call: from inside a hook dispatch on the dispatching thread a node
+    crosses the parse's hook door, anywhere else the session door."""
+
+    session: grammar.Session
+    saved_procedures: dict[str, Any]
+
+    def setUp(self) -> None:
+        self.session = grammar.Session()
+        self.saved_procedures = grammar.list_procedures()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        _restore_procedures(self.saved_procedures)
+
+    def _stash_pairs_while_parsing(self, text: str) -> list[grammar.Node]:
+        stashed: list[grammar.Node] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            stashed.append(node)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.session.parse(text)
+        finally:
+            self.session.clear_procedures()
+        return stashed
+
+    def test_refused_parse_leaves_running_hook_nodes_and_the_published_tree_valid(self) -> None:
+        # The core refuses a parse of a session that is already parsing and
+        # changes nothing: a node stashed by hook 1 still reads in hook 2,
+        # and the tree the running parse publishes is readable afterwards.
+        stashed: list[grammar.Node] = []
+        first_hook_done = threading.Event()
+        refused_parse_done = threading.Event()
+        later_reads: list[bytes | None] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            if not stashed:
+                stashed.append(node)
+                first_hook_done.set()
+                self.assertTrue(refused_parse_done.wait(30))
+            else:
+                later_reads.append(stashed[0].text())
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        outcomes: list[int] = []
+        thread = threading.Thread(target=lambda: outcomes.append(self.session.parse("alpha:12,beta:3")))
+        thread.start()
+        try:
+            self.assertTrue(first_hook_done.wait(30))
+            with self.assertRaises(grammar.GalleyError) as refusal:
+                self.session.parse("gamma:1")
+            self.assertEqual(refusal.exception.code, grammar.Status.ERROR_SESSION_IN_USE)
+        finally:
+            refused_parse_done.set()
+            thread.join(30)
+        self.assertEqual(outcomes, [15])
+        self.assertEqual(later_reads, [b"alpha:12"])
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(self.session.text(root), b"alpha:12,beta:3")
+        self.assertEqual(stashed[0].text(), b"alpha:12")
+
+    def test_a_hook_that_parses_its_own_session_is_refused_and_keeps_its_nodes(self) -> None:
+        refusals: list[int] = []
+        reads: list[bytes | None] = []
+        stashed: list[grammar.Node] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            if not stashed:
+                stashed.append(node)
+                try:
+                    self.session.parse("gamma:1")
+                except grammar.GalleyError as error:
+                    refusals.append(error.code)
+            reads.append(stashed[0].text())
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.parse("alpha:12,beta:3")
+        self.assertEqual(refusals, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertEqual(reads, [b"alpha:12", b"alpha:12"])
+        self.assertEqual(stashed[0].text(), b"alpha:12")
+
+    def test_hook_node_after_a_successful_parse_reads_through_the_session(self) -> None:
+        stashed = self._stash_pairs_while_parsing("alpha:12,beta:3")
+        self.assertEqual(len(stashed), 2)
+        first = stashed[0]
+        self.assertEqual(first.text(), b"alpha:12")
+        self.assertEqual(self.session.text(first), b"alpha:12")
+        self.assertEqual(self.session.child_count(first), len(first))
+        root = self.session.root_node()
+        assert root is not None
+        found: grammar.Node | None = None
+        with self.session.walk(root) as walker:
+            for step in walker:
+                if step["node"].address == first.address:
+                    found = step["node"]
+                    break
+        self.assertIsNotNone(found)
+        assert found is not None
+        self.assertEqual(found, first)
+        self.assertEqual(hash(found), hash(first))
+        self.assertEqual({found: "session"}[first], "session")
+
+    def test_hook_node_of_a_failed_parse_is_refused_afterwards(self) -> None:
+        stashed: list[grammar.Node] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            stashed.append(node)
+
+        self.session.install_procedure("reduction_Number", reduction_Number)
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:12,beta:")
+        self.assertGreaterEqual(len(stashed), 1)
+        with self.assertRaisesRegex(ValueError, "invalidated"):
+            stashed[0].text()
+        with self.assertRaisesRegex(ValueError, "invalidated"):
+            self.session.text(stashed[0])
+        self.session.clear_procedures()
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaisesRegex(ValueError, "invalidated"):
+            stashed[0].text()
+
+    def test_hook_node_used_from_another_thread_is_refused_by_the_session_door(self) -> None:
+        # The hook door is ungated, so it is reachable only from the thread
+        # running the hook. Any other thread crosses the session door, which
+        # the core refuses while the parse runs.
+        stashed: list[grammar.Node] = []
+        first_hook_done = threading.Event()
+        probes_done = threading.Event()
+        probe_codes: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            if not stashed:
+                stashed.append(node)
+                first_hook_done.set()
+                self.assertTrue(probes_done.wait(30))
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        thread = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        thread.start()
+        try:
+            self.assertTrue(first_hook_done.wait(30))
+            for probe in (
+                lambda: stashed[0].text(),
+                lambda: stashed[0].children(),
+                lambda: self.session.text(stashed[0]),
+                lambda: stashed[0].clean_children(),
+            ):
+                with self.assertRaises(grammar.GalleyError) as refusal:
+                    probe()
+                probe_codes.append(refusal.exception.code)
+        finally:
+            probes_done.set()
+            thread.join(30)
+        self.assertEqual(probe_codes, [grammar.Status.ERROR_SESSION_IN_USE] * 4)
+        self.assertEqual(stashed[0].text(), b"alpha:12")
+
+    def test_node_of_an_earlier_parse_is_not_the_node_at_the_same_address(self) -> None:
+        self.session.parse("alpha:12")
+        first_root = self.session.root_node()
+        assert first_root is not None
+        self.session.parse("alpha:12")
+        second_root = self.session.root_node()
+        assert second_root is not None
+        self.assertEqual(first_root.address, second_root.address)
+        self.assertNotEqual(first_root, second_root)
+        self.assertEqual(len({first_root, second_root}), 2)
+        with self.assertRaisesRegex(ValueError, "invalidated"):
+            first_root.text()
+        self.assertEqual(second_root.text(), b"alpha:12")
+
+    def test_walk_inside_a_hook_is_refused_not_empty(self) -> None:
+        # Walkers exist only on the session door, which the core refuses
+        # while a parse runs: a refused creation raises session in use,
+        # never the None that means an invalid root.
+        self.session.parse("alpha:12")
+        previous_root = self.session.root_node()
+        assert previous_root is not None
+        codes: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            try:
+                self.session.walk(previous_root)
+            except grammar.GalleyError as error:
+                codes.append(error.code)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.parse("alpha:12")
+        self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE])
+        root = self.session.root_node()
+        assert root is not None
+        self.assertIsNone(self.session.walk(2**40))
+        self.assertIsNotNone(self.session.walk(root))
+
+    def test_node_equality_ignores_the_door(self) -> None:
+        # The same node reached inside the hook and from the session after
+        # the parse is one node.
+        stashed = self._stash_pairs_while_parsing("alpha:12")
+        root = self.session.root_node()
+        assert root is not None
+        wrapper = self.session.first_child(root)
+        assert wrapper is not None
+        pair = self.session.first_child(wrapper)
+        assert pair is not None
+        self.assertEqual(stashed[0], pair)
+        self.assertEqual(hash(stashed[0]), hash(pair))
 
 
 class SymbolTableTests(unittest.TestCase):

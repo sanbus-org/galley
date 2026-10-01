@@ -10,116 +10,147 @@
  *
  * Hooks receive a `ProcedureArguments` object: per-hook state (current
  * node, position, drop and replace) that is valid only while the hook
- * runs. Node reads and tree edits go through the parse's `HookDoor`, one
- * per parse and shared by every hook of it, over the galley_hook_*
- * twins, so `currentNode()` plus the ordinary `Node` methods cross into
- * the live parse without touching the session door and stay usable for
- * the rest of that parse.
+ * runs. While a hook runs, the session crosses node reads and tree edits
+ * through that dispatch's `HookDoor` over the galley_hook_* twins, so
+ * `currentNode()` plus the ordinary `Node` methods reach the live parse
+ * without touching the session door. The nodes carry the core's parse
+ * generation: they stay usable for the rest of that parse and, when it
+ * publishes its tree, until the session parses again.
  */
 
 import { INVALID_NODE, Status } from "./constants.ts";
 import type { Handle, FfiPort } from "./port.ts";
-import { Node, nodeAddress, type NodeDoor } from "./node.ts";
+import { Node, type NodeDoor } from "./node.ts";
 import { GalleyError, SessionClosedError } from "./errors.ts";
 import type { Session } from "./session.ts";
 import { checkMessageBytes } from "./sources.ts";
 
 /**
- * The parse-time door over one parse's node storage. One per parse, so
- * every hook of that parse hands out nodes on the same door and two nodes
- * share a door exactly when they belong to the same parse. Reads and edits
- * cross the galley_hook_* twins on the native door, which stays valid for
- * the whole parse; the session's parse generation, stamped here, shows
- * when that parse has ended.
+ * The hook door of one hook dispatch: the galley_hook_* twins over the
+ * running parse's native door, which stays valid for the whole parse, plus
+ * the core generation that parse stamped. The session creates one per
+ * dispatch and uses it only while that hook runs; nodes never hold it.
  */
 export class HookDoor implements NodeDoor {
+  readonly isHook = true;
   readonly #door: Handle;
-  readonly #session: Session;
   readonly #port: FfiPort;
-  /** The parse generation this door belongs to, stamped at creation. */
-  readonly #generation: number;
+  readonly #session: Session;
+  /** The core generation of the parse that owns the native door. */
+  readonly generation: bigint;
 
-  constructor(door: Handle, session: Session, port: FfiPort) {
+  constructor(door: Handle, generation: bigint, session: Session, port: FfiPort) {
     this.#door = door;
+    this.generation = generation;
     this.#session = session;
     this.#port = port;
-    this.#generation = session.parseGeneration;
   }
 
-  /**
-   * The single gate for this door: a closed session or a door left over
-   * from an earlier parse generation throws instead of reading dead
-   * storage, and a node argument must be live and belong to this door.
-   * Every crossing takes its address from here and nowhere else.
-   * @internal
-   */
-  address(node: Node | bigint | number): bigint {
-    if (this.#session.isClosed) {
-      throw new SessionClosedError("session is closed");
-    }
-    if (this.#generation !== this.#session.parseGeneration) {
-      throw new SessionClosedError("hook door is invalidated");
-    }
-    return nodeAddress(node, this);
-  }
-
-  /** Wraps an address on this door; invalid becomes null. @internal */
+  /** Wraps an address on the running parse; invalid becomes null. @internal */
   node(address: bigint): Node | null {
     if (address === INVALID_NODE) return null;
-    return new Node(this.#session, address, this);
+    return new Node(this.#session, address, this.generation);
   }
 
-  childCount(node: Node | bigint | number): number {
-    return this.#port.hookNodeChildCount(this.#door, this.address(node));
+  nodeValid(address: bigint): boolean {
+    return this.#port.hookNodeValid(this.#door, address);
   }
 
-  firstChild(node: Node | bigint | number): Node | null {
-    return this.node(this.#port.hookNodeFirstChild(this.#door, this.address(node)));
+  childCount(address: bigint): number {
+    return this.#port.hookNodeChildCount(this.#door, address);
   }
 
-  lastChild(node: Node | bigint | number): Node | null {
-    return this.node(this.#port.hookNodeLastChild(this.#door, this.address(node)));
+  firstChild(address: bigint): bigint {
+    return this.#port.hookNodeFirstChild(this.#door, address);
   }
 
-  nextSibling(node: Node | bigint | number): Node | null {
-    return this.node(this.#port.hookNodeNextSibling(this.#door, this.address(node)));
+  lastChild(address: bigint): bigint {
+    return this.#port.hookNodeLastChild(this.#door, address);
   }
 
-  priorSibling(node: Node | bigint | number): Node | null {
-    return this.node(this.#port.hookNodePriorSibling(this.#door, this.address(node)));
+  nextSibling(address: bigint): bigint {
+    return this.#port.hookNodeNextSibling(this.#door, address);
   }
 
-  parent(node: Node | bigint | number): Node | null {
-    return this.node(this.#port.hookNodeParent(this.#door, this.address(node)));
+  priorSibling(address: bigint): bigint {
+    return this.#port.hookNodePriorSibling(this.#door, address);
   }
 
-  text(node: Node | bigint | number): Uint8Array | null {
-    return this.#port.hookNodeText(this.#door, this.address(node));
+  parent(address: bigint): bigint {
+    return this.#port.hookNodeParent(this.#door, address);
   }
 
-  symbolNameBytes(node: Node | bigint | number): Uint8Array | null {
-    return this.#port.hookNodeSymbolName(this.#door, this.address(node));
+  text(address: bigint): Uint8Array | null {
+    return this.#port.hookNodeText(this.#door, address);
   }
 
-  span(node: Node | bigint | number): [bigint, bigint] | null {
-    return this.#port.hookNodeSpan(this.#door, this.address(node));
+  symbolNameBytes(address: bigint): Uint8Array | null {
+    return this.#port.hookNodeSymbolName(this.#door, address);
   }
 
-  lineColumn(node: Node | bigint | number): [number, number] | null {
-    return this.#port.hookNodeLineColumn(this.#door, this.address(node));
+  span(address: bigint): [bigint, bigint] | null {
+    return this.#port.hookNodeSpan(this.#door, address);
   }
 
-  cleanChildren(node: Node | bigint | number): Node | null {
-    const { status, head } = this.#port.hookTreeCleanChildren(this.#door, this.address(node));
+  lineColumn(address: bigint): [number, number] | null {
+    return this.#port.hookNodeLineColumn(this.#door, address);
+  }
+
+  variableIndex(address: bigint): number | null {
+    const index = this.#port.hookNodeVariableIndex(this.#door, address);
+    if (index === -1) return null;
+    this.#throwOnFailure("variableIndex", index);
+    return index;
+  }
+
+  cleanChildren(address: bigint): bigint {
+    const { status, head } = this.#port.hookTreeCleanChildren(this.#door, address);
     this.#throwOnFailure("cleanChildren", status);
-    return this.node(head);
+    return head;
   }
 
-  appendChildren(parent: Node | bigint | number, chain: Node | bigint | number): void {
-    this.#throwOnFailure(
-      "appendChildren",
-      this.#port.hookTreeAppendChildren(this.#door, this.address(parent), this.address(chain)),
-    );
+  appendChildren(parent: bigint, chain: bigint): void {
+    this.#throwOnFailure("appendChildren", this.#port.hookTreeAppendChildren(this.#door, parent, chain));
+  }
+
+  insertBefore(target: bigint, chain: bigint): void {
+    this.#throwOnFailure("insertBefore", this.#port.hookTreeInsertBefore(this.#door, target, chain));
+  }
+
+  insertAfter(target: bigint, chain: bigint): void {
+    this.#throwOnFailure("insertAfter", this.#port.hookTreeInsertAfter(this.#door, target, chain));
+  }
+
+  removeSiblings(address: bigint, count: number): bigint {
+    const { status, head } = this.#port.hookTreeRemoveSiblings(this.#door, address, count);
+    this.#throwOnFailure("removeSiblings", status);
+    return head;
+  }
+
+  removeSelf(address: bigint): bigint {
+    const { status, head } = this.#port.hookTreeRemoveSelf(this.#door, address);
+    this.#throwOnFailure("removeSelf", status);
+    return head;
+  }
+
+  promoteChildrenOverWrapper(wrapper: bigint): bigint {
+    const { status, head } = this.#port.hookTreePromoteChildrenOverWrapper(this.#door, wrapper);
+    this.#throwOnFailure("promoteChildrenOverWrapper", status);
+    return head;
+  }
+
+  unlinkWrapper(wrapper: bigint): void {
+    this.#throwOnFailure("unlinkWrapper", this.#port.hookTreeUnlinkWrapper(this.#door, wrapper));
+  }
+
+  insertChildrenAt(parent: bigint, index: number, chain: bigint): void {
+    this.#throwOnFailure("insertChildrenAt", this.#port.hookTreeInsertChildrenAt(this.#door, parent, index, chain));
+  }
+
+  removeChildrenAt(parent: bigint, index: number, count: number): bigint {
+    const { status, head } = this.#port.hookTreeRemoveChildrenAt(this.#door, parent, index, count);
+    this.#throwOnFailure("removeChildrenAt", status);
+    return head;
   }
 
   /**
@@ -142,17 +173,19 @@ export class HookDoor implements NodeDoor {
  * drop and replace, and semantic errors. Valid only while its hook runs;
  * the dispatcher expires it when the hook returns, so a reference kept
  * past that throws instead of reading a frame that is gone. What must
- * outlive the hook — the tree — lives on the parse's `HookDoor`.
+ * outlive the hook — the tree — is addressed through the session.
  */
 export class ProcedureArguments {
   readonly #args: Handle;
   readonly #door: HookDoor;
+  readonly #session: Session;
   readonly #port: FfiPort;
   #expired = false;
 
-  constructor(args: Handle, door: HookDoor, port: FfiPort) {
+  constructor(args: Handle, door: HookDoor, session: Session, port: FfiPort) {
     this.#args = args;
     this.#door = door;
+    this.#session = session;
     this.#port = port;
   }
 
@@ -176,7 +209,7 @@ export class ProcedureArguments {
 
   setCurrentNode(node: Node | bigint | number): void {
     const args = this.#live();
-    this.#port.procSetCurrentNode(args, this.#door.address(node));
+    this.#port.procSetCurrentNode(args, this.#session.admit(node, this.#door));
   }
 
   dropSelf(): void {

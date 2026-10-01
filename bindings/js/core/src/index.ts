@@ -9,7 +9,6 @@ import { Session, Walker } from "./session.ts";
 import type { SessionOptions, WalkStep } from "./session.ts";
 import { Parser } from "./parser.ts";
 import { Node } from "./node.ts";
-import type { NodeDoor } from "./node.ts";
 import { GalleyError, MissingArtifactError, SessionClosedError } from "./errors.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
@@ -28,5 +27,5 @@ export {
   SessionClosedError,
   ProcedureArguments,
 };
-export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry, NodeDoor };
+export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry };
 export * from "./constants.ts";

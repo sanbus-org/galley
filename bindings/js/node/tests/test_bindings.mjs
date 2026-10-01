@@ -20,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { artifactFileName } from "@sanbus/galley-core/internal";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
+import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-node", process.platform);
@@ -33,6 +34,7 @@ const languageDir = ensureTestLibrary({
 const {
   Node,
   SessionClosedError,
+  GalleyError,
   ParserType,
   RecoveryMode,
   Kind,
@@ -791,11 +793,11 @@ await test("Node clean/append round-trip", async () => {
   }
 });
 
-await test("every edit entry refuses a node from another door", async () => {
-  // Every session is its own door: a node crosses as a bare address and
-  // the native side only bounds-checks it, so a node from another door
-  // would alias whatever node holds that index here. Every entry that
-  // takes a node refuses one from another door, not only Node methods.
+await test("every edit entry refuses a node from another session", async () => {
+  // A node crosses as a bare address and the native side only
+  // bounds-checks it, so a node from another session would alias whatever
+  // node holds that index here. Every entry that takes a node refuses one
+  // from another session, not only Node methods.
   const parser = await newParser();
   const s = await parser.openSession();
   const other = await parser.openSession();
@@ -818,9 +820,9 @@ await test("every edit entry refuses a node from another door", async () => {
   }
 });
 
-await test("hook and session doors do not mix", async () => {
-  // Post-parse session node versus parse-time hook node, both
-  // directions; the refusal must fire inside the hook.
+await test("a hook refuses nodes of an earlier parse", async () => {
+  // A node of the previous parse against a node of the running parse,
+  // both directions; the refusal must fire inside the hook.
   const parser = await newParser();
   const s = await parser.openSession();
   try {
@@ -847,15 +849,15 @@ await test("hook and session doors do not mix", async () => {
       s.clearProcedures();
     }
     assert.equal(refusals.length, 4);
-    assert.ok(refusals.every((error) => error instanceof TypeError));
+    assert.ok(refusals.every((error) => error instanceof SessionClosedError));
   } finally {
     s.close();
   }
 });
 
-await test("hooks of one parse share a door", async () => {
+await test("a chain detached in one hook attaches in a later hook", async () => {
   // A chain detached in one hook can be attached in a later hook of the
-  // same parse: both nodes cross the same parse's door.
+  // same parse: both nodes carry the running parse's generation.
   const parser = await newParser();
   const stash = [];
   const outcomes = [];
@@ -1104,10 +1106,11 @@ await test("procedure hook can read node text", async () => {
   }
 });
 
-await test("hook nodes outlive their hook within the parse", async () => {
+await test("hook nodes outlive their hook and their parse", async () => {
   // The tree belongs to the parse, not to the hook that handed out a
   // node: a node stashed by one hook stays usable from a later hook of
-  // the same parse and refuses once the parse ends.
+  // the same parse, after the parse succeeds, and refuses only once the
+  // session parses again.
   const parser = await newParser();
   const stashed = [];
   const seen = [];
@@ -1121,6 +1124,8 @@ await test("hook nodes outlive their hook within the parse", async () => {
   try {
     s.parse("alpha:12,beta:3");
     assert.deepEqual(seen, ["alpha:12"]);
+    assert.equal(new TextDecoder().decode(stashed[0].text()), "alpha:12");
+    s.parse("gamma:7");
     assert.throws(() => stashed[0].text(), SessionClosedError);
   } finally {
     s.close();
@@ -1504,6 +1509,8 @@ await test("two language directories parse independently", async () => {
     fs.rmSync(secondDir, { recursive: true, force: true });
   }
 });
+
+await runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status });
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({
