@@ -1,8 +1,6 @@
 /kv/_ll-parser.zig
 /kv/_lr-parser.zig
 /kv/procedures.zig
-/kv/procedures_python.zig
-/kv/metadata.json
 /kv/__init__.py
 /kv/__init__.pyi
 /kv/galley_impl.*.so
@@ -10,8 +8,6 @@
 /json/_ll-parser.zig
 /json/_lr-parser.zig
 /json/procedures.zig
-/json/procedures_python.zig
-/json/metadata.json
 /json/__init__.py
 /json/__init__.pyi
 /json/galley_impl.*.so

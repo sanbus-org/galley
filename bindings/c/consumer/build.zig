@@ -179,7 +179,7 @@ pub fn build(b: *std.Build) !void {
     // WASI reactor output for the JavaScript wasm adapter (`bindings/js/wasm`):
     // same inputs, but a `.wasm` module with all symbols exported instead of
     // a native shared library. Host imports (`wasi_snapshot_preview1` stub
-    // plus `env.galley_js_dispatch`) are provided by the adapter at
+    // plus `env.galley_host_dispatch`) are provided by the adapter at
     // instantiation.
     var artifact: *std.Build.Step.Compile = undefined;
     if (wasm) {

@@ -53,8 +53,12 @@ export interface TreeSnapshot {
   isSemanticError: Int32Array;
 }
 
-/** Native dispatch callback installed by the adapter; receives a decoded hook name. */
-export type DispatchHandler = (name: string, args: Handle) => void;
+/**
+ * The one callback an adapter forwards every hook of its library to:
+ * the handle the session registered, the hook's index, and its native
+ * arguments (valid only until the callback returns).
+ */
+export type DispatchHandler = (hookHandle: number, hookIndex: number, args: Handle) => void;
 
 export interface FfiPort {
   // -- parser metadata (mirror galley.h; sessions expose these per artifact) --
@@ -228,28 +232,25 @@ export interface FfiPort {
   hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number;
   hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint };
   /**
-   * Enables exactly `names` in the native procedure gates before a parse
-   * (selective dispatch): the adapter clears all gates, then enables each
-   * name. Missing symbols (C-procedure or stale libraries) are no-ops.
+   * Hook names in hook-index order, from the library's own list; empty
+   * for a library that forwards no hooks to a host. Queried once and
+   * cached by the adapter.
    */
-  syncProcedures(names: string[]): void;
+  hookNames(): string[];
   /**
-   * Parse-time dispatch slot, or null. The session whose parse is in
-   * flight sets this to a closure over its own hook registry around
-   * each parse (restoring the previous value after); adapter callbacks
-   * forward decoded hook names here. Anchored on the port — not on
-   * module state — so dispatch survives duplicated module installs
-   * (bundler copies, transforming loaders): both sides of the native
-   * boundary already share the port object. The port never names the
-   * session type; it just holds the function.
+   * Replaces `session`'s native hook state in one step: `enabled` holds
+   * one flag per hook index (`hookNames().length` in all). Every enabled
+   * hook then reaches `hookDispatch` with `hookHandle`. Returns the native
+   * status: negative when refused, `-13` while a parse is in flight.
    */
-  activeDispatch: DispatchHandler | null;
+  setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number;
   /**
-   * Hook names in integer-ID order for the ID dispatch path. Queried once
-   * from the library (`galley_js_procedure_count` /
-   * `galley_js_procedure_name_ptr` / `galley_js_procedure_name_len`) and
-   * cached; empty when the library predates the query exports (C-procedure
-   * or stale libraries use the name-carrying dispatch instead).
+   * The callback the adapter's native trampoline forwards each hook to,
+   * or null. The core installs it once per port, routing by handle to
+   * the session that owns the hook. Anchored on the port — not on module
+   * state — so dispatch survives duplicated module installs (bundler
+   * copies, transforming loaders): both sides of the native boundary
+   * already share the port object.
    */
-  procedureNames(): string[];
+  hookDispatch: DispatchHandler | null;
 }

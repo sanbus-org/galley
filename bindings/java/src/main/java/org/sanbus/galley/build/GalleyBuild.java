@@ -11,7 +11,7 @@ import java.util.*;
  * Usage: java -jar galley.jar &lt;language-dir&gt; [generator flags...]
  *
  * Generator flags forward verbatim to the generator ahead of
- * `--emit-metadata`: this tool forwards every flag it does not own and
+ * `--emit-metadata --emit-host-procedures`: this tool forwards every flag it does not own and
  * the binary owns its surface (unknown flags die there with `unknown
  * argument`), so new generator flags work with no wrapper changes. Only
  * `--parser-type`'s value-shape is known here (`--parser-type lr` and
@@ -20,9 +20,9 @@ import java.util.*;
  * and never compile.
  *
  * The language dir must contain ll.grm and may contain config.zig,
- * procedures.java (Java hooks dispatched through generated shim;
- * the packaged layout <package>/procedures.java is canonical and also
- * yields the generated per-grammar Parser wiring),
+ * procedures.java (Java hooks dispatched through the generator's host
+ * shim; the packaged layout <package>/procedures.java is canonical and
+ * also yields the generated per-grammar Parser wiring),
  * ll_error_messages.zig, etc. A
  * procedures.c/procedures.cpp next to the grammar is a fatal build
  * error naming procedures.java as the host file to use instead.
@@ -30,7 +30,7 @@ import java.util.*;
  * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
  *   GALLEY_CHECKOUT (required: existing Galley working tree).
  *
- * Generates parser (--emit-metadata), builds shared library through generic
+ * Generates parser (--emit-metadata --emit-host-procedures), builds shared library through generic
  * consumer build directly next to the grammar, so the consumer can name it
  * outright via Galley.load(path) or GALLEY_LIBRARY_PATH. To fetch
  * a checkout for convenience, use examples/scripts/fetch-galley.sh — that
@@ -49,7 +49,7 @@ public final class GalleyBuild {
         System.exit(1);
     }
 
-    // Single gate for every generated write (procedure shim, Parser
+    // Single gate for every generated write (the Parser
     // class): reads the file and reports whether it carries the generated
     // marker. Absent files read as null; unreadable files are fatal.
     // Returns null when absent, true when generated, false when foreign.
@@ -202,64 +202,6 @@ public final class GalleyBuild {
         }
     }
 
-    private static void emitJavaProcedureShim(List<String> hooks, Path outputPath) {
-        assertGeneratedOrAbsent(outputPath);
-        List<String> builder = new ArrayList<>();
-        builder.add(GENERATED_BANNER);
-        builder.add("// Procedure hooks dispatch through a Java callback registered");
-        builder.add("// by the host's JVM; only enabled hooks cross.");
-        builder.add("const std = @import(\"std\");");
-        builder.add("const root = @import(\"galley\");");
-        builder.add("pub const Payload = struct {};");
-        builder.add("");
-        builder.add("var java_dispatch_target: ?*const fn ([*]const u8, usize, ?*anyopaque) callconv(.c) void = null;");
-        for (String name : hooks) {
-            builder.add("var java_enabled_" + name + ": bool = false;");
-        }
-        builder.add("");
-        builder.add("fn dispatch(comptime name: []const u8, args: *root.data_structures.ProcedureArguments) void {");
-        builder.add("    if (java_dispatch_target) |target| {");
-        builder.add("        target(name.ptr, name.len, @ptrCast(args));");
-        builder.add("    }");
-        builder.add("}");
-        builder.add("");
-        for (String name : hooks) {
-            builder.add("pub fn " + name + "(args: *root.data_structures.ProcedureArguments) void {");
-            builder.add("    if (!java_enabled_" + name + ") return;");
-            builder.add("    dispatch(\"" + name + "\", args);");
-            builder.add("}");
-            builder.add("");
-        }
-        builder.add("const procedure_slots = [_]struct { name: []const u8, enabled: *bool }{");
-        for (String name : hooks) {
-            builder.add("    .{ .name = \"" + name + "\", .enabled = &java_enabled_" + name + " },");
-        }
-        builder.add("};");
-        builder.add("");
-        builder.add("export fn galley_install_java_dispatch(target: *const fn ([*]const u8, usize, ?*anyopaque) callconv(.c) void) void {");
-        builder.add("    java_dispatch_target = target;");
-        builder.add("}");
-        builder.add("");
-        builder.add("export fn galley_java_procedure_enable(name_ptr: [*]const u8, name_len: usize) c_int {");
-        builder.add("    const name = name_ptr[0..name_len];");
-        builder.add("    inline for (&procedure_slots) |*slot| {");
-        builder.add("        if (std.mem.eql(u8, slot.name, name)) {");
-        builder.add("            slot.enabled.* = true;");
-        builder.add("            return 1;");
-        builder.add("        }");
-        builder.add("    }");
-        builder.add("    return 0;");
-        builder.add("}");
-        builder.add("");
-        builder.add("export fn galley_java_procedure_clear() void {");
-        builder.add("    inline for (&procedure_slots) |*slot| {");
-        builder.add("        slot.enabled.* = false;");
-        builder.add("    }");
-        builder.add("}");
-        builder.add("");
-        try { Files.writeString(outputPath, String.join("\n", builder), StandardCharsets.UTF_8); } catch (IOException e) { fatal("failed to write shim: " + e.getMessage()); }
-    }
-
     // Per-grammar Parser class: banner-guarded, fixed class name, one
     // explicit installProcedure call per hook from the generator-owned
     // metadata list (no reflection). Loading through it wires the bundled
@@ -363,7 +305,6 @@ public final class GalleyBuild {
         // Check every clobber guard before generating anything: a
         // hand-written file in a generated path survives a rebuild
         // instead of being half-overwritten.
-        assertGeneratedOrAbsent(languageDir.resolve("procedures_java.zig"));
         Path packagedParserPath = languageDir.resolve(packageName).resolve("Parser.java");
         if (packagedJavaProceduresFile != null) {
             assertGeneratedOrAbsent(packagedParserPath);
@@ -378,14 +319,15 @@ public final class GalleyBuild {
         }
 
         String help = capture(Arrays.asList(cli.toString(), "--help"));
-        if (!help.contains("--emit-metadata")) {
-            fatal("the Galley at " + galleySource + " is too old for the bindings workflow (no --emit-metadata support); update the checkout");
+        if (!help.contains("--emit-host-procedures")) {
+            fatal("the Galley at " + galleySource + " is too old for the bindings workflow (no --emit-host-procedures support); update the checkout");
         }
 
         List<String> generateArgs = new ArrayList<>();
         generateArgs.add(cli.toString());
         generateArgs.addAll(generatorFlags);
         generateArgs.add("--emit-metadata");
+        generateArgs.add("--emit-host-procedures");
         generateArgs.add(languageDir.toString());
         run(generateArgs, null);
 
@@ -397,12 +339,10 @@ public final class GalleyBuild {
         if (javaProceduresFile != null) {
             System.err.println("galley-bindings: using Java procedures from " + javaProceduresFile);
         }
-        // Every build links a dispatch shim generated from the metadata
-        // hook list (non-empty even when the grammar disables
-        // procedures), so a hook installed later fires without a rebuild.
-        Path shimPath = languageDir.resolve("procedures_java.zig");
-        emitJavaProcedureShim(procedureHooks, shimPath);
-        String proceduresZigSource = shimPath.toString();
+        // Every build links the generator's host shim (non-empty even when
+        // the grammar disables procedures), so a hook installed later
+        // fires without a rebuild.
+        String proceduresZigSource = languageDir.resolve("host_procedures.zig").toString();
 
         if (packagedJavaProceduresFile != null) {
             String hookClass = packagedJavaProceduresFile.getFileName().toString();

@@ -39,10 +39,10 @@ python -m galley <language-dir> [generator flags...]
 ```
 
 Generator flags forward verbatim to the generator ahead of
-`--emit-metadata`: every flag the tool does not own goes to the generator,
+`--emit-host-procedures`: every flag the tool does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
-The command generates the parser (`--emit-metadata`), builds the grammar
+The command generates the parser (`--emit-host-procedures`), builds the grammar
 as a static archive through Galley's generic consumer build file, detects
 optional hook files next to your grammar (`procedures.py` for Python
 hooks, `procedures.zig`, `ll_error_messages.zig`), and turns the language
@@ -115,8 +115,10 @@ The module is designed so the FFI boundary adds as little as possible:
 - `parse()` reads `str` input zero-copy through the interpreter's cached
   UTF-8 buffer. The session retains a copy, so node text stays valid
   after return regardless of the input object's lifetime.
-- All calls hold the GIL; sessions are not thread-safe. Use one session
-  per thread or guard it externally.
+- A parse releases the GIL (hooks take it back for the length of their call),
+  so sessions on different threads parse in parallel; every other call holds
+  it. Sessions are not thread-safe: use one session per thread or guard it
+  externally.
 
 Node text, diagnostics, and expected-token data remain valid only until
 the next parse on the same session; every accessor copies before
@@ -166,18 +168,21 @@ def hook_print(args: ProcedureArguments) -> None:
 afterwards. The nodes it yields belong to the parse: a hook may keep one for
 later hooks of the same parse, and it raises once that parse ends.
 
-Mechanically, `python -m galley` reads the generator's hook list
-(`procedures` in metadata.json) and produces a Zig shim module containing
-one dispatch slot;
-the generated init registers the Python callables into that slot from
-`procedures.py` beside the package. Extra hooks go through the parser's
-`install_procedures` directly, where the shared-registry semantics are
-visible (later installs win per hook name).
+Mechanically, `python -m galley` links the generator's host shim
+(`host_procedures.zig`, written by `--emit-host-procedures`), which forwards
+every hook to the parsing session's own dispatch. The generated init registers
+the Python callables from `procedures.py` beside the package as the artifact's
+defaults: every `Session` starts with a copy and owns it from then on, so a
+default installed later reaches only sessions opened later (later installs win
+per hook name). A session has the same install, list, look-up and clear
+methods for its own hooks, and a change raises `GalleyError`
+(`ERROR_SESSION_IN_USE`) while a parse is in flight.
 `procedures.py` uses relative imports: it always executes as a submodule
 of the language package, so hook code sees the right `Session` and the
-same `GalleyError` class the parser raises. The parser calls through the slot
-directly, so hook code executes in the host's Python interpreter.
-Unregistered slots are no-ops.
+same `GalleyError` class the parser raises. Hook code executes in the host's
+Python interpreter; a parse releases the GIL, so sessions on different threads
+parse in parallel and a hook takes the GIL back for the length of its call.
+A hook the session did not install returns before any call.
 
 Explicit registration is also available. On a bare-loaded parser it is
 the only wiring; on a package it composes with the scan:
@@ -191,11 +196,16 @@ parser.install_procedures(my_hooks)  # all reduction_*/hook_* in my_hooks
 parser.list_procedures()   # {name: callable}
 parser.procedure_hook("reduction_Pair")   # the callable, or None
 parser.clear_procedures()
+
+with parser.Session() as session:   # copies the defaults above
+    session.install_procedure("reduction_Number", lambda args: print("Number"))
+    session.parse("alpha:12")
 ```
 
-When no `procedures.py` exists, the shim is still generated
-as a no-op fallback so the archive links; hooks are simply no-ops until
-registered via `parser.install_procedure` without requiring a rebuild.
+When no `procedures.py` exists, the shim is still linked
+so the archive links; hooks are simply no-ops until
+registered via `parser.install_procedure` or `session.install_procedure`
+without requiring a rebuild.
 `parser.has_procedures()` reports whether
 the library was built with procedure hooks compiled in.
 

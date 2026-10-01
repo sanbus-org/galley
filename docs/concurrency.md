@@ -11,6 +11,7 @@ Each row is a checkable claim: scope, owner, gate, error.
 | Per-parse | `Context`, syntax-error stack, token | Parsing thread | Unshared by construction | None |
 | Per-session buffers | Arena (`reset(retain_capacity)`), `owned_input`, node storage | Session | Write lease exclusive, read guard shared | `SessionInUse` |
 | Per-session config | `message_overrides` | Session | Set at creation; never mutated during a live parse (host obligation) | Host bug |
+| Per-session hooks | Enabled set, dispatch callback, host handle | Session | Exclusive lease (`galley_session_set_hooks`); copied onto each parse's `Context`, so fixed for that parse | `SessionInUse` |
 | Per-thread | Signal scope, alternate stack, stack bounds, signal mask | Calling thread | `threadlocal` | None |
 | Per-process | `SIGSEGV`/`SIGBUS` dispositions + refcount | Process | One registry per build graph; one recovery library per process (see below) | `SignalHandlerSetupFailed`, `SignalHandlerRestoreFailed`, `StackOverflowRecoveryUnsupported` |
 | Per-image | Grammar tables, generated code | Image | Read-only, zero coordination | None |
@@ -38,6 +39,7 @@ language in its own binary.
 * No unprotected nested parse inside a recovery scope. While one thread runs a `stack_overflow_recovery` parse, any parse on that thread whose session did not opt into recovery fails with `NestedParseDuringStackOverflowRecovery` before touching session state (generation, node storage, owned input, and input path stay as they were). Nested parses whose sessions opted in stack scopes instead, so an inner fault is caught by the inner scope.
 * No pointer outlives its guard. Node, text, and diagnostic pointers are valid only while a guard is held. The next parse may reallocate node storage between parses, never mid-parse.
 * Hook-time access runs on the parsing thread. Procedure hooks and the syntax-error reporter run on the parsing thread; they must be thread-safe if a session migrates threads over its life.
+* Hook state is session state. A host shim forwards each enabled hook to the dispatch callback and handle of the session that is parsing, so sessions of one library, and sessions of different libraries, parse at the same time with no hook state shared. Changing a session's hooks while a parse runs returns `SessionInUse`. The C ABI test `bindings/c/tests/test_concurrency.c` runs two libraries with two sessions each on four threads.
 * Two doors, one core. Parse-time access crosses the hook door — the `*_hook_*` entry points over the parse's door (`galley_procedure_door`), ungated because the parse already holds the lease. The door is one per parse, valid for every hook of it and dead once it ends; per-hook state stays on the arguments, which die with their hook. Post-parse access crosses the session door — `galley_node_*`, `galley_tree_*`, walkers, snapshots, diagnostics — behind the guards: `SessionInUse` while a parse holds the session, `StaleParseResult` (reported as `invalid node`) once a later parse, successful or failed, has reset node storage. A session stashed from a hook crosses the same guard; there is no bypass branch.
 
 ## Host obligations

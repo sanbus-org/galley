@@ -824,8 +824,7 @@ export fn galley_session_destroy(session_ptr: ?*GalleySession) void {
 // Host-memory helpers for the WebAssembly build (`bindings/js/wasm`): the
 // wasm linear memory is only writable by the host through exported memory,
 // so input buffers and out-parameter slots are allocated here. Present (but
-// unused) on native targets, like `galley_install_js_dispatch`; the FFI
-// adapters use their own allocators there.
+// unused) on native targets; the FFI adapters use their own allocators there.
 export fn galley_js_malloc(len: usize) ?[*]u8 {
     if (comptime !builtin.cpu.arch.isWasm()) return null;
     const slice = std.heap.c_allocator.alloc(u8, len) catch return null;
@@ -868,6 +867,58 @@ export fn galley_session_set_message_override(
         allocator.free(gop.value_ptr.*);
     }
     gop.value_ptr.* = message;
+    return galley_ok;
+}
+
+const host_hooks = root.data_structures.host_hooks;
+
+/// Number of hooks the linked host shim forwards; zero for a library built
+/// with Zig or extern hooks. Hook indexes run `0 ..< galley_hooks_count()`
+/// and are fixed for the library's lifetime.
+export fn galley_hooks_count() usize {
+    return host_hooks.hook_count;
+}
+
+/// Name of hook `index` (the grammar's `reduction`, `reduction_<Variable>`
+/// or `hook_<name>`): static storage valid for the process lifetime. A null
+/// pointer and a zero length for an out-of-range index. The pointer and the
+/// length are two calls so every host, wasm included, reads them as plain
+/// scalars.
+export fn galley_hooks_name_data(index: usize) ?[*]const u8 {
+    if (index >= host_hooks.hook_count) return null;
+    return host_hooks.hook_names[index].ptr;
+}
+
+export fn galley_hooks_name_length(index: usize) usize {
+    if (index >= host_hooks.hook_count) return 0;
+    return host_hooks.hook_names[index].len;
+}
+
+/// Replaces the session's host hook state in one step. `enabled` holds one
+/// byte per hook, `galley_hooks_count()` bytes in all (null with count zero
+/// enables none); a nonzero byte routes that hook to `dispatch`, which gets
+/// `handle`, the hook's index and its arguments on the parsing thread.
+/// Unenabled hooks return before any call. Takes the exclusive lease, so it
+/// returns `galley_error_session_in_use` while a parse is in flight and the
+/// set a parse runs with is fixed for that parse. A null `enabled` with a
+/// nonzero count, or a count other than `galley_hooks_count()`, returns
+/// `galley_error_null_argument`. WebAssembly hosts pass a null `dispatch`
+/// and provide `env.galley_host_dispatch` instead.
+export fn galley_session_set_hooks(
+    session_ptr: ?*GalleySession,
+    dispatch: ?host_hooks.Dispatch,
+    handle: ?*anyopaque,
+    enabled: ?[*]const u8,
+    enabled_count: usize,
+) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    var hooks: root.data_structures.HostHooks = .{ .dispatch = dispatch };
+    if (enabled_count != 0) {
+        const flags = enabled orelse return galley_error_null_argument;
+        if (enabled_count != host_hooks.hook_count) return galley_error_null_argument;
+        for (&hooks.enabled, flags[0..enabled_count]) |*slot, flag| slot.* = flag != 0;
+    }
+    embedded.session.setHostHooks(hooks, handle) catch |err| return statusForError(err);
     return galley_ok;
 }
 

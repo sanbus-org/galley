@@ -6,7 +6,7 @@ use relative imports (`from . import ...`), so they execute only as a
 submodule of this package on direct import.
 
 The parser (`_ll-parser.zig`, `procedures.zig`,
-`procedures_python.zig`, `metadata.json`, `libgalley-python.*`,
+`host_procedures.zig`, `libgalley-python.*`,
 `galley_impl.*.so`, `__init__.py`, `__init__.pyi`) is built into this directory with:
 
     GALLEY_CHECKOUT=<checkout> python -m galley bindings/python/test_fixture

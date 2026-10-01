@@ -9,7 +9,7 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Parsers are cached by canonical artifact path for the process lifetime.
 - Sessions open from the `Parser` via `parser.openSession()`, with `SessionOptions` for the non-default shape.
 - `Parser` is not closeable: it owns no unloadable native state. `Session` and `Walker` are `AutoCloseable`.
-- Hook registries are per-artifact instance state on the `Parser`: `installProcedure` / `installProcedures` / `listProcedures` / `lookupProcedure` / `clearProcedures`.
+- The `Parser` holds the artifact's default hooks and every `Session` owns its own copy, taken at open: both have `installProcedure` / `installProcedures` / `listProcedures` / `lookupProcedure` / `clearProcedures`.
 - Bulk installs take a `Map<String, hook>`; single installs take a name plus a hook. Hooks are `Consumer<ProcedureArguments>` or zero-arg `Runnable`.
 - The generated `Parser` per grammar wires bundled hooks inside its `load()` method from the `metadata.json` hook list.
 - A mistyped-hook name warns to `System.err`, naming the export and the rule; anything else is ignored.

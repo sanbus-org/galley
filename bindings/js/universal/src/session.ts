@@ -72,7 +72,7 @@ export function __resetParserCache(): void {
 /**
  * Shared parser for a resolved port: adapters cache ports per
  * canonical artifact path, so port identity unifies every spelling of
- * one file (including symlinks) into one hook table. Separate legs
+ * one file (including symlinks) into one default hook table. Separate legs
  * resolve separate ports and therefore separate parsers.
  */
 function parserForPort(port: FfiPort, backend: Backend, scanned: unknown): Parser {

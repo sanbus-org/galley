@@ -71,7 +71,8 @@ def load(path: str | Path) -> ModuleType:
 
     No ``procedures.py`` scan: hook wiring beyond the build goes
     through the parser's ``install_procedure`` / ``install_procedures``
-    directly, where the shared-registry semantics are visible.
+    (the artifact's defaults, copied by sessions opened afterwards) or a
+    session's own methods of the same names.
 
     Paths with an interior NUL byte are rejected loudly instead of
     truncated: like ``Session.parse_file``, this entry never lets a

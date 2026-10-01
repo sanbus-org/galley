@@ -1,15 +1,12 @@
 /**
  * Host-language procedure registry for the JavaScript bindings.
  *
- * Runtime-neutral: the registry, `ProcedureArguments`, and the dispatcher
- * live here. Each adapter installs a forwarder into its shared library
- * through its own native callback (`galley_install_*_dispatch`); the
- * forwarder decodes the hook name and calls the port's `activeDispatch`
- * slot, which the parsing session set around its parse.
- *
- * Registries live on the parser: every `Parser` owns one
- * table shared by all of its sessions, and publishes per-parse dispatch
- * through the session's gate brackets. There is no per-session table.
+ * Runtime-neutral: the registry, `ProcedureArguments`, and the hook
+ * router live here. Every session owns its hooks: a registry copied from
+ * the parser's defaults when the session opens, handed to the library as
+ * an enabled set. An adapter's native trampoline forwards each enabled
+ * hook to the port's `hookDispatch` with the handle its session
+ * registered, and the {@link HookRouter} hands it to that session.
  *
  * Hooks receive a `ProcedureArguments` object: per-hook state (current
  * node, position, drop and replace) that is valid only while the hook
@@ -303,9 +300,11 @@ export class ProcedureRegistry {
     return count;
   }
 
-  /** Copies the table for one parse's dispatch snapshot. */
-  snapshot(): Map<string, HookFn> {
-    return new Map(this.#hooks);
+  /** An independent registry holding the same hooks. */
+  copy(): ProcedureRegistry {
+    const copied = new ProcedureRegistry();
+    for (const [name, fn] of this.#hooks) copied.#hooks.set(name, fn);
+    return copied;
   }
 
   /** Removes all registered hooks; subsequent parses will be no-ops. */
@@ -327,9 +326,9 @@ export class ProcedureRegistry {
 let sharedRegistries = new WeakMap<object, ProcedureRegistry>();
 
 /**
- * The one hook table for a port: every handle and session built on the
- * port shares it, so separately constructed objects can never diverge
- * onto two tables over one native gate set.
+ * The one default hook table for a port: every parser handle built on the
+ * port shares it, so separately constructed objects can never diverge onto
+ * two default tables for one artifact. Sessions copy it when they open.
  */
 export function registryFor(port: FfiPort): ProcedureRegistry {
   let registry = sharedRegistries.get(port);
@@ -338,6 +337,87 @@ export function registryFor(port: FfiPort): ProcedureRegistry {
     sharedRegistries.set(port, registry);
   }
   return registry;
+}
+
+/** What the router hands a hook to: the session that owns the handle. */
+export interface HookOwner {
+  /** Runs hook `index` of the owner's running parse, on the parsing thread. */
+  dispatchHook(index: number, args: Handle): void;
+}
+
+/**
+ * Routes one port's hooks to the sessions that own them. The adapter's
+ * native trampoline forwards every enabled hook to `port.hookDispatch`
+ * with the handle its session registered here, so concurrent sessions of
+ * one library never share hook state. Anchored on the port under a
+ * registered symbol — not in module state — so duplicated core installs
+ * in one process share one router per port.
+ */
+export class HookRouter {
+  /** Hook names in hook-index order, from the library's own list. */
+  readonly names: readonly string[];
+  readonly #indexes = new Map<string, number>();
+  readonly #owners = new Map<number, HookOwner>();
+  #next = 1;
+
+  constructor(port: FfiPort) {
+    this.names = port.hookNames();
+    this.names.forEach((name, index) => this.#indexes.set(name, index));
+    port.hookDispatch = (hookHandle, hookIndex, args) => {
+      this.#owners.get(hookHandle)?.dispatchHook(hookIndex, args);
+    };
+  }
+
+  /** Registers an owner and returns the handle the library hands back with its hooks. */
+  register(owner: HookOwner): number {
+    const hookHandle = this.#next++;
+    this.#owners.set(hookHandle, owner);
+    return hookHandle;
+  }
+
+  unregister(hookHandle: number): void {
+    this.#owners.delete(hookHandle);
+  }
+
+  /**
+   * The registry's hooks by hook index. A name the grammar has no hook
+   * for stays in the registry but never fires.
+   */
+  resolve(registry: ProcedureRegistry): (HookFn | undefined)[] {
+    const byIndex = new Array<HookFn | undefined>(this.names.length).fill(undefined);
+    for (const name of registry.names()) {
+      const index = this.#indexes.get(name);
+      if (index !== undefined) byIndex[index] = registry.get(name);
+    }
+    return byIndex;
+  }
+}
+
+const HOOK_ROUTER = Symbol.for("@sanbus/galley/hookRouter");
+
+/**
+ * Routers of ports that refuse extension (never ours, but `FfiPort` is
+ * public), in a module map instead of an assignment that would throw.
+ */
+const unextensiblePortRouters = new WeakMap<FfiPort, HookRouter>();
+
+/** The one router of a port, created with the first session opened on it. */
+export function routerFor(port: FfiPort): HookRouter {
+  if (!Object.isExtensible(port)) {
+    let router = unextensiblePortRouters.get(port);
+    if (router === undefined) {
+      router = new HookRouter(port);
+      unextensiblePortRouters.set(port, router);
+    }
+    return router;
+  }
+  const holder = port as unknown as Record<symbol, HookRouter | undefined>;
+  let router = holder[HOOK_ROUTER];
+  if (router === undefined) {
+    router = new HookRouter(port);
+    holder[HOOK_ROUTER] = router;
+  }
+  return router;
 }
 
 /** Test-only: drop shared tables so suites isolate hook state. */

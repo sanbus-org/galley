@@ -19,6 +19,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { artifactFileName } from "@sanbus/galley-core/internal";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
+import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-node", process.platform);
@@ -826,7 +827,7 @@ await test("hook and session doors do not mix", async () => {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
     const refusals = [];
-    parser.installProcedure("reduction_Pair", (args) => {
+    s.installProcedure("reduction_Pair", (args) => {
       const hookNode = args.currentNode();
       if (!hookNode) return;
       for (const append of [
@@ -843,7 +844,7 @@ await test("hook and session doors do not mix", async () => {
     try {
       s.parse("alpha:12,beta:3");
     } finally {
-      parser.clearProcedures();
+      s.clearProcedures();
     }
     assert.equal(refusals.length, 4);
     assert.ok(refusals.every((error) => error instanceof TypeError));
@@ -1201,15 +1202,19 @@ await test("installProcedure dispatches host hooks", async () => {
   assert.deepEqual(Object.keys(parser.listProcedures()).sort(), ["reduction", "reduction_Pair"]);
   const s = await parser.openSession();
   try {
+    // A session starts with a copy of the parser's defaults.
+    assert.deepEqual(Object.keys(s.listProcedures()).sort(), ["reduction", "reduction_Pair"]);
     s.parse("alpha:12,beta:3");
     assert.ok(called > 0, "hooks should have fired");
     const before = called;
-    parser.clearProcedures();
-    assert.equal(Object.keys(parser.listProcedures()).length, 0);
+    s.clearProcedures();
+    assert.equal(Object.keys(s.listProcedures()).length, 0);
+    assert.equal(Object.keys(parser.listProcedures()).length, 2, "the defaults are untouched");
     s.parse("alpha:12");
     assert.equal(called, before, "hooks should not fire after clear");
   } finally {
     s.close();
+    parser.clearProcedures();
   }
 });
 
@@ -1283,62 +1288,105 @@ await test("hook throwing does not abort parse", async () => {
   }
 });
 
-await test("one table serves every session of the parser", async () => {
+await test("sessions own their hooks", async () => {
   const parser = await newParser();
+  parser.clearProcedures();
   const a = await parser.openSession();
   const b = await parser.openSession();
   const fired = [];
-  parser.installProcedure("reduction_Pair", () => { fired.push("shared"); });
+  a.installProcedure("reduction_Pair", () => { fired.push("a"); });
+  b.installProcedure("reduction_Number", () => { fired.push("b"); });
   try {
     a.parse("alpha:12,beta:3");
-    assert.ok(fired.length === 2 && fired.every((x) => x === "shared"));
+    assert.deepEqual(fired, ["a", "a"]);
     fired.length = 0;
     b.parse("alpha:12,beta:3");
-    assert.ok(fired.length === 2 && fired.every((x) => x === "shared"));
-    // Reinstalling replaces the hook for both sessions at once.
+    assert.deepEqual(fired, ["b", "b"]);
+    assert.deepEqual(Object.keys(a.listProcedures()), ["reduction_Pair"]);
+    assert.equal(b.procedureHook("reduction_Pair"), undefined);
+    // Replacing one session's hook leaves the other untouched.
     fired.length = 0;
-    parser.installProcedure("reduction_Pair", () => { fired.push("replaced"); });
+    a.installProcedure("reduction_Pair", () => { fired.push("replaced"); });
     a.parse("alpha:12");
     b.parse("alpha:12");
-    a.parse("alpha:12");
-    assert.deepEqual(fired, ["replaced", "replaced", "replaced"]);
+    assert.deepEqual(fired, ["replaced", "b"]);
   } finally {
     a.close();
     b.close();
   }
 });
 
-await test("nested parse restores the outer session's hooks", async () => {
+await test("parser installs reach only later sessions", async () => {
   const parser = await newParser();
+  parser.clearProcedures();
+  let called = 0;
+  const earlier = await parser.openSession();
+  parser.installProcedure("reduction_Pair", () => { called++; });
+  const later = await parser.openSession();
+  try {
+    earlier.parse("alpha:12,beta:3");
+    assert.equal(called, 0);
+    later.parse("alpha:12,beta:3");
+    assert.equal(called, 2);
+    parser.clearProcedures();
+    later.parse("alpha:12,beta:3");
+    assert.equal(called, 4);
+  } finally {
+    earlier.close();
+    later.close();
+  }
+});
+
+await test("changing hooks during a parse is refused", async () => {
+  const parser = await newParser();
+  parser.clearProcedures();
+  const s = await parser.openSession();
+  const refusals = [];
+  s.installProcedure("reduction_Pair", () => {
+    for (const change of [() => s.clearProcedures(), () => s.installProcedure("reduction_Number", () => {})]) {
+      try {
+        change();
+      } catch (error) {
+        refusals.push(error);
+      }
+    }
+  });
+  try {
+    s.parse("alpha:12");
+    assert.equal(refusals.length, 2);
+    assert.ok(refusals.every((error) => error.code === Status.ErrorSessionInUse));
+    // The refused changes left the hooks as they were.
+    assert.deepEqual(Object.keys(s.listProcedures()), ["reduction_Pair"]);
+  } finally {
+    s.close();
+  }
+});
+
+await test("nested parse of another session uses its own hooks", async () => {
+  const parser = await newParser();
+  parser.clearProcedures();
   const outerSeen = [];
   const innerSeen = [];
   let nested = false;
-  function outerPair(args) {
-    const node = args.currentNode();
-    outerSeen.push(Buffer.from(node.text()).toString());
+  const s = await parser.openSession();
+  s.installProcedure("reduction_Pair", (args) => {
+    outerSeen.push(Buffer.from(args.currentNode().text()).toString());
     if (!nested) {
       nested = true;
       const inner = parser.openSession();
       try {
-        parser.clearProcedures();
-        parser.installProcedure("reduction_Number", (innerArgs) => {
+        inner.installProcedure("reduction_Number", (innerArgs) => {
           innerSeen.push(Buffer.from(innerArgs.currentNode().text()).toString());
         });
-        try {
-          inner.parse("alpha:9");
-        } finally {
-          parser.clearProcedures();
-          parser.installProcedure("reduction_Pair", outerPair);
-        }
+        inner.parse("alpha:9");
       } finally {
         inner.close();
       }
     }
-  }
-  const s = await parser.openSession();
+  });
   try {
-    parser.installProcedure("reduction_Pair", outerPair);
     s.parse("alpha:12,beta:3");
+    // Neither parse saw or disturbed the other's hooks.
     assert.deepEqual(outerSeen, ["alpha:12", "beta:3"]);
     assert.deepEqual(innerSeen, ["9"]);
   } finally {
@@ -1357,10 +1405,9 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
     const parser = await openLanguageDirectory(languageDir, { backend: "native" });
     const alias = await openLanguageDirectory(linkDir, { backend: "native" });
     assert.equal(alias, parser);
-    const a = await parser.openSession();
-    const b = await parser.openSession();
     let outerCalls = 0;
     let nested = false;
+    let b = null;
     parser.installProcedure("reduction_Pair", () => {
       outerCalls++;
       if (!nested) {
@@ -1368,9 +1415,12 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
         b.parse("alpha:9");
       }
     });
+    const a = await parser.openSession();
+    b = await parser.openSession();
     try {
       assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
-      // The inner parse shares the table, so its pair fires the hook too.
+      // Both sessions copied the parser's default hook, so the nested
+      // parse fires its own copy too.
       assert.equal(outerCalls, 4);
     } finally {
       a.close();
@@ -1398,10 +1448,9 @@ await test("nested parse across symlinked file keeps hooks", async () => {
     const parser = await openLanguageDirectory(languageDir, { backend: "native" });
     const alias = await galley.load(linkFile, { backend: "native" });
     assert.equal(alias, parser);
-    const a = await parser.openSession();
-    const b = await parser.openSession();
     let outerCalls = 0;
     let nested = false;
+    let b = null;
     parser.installProcedure("reduction_Pair", () => {
       outerCalls++;
       if (!nested) {
@@ -1409,6 +1458,8 @@ await test("nested parse across symlinked file keeps hooks", async () => {
         b.parse("alpha:9");
       }
     });
+    const a = await parser.openSession();
+    b = await parser.openSession();
     try {
       assert.ok(a.parse("alpha:12,beta:3,gamma:4") > 0);
       assert.equal(outerCalls, 4);
@@ -1452,6 +1503,21 @@ await test("two language directories parse independently", async () => {
   } finally {
     fs.rmSync(secondDir, { recursive: true, force: true });
   }
+});
+
+await test("two parsers, two sessions each, four threads at once", async () => {
+  const secondDirectory = ensureTestLibrary({
+    buildCommand: ["node", path.join(__dirname, "..", "build.mjs")],
+    libFileName: exampleLib,
+    scope: "node",
+    second: true,
+  });
+  await runConcurrencyScenario({
+    universalEntry: pathToFileURL(path.join(__dirname, "..", "..", "universal", "dist/index.js")).href,
+    backend: "native",
+    firstDirectory: languageDir,
+    secondDirectory,
+  });
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -11,7 +11,7 @@ builder emits the banner-guarded `test_fixture/Parser` wiring them next
 to it, and refuses to overwrite a foreign file there.
 
 The parser (`_ll-parser.zig`, `procedures.zig`,
-`procedures_java.zig`, `metadata.json`, `libgalley-java.*`) is built
+`host_procedures.zig`, `metadata.json`, `libgalley-java.*`) is built
 into this directory with the stock builder class:
 
     javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")

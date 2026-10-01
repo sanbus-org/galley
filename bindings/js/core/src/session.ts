@@ -16,8 +16,8 @@ import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
 import { Node, childrenVia, nodeAddress } from "./node.ts";
-import { HookDoor, ProcedureArguments, ProcedureRegistry, registryFor } from "./procedures.ts";
-import type { HookFn } from "./procedures.ts";
+import { HookDoor, ProcedureArguments, ProcedureRegistry, registryFor, routerFor } from "./procedures.ts";
+import type { HookFn, HookOwner } from "./procedures.ts";
 
 export interface SessionOptions {
   maxErrors?: number; // default 10
@@ -54,82 +54,24 @@ function optNode(session: Session, addr: bigint): Node | null {
 }
 
 /**
- * Per-port stack of synced hook sets, innermost last. Native procedure
- * gates are library-global, so a nested parse on a port-sharing session
- * would otherwise leave the inner set installed when control returns to
- * the still-running outer parse. The parse bracket pushes on entry and
- * restores the enclosing set on unwind; push and pop are paired in
- * `finally`, so the stack is always empty between parses.
- *
- * Anchored on the port object itself under a registered symbol — not in
- * module state — so duplicated core installs in one process share one
- * stack per port, the same reason `activeDispatch` lives on the port.
- * `Symbol.for` is identical across module copies by definition. Ports
- * that refuse extension (never ours, but `FfiPort` is public) fall back
- * to a module WeakMap instead of throwing on assignment.
+ * One parsing session. Owns its hooks: a registry copied from the
+ * parser's defaults when the session opens, applied to the library at once
+ * on every change, so the hooks a parse runs with are fixed for that parse.
+ * Changing hooks from a hook, or while a parse is in flight anywhere,
+ * throws a `GalleyError` with status `-13` (`ErrorSessionInUse`).
  */
-const GATE_STACK = Symbol.for("@sanbus/galley/gateStack");
-const GATE_STACK_FALLBACK = Symbol.for("@sanbus/galley/gateStackFallback");
-
-/**
- * Fallback stacks for ports that refuse extension (never ours, but
- * `FfiPort` is public). Shared through `globalThis` under a registered
- * symbol — not a module `WeakMap` — so duplicated core installs still
- * share one stack per port instead of silently splitting.
- */
-function fallbackGateStacks(): WeakMap<FfiPort, string[][]> {
-  const holder = globalThis as unknown as Record<symbol, WeakMap<FfiPort, string[][]> | undefined>;
-  let maps = holder[GATE_STACK_FALLBACK];
-  if (maps === undefined) {
-    maps = new WeakMap();
-    holder[GATE_STACK_FALLBACK] = maps;
-  }
-  return maps;
-}
-
-function gateStackFor(port: FfiPort, create: boolean): string[][] | undefined {
-  if (Object.isExtensible(port)) {
-    const holder = port as unknown as Record<symbol, string[][] | undefined>;
-    let stack = holder[GATE_STACK];
-    if (stack === undefined && create) {
-      stack = [];
-      holder[GATE_STACK] = stack;
-    }
-    return stack;
-  }
-  const maps = fallbackGateStacks();
-  let stack = maps.get(port);
-  if (stack === undefined && create) {
-    stack = [];
-    maps.set(port, stack);
-  }
-  return stack;
-}
-
-function pushGates(port: FfiPort, names: string[]): void {
-  // Sync before pushing: a throwing sync must not leave an entry the
-  // unwind would later pop as if it were a live frame.
-  port.syncProcedures(names);
-  gateStackFor(port, true)?.push(names);
-}
-
-function popGates(port: FfiPort, ownNames: string[]): void {
-  const stack = gateStackFor(port, false);
-  if (stack === undefined) {
-    // Defensive only: every push creates, and push/pop pair in `finally`.
-    port.syncProcedures(ownNames);
-    return;
-  }
-  stack.pop();
-  const outer = stack[stack.length - 1];
-  port.syncProcedures(outer ?? ownNames);
-}
-
-export class Session {
+export class Session implements HookOwner {
   #handle: Handle | null = null;
   #port: FfiPort;
   #closed = false;
-  #procedures: ProcedureRegistry;
+  /** This session's hooks by name: replaced whole by every change, never mutated. */
+  #hooks = new ProcedureRegistry();
+  /** The same hooks by the library's hook index: the dispatch lookup. */
+  #hooksByIndex: (HookFn | undefined)[] = [];
+  /** The handle the library hands back with this session's hooks. */
+  #hookHandle = 0;
+  /** The running parse's door, learned from its first hook; null between parses. */
+  #parseDoor: HookDoor | null = null;
   /**
    * Parse generation, bumped by every parse and close. Nodes and walkers
    * stamp it at creation and refuse use once it moves, so no accessor or
@@ -140,8 +82,7 @@ export class Session {
   /**
    * Takes a bound port: factories resolve the backend first, so a
    * constructed session is always usable. There is no unready state.
-   * Hooks come from the port's shared table, so every session on one
-   * port reads one registry.
+   * The session's hooks start as a copy of the parser's defaults.
    */
   constructor(port: FfiPort, options: SessionOptions = {}) {
     if (!port) throw new TypeError("galley: Session needs a bound port");
@@ -151,12 +92,11 @@ export class Session {
       options as unknown as Record<string, unknown>,
       "Session",
       SESSION_TUNABLES,
-      "it takes only parser tunables: install hooks on the parser, " +
+      "it takes only parser tunables: install hooks on the parser or the session, " +
         "set message overrides through setMessageOverride, and pin backends on load calls",
     );
     const merged = { ...defaultOptions(), ...options };
     this.#port = port;
-    this.#procedures = registryFor(port);
 
     const hasNonDefault =
       options.maxErrors !== undefined ||
@@ -188,6 +128,13 @@ export class Session {
       throw new GalleyError("out of memory", Status.ErrorOutOfMemory, null);
     }
     this.#handle = handle;
+    this.#hookHandle = routerFor(port).register(this);
+    try {
+      this.#commitHooks(registryFor(port).copy());
+    } catch (error) {
+      this.close();
+      throw error;
+    }
   }
 
   get isClosed(): boolean {
@@ -247,18 +194,72 @@ export class Session {
     if (status < 0) throw this.#errorFromStatus(status, fallback);
   }
 
-  // -- procedures (this session reads its parser's shared registry) --
+  // -- procedures (this session's own hooks) --
+
+  /** Installs a hook on this session only. Takes effect from the next parse. */
+  installProcedure(name: string, fn: HookFn | (() => void)): void {
+    const next = this.#hooks.copy();
+    next.install(name, fn);
+    this.#commitHooks(next);
+  }
 
   /**
-   * Runs the shared hook for `name` (silent no-op when unregistered).
-   * Published on the port as `activeDispatch` for the duration of each
-   * parse so native callbacks reach the parser's shared registry.
-   * Hook exceptions are logged and swallowed so a throwing hook never
-   * aborts the parse.
+   * Scans `module` for exported procedure hooks (`reduction`,
+   * `reduction_*`, `hook_*`) and registers each on this session in one
+   * step. Returns the number installed.
    */
-  #dispatchProcedure(name: string, args: Handle, table: Map<string, HookFn>, doorFor: (args: Handle) => HookDoor): void {
-    const fn = table.get(name);
+  installProcedures(module: Record<string, unknown>): number {
+    const next = this.#hooks.copy();
+    const installed = next.installModule(module);
+    if (installed > 0) this.#commitHooks(next);
+    return installed;
+  }
+
+  /** Removes all of this session's hooks. */
+  clearProcedures(): void {
+    this.#commitHooks(new ProcedureRegistry());
+  }
+
+  /** Returns a copy of this session's hooks (name -> callable). */
+  listProcedures(): Record<string, HookFn> {
+    const table: Record<string, HookFn> = {};
+    for (const name of this.#hooks.names()) {
+      const hook = this.#hooks.get(name);
+      if (hook !== undefined) table[name] = hook;
+    }
+    return table;
+  }
+
+  /** The hook for `name` on this session, if any. */
+  procedureHook(name: string): HookFn | undefined {
+    return this.#hooks.get(name);
+  }
+
+  /**
+   * Single gate for every hook change: hands the library the enabled set
+   * first, so a refusal (a parse in flight) leaves the hooks and the
+   * library exactly as they were, then publishes the registry and its
+   * by-index view.
+   */
+  #commitHooks(next: ProcedureRegistry): void {
+    const handle = this.#requireHandle();
+    const byIndex = routerFor(this.#port).resolve(next);
+    const enabled = Uint8Array.from(byIndex, (hook) => (hook === undefined ? 0 : 1));
+    this.#checkStatus(this.#port.setSessionHooks(handle, this.#hookHandle, enabled));
+    this.#hooks = next;
+    this.#hooksByIndex = byIndex;
+  }
+
+  /**
+   * Runs hook `index` of the running parse, on the parsing thread. Hook
+   * exceptions are logged and swallowed so a throwing hook never aborts
+   * the parse.
+   * @internal
+   */
+  dispatchHook(index: number, args: Handle): void {
+    const fn = this.#hooksByIndex[index];
     if (!fn) return;
+    const name = routerFor(this.#port).names[index];
     if (fn.length === 0) {
       try {
         (fn as () => void)();
@@ -267,9 +268,12 @@ export class Session {
       }
       return;
     }
-    const procedureArguments = new ProcedureArguments(args, doorFor(args), this.#port);
+    // One door per parse, learned from the first hook that needs it and
+    // shared by every later hook of the same parse.
+    this.#parseDoor ??= new HookDoor(this.#port.procDoor(args), this, this.#port);
+    const procedureArguments = new ProcedureArguments(args, this.#parseDoor, this.#port);
     try {
-      (fn as HookFn)(procedureArguments);
+      fn(procedureArguments);
     } catch (err) {
       console.error(`galley procedure ${name} threw:`, err);
     } finally {
@@ -288,6 +292,7 @@ export class Session {
     if (this.#handle !== null) {
       this.#port.destroySession(this.#handle);
       this.#handle = null;
+      routerFor(this.#port).unregister(this.#hookHandle);
     }
     this.#closed = true;
     this.#generation++;
@@ -309,67 +314,32 @@ export class Session {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
     const buf = checkParseInput(input, "galley: session.parse");
-    // Snapshot isolation: installs and clears made mid-parse apply to
-    // later parses only, so dispatch reads the entry table, not the
-    // live one.
-    const table = this.#procedures.snapshot();
-    pushGates(port, [...table.keys()]);
-    const previous = port.activeDispatch;
-    // One door per parse, learned from the first hook that needs it and
-    // shared by every later hook of the same parse.
-    let door: HookDoor | null = null;
-    const doorFor = (args: Handle): HookDoor => (door ??= new HookDoor(port.procDoor(args), this, port));
-    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args, table, doorFor);
-    let status: number;
-    try {
-      status = port.parse(handle, buf);
-    } finally {
-      // Dispatch restore nests inside the gate restore: a throwing
-      // gate sync must not leak this session's dispatch into the
-      // enclosing parse.
-      try {
-        popGates(port, [...table.keys()]);
-      } finally {
-        port.activeDispatch = previous;
-      }
-    }
-    // Bump even on failure: the storage may have moved, so nodes and
-    // walkers from the previous parse fail instead of reading it.
-    // Parsing itself never throws merely because a walker is open.
-    this.#generation++;
-    if (status < 0) {
-      throw this.#errorFromStatus(status);
-    }
-    return status;
+    return this.#finishParse(() => port.parse(handle, buf));
   }
 
   parseFile(filePath: string | URL): number {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
     const file = checkArtifactPath(filePath, "galley: session.parseFile");
-    // Snapshot isolation, same as parse: dispatch reads the entry table.
-    const table = this.#procedures.snapshot();
-    pushGates(port, [...table.keys()]);
-    const previous = port.activeDispatch;
-    // One door per parse, learned from the first hook that needs it and
-    // shared by every later hook of the same parse.
-    let door: HookDoor | null = null;
-    const doorFor = (args: Handle): HookDoor => (door ??= new HookDoor(port.procDoor(args), this, port));
-    port.activeDispatch = (name, args) => this.#dispatchProcedure(name, args, table, doorFor);
+    return this.#finishParse(() => port.parseFile(handle, file));
+  }
+
+  /**
+   * Single gate for every parse leg: runs the native call with a fresh
+   * parse door slot, then ends the parse. The hooks were fixed by the
+   * last commit, so nothing is synchronized here.
+   */
+  #finishParse(nativeParse: () => number): number {
+    this.#parseDoor = null;
     let status: number;
     try {
-      status = port.parseFile(handle, file);
+      status = nativeParse();
     } finally {
-      // Same nesting as parse: dispatch always restores even when the
-      // gate sync throws.
-      try {
-        popGates(port, [...table.keys()]);
-      } finally {
-        port.activeDispatch = previous;
-      }
+      this.#parseDoor = null;
     }
-    // Same invalidation as parse: nodes and walkers from the previous
-    // parse fail instead of reading reallocated storage.
+    // Bump even on failure: the storage may have moved, so nodes and
+    // walkers from the previous parse fail instead of reading it.
+    // Parsing itself never throws merely because a walker is open.
     this.#generation++;
     if (status < 0) {
       throw this.#errorFromStatus(status);

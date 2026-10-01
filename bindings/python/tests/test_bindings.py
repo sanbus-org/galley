@@ -4,16 +4,26 @@ The suite imports the built fixture package directly (built on demand,
 never examples/):
 
     GALLEY_CHECKOUT=$PWD python -m galley bindings/python/test_fixture
+    GALLEY_CHECKOUT=$PWD python -m galley bindings/python/test_fixture_second
     PYTHONPATH=bindings/python python3 bindings/python/tests/test_bindings.py
+
+The second fixture (the second shared grammar) is the other parser of the
+concurrency tests.
 """
 
 from __future__ import annotations
 
+import gc
+import os
 import shutil
+import subprocess
 import sys
 import sysconfig
 import tempfile
+import threading
 import unittest
+import warnings
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +49,9 @@ def _fixture_impl_file() -> Path:
 def _restore_procedures(saved: dict[str, Any]) -> None:
     """Return the global hook table to a snapshot.
 
-    Procedure hooks are module-global, so a test that installs or clears
-    must not leak into the next one: snapshot in setUp, restore here.
+    The module's default hooks outlive every session, so a test that
+    installs or clears them must not leak into the next one: snapshot in
+    setUp, restore here.
     """
     grammar.clear_procedures()
     if saved:
@@ -163,11 +174,11 @@ class SessionTests(unittest.TestCase):
             self.assertGreater(len(text), 0)
             seen.append(text)
 
-        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(seen), 2)
 
     def test_hook_nodes_outlive_their_hook_within_the_parse(self) -> None:
@@ -186,12 +197,12 @@ class SessionTests(unittest.TestCase):
         def use_in_document(args: grammar.ProcedureArguments) -> None:
             seen.append(stashed[0].text())
 
-        grammar.install_procedure("reduction_Pair", stash_first_pair)
-        grammar.install_procedure("reduction_Document", use_in_document)
+        self.session.install_procedure("reduction_Pair", stash_first_pair)
+        self.session.install_procedure("reduction_Document", use_in_document)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(seen, [b"alpha:12"])
         with self.assertRaisesRegex(ValueError, "invalidated"):
             stashed[0].text()
@@ -214,19 +225,18 @@ class SessionTests(unittest.TestCase):
                 except ValueError as error:
                     outcomes.append(str(error))
 
-        grammar.install_procedure("reduction_Pair", stash_pair)
-        grammar.install_procedure("reduction_Document", use_in_document)
+        self.session.install_procedure("reduction_Pair", stash_pair)
+        self.session.install_procedure("reduction_Document", use_in_document)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(outcomes), 3)
         self.assertTrue(all("procedure arguments" in outcome for outcome in outcomes))
 
-    def test_nested_parse_restores_outer_gates(self) -> None:
-        # A hook that swaps the hook set around a nested parse on another
-        # session must not silence the enclosing parse: gates restore on
-        # nested exit, and mid-parse edits apply to later parses only.
+    def test_nested_parse_of_another_session_uses_its_own_hooks(self) -> None:
+        # A hook that parses on another session: that session runs with its
+        # own hooks, and neither parse sees or disturbs the other's.
         outer_seen: list[bytes] = []
         inner_seen: list[bytes] = []
         nested = False
@@ -240,17 +250,9 @@ class SessionTests(unittest.TestCase):
             outer_seen.append(text)
             if not nested:
                 nested = True
-                inner_session = grammar.Session()
-                try:
-                    grammar.clear_procedures()
-                    grammar.install_procedure("reduction_Number", inner_number)
-                    try:
-                        inner_session.parse("alpha:9")
-                    finally:
-                        grammar.clear_procedures()
-                        grammar.install_procedure("reduction_Pair", outer_pair)
-                finally:
-                    inner_session.close()
+                with grammar.Session() as inner_session:
+                    inner_session.install_procedure("reduction_Number", inner_number)
+                    inner_session.parse("alpha:9")
 
         def inner_number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
@@ -259,44 +261,46 @@ class SessionTests(unittest.TestCase):
             assert text is not None
             inner_seen.append(text)
 
-        grammar.install_procedure("reduction_Pair", outer_pair)
+        self.session.install_procedure("reduction_Pair", outer_pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(outer_seen, [b"alpha:12", b"beta:3"])
         self.assertEqual(inner_seen, [b"9"])
 
-    def test_mid_parse_clear_is_invisible_in_flight(self) -> None:
-        # Dispatch reads the same entry snapshot as the gates: clearing
-        # mid-parse must not silence the enclosing parse's remaining
-        # reductions, and the clear applies to parses entered after it.
+    def test_changing_hooks_during_a_parse_is_refused(self) -> None:
+        # The hooks a parse runs with are fixed for that parse: a change
+        # from inside a hook raises, leaves the hooks as they were, and
+        # the enclosing parse keeps firing all of its hooks.
         seen: list[bytes] = []
-        cleared = False
+        refusals: list[int] = []
 
         def outer_pair(args: grammar.ProcedureArguments) -> None:
-            nonlocal cleared
             node = args.current_node()
             assert node is not None
             text = node.text()
             assert text is not None
             seen.append(text)
-            if not cleared:
-                cleared = True
-                grammar.clear_procedures()
-                inner_session = grammar.Session()
+            for change in (
+                self.session.clear_procedures,
+                lambda: self.session.install_procedure("reduction_Number", outer_pair),
+            ):
                 try:
-                    inner_session.parse("alpha:9")
-                finally:
-                    inner_session.close()
+                    change()
+                except grammar.GalleyError as error:
+                    refusals.append(error.code)
 
-        grammar.install_procedure("reduction_Pair", outer_pair)
+        self.session.install_procedure("reduction_Pair", outer_pair)
+        before = self.session.list_procedures()
         try:
             self.session.parse("alpha:12,beta:3")
+            self.assertEqual(self.session.list_procedures(), before)
+            self.assertIs(self.session.procedure_hook("reduction_Pair"), outer_pair)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(seen, [b"alpha:12", b"beta:3"])
-        self.assertEqual(grammar.list_procedures(), {})
+        self.assertEqual(refusals, [grammar.Status.ERROR_SESSION_IN_USE] * 4)
 
     def test_parse_accepts_str_bytes_and_buffers(self):
         sample = "alpha:12,beta:3"
@@ -387,12 +391,12 @@ class SemanticErrorTests(unittest.TestCase):
             if int(text) > 99:
                 seen_counts.append(args.report_semantic_error("value out of range"))
 
-        grammar.install_procedure("reduction_Number", reduction_Number)
+        self.session.install_procedure("reduction_Number", reduction_Number)
         try:
             with self.assertRaises(grammar.GalleyError) as raised:
                 self.session.parse("alpha:12,beta:300,gamma:400")
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(raised.exception.code, grammar.Status.ERROR_SEMANTIC)
         self.assertIn("value out of range", str(raised.exception))
         self.assertEqual(seen_counts, [1, 2])
@@ -420,7 +424,7 @@ class SemanticErrorTests(unittest.TestCase):
             if int(text) > 99:
                 args.report_semantic_error("value out of range")
 
-        grammar.install_procedure("reduction_Number", reduction_Number)
+        self.session.install_procedure("reduction_Number", reduction_Number)
         try:
             with self.assertRaises(grammar.GalleyError):
                 self.session.parse("alpha:300")
@@ -429,7 +433,7 @@ class SemanticErrorTests(unittest.TestCase):
             self.assertIsNone(self.session.diagnostic())
             self.assertEqual(len(self.session.diagnostics()), 0)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
 
 
 class HookDispatchTests(unittest.TestCase):
@@ -455,11 +459,11 @@ class HookDispatchTests(unittest.TestCase):
             fired.append(int(node))
             raise ValueError("hook body failure")
 
-        grammar.install_procedure("reduction_Number", reduction_Number)
+        self.session.install_procedure("reduction_Number", reduction_Number)
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(fired), 2)
         self.assertEqual(len(set(fired)), 2)
 
@@ -478,11 +482,11 @@ class HookDispatchTests(unittest.TestCase):
                 attempted.add(node)
                 raise TypeError("body boom")
 
-        grammar.install_procedure("reduction_Number", reduction_Number)
+        self.session.install_procedure("reduction_Number", reduction_Number)
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(attempted), 2)
         self.assertEqual(len(calls), 2)
         self.assertFalse(any(calls))
@@ -495,11 +499,11 @@ class HookDispatchTests(unittest.TestCase):
         def reduction_Pair() -> None:
             fired.append(True)
 
-        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(fired), 2)
 
 
@@ -553,11 +557,11 @@ class ProcedureChannelTests(unittest.TestCase):
             detached.append(int(head))
             current.append_children(head)
 
-        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
-            grammar.clear_procedures()
+            self.session.clear_procedures()
         self.assertEqual(len(detached), 2)
 
 
@@ -931,7 +935,7 @@ class EditTests(unittest.TestCase):
                 except ValueError as error:
                     refusals.append(str(error))
 
-        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
@@ -959,7 +963,7 @@ class EditTests(unittest.TestCase):
             except ValueError as error:
                 outcomes.append(str(error))
 
-        grammar.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
@@ -1333,6 +1337,259 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(namespace.seen, [b"12"])
 
 
+class SessionHookTests(unittest.TestCase):
+    """Hooks belong to the session: a copy of the defaults at open."""
+
+    def setUp(self) -> None:
+        self.saved_procedures = grammar.list_procedures()
+        grammar.clear_procedures()
+
+    def tearDown(self) -> None:
+        _restore_procedures(self.saved_procedures)
+
+    def test_sessions_own_their_hooks(self) -> None:
+        first_calls: list[int] = []
+        second_calls: list[int] = []
+        with grammar.Session() as first, grammar.Session() as second:
+            first.install_procedure("reduction_Pair", lambda: first_calls.append(1))
+            second.install_procedure("reduction_Number", lambda: second_calls.append(1))
+            first.parse("alpha:12,beta:3")
+            self.assertEqual((len(first_calls), len(second_calls)), (2, 0))
+            second.parse("alpha:12,beta:3")
+            self.assertEqual((len(first_calls), len(second_calls)), (2, 2))
+            self.assertIn("reduction_Pair", first.list_procedures())
+            self.assertNotIn("reduction_Number", first.list_procedures())
+            self.assertIsNone(second.procedure_hook("reduction_Pair"))
+
+    def test_defaults_reach_only_later_sessions(self) -> None:
+        calls: list[int] = []
+        with grammar.Session() as earlier:
+            grammar.install_procedure("reduction_Pair", lambda: calls.append(1))
+            with grammar.Session() as later:
+                earlier.parse("alpha:12,beta:3")
+                self.assertEqual(len(calls), 0)
+                later.parse("alpha:12,beta:3")
+                self.assertEqual(len(calls), 2)
+                grammar.clear_procedures()
+                later.parse("alpha:12,beta:3")
+                self.assertEqual(len(calls), 4)
+                self.assertEqual(grammar.list_procedures(), {})
+
+    def test_session_install_procedures_follows_the_naming_rules(self) -> None:
+        with grammar.Session() as session:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                installed = session.install_procedures(
+                    {
+                        "reduction_Pair": lambda: None,
+                        "reductionPair": lambda: None,
+                        "myHelper": lambda: None,
+                    }
+                )
+            self.assertEqual(installed, 1)
+            self.assertEqual(list(session.list_procedures()), ["reduction_Pair"])
+            messages = [str(item.message) for item in caught]
+            self.assertTrue(any('"reductionPair"' in message for message in messages))
+            self.assertFalse(any("myHelper" in message for message in messages))
+            with self.assertRaises(TypeError):
+                session.install_procedure("reduction_Pair", "not callable")
+
+    def test_hooks_naming_no_grammar_hook_are_listed_but_never_fire(self) -> None:
+        with grammar.Session() as session:
+            session.install_procedure("reduction_Nonexistent", lambda: self.fail("fired"))
+            self.assertIn("reduction_Nonexistent", session.list_procedures())
+            session.parse("alpha:12")
+
+    def test_hooks_closing_over_their_session_do_not_leak_it(self) -> None:
+        class Sentinel:
+            pass
+
+        sentinel = Sentinel()
+        session = grammar.Session()
+        # session -> hooks -> lambda -> session: a cycle only collection frees.
+        session.install_procedure("reduction_Pair", lambda: (session, sentinel))
+        session.parse("alpha:12")
+        reference = weakref.ref(sentinel)
+        del session, sentinel
+        gc.collect()
+        self.assertIsNone(reference())
+
+    def test_closed_session_refuses_hook_changes(self) -> None:
+        session = grammar.Session()
+        session.close()
+        for change in (
+            lambda: session.install_procedure("reduction_Pair", lambda: None),
+            session.clear_procedures,
+            session.list_procedures,
+        ):
+            with self.assertRaises(ValueError):
+                change()
+
+
+_SECOND_FIXTURE_DIRECTORY = BINDINGS_DIRECTORY / "test_fixture_second"
+
+
+class _Worker:
+    """One session's configuration and what its hooks saw."""
+
+    def __init__(self, parser: Any, text: str, hooks: tuple[str, ...], barrier: threading.Barrier | None) -> None:
+        self.parser = parser
+        self.text = text
+        self.hooks = hooks
+        self.barrier = barrier
+        self.calls: dict[str, int] = {}
+        self.wrong_thread = 0
+        self.arrivals = 0
+        self.barrier_failure: BaseException | None = None
+        self.refusal: BaseException | None = None
+        self.foreign_text = 0
+        self.thread: threading.Thread | None = None
+        self.session: Any = None
+
+    def open(self) -> None:
+        self.session = self.parser.Session()
+        for hook in self.hooks:
+            self.session.install_procedure(hook, self._hook(hook))
+
+    def _hook(self, hook: str) -> Any:
+        def on_hook(args: Any) -> None:
+            if threading.current_thread() is not self.thread:
+                self.wrong_thread += 1
+            self.calls[hook] = self.calls.get(hook, 0) + 1
+            node = args.current_node()
+            if node is None or not node.text():
+                self.foreign_text += 1
+            if self.barrier is not None and self.arrivals == 0:
+                self.arrivals += 1
+                try:
+                    self.barrier.wait(timeout=20)
+                except threading.BrokenBarrierError as failure:
+                    self.barrier_failure = failure
+                # Still inside the parse: changing hooks must be refused.
+                try:
+                    self.session.clear_procedures()
+                except Exception as failure:  # noqa: BLE001 - recorded for the assertion
+                    self.refusal = failure
+
+        return on_hook
+
+    def reset(self) -> None:
+        self.calls = {}
+        self.wrong_thread = 0
+        self.arrivals = 0
+        self.barrier_failure = None
+        self.refusal = None
+        self.foreign_text = 0
+
+    def run(self) -> None:
+        self.thread = threading.current_thread()
+        self.session.parse(self.text)
+
+
+def _run_threads(workers: list[_Worker]) -> None:
+    threads = [threading.Thread(target=worker.run) for worker in workers]
+    for worker, thread in zip(workers, threads):
+        worker.thread = thread
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+        assert not thread.is_alive(), "a parse did not finish"
+
+
+class ConcurrencyTests(unittest.TestCase):
+    """Two parsers, two sessions each, four threads parsing at the same time.
+
+    The first hook of every parse waits at a four-way barrier, so the test
+    passes only if all four parses are in flight at once. Each session
+    carries its own hooks, and every hook checks that it runs on its own
+    session's thread and reads its own session's nodes.
+    """
+
+    ITEMS = 150
+    STRESS_ROUNDS = 100
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        suffix = sysconfig.get_config_var("EXT_SUFFIX")
+        impl = _SECOND_FIXTURE_DIRECTORY / f"galley_impl{suffix}"
+        if not impl.is_file():
+            raise FileNotFoundError(f"build {_SECOND_FIXTURE_DIRECTORY} first (python -m galley)")
+        cls.second = galley.load(impl)
+
+    def _expected(self, worker: _Worker, first: bool) -> None:
+        specific = "hook_print" if first else "hook_tally"
+        reduction = "reduction_Pair" if first else "reduction_Word"
+        self.assertEqual(worker.calls.get(specific, 0), self.ITEMS if specific in worker.hooks else 0)
+        self.assertEqual(worker.calls.get(reduction, 0), self.ITEMS if reduction in worker.hooks else 0)
+        self.assertEqual(worker.wrong_thread, 0)
+        self.assertEqual(worker.foreign_text, 0)
+
+    def test_two_parsers_two_sessions_each_four_threads_at_once(self) -> None:
+        keyvalue = ",".join(f"k{i}:{i % 97}" for i in range(self.ITEMS))
+        words = "+".join("word" for _ in range(self.ITEMS))
+        barrier = threading.Barrier(4)
+        saved = grammar.list_procedures()
+        grammar.clear_procedures()
+        self.addCleanup(_restore_procedures, saved)
+        workers = [
+            _Worker(grammar, keyvalue, ("reduction_Pair", "hook_print"), barrier),
+            _Worker(grammar, keyvalue, ("hook_print",), barrier),
+            _Worker(self.second, words, ("reduction_Word", "hook_tally"), barrier),
+            _Worker(self.second, words, ("reduction_Word",), barrier),
+        ]
+        for worker in workers:
+            worker.open()
+            self.addCleanup(worker.session.close)
+
+        # Four parses held at one barrier: all four in flight at once.
+        _run_threads(workers)
+        for index, worker in enumerate(workers):
+            self.assertIsNone(worker.barrier_failure, "the four parses did not overlap")
+            self._expected(worker, first=index < 2)
+            self.assertIsInstance(worker.refusal, worker.parser.GalleyError)
+            self.assertEqual(worker.refusal.code, worker.parser.Status.ERROR_SESSION_IN_USE)
+            self.assertEqual(len(worker.session.list_procedures()), len(worker.hooks))
+
+        # Stress: the same four sessions parse again and again without the
+        # barrier; every round reproduces the expected counts.
+        for worker in workers:
+            worker.barrier = None
+        for _ in range(self.STRESS_ROUNDS):
+            for worker in workers:
+                worker.reset()
+            _run_threads(workers)
+            for index, worker in enumerate(workers):
+                self._expected(worker, first=index < 2)
+
+    def test_parse_releases_the_gil(self) -> None:
+        # A parse reading from a FIFO blocks inside native code until the
+        # main thread writes. If the parse held the GIL the main thread
+        # could never run, so a held GIL shows up as a timeout here.
+        script = (
+            "import os, sys, tempfile, threading\n"
+            f"sys.path.insert(0, {str(BINDINGS_DIRECTORY)!r})\n"
+            "import test_fixture as grammar\n"
+            "grammar.clear_procedures()\n"
+            "fifo = os.path.join(tempfile.mkdtemp(), 'input.kv')\n"
+            "os.mkfifo(fifo)\n"
+            "result = []\n"
+            "def parse():\n"
+            "    with grammar.Session() as session:\n"
+            "        result.append(session.parse_file(fifo))\n"
+            "thread = threading.Thread(target=parse)\n"
+            "thread.start()\n"
+            "with open(fifo, 'wb') as writer:\n"
+            "    writer.write(b'alpha:12,beta:3')\n"
+            "thread.join()\n"
+            "assert result == [15], result\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", script], timeout=60, capture_output=True, text=True
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
 class BuildGuardTests(unittest.TestCase):
     """Contracts of the clobber guard.
 
@@ -1345,7 +1602,7 @@ class BuildGuardTests(unittest.TestCase):
         from galley import build as build_module
 
         with tempfile.TemporaryDirectory(prefix="galley-guard-test-") as tmp:
-            foreign = Path(tmp) / "procedures_python.zig"
+            foreign = Path(tmp) / "foreign.zig"
             foreign.write_text("// hand-written shim\n", encoding="utf-8")
             with self.assertRaises(SystemExit):
                 build_module.assert_generated_or_absent(foreign)

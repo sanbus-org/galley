@@ -164,6 +164,11 @@ jobs:
           if [ "${{ matrix.language }}" = cpp ]; then target=test_bindings_cpp; test=bindings-cpp; else target=test_bindings_c; test=bindings-c; fi
           cmake --build build-c-fixture --target "$target"
           ctest --test-dir build-c-fixture -R "^$test\$" --output-on-failure
+          # Two parsers, two sessions each, four threads: once, on the C leg.
+          if [ "${{ matrix.language }}" = c ]; then
+            cmake --build build-c-fixture --target test_concurrency_c
+            ctest --test-dir build-c-fixture -R '^concurrency-c$' --output-on-failure
+          fi
 
       - name: Build and run example (cargo)
         if: ${{ matrix.language == 'rust' }}
@@ -290,6 +295,7 @@ jobs:
         run: |
           pip install -e bindings/python
           python -m galley bindings/python/test_fixture
+          python -m galley bindings/python/test_fixture_second
           python bindings/python/tests/test_bindings.py
 
       - name: Prove no-checkout generate and compile (python)
@@ -310,7 +316,7 @@ jobs:
           # must succeed with no checkout.
           env -u GALLEY_CHECKOUT python -m galley /tmp/py-proof
           ls /tmp/py-proof/libgalley-python.a /tmp/py-proof/__init__.py /tmp/py-proof/galley_impl*.so /tmp/py-proof/__init__.pyi
-          for generated in _ll-parser.zig _lr-parser.zig metadata.json; do
+          for generated in _ll-parser.zig _lr-parser.zig; do
             if [ -f bindings/python/test_fixture/$generated ]; then
               cmp bindings/python/test_fixture/$generated /tmp/py-proof/$generated || exit 1
             fi
@@ -431,9 +437,11 @@ jobs:
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
           GALLEY_LIBRARY_PATH: ${{ github.workspace }}/bindings/java/test-fixture/libgalley-java.so
+          GALLEY_SECOND_LIBRARY_PATH: ${{ github.workspace }}/bindings/java/test-fixture-second/libgalley-java.so
         run: |
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture-second
           mvn -B -f bindings/java/pom.xml test
 
   bindings-consistency:
@@ -505,6 +513,18 @@ jobs:
             exit 1
           }
           for f in bindings/c/test-fixture/ll.grm bindings/c/test-fixture/config.zig bindings/go/testfixture/ll.grm bindings/go/testfixture/config.zig bindings/python/test_fixture/ll.grm bindings/python/test_fixture/config.zig bindings/java/test-fixture/ll.grm bindings/java/test-fixture/config.zig bindings/rust/test-fixture/ll.grm bindings/rust/test-fixture/config.zig bindings/js/test-fixture/ll.grm bindings/js/test-fixture/config.zig; do
+            test -L "$f" || {
+              echo "::error::$f must be a symlink to bindings/test-fixture"
+              exit 1
+            }
+          done
+          for f in bindings/java/test-fixture-second/ll.grm bindings/python/test_fixture_second/ll.grm; do
+            test -L "$f" || {
+              echo "::error::$f must be a symlink to bindings/test-fixture/second"
+              exit 1
+            }
+          done
+          for f in bindings/java/test-fixture-second/config.zig bindings/python/test_fixture_second/config.zig; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to bindings/test-fixture"
               exit 1
@@ -1061,7 +1081,7 @@ jobs:
           test -f "${NATIVE_LIB[0]}"
           test -f /tmp/cli-proof/nocheckout/galley-js-node.node
           test -f /tmp/cli-proof/nocheckout/libgalley-js-wasm.wasm
-          for generated in _ll-parser.zig _lr-parser.zig metadata.json; do
+          for generated in _ll-parser.zig _lr-parser.zig; do
             if [ -f /tmp/cli-proof/grammar/$generated ]; then
               cmp /tmp/cli-proof/grammar/$generated /tmp/cli-proof/nocheckout/$generated || exit 1
             fi

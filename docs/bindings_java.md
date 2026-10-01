@@ -32,14 +32,14 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 ```
 
 Generator flags forward verbatim to the generator ahead of
-`--emit-metadata`: every flag the tool does not own goes to the generator,
+`--emit-metadata --emit-host-procedures`: every flag the tool does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
 The tool requires `GALLEY_CHECKOUT` (a Galley working tree);
 `ZIG_EXECUTABLE` selects zig. For convenience,
 `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the
 system cache, but that cache is examples-only, not part of the bindings.
-It generates the parser (`--emit-metadata`), builds the shared library
+It generates the parser (`--emit-metadata --emit-host-procedures`), builds the shared library
 through `bindings/c/consumer/build.zig` directly next to the grammar,
 and detects optional hook files next to your
 grammar (`procedures.java` for native Java hooks,
@@ -123,30 +123,41 @@ public final class procedures {
 }
 ```
 
-Then load the parser and register before parsing:
+Then load the parser and register before opening sessions. Hooks installed on
+the parser are the artifact's defaults: every session starts with a copy and
+owns it from then on, so a default installed later reaches only sessions opened
+later. A session has the same install, list, look-up and clear methods for its
+own hooks:
 
 ```java
 Parser parser = Galley.load(libraryPath);
-procedures.register(parser); // or manually
-parser.installProcedure("reduction_Pair", args -> {
-    Node n = args.currentNode();
-    System.err.println(new String(n.text()));
-});
+procedures.register(parser); // defaults for every session opened from here on
+try (Session session = parser.openSession()) {
+    session.installProcedure("reduction_Pair", args -> {
+        Node n = args.currentNode();
+        System.err.println(new String(n.text()));
+    });
+    session.parse(input);
+}
 ```
+
+A session's hooks are fixed for the length of a parse: changing them from a
+hook, or from another thread while the parse runs, throws a `GalleyException`
+with `ERROR_SESSION_IN_USE`. Sessions on different threads parse concurrently,
+each with its own hooks; hooks run on the parsing thread.
 
 `ProcedureArguments` is valid only while its hook runs and throws afterwards.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
 of the same parse, and it throws once that parse ends.
 
-Mechanically, the build tool reads the generator's hook list (`procedures`
-in metadata.json) and produces a Zig shim (`procedures_java.zig`)
-containing one dispatch slot per hook; the JVM registers each Java hook
-address into that parser's slot at `parser.installProcedure` time
-(via JNA `galley_install_java_dispatch`). The parser calls through the slot
-directly, so hook code executes in the host's JVM. Unregistered slots are
-no-ops. Reduction hooks keep their `reduction_<VariableName>` names (plus
-the general `reduction`); author-defined grammar hooks are declared as
-`hook_<name>`. Semantic payloads are unavailable through bindings.
+Mechanically, the build links the generator's host shim (`host_procedures.zig`,
+written by `--emit-host-procedures`), which forwards every hook to the parsing
+session's own dispatch. Each session hands the library its enabled set and one
+upcall (`galley_session_set_hooks`), so hook code executes in the host's JVM and
+a hook the session did not install returns before any call. Reduction hooks
+keep their `reduction_<VariableName>` names (plus the general `reduction`);
+author-defined grammar hooks are declared as `hook_<name>`. Semantic payloads
+are unavailable through bindings.
 
 You can also bulk-register from a map or object:
 ```java
@@ -154,7 +165,7 @@ Map<String, Consumer<ProcedureArguments>> map = Map.of(
     "reduction_Pair", args -> {},
     "hook_print", args -> {}
 );
-parser.installProcedures(map);
+parser.installProcedures(map); // the same calls exist on a Session
 parser.listProcedures(); // Map<String, Consumer>
 parser.clearProcedures();
 ```

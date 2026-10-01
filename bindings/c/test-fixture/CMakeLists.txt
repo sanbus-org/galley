@@ -55,6 +55,13 @@ add_custom_command(
     VERBATIM
 )
 
+# Every source the library compiles from: a change to any of them rebuilds
+# the libraries below.
+file(GLOB_RECURSE GALLEY_LIBRARY_SOURCES CONFIGURE_DEPENDS
+    "${GALLEY_SOURCE_DIR}/src/runtime/*.zig"
+    "${GALLEY_SOURCE_DIR}/bindings/c/capi.zig"
+    "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig")
+
 # 3. Compile parser + runtime + C API into a shared library via Galley's
 #    generic consumer build file, directly next to the grammar. procedures.c
 #    next to the grammar is inferred automatically.
@@ -69,11 +76,56 @@ add_custom_command(
             --prefix "${CMAKE_CURRENT_SOURCE_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS "${GENERATED_PARSER}"
+    DEPENDS "${GENERATED_PARSER}" ${GALLEY_LIBRARY_SOURCES}
     VERBATIM
 )
 add_custom_target(galley_c_fixture DEPENDS
     "${GALLEY_LIBRARY}"
+)
+
+# 4. Concurrency fixture: two parsers, the keyvalue grammar and the second
+#    shared grammar, each built in the build tree as its own host-shim
+#    library (hooks forward to the host through the session). The
+#    concurrency test loads both side by side.
+function(galley_host_shim_library name grammar_directory library_variable)
+    set(directory "${CMAKE_BINARY_DIR}/concurrency/${name}")
+    if(APPLE)
+        set(filename "libgalley-concurrency-${name}.dylib")
+    else()
+        set(filename "libgalley-concurrency-${name}.so")
+    endif()
+    add_custom_command(
+        OUTPUT "${directory}/_ll-parser.zig" "${directory}/host_procedures.zig"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${directory}"
+        COMMAND "${CMAKE_COMMAND}" -E copy
+                "${grammar_directory}/ll.grm" "${grammar_directory}/config.zig" "${directory}"
+        COMMAND "${GALLEY_CLI}" --emit-host-procedures "${directory}"
+        DEPENDS "${GALLEY_CLI}" "${grammar_directory}/ll.grm" "${grammar_directory}/config.zig"
+        VERBATIM
+    )
+    add_custom_command(
+        OUTPUT "${directory}/${filename}"
+        COMMAND "${ZIG_EXECUTABLE}" build
+                --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
+                "-Dparser-source=${directory}/_ll-parser.zig"
+                "-Dprocedures-zig-source=${directory}/host_procedures.zig"
+                "-Dlib-name=galley-concurrency-${name}"
+                "-Doutput=${filename}"
+                "-Doptimize=ReleaseFast"
+                --prefix "${directory}"
+                install
+        WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
+        DEPENDS "${directory}/_ll-parser.zig" "${directory}/host_procedures.zig" ${GALLEY_LIBRARY_SOURCES}
+        VERBATIM
+    )
+    set(${library_variable} "${directory}/${filename}" PARENT_SCOPE)
+endfunction()
+
+galley_host_shim_library(first "${CMAKE_CURRENT_SOURCE_DIR}/../../test-fixture" CONCURRENCY_FIRST_LIBRARY)
+galley_host_shim_library(second "${CMAKE_CURRENT_SOURCE_DIR}/../../test-fixture/second" CONCURRENCY_SECOND_LIBRARY)
+add_custom_target(galley_concurrency_fixture DEPENDS
+    "${CONCURRENCY_FIRST_LIBRARY}"
+    "${CONCURRENCY_SECOND_LIBRARY}"
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -98,3 +150,12 @@ target_include_directories(test_bindings_cpp PRIVATE "${GALLEY_INCLUDE_DIR}")
 target_link_libraries(test_bindings_cpp PRIVATE "${GALLEY_LIBRARY}" Threads::Threads)
 add_dependencies(test_bindings_cpp galley_c_fixture)
 add_test(NAME bindings-cpp COMMAND test_bindings_cpp)
+
+# Two parsers, two sessions each, four threads at once. dlopen keeps the two
+# libraries' identical symbol names apart.
+add_executable(test_concurrency_c "${CMAKE_CURRENT_SOURCE_DIR}/../tests/test_concurrency.c")
+target_include_directories(test_concurrency_c PRIVATE "${GALLEY_INCLUDE_DIR}")
+target_link_libraries(test_concurrency_c PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+add_dependencies(test_concurrency_c galley_concurrency_fixture)
+add_test(NAME concurrency-c
+    COMMAND test_concurrency_c "${CONCURRENCY_FIRST_LIBRARY}" "${CONCURRENCY_SECOND_LIBRARY}")
