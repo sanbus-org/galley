@@ -70,6 +70,23 @@ talk to the parser through `args.node_address` and are not the same as
 
 Semantic payloads remain unavailable through the C API.
 
+### Host hooks
+
+A library built with a host shim (`galley --emit-host-procedures`, used by the
+Python, Java and JavaScript bindings) forwards its hooks to the host instead of
+to C functions, per session. `galley_hooks_count()` and
+`galley_hooks_name_data(i)` / `galley_hooks_name_length(i)` list the hooks;
+`galley_session_set_hooks(session, dispatch, handle, enabled, count)` gives one
+session its enabled set (one byte per hook), a dispatch callback and a handle.
+Each enabled hook then calls `dispatch(handle, index, args)` on the parsing
+thread; the others return before any call. The call takes the session's
+exclusive lease, so it returns `galley_error_session_in_use` while a parse is
+in flight and the set a parse runs with is fixed for that parse. Sessions share
+no hook state, so sessions of one library, and of different libraries, may
+parse on different threads at the same time (see
+`bindings/c/tests/test_concurrency.c`). Libraries built with C hooks report
+zero hooks.
+
 ## Error Messages
 
 Messages are customizable without any Zig: message **overrides** (fixed

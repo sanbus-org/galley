@@ -588,8 +588,12 @@ pub const Session = struct {
     /// (successful or failed) advances `generation`.
     published_result: ?ParseResult = null,
     /// Host-owned pointer copied onto each parse `Context` (`Context.user_data`)
-    /// for hooks written in Zig.
+    /// for hooks written in Zig. A host shim build uses it as the dispatch
+    /// handle (see `setHostHooks`).
     user_data: ?*anyopaque = null,
+    /// Hooks the host enabled on this session and its dispatch callback,
+    /// copied onto each parse `Context`. Written only through `setHostHooks`.
+    host_hooks: data_structures.HostHooks = .{},
     /// Live parse context, set only inside `_parseContextUnlocked`.
     active_context: ?*data_structures.Context = null,
     /// Message overrides owned by the session (copied from `ParseOptions`
@@ -790,6 +794,18 @@ pub const Session = struct {
     /// deadlocking.
     pub fn editCurrent(self: *Session) SessionError!SessionEditGuard {
         return self.editGuard(.published);
+    }
+
+    /// Replaces the session's host hook state in one step: the enabled set,
+    /// the dispatch callback and the handle every dispatched hook receives.
+    /// Exclusive and fail-fast like `edit`, so the set a parse runs with is
+    /// fixed for that parse and a change during a parse is `SessionInUse`.
+    /// Node storage is untouched, so published results stay valid.
+    pub fn setHostHooks(self: *Session, hooks: data_structures.HostHooks, handle: ?*anyopaque) error{SessionInUse}!void {
+        var guard = try self.edit();
+        defer guard.deinit();
+        self.host_hooks = hooks;
+        self.user_data = handle;
     }
 
     /// Single parse-acquire site. Every parse entry funnels through here so
@@ -1016,6 +1032,7 @@ pub const Session = struct {
             .node_allocator = if (parser.is_ast_enabled) &self.node_allocator else {},
             .chunk_buffer = self.chunk_buffer,
             .user_data = self.user_data,
+            .host_hooks = self.host_hooks,
         };
         if (comptime builtin.mode == .Debug) {
             context_value.verbosity = self.verbosity;

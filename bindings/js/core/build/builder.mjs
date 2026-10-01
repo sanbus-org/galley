@@ -7,9 +7,8 @@
  * `@sanbus/galley-wasm`, and the Deno `build.ts`. Callers pass targeting
  * information (library name, wasm or native, platform, install layout);
  * the gate owns everything else — checkout resolution, CLI bootstrap,
- * parser generation, procedure-shim selection, and the consumer `zig
- * build` invocation. No caller builds consumer arguments or picks shim
- * emitters directly.
+ * parser generation, the consumer `zig build` invocation, and the
+ * generator's host shim. No caller builds consumer arguments.
  *
  * The language directory must contain `ll.grm` (or `lr.grm` under
  * `--parser-type lr`) and may contain
@@ -17,10 +16,11 @@
  *
  * * `procedures.ts` / `procedures.js` — JavaScript hooks
  *   (`export function reduction_<Variable>(args)` /
- *   `export function hook_<name>(args)`), dispatched through a generated
- *   shim shared by the Node, Bun, and Deno adapters (native emitter) or
- *   through the wasm import (wasm emitter). This is the native-language
- *   path.
+ *   `export function hook_<name>(args)`), dispatched through the
+ *   generator's host shim to each session's own hooks. One shim serves
+ *   every adapter: native builds hand the library a trampoline per
+ *   session, wasm builds provide the `env.galley_host_dispatch` import.
+ *   This is the native-language path.
  * * `procedures.c` / `procedures.cpp` — rejected: not a JavaScript
  *   hook source (implement hooks in `procedures.ts`).
  * * `ll_error_messages.zig` / `lr_error_messages.zig` — custom syntax-error
@@ -28,11 +28,11 @@
  *
  * A `procedures.c` / `procedures.cpp` file next to the grammar is not a
  * JavaScript hook source and fails loudly: implement hooks in
- * `procedures.ts` (or `procedures.js`). The gate always generates the
- * shim as a no-op fallback so the artifact links (hooks stay no-ops
- * until JavaScript registers them).
+ * `procedures.ts` (or `procedures.js`). The gate always links the host
+ * shim so the artifact links (hooks stay no-ops until JavaScript
+ * registers them).
  *
- * The tool generates the parser (`--emit-metadata`) and builds the artifact
+ * The tool generates the parser (`--emit-host-procedures`) and builds the artifact
  * through the generic consumer build directly next to the grammar, so the
  * universal entry and the generated package entry can open it from the
  * language directory.
@@ -56,7 +56,6 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { emitJsProcedureShim, emitJsProcedureShimWasm } from "./shim.mjs";
 import { GENERATED_BANNER, lacksGeneratedMarker } from "./marker.mjs";
 
 /**
@@ -95,8 +94,7 @@ function parserTypeFromFlags(generatorFlags) {
 }
 
 const WASM_TARGET = "wasm32-wasi";
-const NATIVE_SHIM_FILE = "procedures_js.zig";
-const WASM_SHIM_FILE = "procedures_wasm.zig";
+const HOST_SHIM_FILE = "host_procedures.zig";
 
 // Generated package entry (node prototype): marker banner heading
 // every generated index.mjs, marker field in package.json. The clobber
@@ -425,7 +423,7 @@ function smokeLoadAddon(addonOutput, languageDirectory, libraryName) {
  * @param {Function|null} [options.artifactFileName]
  * @param {Function|null} [options.wasmArtifactFileName]
  * @param {string[]} [options.generatorFlags] extra generator CLI flags
- *   forwarded verbatim ahead of `--emit-metadata`. The wrappers forward
+ *   forwarded verbatim ahead of `--emit-host-procedures`. The wrappers forward
  *   every flag they don't own; the binary owns its surface (unknown flags
  *   die there with `unknown argument`). Only `--parser-type`'s
  *   value-shape is known here, to find the grammar file.
@@ -472,25 +470,21 @@ export async function buildParserArtifact({
   const cli = resolveGeneratorCli({ bindingsDirectory });
 
   const help = capture(cli, ["--help"]);
-  if (!help.includes("--emit-metadata")) {
-    fatal(`the generator CLI at ${cli} is too old for the bindings workflow (no --emit-metadata support); update it`);
+  if (!help.includes("--emit-host-procedures")) {
+    fatal(`the generator CLI at ${cli} is too old for the bindings workflow (no --emit-host-procedures support); update it`);
   }
 
-  run(cli, [...generatorFlags, "--emit-metadata", languageDir]);
+  run(cli, [...generatorFlags, "--emit-host-procedures", languageDir]);
 
   // One library embeds one parser; the consumer build locates the file
   // generation produced from `-Dlanguage-dir` and infers the family from
   // the filename.
   const jsProceduresFile = findJsProceduresFile(languageDir);
-  // The wasm shim lives next to the native one under its own name so both
-  // builds can share one language directory.
-  const shimPath = path.join(languageDir, wasm ? WASM_SHIM_FILE : NATIVE_SHIM_FILE);
-  const emitShim = wasm ? emitJsProcedureShimWasm : emitJsProcedureShim;
   if (jsProceduresFile !== null) {
     console.error(`galley-bindings: using JS procedures from ${jsProceduresFile}`);
   }
-  emitShim(path.join(languageDir, "metadata.json"), shimPath);
-  const proceduresZigSource = shimPath;
+  // One host shim serves the native and wasm builds sharing a directory.
+  const proceduresZigSource = path.join(languageDir, HOST_SHIM_FILE);
 
   // Compiling needs the kit (or a checkout leg); generation above
   // deliberately needs neither.

@@ -3,7 +3,6 @@ package org.sanbus.galley.internal;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 
 /**
  * Panama FFI over bindings/c/galley.h — replaces JNA.
@@ -147,13 +146,10 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_procedure_context_line;
     private final MethodHandle mh_galley_procedure_context_column;
     private final MethodHandle mh_galley_procedure_report_semantic_error;
-    private final MethodHandle mh_galley_install_java_dispatch; // may be null if symbol missing
-    private final MethodHandle mh_galley_java_procedure_enable; // may be null (C procedures or stale libs)
-    private final MethodHandle mh_galley_java_procedure_clear; // may be null (C procedures or stale libs)
-
-    // Upcall stub for Java dispatch
-    private MemorySegment dispatchStub = MemorySegment.NULL;
-    private Arena dispatchArena = null;
+    private final MethodHandle mh_galley_hooks_count;
+    private final MethodHandle mh_galley_hooks_name_data;
+    private final MethodHandle mh_galley_hooks_name_length;
+    private final MethodHandle mh_galley_session_set_hooks;
 
     public GalleyLibrary(String libraryPath) {
         this.libraryArena = Arena.global();
@@ -277,19 +273,14 @@ public final class GalleyLibrary {
         this.mh_galley_procedure_context_line = downcall("galley_procedure_context_line", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_install_java_dispatch = downcallOptional("galley_install_java_dispatch", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-        this.mh_galley_java_procedure_enable = downcallOptional("galley_java_procedure_enable", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_java_procedure_clear = downcallOptional("galley_java_procedure_clear", FunctionDescriptor.ofVoid());
+        this.mh_galley_hooks_count = downcall("galley_hooks_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
+        this.mh_galley_hooks_name_data = downcall("galley_hooks_name_data", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_hooks_name_length = downcall("galley_hooks_name_length", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
+        this.mh_galley_session_set_hooks = downcall("galley_session_set_hooks", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     }
 
     private MethodHandle downcall(String name, FunctionDescriptor descriptor) {
         return LINKER.downcallHandle(lookup.find(name).orElseThrow(() -> new IllegalStateException("missing symbol: " + name)), descriptor);
-    }
-
-    private MethodHandle downcallOptional(String name, FunctionDescriptor descriptor) {
-        Optional<MemorySegment> sym = lookup.find(name);
-        if (sym.isEmpty()) return null;
-        return LINKER.downcallHandle(sym.get(), descriptor);
     }
 
     // --- version / metadata ---
@@ -473,25 +464,28 @@ public final class GalleyLibrary {
     public int galley_procedure_context_column(MemorySegment args) { try { return (int) mh_galley_procedure_context_column.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_report_semantic_error(MemorySegment args, MemorySegment message, long messageLen) { try { return (long) mh_galley_procedure_report_semantic_error.invoke(args, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
-    // procedure dispatch
-    public void galley_install_java_dispatch(MemorySegment target) {
-        if (mh_galley_install_java_dispatch == null) return;
-        try { mh_galley_install_java_dispatch.invoke(target); } catch (Throwable t) { throw new RuntimeException(t); }
+    // host hooks
+    public long galley_hooks_count() {
+        try { return (long) mh_galley_hooks_count.invoke(); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    public int galley_java_procedure_enable(MemorySegment name, long nameLen) {
-        if (mh_galley_java_procedure_enable == null) return 0;
-        try { return (int) mh_galley_java_procedure_enable.invoke(name, nameLen); } catch (Throwable t) { throw new RuntimeException(t); }
+    /** Name of hook {@code index}, or null when out of range. */
+    public String galley_hooks_name(long index) {
+        try {
+            MemorySegment data = (MemorySegment) mh_galley_hooks_name_data.invoke(index);
+            if (data.equals(MemorySegment.NULL)) return null;
+            long length = (long) mh_galley_hooks_name_length.invoke(index);
+            return new String(data.reinterpret(length).toArray(ValueLayout.JAVA_BYTE), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    public void galley_java_procedure_clear() {
-        if (mh_galley_java_procedure_clear == null) return;
-        try { mh_galley_java_procedure_clear.invoke(); } catch (Throwable t) { throw new RuntimeException(t); }
+    public long galley_session_set_hooks(MemorySegment session, MemorySegment dispatch, MemorySegment handle, MemorySegment enabled, long enabledCount) {
+        try { return (long) mh_galley_session_set_hooks.invoke(session, dispatch, handle, enabled, enabledCount); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    // Upcall stub management
-    public MemorySegment createJavaDispatchStub(java.lang.invoke.MethodHandle dispatchHandle, Arena arena) {
-        FunctionDescriptor desc = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+    // Upcall stub management: (handle, hook index, hook arguments).
+    public MemorySegment createDispatchStub(java.lang.invoke.MethodHandle dispatchHandle, Arena arena) {
+        FunctionDescriptor desc = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
         return LINKER.upcallStub(dispatchHandle, desc, arena);
     }
 }

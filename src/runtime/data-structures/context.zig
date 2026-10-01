@@ -321,8 +321,12 @@ pub const Context = struct {
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
 
-    /// Host-owned pointer copied from `Session.user_data` for this parse.
+    /// Host-owned pointer copied from `Session.user_data` for this parse. For
+    /// a host shim build it is the session's dispatch handle.
     user_data: ?*anyopaque = null,
+
+    /// Hook state copied from `Session.host_hooks`: fixed for the whole parse.
+    host_hooks: data_structures.HostHooks = .{},
 
     // These fields are defined based on build mode and generated-parser options.
     verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},

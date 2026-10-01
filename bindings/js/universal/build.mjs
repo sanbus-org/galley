@@ -14,7 +14,7 @@
  * one full CLI.
  *
  * Generator flags forward verbatim to the generator ahead of
- * `--emit-metadata`: the wrappers forward every flag they don't own and
+ * `--emit-host-procedures`: the wrappers forward every flag they don't own and
  * the binary owns its surface (unknown flags die there with `unknown
  * argument`), so new generator flags work with no wrapper changes. Only
  * `--parser-type`'s value-shape is known here (`--parser-type lr` and

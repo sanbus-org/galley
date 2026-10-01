@@ -7,12 +7,13 @@ source of truth for type checkers (``ty``, ``mypy``, ``pyright``) and
 editor auto-complete.  It is shipped as ``__init__.pyi`` by
 the build command so the language package resolves without inline hints.
 
-Sessions are not thread-safe; every call holds the GIL.  Node handles are
+Sessions are not thread-safe, but a parse releases the GIL, so sessions on
+different threads parse in parallel.  Node handles are
 ``galley_impl.Node`` objects bound to their owning ``Session`` – plain ``int``
 addresses are still accepted wherever a node is expected, and
 ``int(node)`` / ``operator.index(node)`` recover the
-address.  Procedure hooks are registered module-globally and shared by
-every session of the artifact, so guard installs with the session.  All text/diagnostic
+address.  Module-level procedure hooks are the artifact's defaults; every
+session owns a copy taken when it opens.  All text/diagnostic
 accessors copy before returning.
 """
 
@@ -506,6 +507,37 @@ class Session:
         """
         ...
 
+    # -- procedure hooks (this session's own; a copy of the defaults at open) --
+
+    def install_procedure(self, name: str | bytes, callable: Any) -> None:
+        """Register a procedure hook on this session only.
+
+        Takes effect from the next parse. Raises ``GalleyError``
+        (``ERROR_SESSION_IN_USE``) while a parse is in flight, whether from a
+        hook or another thread, and leaves the hooks as they were.
+        """
+        ...
+
+    def install_procedures(self, source: Any) -> int:
+        """Register all procedure hooks found in a module, dict, or object.
+
+        One step, refused like ``install_procedure`` during a parse. Returns
+        the number of hooks installed.
+        """
+        ...
+
+    def procedure_hook(self, name: str | bytes) -> Any | None:
+        """Return the callable registered on this session for ``name``, or ``None``."""
+        ...
+
+    def clear_procedures(self) -> None:
+        """Clear this session's procedure hooks (refused during a parse)."""
+        ...
+
+    def list_procedures(self) -> dict[str, Any]:
+        """Return a copy of this session's procedure hooks."""
+        ...
+
     # -- tree editing (accept ``Node | int``) --
 
     def append_children(self, parent: Node | int, chain: Node | int) -> None:
@@ -625,19 +657,19 @@ def status_string(status: int) -> str | None:
     ...
 
 def install_procedure(name: str | bytes, callable: Any) -> None:
-    """Register a Python procedure hook.
+    """Register a default Python procedure hook.
 
     ``name`` is the hook name (e.g. ``"reduction_Pair"`` or ``"hook_print"``)
     and ``callable`` is invoked with a ``ProcedureArguments`` object (or
-    with no args for compatibility). Hooks are no-ops until installed; reinstalling replaces
-    the previous callable. An install made while a parse is active applies
-    to parses entered after it, never to the in-flight one (clears behave
-    the same).
+    with no args for compatibility). Hooks are no-ops until installed;
+    reinstalling replaces the previous callable. Every ``Session`` starts
+    with a copy of the defaults, so an install here reaches sessions opened
+    after it, never sessions already open (see ``Session.install_procedure``).
     """
     ...
 
 def install_procedures(source: Any) -> int:
-    """Register all procedure hooks found in a module, dict, or object.
+    """Register all default procedure hooks found in a module, dict, or object.
 
     Hooks are ``reduction``, ``reduction_<Variable>``, and ``hook_<name>``
     callables. Returns the number of hooks installed.
@@ -645,17 +677,13 @@ def install_procedures(source: Any) -> int:
     ...
 
 def procedure_hook(name: str | bytes) -> Any | None:
-    """Return the callable registered for hook ``name``, or ``None``."""
+    """Return the default callable registered for hook ``name``, or ``None``."""
     ...
 
 def clear_procedures() -> None:
-    """Clear all registered Python procedure hooks.
-
-    Like installs, a clear made while a parse is active applies to later
-    parses, never to the in-flight one.
-    """
+    """Clear the default procedure hooks. Sessions already open keep theirs."""
     ...
 
 def list_procedures() -> dict[str, Any]:
-    """Return a copy of currently registered Python procedure hooks."""
+    """Return a copy of the default procedure hooks."""
     ...

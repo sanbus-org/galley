@@ -4,12 +4,16 @@ build/
 /test_fixture/_ll-parser.zig
 /test_fixture/_lr-parser.zig
 /test_fixture/procedures.zig
-/test_fixture/procedures_python.zig
-/test_fixture/metadata.json
 /test_fixture/__init__.py
 /test_fixture/__init__.pyi
 /test_fixture/galley_impl.*.so
 /test_fixture/libgalley-python.*
+/test_fixture_second/_ll-parser.zig
+/test_fixture_second/procedures.zig
+/test_fixture_second/__init__.py
+/test_fixture_second/__init__.pyi
+/test_fixture_second/galley_impl.*.so
+/test_fixture_second/libgalley-python.*
 # Assembled on demand by scripts/js/assemble_compile_kit.sh, never tracked.
 /galley/compile-kit/
 # Staged at publish from the shared CLI artifacts, never tracked.

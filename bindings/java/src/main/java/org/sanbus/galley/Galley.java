@@ -24,8 +24,8 @@ public final class Galley {
      * {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}, else a
      * loud error naming the exact path. Bare loads wire no hooks.
      * Same-path loads serialize against each other; sessions opened from
-     * the parser stay confined to one thread each and must never parse
-     * concurrently (see {@link Parser}).
+     * the parser stay confined to one thread each, and sessions on different
+     * threads parse concurrently (see {@link Parser}).
      *
      * @throws MissingArtifactException when no artifact is where it was told.
      */

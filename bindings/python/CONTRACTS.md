@@ -7,7 +7,8 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 - Everything is synchronous.
 - Importing a language package scans the sibling hook file and wires hooks at import time.
 - `galley.load` takes an explicit artifact path and returns the parser for that file; repeated loads of the same resolved path return that same parser, cached for the process lifetime.
-- Hook registries are module-global: installs target the parser, not individual sessions.
+- The module-level `install_procedure` / `install_procedures` / `list_procedures` / `procedure_hook` / `clear_procedures` manage the artifact's defaults; every `Session` owns its hooks (a copy of the defaults at open) and has the same five methods.
+- A parse releases the GIL, so sessions on different threads parse in parallel; a hook takes the GIL back for the length of its call.
 
 ## Types and errors
 
@@ -20,7 +21,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 ## Inputs and resources
 
 - Parsing accepts `str` plus the buffer protocol; file paths accept path-like objects; rejected interior-NUL paths raise `ValueError`.
-- Sessions are not thread-safe, and every call holds the GIL.
+- Sessions are not thread-safe; a parse releases the GIL and every other call holds it.
 - Nodes are hashable by address with equality over owning session and crossing door, so they work as dict keys and set members.
 - Nodes expose their address as a read-only attribute alongside `int` and `index` conversions.
 - Walkers support explicit `close` plus context-manager blocks, with collection as the fallback; sessions support `with` blocks.

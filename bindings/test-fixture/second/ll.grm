@@ -1,0 +1,21 @@
+# Second shared fixture grammar: plus-separated words of lowercase letters
+# (cat+dog+bird). Concurrency suites load it beside the keyvalue grammar so
+# two different parsers, with different hook lists, run side by side.
+
+Document
+| WordList
+|
+
+WordList
+| Word WordListTail
+
+WordListTail
+| "+" WordList
+|
+
+Word@tally
+| letter WordTail
+
+WordTail
+| letter WordTail
+|

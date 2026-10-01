@@ -1,13 +1,11 @@
 /kv/_ll-parser.zig
 /kv/_lr-parser.zig
 /kv/procedures.zig
-/kv/procedures_java.zig
 /kv/metadata.json
 /kv/libgalley-java.*
 /json/_ll-parser.zig
 /json/_lr-parser.zig
 /json/procedures.zig
-/json/procedures_java.zig
 /json/metadata.json
 /json/libgalley-java.*
 

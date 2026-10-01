@@ -25,6 +25,11 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.resolve(HERE, "..", "..", "test-fixture");
 const FIXTURE_FILES = ["ll.grm", "config.zig", "procedures.zig", "procedures.ts"];
+// The second shared grammar (words joined by "+"), grammar and config only:
+// concurrency suites load it beside the keyvalue fixture and install their
+// own hooks.
+const SECOND_FIXTURE_DIR = path.resolve(HERE, "..", "..", "..", "test-fixture", "second");
+const SECOND_FIXTURE_FILES = ["ll.grm", "config.zig"];
 
 /** The checkout GALLEY_CHECKOUT names, or a loud error. No guessing. */
 function requireGalleyCheckout() {
@@ -40,19 +45,21 @@ function requireGalleyCheckout() {
 /**
  * Build the shared fixture with `buildCommand` (argv prefix, workdir
  * appended) and return the workdir — the language directory sessions
- * open through `languagePath`. Throws loudly when the build fails.
+ * open through `languagePath`. `second: true` builds the second shared
+ * grammar instead of the keyvalue one. Throws loudly when the build fails.
  */
-export function ensureTestLibrary({ buildCommand, libFileName, scope }) {
+export function ensureTestLibrary({ buildCommand, libFileName, scope, second = false }) {
   if (!Array.isArray(buildCommand) || buildCommand.length === 0) {
     throw new Error("galley test fixture: buildCommand must be a non-empty argv array");
   }
   if (!libFileName || !scope) {
     throw new Error("galley test fixture: libFileName and scope are required");
   }
-  const workDir = path.join(os.tmpdir(), "galley-js-test", scope);
+  const workDir = path.join(os.tmpdir(), "galley-js-test", second ? `${scope}-words` : scope);
   fs.mkdirSync(workDir, { recursive: true });
-  for (const file of FIXTURE_FILES) {
-    fs.copyFileSync(path.join(FIXTURE_DIR, file), path.join(workDir, file));
+  const source = second ? SECOND_FIXTURE_DIR : FIXTURE_DIR;
+  for (const file of second ? SECOND_FIXTURE_FILES : FIXTURE_FILES) {
+    fs.copyFileSync(path.join(source, file), path.join(workDir, file));
   }
   requireGalleyCheckout();
   const [command, ...prefix] = buildCommand;

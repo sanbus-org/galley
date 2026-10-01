@@ -12,7 +12,7 @@
 import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
 import { GalleyError, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
-import { ensureDispatchFor } from "./dispatch.ts";
+import { installDispatch } from "./dispatch.ts";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -148,13 +148,11 @@ interface GalleySymbols {
   galley_hook_node_line_column(door: Deno.PointerValue, node: bigint, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_hook_tree_append_children(door: Deno.PointerValue, parent: bigint, first: bigint): bigint;
   galley_hook_tree_clean_children(door: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
-  galley_install_js_dispatch(callback: Deno.PointerValue): void;
-  galley_install_js_dispatch_id?(callback: Deno.PointerValue): void;
-  galley_js_procedure_count?(): number;
-  galley_js_procedure_name_ptr?(index: number): bigint;
-  galley_js_procedure_name_len?(index: number): bigint;
-  galley_js_procedure_enable?(name: FfiOut, nameLen: number | bigint): number;
-  galley_js_procedure_clear?(): void;
+  // host hooks (see galley_session_set_hooks in galley.h)
+  galley_hooks_count(): bigint;
+  galley_hooks_name_data(index: bigint): bigint;
+  galley_hooks_name_length(index: bigint): bigint;
+  galley_session_set_hooks(session: Deno.PointerValue, dispatch: Deno.PointerValue, hookHandle: bigint, enabled: FfiOut, enabledCount: bigint): bigint;
 }
 
 // --- library discovery -------------------------------------------------
@@ -338,32 +336,15 @@ const BASE_SYMBOLS = {
   galley_hook_tree_clean_children: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
 } as const;
 
-const DISPATCH_SYMBOL = {
-  galley_install_js_dispatch: { parameters: ["function"], result: "void" },
+const HOOK_SYMBOLS = {
+  galley_hooks_count: { parameters: [], result: "u64" },
+  galley_hooks_name_data: { parameters: ["u64"], result: "u64" },
+  galley_hooks_name_length: { parameters: ["u64"], result: "u64" },
+  galley_session_set_hooks: { parameters: ["pointer", "pointer", "u64", "buffer", "u64"], result: "i64" },
 } as const;
 
-const ID_DISPATCH_SYMBOL = {
-  galley_install_js_dispatch_id: { parameters: ["function"], result: "void" },
-  galley_js_procedure_count: { parameters: [], result: "u32" },
-  galley_js_procedure_name_ptr: { parameters: ["u32"], result: "u64" },
-  galley_js_procedure_name_len: { parameters: ["u32"], result: "u64" },
-} as const;
-
-const SELECTIVE_SYMBOL = {
-  galley_js_procedure_enable: { parameters: ["buffer", "usize"], result: "i32" },
-  galley_js_procedure_clear: { parameters: [], result: "void" },
-} as const;
-
-function openNative(libPath: string, level: number) {
-  const symbols =
-    level >= 3
-      ? { ...BASE_SYMBOLS, ...ID_DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
-      : level >= 2
-        ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL, ...SELECTIVE_SYMBOL }
-        : level >= 1
-          ? { ...BASE_SYMBOLS, ...DISPATCH_SYMBOL }
-          : BASE_SYMBOLS;
-  return Deno.dlopen(libPath, symbols);
+function openNative(libPath: string) {
+  return Deno.dlopen(libPath, { ...BASE_SYMBOLS, ...HOOK_SYMBOLS });
 }
 
 // --- read helpers ----------------------------------------------------------
@@ -401,47 +382,46 @@ function i64Out(): BigInt64Array {
 // --- FfiPort implementation ----------------------------------------------
 
 export class DenoPort implements FfiPort {
-  activeDispatch: DispatchHandler | null = null;
+  hookDispatch: DispatchHandler | null = null;
   readonly native: GalleySymbols;
   readonly libraryPath: string;
-  readonly supportsDispatch: boolean;
+  /**
+   * The native address of this port's one `UnsafeCallback`, handed to the
+   * library with every session's hooks; set by `installDispatch`. Each
+   * worker owns its own callback, so the address is per session, not per
+   * library.
+   */
+  dispatchPointer: Deno.PointerValue = null;
 
-  constructor(native: GalleySymbols, libraryPath: string, supportsDispatch: boolean) {
+  constructor(native: GalleySymbols, libraryPath: string) {
     this.native = native;
     this.libraryPath = libraryPath;
-    this.supportsDispatch = supportsDispatch;
   }
 
-  syncProcedures(names: string[]): void {
-    if (typeof this.native.galley_js_procedure_clear !== "function") return;
-    if (typeof this.native.galley_js_procedure_enable !== "function") return;
-    this.native.galley_js_procedure_clear();
-    for (const name of names) {
-      this.native.galley_js_procedure_enable(textEncoder.encode(name), name.length);
-    }
-    // Warm the ID table outside any parse so the hot path never queries.
-    this.procedureNames();
+  setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {
+    return Number(
+      this.native.galley_session_set_hooks(
+        session as Deno.PointerValue,
+        this.dispatchPointer,
+        BigInt(hookHandle),
+        enabled,
+        BigInt(enabled.length),
+      ),
+    );
   }
 
-  #procedureNameTable: string[] | null = null;
+  #hookNameTable: string[] | null = null;
 
-  procedureNames(): string[] {
-    if (this.#procedureNameTable !== null) return this.#procedureNameTable;
+  hookNames(): string[] {
+    if (this.#hookNameTable !== null) return this.#hookNameTable;
     const table: string[] = [];
-    if (
-      typeof this.native.galley_js_procedure_count === "function" &&
-      typeof this.native.galley_js_procedure_name_ptr === "function" &&
-      typeof this.native.galley_js_procedure_name_len === "function"
-    ) {
-      const n = this.native.galley_js_procedure_count();
-      for (let i = 0; i < n; i++) {
-        const ptrValue = this.native.galley_js_procedure_name_ptr(i);
-        if (ptrValue === 0n) break;
-        const len = this.native.galley_js_procedure_name_len(i);
-        table.push(textDecoder.decode(readBytes(ptrValue, len)));
-      }
+    const total = this.native.galley_hooks_count();
+    for (let index = 0n; index < total; index++) {
+      const address = this.native.galley_hooks_name_data(index);
+      if (address === 0n) break;
+      table.push(textDecoder.decode(readBytes(address, this.native.galley_hooks_name_length(index))));
     }
-    this.#procedureNameTable = table;
+    this.#hookNameTable = table;
     return table;
   }
 
@@ -1150,32 +1130,10 @@ export function getDenoPortFromFile(filePath: string): DenoPort {
 function portForLibrary(libPath: string): DenoPort {
   const cached = portCache.get(libPath);
   if (cached) return cached;
-  // Libraries built for C procedures lack the JS dispatch symbol; dlopen
-  // fails on missing symbols, so fall back to a dispatch-less table.
-  let native: GalleySymbols;
-  let supportsDispatch = true;
-  try {
-    native = openNative(libPath, 3).symbols as unknown as GalleySymbols;
-  } catch {
-    try {
-      native = openNative(libPath, 2).symbols as unknown as GalleySymbols;
-    } catch {
-      try {
-        native = openNative(libPath, 1).symbols as unknown as GalleySymbols;
-      } catch {
-        native = openNative(libPath, 0).symbols as unknown as GalleySymbols;
-        supportsDispatch = false;
-      }
-    }
-  }
-  const port = new DenoPort(native, libPath, supportsDispatch);
+  const port = new DenoPort(openNative(libPath).symbols as unknown as GalleySymbols, libPath);
   // Dispatch rides with the port, not the Session: every consumer of the
   // port (adapter or universal loader) gets working procedure hooks.
-  try {
-    ensureDispatchFor(port);
-  } catch {
-    // Missing installer — stays no-op.
-  }
+  installDispatch(port);
   portCache.set(libPath, port);
   return port;
 }

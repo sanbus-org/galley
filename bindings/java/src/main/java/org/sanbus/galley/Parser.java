@@ -2,16 +2,12 @@ package org.sanbus.galley;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.sanbus.galley.internal.GalleyLibrary;
@@ -19,88 +15,52 @@ import org.sanbus.galley.internal.GalleyLibrary;
 /**
  * Loaded parser: the artifact-level namespace sessions open from.
  *
- * Owns one hook table shared by every session of the artifact. Acquire with
- * {@link Galley#load}, install hooks, then open sessions. Parsers are cached
- * by canonical artifact path for the process lifetime and the native library
- * cannot unload, so a parser is not closeable.
+ * Owns the default hook table: every session opened from the parser starts
+ * with a copy and owns that copy from then on (see {@link Session}), so
+ * installs here reach sessions opened later, never sessions already open.
+ * Acquire with {@link Galley#load}, install hooks, then open sessions.
+ * Parsers are cached by canonical artifact path for the process lifetime
+ * and the native library cannot unload, so a parser is not closeable.
  *
- * Threading: sessions are confined to one thread each, and two sessions of
- * one parser must never parse concurrently — native hook gates are
- * artifact-global, so concurrent same-parser parses would race regardless
- * of host-side locking.
+ * Threading: sessions are confined to one thread each. Sessions of one
+ * parser may parse concurrently on different threads: each carries its own
+ * hooks, so nothing about hook dispatch is shared between them. Hooks run on
+ * the parsing thread and must be thread-safe if they share state.
  */
 public final class Parser {
 
     private final String canonicalPath;
     private final GalleyLibrary lib;
     private final ConcurrentHashMap<String, Consumer<ProcedureArguments>> hooks = new ConcurrentHashMap<>();
-    // Entry-dispatch stack: one snapshot per active parse level, innermost
-    // last. Dispatch reads the innermost snapshot so mid-parse installs and
-    // clears apply to later parses only; nested parses push their own and
-    // the enclosing table is restored on unwind. Each frame also carries
-    // the session whose parse owns it and the parse's hook door, so every
-    // hook of one parse hands out nodes on the same door.
-    private final Deque<DispatchFrame> dispatchStack = new ArrayDeque<>();
+    /** Hook index by hook name, from the library's own hook list. */
+    private final Map<String, Integer> hookIndexes;
+    /** Open sessions by native handle, so the one dispatch stub routes each hook to its session. */
+    private final ConcurrentHashMap<Long, Session> sessions = new ConcurrentHashMap<>();
+    private final AtomicLong nextHandle = new AtomicLong(1);
     // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
-    private MemorySegment dispatchStub = MemorySegment.NULL;
-
-    /**
-     * One parse level's dispatch view: its entry table, owning session, and
-     * the parse's hook door — learned from the first hook that needs it and
-     * shared by every later hook of the same parse.
-     */
-    private static final class DispatchFrame {
-        final Map<String, Consumer<ProcedureArguments>> table;
-        final Session session;
-        private HookDoor door;
-
-        DispatchFrame(Map<String, Consumer<ProcedureArguments>> table, Session session) {
-            this.table = table;
-            this.session = session;
-        }
-
-        HookDoor doorFor(GalleyLibrary lib, MemorySegment argsPtr) {
-            if (door == null) door = new HookDoor(lib, lib.galley_procedure_door(argsPtr), session);
-            return door;
-        }
-    }
+    private final MemorySegment dispatchStub;
 
     private Parser(String canonicalPath, GalleyLibrary lib) {
         this.canonicalPath = canonicalPath;
         this.lib = lib;
-    }
-
-    /**
-     * Fully-wired parser: the only construction path. Installs the upcall
-     * stub before returning so no half-built parser (stubless, hooks inert)
-     * can ever escape.
-     */
-    static Parser create(String canonicalPath, GalleyLibrary lib) {
-        Parser parser = new Parser(canonicalPath, lib);
-        parser.installDispatchStub();
-        return parser;
-    }
-
-    /**
-     * Installs this parser's upcall stub. Called once by {@link #create} for
-     * the cache winner only, so racing loads never leave a loser's stub
-     * installed natively.
-     */
-    private void installDispatchStub() {
-        MemorySegment stub;
+        Map<String, Integer> indexes = new HashMap<>();
+        long count = lib.galley_hooks_count();
+        for (int index = 0; index < count; index++) indexes.put(lib.galley_hooks_name(index), index);
+        this.hookIndexes = Map.copyOf(indexes);
+        if (count == 0) {
+            System.err.println("galley: " + canonicalPath + " forwards no hooks to the host; procedure hooks stay inert");
+        }
         try {
             var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",
-                    java.lang.invoke.MethodType.methodType(void.class, MemorySegment.class, long.class, MemorySegment.class));
-            stub = lib.createJavaDispatchStub(handle.bindTo(this), Arena.global());
-            lib.galley_install_java_dispatch(stub);
+                    java.lang.invoke.MethodType.methodType(void.class, MemorySegment.class, int.class, MemorySegment.class));
+            this.dispatchStub = lib.createDispatchStub(handle.bindTo(this), Arena.global());
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
-        } catch (Exception e) {
-            // Library built without the Java shim: hooks stay inert.
-            System.err.println("galley: no Java dispatch in " + canonicalPath + "; procedure hooks stay inert");
-            stub = MemorySegment.NULL;
         }
-        this.dispatchStub = stub;
+    }
+
+    static Parser create(String canonicalPath, GalleyLibrary lib) {
+        return new Parser(canonicalPath, lib);
     }
 
     /** Canonical artifact path this parser was loaded from. */
@@ -138,22 +98,15 @@ public final class Parser {
 
     public long variableCount() { return lib.galley_variable_count(); }
 
+    /** Installs a default hook: reaches sessions opened after this call. */
     public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
-        if (name == null || hook == null) throw new IllegalArgumentException("name and hook required");
-        if (!isHookName(name)) {
-            warnIfNearMissHook(name);
-            return;
-        }
-        hooks.put(name, hook);
+        HookNames.require(name, hook);
+        if (HookNames.accepts(name)) hooks.put(name, hook);
     }
 
     public void installProcedure(String name, Runnable hook) {
-        if (name == null || hook == null) throw new IllegalArgumentException("name and hook required");
-        if (!isHookName(name)) {
-            warnIfNearMissHook(name);
-            return;
-        }
-        hooks.put(name, args -> hook.run());
+        HookNames.require(name, hook);
+        if (HookNames.accepts(name)) hooks.put(name, args -> hook.run());
     }
 
     /**
@@ -167,14 +120,10 @@ public final class Parser {
         if (source == null) return 0;
         int count = 0;
         for (Map.Entry<String, ?> entry : source.entrySet()) {
-            String name = entry.getKey();
-            if (!isHookName(name)) {
-                warnIfNearMissHook(name);
-                continue;
-            }
-            Consumer<ProcedureArguments> hook = toHook(entry.getValue());
+            if (!HookNames.accepts(entry.getKey())) continue;
+            Consumer<ProcedureArguments> hook = HookNames.toHook(entry.getValue());
             if (hook == null) continue;
-            hooks.put(name, hook);
+            hooks.put(entry.getKey(), hook);
             count++;
         }
         return count;
@@ -193,47 +142,31 @@ public final class Parser {
         hooks.clear();
     }
 
-    /**
-     * Entry-table snapshot of the live hook table: one parse's dispatch
-     * view. Installs and clears made mid-parse apply to later parses only.
-     */
-    Map<String, Consumer<ProcedureArguments>> snapshotHooks() {
-        return new HashMap<>(hooks);
+    /** A new session's starting hook table: a copy of the defaults, owned by that session. */
+    Map<String, Consumer<ProcedureArguments>> defaultHooks() {
+        return Map.copyOf(hooks);
     }
 
-    /** Pushes a parse level's entry table and owning session; restored by {@link #popAndRestoreGates}. */
-    void pushDispatchTable(Map<String, Consumer<ProcedureArguments>> table, Session session) {
-        dispatchStack.push(new DispatchFrame(new HashMap<>(table), session));
+    /** Number of hooks the library forwards. */
+    int hookCount() { return hookIndexes.size(); }
+
+    /** The library's index for a hook name, or -1 when the grammar has no such hook. */
+    int hookIndex(String name) {
+        Integer index = hookIndexes.get(name);
+        return index == null ? -1 : index;
     }
 
-    /**
-     * Pops a parse level's entry table and re-syncs the native gates from
-     * the now-enclosing table (the unwinding level's own table at the
-     * outermost level): nested parses restore the enclosing hook set on
-     * unwind instead of clobbering it. The poll runs first so the stack
-     * unwinds even if the re-sync throws.
-     */
-    void popAndRestoreGates(Map<String, Consumer<ProcedureArguments>> ownTable) {
-        dispatchStack.poll();
-        DispatchFrame outer = dispatchStack.peek();
-        syncGates(outer != null ? outer.table : ownTable);
+    MemorySegment dispatchStub() { return dispatchStub; }
+
+    /** Registers an open session and returns the handle the library hands back with each of its hooks. */
+    long register(Session session) {
+        long handle = nextHandle.getAndIncrement();
+        sessions.put(handle, session);
+        return handle;
     }
 
-    /**
-     * Selective dispatch sync (the single gate every parse leg calls):
-     * clears every native procedure gate, then enables exactly the names
-     * in the entry table. Missing symbols are no-ops.
-     */
-    void syncGates(Map<String, Consumer<ProcedureArguments>> table) {
-        lib.galley_java_procedure_clear();
-        if (table == null || table.isEmpty()) return;
-        for (String name : table.keySet()) {
-            byte[] bytes = name.getBytes(StandardCharsets.UTF_8);
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment seg = arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
-                lib.galley_java_procedure_enable(seg, bytes.length);
-            }
-        }
+    void unregister(long handle) {
+        sessions.remove(handle);
     }
 
     GalleyLibrary library() { return lib; }
@@ -245,67 +178,15 @@ public final class Parser {
         return lib.galley_status_string(status.getCode());
     }
 
-    // Called by this parser's upcall stub.
-    private void dispatch(MemorySegment namePtr, long nameLen, MemorySegment argsPtr) {
+    // Called by this parser's upcall stub on the parsing thread: routes the
+    // hook to the session whose handle the library passed.
+    private void dispatch(MemorySegment handle, int index, MemorySegment arguments) {
         try {
-            if (namePtr.equals(MemorySegment.NULL) || argsPtr.equals(MemorySegment.NULL)) return;
-            byte[] nameBytes = namePtr.reinterpret(nameLen).toArray(ValueLayout.JAVA_BYTE);
-            String name = new String(nameBytes, StandardCharsets.UTF_8);
-            // Dispatch reads the innermost entry snapshot (the live table
-            // when no parse is active), so mid-parse installs and clears
-            // stay invisible in-flight. Hook throwables are logged and
-            // swallowed so a throwing hook never aborts the parse.
-            DispatchFrame frame = dispatchStack.peek();
-            Map<String, Consumer<ProcedureArguments>> table = frame != null ? frame.table : hooks;
-            if (table.isEmpty()) return;
-            Consumer<ProcedureArguments> hook = table.get(name);
-            if (hook == null) return;
-            ProcedureArguments args = new ProcedureArguments(argsPtr, lib, frame != null ? frame.doorFor(lib, argsPtr) : null);
-            try {
-                hook.accept(args);
-            } catch (Throwable t) {
-                t.printStackTrace(System.err);
-            } finally {
-                // The native arguments die when this hook call returns;
-                // expire the Java reference with them. The tree outlives
-                // the hook on the parse's door.
-                args.expire();
-            }
+            if (arguments.equals(MemorySegment.NULL)) return;
+            Session session = sessions.get(handle.address());
+            if (session != null) session.dispatchHook(index, arguments);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
         }
-    }
-
-    private static Consumer<ProcedureArguments> toHook(Object value) {
-        if (value instanceof Consumer) {
-            @SuppressWarnings("unchecked")
-            Consumer<ProcedureArguments> hook = (Consumer<ProcedureArguments>) value;
-            return hook;
-        }
-        if (value instanceof Runnable task) return args -> task.run();
-        return null;
-    }
-
-    private static boolean isHookName(String name) {
-        return name != null
-                && (name.equals("reduction") || name.startsWith("reduction_") || name.startsWith("hook_"));
-    }
-
-    /**
-     * True for names that look like mistyped hooks ({@code reductionPair},
-     * {@code hookPrint}, {@code reducton_X}): a warning, not an install.
-     * Anything else (helpers, data) stays silent.
-     */
-    private static boolean isNearMissHookName(String name) {
-        if (name == null || isHookName(name)) return false;
-        String lower = name.toLowerCase(Locale.ROOT);
-        return lower.startsWith("reduct") || lower.startsWith("hook");
-    }
-
-    /** Warns on a skipped name that looks like a mistyped hook. */
-    private static void warnIfNearMissHook(String name) {
-        if (!isNearMissHookName(name)) return;
-        System.err.println("galley: ignoring export \"" + name
-                + "\": procedure hooks must be named reduction, reduction_*, or hook_*.");
     }
 }

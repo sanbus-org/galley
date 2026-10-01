@@ -1,10 +1,12 @@
 /**
  * Loaded parser: the artifact-level namespace sessions open from.
  *
- * Owns exactly one hook table shared by every session of the artifact,
- * answers every grammar query, and opens sessions. Acquiring the
- * artifact and opening sessions on it are separate steps, so callers
- * always have a moment to install hooks between them.
+ * Owns the artifact's default hook table, answers every grammar query,
+ * and opens sessions. Every session starts with a copy of the defaults
+ * and owns that copy from then on, so an install here reaches sessions
+ * opened later, never sessions already open. Acquiring the artifact and
+ * opening sessions on it are separate steps, so callers always have a
+ * moment to install hooks between them.
  */
 
 import type { FfiPort } from "./port.ts";
@@ -106,10 +108,10 @@ export class Parser {
     return this.#port.statusString(status);
   }
 
-  // -- procedures (this artifact's registry; shared by its sessions) --
+  // -- procedures (this artifact's defaults; sessions copy them at open) --
 
   /**
-   * Installs a single procedure hook into this artifact.
+   * Installs a single default procedure hook into this artifact.
    * Overwrites any existing entry for `name`.
    */
   installProcedure(name: string, fn: HookFn | (() => void)): void {
@@ -118,19 +120,19 @@ export class Parser {
 
   /**
    * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each function into this
-   * artifact. Returns the number installed.
+   * `reduction_*`, `hook_*`) and registers each function as a default of
+   * this artifact. Returns the number installed.
    */
   installProcedures(module: Record<string, unknown>): number {
     return this.#registry.installModule(module);
   }
 
-  /** Removes all hooks from this artifact; subsequent parses are no-ops. */
+  /** Removes all default hooks; sessions already open keep theirs. */
   clearProcedures(): void {
     this.#registry.clear();
   }
 
-  /** Returns a copy of this artifact's registered hooks (name -> callable). */
+  /** Returns a copy of this artifact's default hooks (name -> callable). */
   listProcedures(): Record<string, HookFn> {
     const table: Record<string, HookFn> = {};
     for (const name of this.#registry.names()) {
@@ -140,14 +142,14 @@ export class Parser {
     return table;
   }
 
-  /** The hook for `name`, if this artifact registered one. */
+  /** The default hook for `name`, if this artifact registered one. */
   procedureHook(name: string): HookFn | undefined {
     return this.#registry.get(name);
   }
 
   /**
    * Opens a session on this artifact. Takes only parser tunables;
-   * hooks come from this parser's shared table.
+   * the session's hooks start as a copy of this parser's defaults.
    */
   openSession(options: SessionOptions = {}): Session {
     return new Session(this.#port, options);

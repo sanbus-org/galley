@@ -8,15 +8,16 @@
  * same install name) never share code: dyld satisfies a linked
  * dependency by install name and would alias the second copy to the
  * first. Nothing here links the parser library and nothing calls it
- * directly; the optional JS-shim symbols
- * (`galley_install_js_dispatch_id`, `galley_js_procedure_*`) stay null
- * on libraries that predate them. Dispatch installs are per library
- * path.
+ * directly.
  *
  * Hooks: parse runs on the JS thread, so the parser callback re-enters JS
- * with napi_call_function in the same thread. Same-thread reentrancy across
- * libraries nests parses; a frame stack carries each parse's function and
- * receiver while one handle scope covers the outermost parse. A pending
+ * with napi_call_function in the same thread. Each session hands the
+ * library one trampoline (shared by every session and worker) and its own
+ * handle; the trampoline forwards (handle, hook index, arguments) to the
+ * JS callback of the parse running on this thread. Same-thread reentrancy
+ * across libraries nests parses; a thread-local frame stack carries each
+ * parse's function and receiver while one handle scope covers the
+ * outermost parse, so worker threads parsing at once never meet. A pending
  * JS exception after a hook is cleared so a throwing hook never aborts the
  * parse.
  */
@@ -183,9 +184,6 @@ static napi_value make_string_or_null(napi_env env, const char *text) {
 /* Per-library state.                                                  */
 /* ------------------------------------------------------------------ */
 
-typedef void (*dispatch_id_fn)(void (*target)(uint32_t id, void *args));
-typedef void (*dispatch_name_fn)(void (*target)(const char *name, size_t name_len, void *args));
-
 /* ------------------------------------------------------------------ */
 /* Per-library function table: every grammar call below goes through */
 /* lib->fn, resolved from the dlopen probe at load (see method_load). */
@@ -281,6 +279,10 @@ typedef long long (*fn_galley_semantic_error_count_t)(GalleySession *session);
 typedef GalleySession * (*fn_galley_session_create_t)(void);
 typedef GalleySession * (*fn_galley_session_create_ex_t)(const GalleyCOptions *options);
 typedef void (*fn_galley_session_destroy_t)(GalleySession *session);
+typedef size_t (*fn_galley_hooks_count_t)(void);
+typedef const char * (*fn_galley_hooks_name_data_t)(size_t index);
+typedef size_t (*fn_galley_hooks_name_length_t)(size_t index);
+typedef long long (*fn_galley_session_set_hooks_t)(GalleySession *session, GalleyHookDispatch dispatch, void *handle, const unsigned char *enabled, size_t enabled_count);
 typedef long long (*fn_galley_session_set_message_override_t)(GalleySession *session, const char *name, size_t name_len, const char *message, size_t message_len);
 typedef int (*fn_galley_source_retention_enabled_t)(void);
 typedef int (*fn_galley_stack_overflow_recovery_available_t)(void);
@@ -337,6 +339,10 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_diagnostic_unexpected_token) \
   X(galley_error_recovery_mode) \
   X(galley_has_ast) \
+  X(galley_hooks_count) \
+  X(galley_hooks_name_data) \
+  X(galley_hooks_name_length) \
+  X(galley_session_set_hooks) \
   X(galley_has_diagnostic) \
   X(galley_has_input_streaming) \
   X(galley_has_position_tracking) \
@@ -448,15 +454,8 @@ static const char *const fn_symbol[SLOT_COUNT] = {
 
 typedef struct Lib {
   void *probe;
-  dispatch_id_fn install_id;
-  dispatch_name_fn install_name;
-  uint32_t (*procedure_count)(void);
-  void *(*procedure_name_ptr)(uint32_t index);
-  size_t (*procedure_name_len)(uint32_t index);
-  int (*procedure_enable)(const char *name, size_t name_len);
-  void (*procedure_clear)(void);
-  napi_ref id_callback;
-  napi_ref name_callback;
+  /* The JS callback every hook of a parse on this library re-enters; set
+   * once per port by install_dispatch. */
   napi_ref dispatch_ref;
   // Every required symbol, resolved from the probe handle at load so a
   // header/binary skew fails there naming the symbol. All grammar calls
@@ -476,8 +475,10 @@ typedef struct ParseFrame {
   bool owns_scope;
 } ParseFrame;
 
-static ParseFrame parse_frames[MAX_PARSE_DEPTH + 1];
-static int parse_depth = 0;
+/* Thread-local: each worker thread parses on its own napi_env, so its
+ * frames, depth and environment never meet another thread's. */
+static _Thread_local ParseFrame parse_frames[MAX_PARSE_DEPTH + 1];
+static _Thread_local int parse_depth = 0;
 
 static void clear_pending(napi_env env) {
   bool pending = false;
@@ -487,38 +488,32 @@ static void clear_pending(napi_env env) {
   (void)thrown;
 }
 
-static void dispatch_call(napi_env env, uint32_t id, const char *name, size_t name_len,
-                          void *args, bool by_id) {
+static void dispatch_call(napi_env env, void *handle, uint32_t index, void *args) {
   if (parse_depth == 0) return;
   ParseFrame *frame = &parse_frames[parse_depth - 1];
-  napi_value argv[2];
+  napi_value argv[3];
   napi_value result;
-  if (by_id) {
-    if (napi_create_uint32(env, id, &argv[0]) != napi_ok) return;
-  } else {
-    if (napi_create_string_utf8(env, name, name_len, &argv[0]) != napi_ok) return;
-  }
-  if (napi_create_bigint_uint64(env, (uint64_t)(uintptr_t)args, &argv[1]) != napi_ok) return;
-  if (napi_call_function(env, frame->receiver, frame->function, 2, argv, &result) != napi_ok) {
+  if (napi_create_double(env, (double)(uintptr_t)handle, &argv[0]) != napi_ok) return;
+  if (napi_create_uint32(env, index, &argv[1]) != napi_ok) return;
+  if (napi_create_bigint_uint64(env, (uint64_t)(uintptr_t)args, &argv[2]) != napi_ok) return;
+  if (napi_call_function(env, frame->receiver, frame->function, 3, argv, &result) != napi_ok) {
     clear_pending(env);
     return;
   }
   clear_pending(env);
 }
 
-/* Installed into the parser library; unmarshals to dispatch_call. The
- * active parse frame selects the library whose hooks are firing, so nested
- * parses across libraries dispatch to the right receiver. */
-static napi_env active_env = NULL;
+/* The environment of the parse running on this thread; NULL between
+ * parses. */
+static _Thread_local napi_env active_env = NULL;
 
-static void id_trampoline(uint32_t id, void *args) {
+/* The one dispatch callback every session hands the library: forwards
+ * (handle, hook index, arguments) to the JS callback of this thread's
+ * innermost parse frame, so nested parses across libraries reach the right
+ * receiver. */
+static void hook_trampoline(void *handle, unsigned int index, void *args) {
   if (active_env == NULL) return;
-  dispatch_call(active_env, id, NULL, 0, args, true);
-}
-
-static void name_trampoline(const char *name, size_t name_len, void *args) {
-  if (active_env == NULL) return;
-  dispatch_call(active_env, 0, name, name_len, args, false);
+  dispatch_call(active_env, handle, index, args);
 }
 
 /* Runs the parse body inside a frame carrying this library's dispatcher.
@@ -630,13 +625,6 @@ static bool bind(napi_env env, napi_value obj, Lib *lib, const char *name, Metho
     return false;
   }
   if (napi_set_named_property(env, obj, name, function) != napi_ok) return false;
-  return true;
-}
-
-static bool bind_null(napi_env env, napi_value obj, const char *name) {
-  napi_value null_value;
-  if (napi_get_null(env, &null_value) != napi_ok) return false;
-  if (napi_set_named_property(env, obj, name, null_value) != napi_ok) return false;
   return true;
 }
 
@@ -2018,10 +2006,11 @@ static napi_value method_galley_procedure_report_semantic_error(napi_env env, Li
   return make_i64(env, status);
 }
 
-/* Optional JS-shim surface: bound only when the probed symbols exist. */
+/* Host hooks. */
 
-static napi_value method_install_id_dispatch(napi_env env, Lib *lib, size_t argc,
-                                            napi_value *argv) {
+/* install_dispatch(callback): the JS function every hook of this library's
+ * parses re-enters, held for the library's lifetime. */
+static napi_value method_install_dispatch(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected callback");
     return NULL;
@@ -2031,82 +2020,63 @@ static napi_value method_install_id_dispatch(napi_env env, Lib *lib, size_t argc
     napi_throw_type_error(env, NULL, "expected callback");
     return NULL;
   }
-  if (lib->id_callback != NULL) napi_delete_reference(env, lib->id_callback);
-  lib->id_callback = NULL;
-  if (napi_create_reference(env, argv[0], 1, &lib->id_callback) != napi_ok) return NULL;
-  lib->dispatch_ref = lib->id_callback;
-  lib->install_id(id_trampoline);
+  if (lib->dispatch_ref != NULL) napi_delete_reference(env, lib->dispatch_ref);
+  lib->dispatch_ref = NULL;
+  if (napi_create_reference(env, argv[0], 1, &lib->dispatch_ref) != napi_ok) return NULL;
   napi_value undefined_value;
   if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
   return undefined_value;
 }
 
-static napi_value method_install_name_dispatch(napi_env env, Lib *lib, size_t argc,
-                                              napi_value *argv) {
-  if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected callback");
-    return NULL;
-  }
-  napi_valuetype type;
-  if (napi_typeof(env, argv[0], &type) != napi_ok || type != napi_function) {
-    napi_throw_type_error(env, NULL, "expected callback");
-    return NULL;
-  }
-  if (lib->name_callback != NULL) napi_delete_reference(env, lib->name_callback);
-  lib->name_callback = NULL;
-  if (napi_create_reference(env, argv[0], 1, &lib->name_callback) != napi_ok) return NULL;
-  lib->dispatch_ref = lib->name_callback;
-  lib->install_name(name_trampoline);
-  napi_value undefined_value;
-  if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
-  return undefined_value;
-}
-
-static napi_value method_galley_js_procedure_count(napi_env env, Lib *lib, size_t argc,
-                                                  napi_value *argv) {
+static napi_value method_galley_hooks_count(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   (void)argc;
   (void)argv;
-  return make_u32(env, lib->procedure_count());
+  return make_u32(env, (uint32_t)((fn_galley_hooks_count_t)lib->fn[SLOT_galley_hooks_count])());
 }
 
-static napi_value method_galley_js_procedure_name(napi_env env, Lib *lib, size_t argc,
-                                                 napi_value *argv) {
+static napi_value method_galley_hooks_name(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   if (argc < 1) {
     napi_throw_type_error(env, NULL, "expected index");
     return NULL;
   }
   uint64_t index = 0;
   if (!get_u64(env, argv[0], &index)) return NULL;
-  void *ptr = lib->procedure_name_ptr((uint32_t)index);
-  if (ptr == NULL) return make_null(env);
-  size_t len = lib->procedure_name_len((uint32_t)index);
+  const char *name = ((fn_galley_hooks_name_data_t)lib->fn[SLOT_galley_hooks_name_data])((size_t)index);
+  if (name == NULL) return make_null(env);
+  size_t length = ((fn_galley_hooks_name_length_t)lib->fn[SLOT_galley_hooks_name_length])((size_t)index);
   napi_value out;
-  if (napi_create_string_utf8(env, (const char *)ptr, len, &out) != napi_ok) return NULL;
+  if (napi_create_string_utf8(env, name, length, &out) != napi_ok) return NULL;
   return out;
 }
 
-static napi_value method_galley_js_procedure_enable(napi_env env, Lib *lib, size_t argc,
-                                                   napi_value *argv) {
-  if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected name");
+/* galley_session_set_hooks(session, hookHandle, enabled): `enabled` is a
+ * Uint8Array with one flag per hook index. */
+static napi_value method_galley_session_set_hooks(napi_env env, Lib *lib, size_t argc,
+                                                 napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  if (argc < 3) {
+    napi_throw_type_error(env, NULL, "expected hook handle and enabled flags");
     return NULL;
   }
-  char *name = NULL;
-  size_t name_len = 0;
-  if (!get_utf8(env, argv[0], &name, &name_len)) return NULL;
-  int result = lib->procedure_enable(name, name_len);
-  free(name);
-  return make_i32(env, (int32_t)result);
-}
-
-static napi_value method_galley_js_procedure_clear(napi_env env, Lib *lib, size_t argc,
-                                                  napi_value *argv) {
-  (void)argc;
-  (void)argv;
-  lib->procedure_clear();
-  napi_value undefined_value;
-  if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
-  return undefined_value;
+  uint64_t handle = 0;
+  if (!get_u64(env, argv[1], &handle)) return NULL;
+  bool is_typedarray = false;
+  if (napi_is_typedarray(env, argv[2], &is_typedarray) != napi_ok || !is_typedarray) {
+    napi_throw_type_error(env, NULL, "expected enabled flags");
+    return NULL;
+  }
+  napi_typedarray_type array_type;
+  size_t length = 0;
+  void *data = NULL;
+  if (napi_get_typedarray_info(env, argv[2], &array_type, &length, &data, NULL, NULL) != napi_ok) return NULL;
+  if (array_type != napi_uint8_array) {
+    napi_throw_type_error(env, NULL, "enabled flags must be a Uint8Array");
+    return NULL;
+  }
+  return make_i64(env, ((fn_galley_session_set_hooks_t)lib->fn[SLOT_galley_session_set_hooks])(
+                           session, hook_trampoline, (void *)(uintptr_t)handle,
+                           (const unsigned char *)data, length));
 }
 
 /* ------------------------------------------------------------------ */
@@ -2166,19 +2136,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
     return NULL;
   }
   lib->probe = probe;
-  // Optional JS-shim symbols stay NULL on libraries that predate them.
-  lib->install_id = (dispatch_id_fn)probe_symbol(probe, "galley_install_js_dispatch_id");
-  lib->install_name = (dispatch_name_fn)probe_symbol(probe, "galley_install_js_dispatch");
-  lib->procedure_count =
-      (uint32_t(*)(void))probe_symbol(probe, "galley_js_procedure_count");
-  lib->procedure_name_ptr =
-      (void *(*)(uint32_t))probe_symbol(probe, "galley_js_procedure_name_ptr");
-  lib->procedure_name_len =
-      (size_t(*)(uint32_t))probe_symbol(probe, "galley_js_procedure_name_len");
-  lib->procedure_enable =
-      (int (*)(const char *, size_t))probe_symbol(probe, "galley_js_procedure_enable");
-  lib->procedure_clear = (void (*)(void))probe_symbol(probe, "galley_js_procedure_clear");
-
   napi_value api;
   if (napi_create_object(env, &api) != napi_ok) {
     free(lib);
@@ -2302,43 +2259,13 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   {
     if (!bind(env, api, lib, "galley_reserve_nodes", method_galley_reserve_nodes)) return NULL;
   }
-  if (lib->install_id != NULL) {
-    // JS name differs from the probed export (galley_install_js_dispatch_id).
-    if (!bind(env, api, lib, "install_id_dispatch", method_install_id_dispatch)) return NULL;
-  } else if (!bind_null(env, api, "install_id_dispatch")) {
-    return NULL;
-  }
-  if (lib->install_name != NULL) {
-    // JS name differs from the probed export (galley_install_js_dispatch).
-    if (!bind(env, api, lib, "install_name_dispatch", method_install_name_dispatch)) return NULL;
-  } else if (!bind_null(env, api, "install_name_dispatch")) {
-    return NULL;
-  }
-  if (lib->procedure_count != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_count", method_galley_js_procedure_count))
-      return NULL;
-  } else if (!bind_null(env, api, "galley_js_procedure_count")) {
-    return NULL;
-  }
-  if (lib->procedure_name_ptr != NULL && lib->procedure_name_len != NULL) {
-    // Served by the galley_js_procedure_name_ptr/_len export pair.
-    if (!bind(env, api, lib, "galley_js_procedure_name", method_galley_js_procedure_name))
-      return NULL;
-  } else if (!bind_null(env, api, "galley_js_procedure_name")) {
-    return NULL;
-  }
-  if (lib->procedure_enable != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_enable", method_galley_js_procedure_enable))
-      return NULL;
-  } else if (!bind_null(env, api, "galley_js_procedure_enable")) {
-    return NULL;
-  }
-  if (lib->procedure_clear != NULL) {
-    if (!bind(env, api, lib, "galley_js_procedure_clear", method_galley_js_procedure_clear))
-      return NULL;
-  } else if (!bind_null(env, api, "galley_js_procedure_clear")) {
-    return NULL;
-  }
+  BIND_OR_THROW(api, lib, galley_session_set_hooks);
+  // The JS names differ from the probed exports: install_dispatch is
+  // addon-only, and the name list is served by the galley_hooks_name_data /
+  // _length pair.
+  if (!bind(env, api, lib, "install_dispatch", method_install_dispatch)) return NULL;
+  BIND_OR_THROW(api, lib, galley_hooks_count);
+  if (!bind(env, api, lib, "galley_hooks_name", method_galley_hooks_name)) return NULL;
   // Resolve every required symbol through this library's own probe
   // handle, so a header/binary skew fails here naming the symbol.
   for (int i = 0; i < SLOT_COUNT; i++) {

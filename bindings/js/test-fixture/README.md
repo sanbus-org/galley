@@ -10,7 +10,7 @@ and builds them with each adapter's own builder.
 
 Only file *presence* affects the build (`procedures.ts` selects the JS
 dispatch path; its type-only import is never resolved at build time).
-`_ll-parser.zig`, `metadata.json`, `procedures_js.zig`, and the built
+`_ll-parser.zig`, `host_procedures.zig`, and the built
 libraries are generated into the temp workdir, never here.
 
 Edit these sources and every JS suite picks the change up on its next run.

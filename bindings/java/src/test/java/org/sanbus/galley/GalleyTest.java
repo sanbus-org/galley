@@ -120,7 +120,7 @@ public class GalleyTest {
         @Test
         void procedureHookCanReadNodeText() {
             List<byte[]> seen = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 byte[] text = node.text();
@@ -133,42 +133,28 @@ public class GalleyTest {
         }
 
         @Test
-        void nestedParseRestoresOuterGates() {
+        void nestedParseOfAnotherSessionUsesItsOwnHooks() {
             List<String> outerSeen = new ArrayList<>();
             List<String> innerSeen = new ArrayList<>();
             boolean[] nested = {false};
-            AtomicReference<Consumer<ProcedureArguments>> outerHook = new AtomicReference<>();
-            outerHook.set(args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 outerSeen.add(new String(node.text(), StandardCharsets.UTF_8));
                 if (!nested[0]) {
                     nested[0] = true;
-                    Session innerSession = parser.openSession();
-                    try {
-                        parser.clearProcedures();
-                        parser.installProcedure("reduction_Number", innerArgs -> {
+                    try (Session innerSession = parser.openSession()) {
+                        innerSession.installProcedure("reduction_Number", innerArgs -> {
                             Node innerNode = innerArgs.currentNode();
                             assertNotNull(innerNode);
                             innerSeen.add(new String(innerNode.text(), StandardCharsets.UTF_8));
                         });
-                        try {
-                            innerSession.parse("alpha:9");
-                        } finally {
-                            parser.clearProcedures();
-                            parser.installProcedure("reduction_Pair", outerHook.get());
-                        }
-                    } finally {
-                        innerSession.close();
+                        innerSession.parse("alpha:9");
                     }
                 }
             });
-            parser.installProcedure("reduction_Pair", outerHook.get());
-            try {
-                session.parse("alpha:12,beta:3");
-            } finally {
-                parser.clearProcedures();
-            }
+            session.parse("alpha:12,beta:3");
+            // The inner parse neither fired the outer hook nor disturbed it.
             assertEquals(List.of("alpha:12", "beta:3"), outerSeen);
             assertEquals(List.of("9"), innerSeen);
         }
@@ -180,7 +166,7 @@ public class GalleyTest {
             session.parse("alpha:1");
             List<Boolean> hookReads = new ArrayList<>();
             List<StatusCode> refusals = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 hookReads.add(node != null && node.text() != null);
                 // Same address, other door: the parse holds the session, so
@@ -197,7 +183,7 @@ public class GalleyTest {
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(List.of(true, true), hookReads);
             assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), refusals);
@@ -309,7 +295,7 @@ public class GalleyTest {
         @Test
         void hookReportedSemanticErrorsAggregateAndFail() {
             List<Integer> counts = new ArrayList<>();
-            parser.installProcedure("reduction_Number", args -> {
+            session.installProcedure("reduction_Number", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
@@ -332,7 +318,7 @@ public class GalleyTest {
 
         @Test
         void semanticCountsResetAfterSuccessfulParse() {
-            parser.installProcedure("reduction_Number", args -> {
+            session.installProcedure("reduction_Number", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 int value = Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8));
@@ -785,7 +771,7 @@ public class GalleyTest {
             session.parse("alpha:1");
             AtomicReference<Throwable> seen = new AtomicReference<>();
             // Redirecting to the live node is fine.
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 try {
                     args.setCurrentNode(args.currentNode());
                 } catch (Throwable t) {
@@ -795,25 +781,24 @@ public class GalleyTest {
             session.parse("alpha:12,beta:3");
             assertNull(seen.get());
             // A node left over from an older generation throws.
-            parser.clearProcedures();
-            parser.installProcedure("reduction_Pair", args -> {
+            Consumer<ProcedureArguments> useFresh = args -> {
                 try {
                     args.setCurrentNode(fresh);
                 } catch (Throwable t) {
                     seen.set(t);
                 }
-            });
+            };
+            session.clearProcedures();
+            session.installProcedure("reduction_Pair", useFresh);
             session.parse("alpha:12,beta:3");
             assertTrue(seen.get() instanceof GenerationInvalidatedException);
             // No cross-session identity gate: what still refuses the
             // leftover handle is its generation, whichever session drives
             // the parse.
             seen.set(null);
-            Session other = parser.openSession();
-            try {
+            try (Session other = parser.openSession()) {
+                other.installProcedure("reduction_Pair", useFresh);
                 other.parse("alpha:12,beta:3");
-            } finally {
-                other.close();
             }
             assertTrue(seen.get() instanceof GenerationInvalidatedException);
         }
@@ -827,8 +812,8 @@ public class GalleyTest {
         @BeforeEach
         void setUp() {
             parser = fixtureParser();
-            session = parser.openSession();
             test_fixture.procedures.register(parser);
+            session = parser.openSession();
         }
 
         @AfterEach
@@ -919,7 +904,7 @@ public class GalleyTest {
             // A hook's node handed to the session door is refused by door
             // identity, whatever state the parse is in.
             AtomicInteger refusals = new AtomicInteger();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 try {
                     session.variableIndex(args.currentNode());
                 } catch (IllegalArgumentException expected) {
@@ -929,7 +914,7 @@ public class GalleyTest {
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(2, refusals.get());
         }
@@ -939,7 +924,7 @@ public class GalleyTest {
             // Post-parse session node versus parse-time hook node, both
             // directions; the refusal must fire inside the hook.
             AtomicInteger refusals = new AtomicInteger();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 Node hookNode = args.currentNode();
                 assertNotNull(hookNode);
                 try {
@@ -956,7 +941,7 @@ public class GalleyTest {
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(4, refusals.get());
         }
@@ -967,7 +952,7 @@ public class GalleyTest {
             // of the same parse: both nodes cross the same parse's door.
             AtomicReference<Node> detached = new AtomicReference<>();
             List<String> outcomes = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
                 if (detached.get() == null) {
@@ -984,7 +969,7 @@ public class GalleyTest {
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(List.of("ok"), outcomes);
         }
@@ -996,16 +981,16 @@ public class GalleyTest {
             // hook of the same parse and refuses once the parse ends.
             AtomicReference<Node> stashed = new AtomicReference<>();
             List<String> seen = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) stashed.set(args.currentNode());
             });
-            parser.installProcedure("reduction_Document", args -> {
+            session.installProcedure("reduction_Document", args -> {
                 seen.add(new String(stashed.get().text(), StandardCharsets.UTF_8));
             });
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(List.of("alpha:12"), seen);
             assertThrows(GenerationInvalidatedException.class, () -> stashed.get().text());
@@ -1018,10 +1003,10 @@ public class GalleyTest {
             // instead of touching a frame that is gone.
             AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
             List<Class<?>> outcomes = new ArrayList<>();
-            parser.installProcedure("reduction_Pair", args -> {
+            session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) stashed.set(args);
             });
-            parser.installProcedure("reduction_Document", args -> {
+            session.installProcedure("reduction_Document", args -> {
                 for (Runnable use : List.<Runnable>of(
                         () -> stashed.get().currentLine(),
                         () -> stashed.get().currentNode(),
@@ -1036,7 +1021,7 @@ public class GalleyTest {
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
-                parser.clearProcedures();
+                session.clearProcedures();
             }
             assertEquals(3, outcomes.size());
             assertTrue(outcomes.stream().allMatch(GenerationInvalidatedException.class::equals));
@@ -1352,16 +1337,101 @@ public class GalleyTest {
             assertEquals(2, parser.listProcedures().size());
             Session sess = parser.openSession();
             try {
+                // A session starts with a copy of the parser's defaults.
+                assertEquals(2, sess.listProcedures().size());
                 sess.parse("alpha:12,beta:3");
                 assertTrue(called.get() > 0);
                 int before = called.get();
-                parser.clearProcedures();
-                assertEquals(0, parser.listProcedures().size());
+                sess.clearProcedures();
+                assertEquals(0, sess.listProcedures().size());
+                assertEquals(2, parser.listProcedures().size());
                 sess.parse("alpha:12");
                 assertEquals(before, called.get());
             } finally {
                 sess.close();
             }
+        }
+
+        @Test
+        void sessionsOwnTheirHooks() {
+            AtomicInteger firstCalls = new AtomicInteger(0);
+            AtomicInteger secondCalls = new AtomicInteger(0);
+            try (Session first = parser.openSession(); Session second = parser.openSession()) {
+                first.installProcedure("reduction_Pair", args -> firstCalls.incrementAndGet());
+                second.installProcedure("reduction_Number", args -> secondCalls.incrementAndGet());
+                first.parse("alpha:12,beta:3");
+                assertEquals(2, firstCalls.get());
+                assertEquals(0, secondCalls.get());
+                second.parse("alpha:12,beta:3");
+                assertEquals(2, firstCalls.get());
+                assertEquals(2, secondCalls.get());
+                assertNotNull(first.lookupProcedure("reduction_Pair"));
+                assertNull(first.lookupProcedure("reduction_Number"));
+                assertNull(second.lookupProcedure("reduction_Pair"));
+            }
+        }
+
+        @Test
+        void parserInstallsReachOnlyLaterSessions() {
+            AtomicInteger called = new AtomicInteger(0);
+            try (Session earlier = parser.openSession()) {
+                parser.installProcedure("reduction_Pair", args -> called.incrementAndGet());
+                try (Session later = parser.openSession()) {
+                    earlier.parse("alpha:12,beta:3");
+                    assertEquals(0, called.get());
+                    later.parse("alpha:12,beta:3");
+                    assertEquals(2, called.get());
+                    parser.clearProcedures();
+                    later.parse("alpha:12,beta:3");
+                    assertEquals(4, called.get());
+                }
+            }
+        }
+
+        @Test
+        void changingHooksDuringAParseIsRefused() {
+            AtomicReference<Throwable> refusal = new AtomicReference<>();
+            try (Session sess = parser.openSession()) {
+                sess.installProcedure("reduction_Pair", args -> {
+                    try {
+                        sess.installProcedure("reduction_Number", innerArgs -> {});
+                    } catch (Throwable t) {
+                        refusal.compareAndSet(null, t);
+                    }
+                    try {
+                        sess.clearProcedures();
+                    } catch (Throwable t) {
+                        refusal.compareAndSet(null, t);
+                    }
+                });
+                sess.parse("alpha:12");
+                assertTrue(refusal.get() instanceof GalleyException);
+                assertEquals(StatusCode.ERROR_SESSION_IN_USE, ((GalleyException) refusal.get()).getCode());
+                // The refused changes left the table as it was.
+                assertEquals(1, sess.listProcedures().size());
+                assertNotNull(sess.lookupProcedure("reduction_Pair"));
+            }
+        }
+
+        @Test
+        void sessionInstallsFollowTheSameNamingRules() {
+            PrintStream original = System.err;
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+            try (Session sess = parser.openSession()) {
+                sess.installProcedure("reduction_Pair", args -> {});
+                sess.installProcedure("reductionPair", args -> {});
+                assertEquals(1, sess.installProcedures(Map.of(
+                        "hook_print", (Runnable) () -> {},
+                        "myHelper", (Runnable) () -> {})));
+                assertEquals(2, sess.listProcedures().size());
+                assertNull(sess.lookupProcedure("reductionPair"));
+            } finally {
+                System.setErr(original);
+            }
+            String warnings = captured.toString(StandardCharsets.UTF_8);
+            assertTrue(warnings.contains("\"reductionPair\""));
+            assertFalse(warnings.contains("myHelper"));
         }
 
         @Test

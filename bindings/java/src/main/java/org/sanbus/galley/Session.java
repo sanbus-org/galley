@@ -6,6 +6,7 @@ import java.lang.foreign.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -15,6 +16,12 @@ import org.sanbus.galley.internal.GalleyLibrary;
 /**
  * Parsing session bound to this library's parser over bindings/c/galley.h.
  * Not thread-safe. Panama FFI (Java 22+, no JNA).
+ *
+ * Owns its hook table: it starts as a copy of the parser's defaults and
+ * every change is applied to the library at once, so the hooks a parse
+ * runs with are fixed for that parse. Changing hooks from a hook, or from
+ * another thread during a parse, throws a {@link GalleyException} with
+ * {@code ERROR_SESSION_IN_USE}.
  */
 public final class Session extends NodeDoor implements AutoCloseable {
 
@@ -30,6 +37,14 @@ public final class Session extends NodeDoor implements AutoCloseable {
      * reallocated storage.
      */
     private long generation = 0;
+    /** Handle the library passes back with this session's hooks; routes the parser's one dispatch stub here. */
+    private long handleId;
+    /** This session's hooks by name: replaced whole, never mutated. */
+    private volatile Map<String, Consumer<ProcedureArguments>> hooks = Map.of();
+    /** The same hooks by the library's hook index, the dispatch lookup. */
+    private volatile Consumer<ProcedureArguments>[] hooksByIndex;
+    /** The running parse's door, learned from its first hook; reset around every parse. */
+    private HookDoor parseDoor;
 
     public Session(Parser parser) {
         this(parser, SessionOptions.defaults());
@@ -69,6 +84,13 @@ public final class Session extends NodeDoor implements AutoCloseable {
             throw new GalleyException("out of memory", StatusCode.ERROR_OUT_OF_MEMORY);
         }
         this.handle = h;
+        this.handleId = parser.register(this);
+        try {
+            commitHooks(parser.defaultHooks());
+        } catch (RuntimeException e) {
+            close();
+            throw e;
+        }
 
         for (Map.Entry<String, byte[]> e : options.getMessageOverrides().entrySet()) {
             setMessageOverride(e.getKey(), e.getValue());
@@ -123,27 +145,22 @@ public final class Session extends NodeDoor implements AutoCloseable {
         return (int) status;
     }
 
-    /** One native parse call. Runs inside the entry-table bracket with the session marked parsing. */
+    /** One native parse call. */
     private interface NativeParse {
         long run();
     }
 
     /**
-     * Single gate for every parse leg: snapshots the hook table (installs
-     * and clears made mid-parse apply to later parses only), syncs the
-     * native gates from the snapshot, runs the native call, then pops the
-     * level and re-syncs the native gates from the enclosing table so
-     * nested parses restore the enclosing hook set on unwind.
+     * Single gate for every parse leg: runs the native call with a fresh
+     * parse door slot, then ends the parse. The hooks were fixed by the
+     * last commit, so nothing is synchronized here.
      */
-    private int parseWithGates(NativeParse nativeParse) {
-        Map<String, Consumer<ProcedureArguments>> table = parser.snapshotHooks();
-        parser.pushDispatchTable(table, this);
+    private int runParse(NativeParse nativeParse) {
+        parseDoor = null;
         try {
-            parser.syncGates(table);
-            long status = nativeParse.run();
-            return completeParse(status);
+            return completeParse(nativeParse.run());
         } finally {
-            parser.popAndRestoreGates(table);
+            parseDoor = null;
         }
     }
 
@@ -154,9 +171,109 @@ public final class Session extends NodeDoor implements AutoCloseable {
         if (handle != null && !handle.equals(MemorySegment.NULL)) {
             try { lib.galley_session_destroy(handle); } catch (Exception ignored) {}
             handle = MemorySegment.NULL;
+            parser.unregister(handleId);
         }
         closed = true;
         generation++;
+    }
+
+    // -- hooks --
+
+    /** Installs a hook on this session only. Takes effect from the next parse. */
+    public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
+        HookNames.require(name, hook);
+        if (!HookNames.accepts(name)) return;
+        Map<String, Consumer<ProcedureArguments>> next = new HashMap<>(hooks);
+        next.put(name, hook);
+        commitHooks(Map.copyOf(next));
+    }
+
+    public void installProcedure(String name, Runnable hook) {
+        HookNames.require(name, hook);
+        installProcedure(name, (Consumer<ProcedureArguments>) args -> hook.run());
+    }
+
+    /**
+     * Installs every hook-shaped entry ({@code reduction},
+     * {@code reduction_*}, {@code hook_*}) whose value is a
+     * {@code Consumer<ProcedureArguments>} or a {@code Runnable}, in one
+     * step. Near-miss names warn and anything else is silently ignored.
+     * Returns the number installed.
+     */
+    public int installProcedures(Map<String, ?> source) {
+        if (source == null) return 0;
+        Map<String, Consumer<ProcedureArguments>> next = new HashMap<>(hooks);
+        int count = 0;
+        for (Map.Entry<String, ?> entry : source.entrySet()) {
+            if (!HookNames.accepts(entry.getKey())) continue;
+            Consumer<ProcedureArguments> hook = HookNames.toHook(entry.getValue());
+            if (hook == null) continue;
+            next.put(entry.getKey(), hook);
+            count++;
+        }
+        if (count > 0) commitHooks(Map.copyOf(next));
+        return count;
+    }
+
+    public Map<String, Consumer<ProcedureArguments>> listProcedures() {
+        return hooks;
+    }
+
+    public Consumer<ProcedureArguments> lookupProcedure(String name) {
+        if (name == null) return null;
+        return hooks.get(name);
+    }
+
+    public void clearProcedures() {
+        commitHooks(Map.of());
+    }
+
+    /**
+     * Single gate for every hook change: hands the library the enabled set
+     * first, so a refusal (a parse in flight) leaves the table and the
+     * library exactly as they were, then publishes the table and its
+     * by-index view.
+     */
+    private void commitHooks(Map<String, Consumer<ProcedureArguments>> table) {
+        requireOpen();
+        int count = parser.hookCount();
+        @SuppressWarnings("unchecked")
+        Consumer<ProcedureArguments>[] byIndex = new Consumer[count];
+        for (Map.Entry<String, Consumer<ProcedureArguments>> entry : table.entrySet()) {
+            int index = parser.hookIndex(entry.getKey());
+            if (index >= 0) byIndex[index] = entry.getValue();
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment enabled = arena.allocate(Math.max(count, 1));
+            for (int index = 0; index < count; index++) {
+                enabled.set(ValueLayout.JAVA_BYTE, index, (byte) (byIndex[index] != null ? 1 : 0));
+            }
+            checkStatus(lib.galley_session_set_hooks(handle, parser.dispatchStub(), MemorySegment.ofAddress(handleId), enabled, count));
+        }
+        hooksByIndex = byIndex;
+        hooks = table;
+    }
+
+    /**
+     * Runs hook {@code index} of the current parse, on the parsing thread.
+     * Hook throwables are logged and swallowed so a throwing hook never
+     * aborts the parse.
+     */
+    void dispatchHook(int index, MemorySegment argumentsPointer) {
+        Consumer<ProcedureArguments> hook = hooksByIndex[index];
+        if (hook == null) return;
+        if (parseDoor == null) parseDoor = new HookDoor(lib, lib.galley_procedure_door(argumentsPointer), this);
+        ProcedureArguments arguments = new ProcedureArguments(argumentsPointer, lib, parseDoor);
+        try {
+            hook.accept(arguments);
+        } catch (Throwable t) {
+            t.printStackTrace(System.err);
+        } finally {
+            // The native arguments die when this hook call returns; expire
+            // the Java reference with them. The tree outlives the hook on
+            // the parse's door.
+            arguments.expire();
+        }
     }
 
     // -- parsing --
@@ -171,12 +288,12 @@ public final class Session extends NodeDoor implements AutoCloseable {
         requireOpen();
         if (input == null) throw new IllegalArgumentException("input is null");
         if (input.length == 0) {
-            return parseWithGates(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
+            return runParse(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, input);
             long len = input.length;
-            return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
+            return runParse(() -> lib.galley_parse(handle, dataSeg, len));
         }
     }
 
@@ -185,11 +302,11 @@ public final class Session extends NodeDoor implements AutoCloseable {
         if (buffer == null) throw new IllegalArgumentException("buffer is null");
         int len = buffer.remaining();
         if (len == 0) {
-            return parseWithGates(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
+            return runParse(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
         }
         if (buffer.isDirect()) {
             MemorySegment dataSeg = MemorySegment.ofBuffer(buffer);
-            return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
+            return runParse(() -> lib.galley_parse(handle, dataSeg, len));
         } else {
             // Heap ByteBuffer: copy to native via arena
             byte[] tmp;
@@ -211,7 +328,7 @@ public final class Session extends NodeDoor implements AutoCloseable {
             }
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, tmp);
-                return parseWithGates(() -> lib.galley_parse(handle, dataSeg, len));
+                return runParse(() -> lib.galley_parse(handle, dataSeg, len));
             }
         }
     }
@@ -241,7 +358,7 @@ public final class Session extends NodeDoor implements AutoCloseable {
         if (path.indexOf('\0') >= 0) throw new IllegalArgumentException("path contains NUL");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment cPath = arena.allocateFrom(path, StandardCharsets.UTF_8);
-            return parseWithGates(() -> lib.galley_parse_file(handle, cPath));
+            return runParse(() -> lib.galley_parse_file(handle, cPath));
         }
     }
 

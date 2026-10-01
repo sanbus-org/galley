@@ -28,7 +28,7 @@ import {
   artifactFileName,
   canonicalResolvePath,
 } from "@sanbus/galley-core/internal";
-import { ensureDispatchFor } from "./dispatch.ts";
+import { installDispatch } from "./dispatch.ts";
 const require = createRequire(import.meta.url);
 
 /**
@@ -191,17 +191,12 @@ export interface AddonApi {
     count: bigint,
   ): [bigint, bigint];
 
-  // procedure dispatch (shared JS shim; see @sanbus/galley-core/build/shim.mjs)
-  // ID path (current builds); the name-carrying symbol remains the fallback
-  // for libraries that predate integer hook IDs. Null on libraries without
-  // the shim (C procedures, stale builds).
-  install_id_dispatch: ((callback: (id: number, args: bigint) => void) => void) | null;
-  install_name_dispatch: ((callback: (name: string, args: bigint) => void) => void) | null;
-  galley_js_procedure_count: (() => number) | null;
-  galley_js_procedure_name: ((index: number) => string | null) | null;
-  // selective dispatch gates (null on C-procedure or stale libraries)
-  galley_js_procedure_enable: ((name: string) => number) | null;
-  galley_js_procedure_clear: (() => void) | null;
+  // host hooks: the addon's one callback per library, and the per-session
+  // hook state (see galley_session_set_hooks in galley.h)
+  install_dispatch(callback: (hookHandle: number, hookIndex: number, args: bigint) => void): void;
+  galley_hooks_count(): number;
+  galley_hooks_name(index: number): string | null;
+  galley_session_set_hooks(session: bigint, hookHandle: number, enabled: Uint8Array): bigint;
 
   // procedure-hook state; node reads use the galley_hook_* twins below
   galley_procedure_current_node(args: bigint): bigint;
@@ -353,7 +348,7 @@ function bytesToString(bytes: Uint8Array): string {
 export class NodePort implements FfiPort {
   readonly ffi: GalleyFFI;
   readonly libraryPath: string;
-  activeDispatch: DispatchHandler | null = null;
+  hookDispatch: DispatchHandler | null = null;
 
   constructor(ffi: GalleyFFI) {
     this.ffi = ffi;
@@ -911,33 +906,22 @@ export class NodePort implements FfiPort {
     return { status: toNumber(status), head };
   }
 
-  syncProcedures(names: string[]): void {
-    if (this.api.galley_js_procedure_clear === null || this.api.galley_js_procedure_enable === null)
-      return;
-    this.api.galley_js_procedure_clear();
-    for (const name of names) {
-      this.api.galley_js_procedure_enable(name);
-    }
-    // Warm the ID table outside any parse so the hot path never queries.
-    this.procedureNames();
+  setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {
+    return toNumber(this.api.galley_session_set_hooks(session as bigint, hookHandle, enabled));
   }
 
-  #procedureNameTable: string[] | null = null;
+  #hookNameTable: string[] | null = null;
 
-  procedureNames(): string[] {
-    if (this.#procedureNameTable !== null) return this.#procedureNameTable;
+  hookNames(): string[] {
+    if (this.#hookNameTable !== null) return this.#hookNameTable;
     const table: string[] = [];
-    const count = this.api.galley_js_procedure_count;
-    const procedureName = this.api.galley_js_procedure_name;
-    if (count !== null && procedureName !== null) {
-      const total = count();
-      for (let i = 0; i < total; i++) {
-        const name = procedureName(i);
-        if (name === null) break;
-        table.push(name);
-      }
+    const total = this.api.galley_hooks_count();
+    for (let index = 0; index < total; index++) {
+      const name = this.api.galley_hooks_name(index);
+      if (name === null) break;
+      table.push(name);
     }
-    this.#procedureNameTable = table;
+    this.#hookNameTable = table;
     return table;
   }
 }
@@ -961,11 +945,7 @@ function portForLibrary(libPath: string): NodePort {
   const port = new NodePort(ffi);
   // Dispatch rides with the port, not the Session: every consumer of the
   // port (adapter or universal loader) gets working procedure hooks.
-  try {
-    ensureDispatchFor(port.ffi, port);
-  } catch {
-    // Missing installer — stays no-op.
-  }
+  installDispatch(port);
   portCache.set(libPath, port);
   return port;
 }

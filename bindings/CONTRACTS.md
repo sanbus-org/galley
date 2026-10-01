@@ -6,7 +6,7 @@ Rules every host binding follows. Grammar-level procedure semantics live in [pro
 
 - A load takes its artifact as an explicit argument; a language file that offers a defaulted form names what fills it.
 - A language's bundled hooks are wired automatically on the host's language-use path, named in each language file.
-- The same source always yields the identical parser, and repeated loads of the same source share one hook table.
+- The same source always yields the identical parser, and repeated loads of the same source share one default hook table.
 - A failed load hands out no parser and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
 - A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
 - A host that offers both dynamic and static forms of its artifact leaves the choice to the user.
@@ -18,19 +18,19 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 ## Hooks
 
-- Each artifact owns one hook table, shared by all of its sessions.
-- The table is managed through functions that install, list, look up, and clear hooks.
+- Each artifact owns a default hook table; each session owns its own hooks, a copy of the defaults taken when the session opens. A default installed later reaches only sessions opened later.
+- Both are managed through functions that install, list, look up, and clear hooks: on the parser for the defaults, on the session for its own.
 - Hook names are `reduction`, `reduction_<Variable>`, and `hook_<name>`.
 - A scan ignores any other name; a scanned name that looks like a mistyped hook produces a warning naming the export and the rule.
 - Later installs win per hook name; explicit installs win over bundled scans.
-- Unregistered hooks never cross into the host; per-hook gates default to off.
+- Unregistered hooks never cross into the host: a session hands the library its enabled set whenever its hooks change, and every hook starts disabled.
 - Hooks are called with an arguments object or with no arguments at all.
 - The arguments object exposes the current node and a redirect for it, the hook's position, and a way to report a semantic error. It is per-hook state: valid only while its hook runs, and refusing once the hook returns.
 - Hook code reaches the tree through the parse's door, not the arguments object: nodes yielded by the arguments and edits made through those nodes cross the `galley_hook_*` twins in C (each host's named equivalents elsewhere), ungated while the parse runs. The door is one per parse and shared by every hook of it, so a node a hook yields stays usable from later hooks of the same parse and refuses once that parse ends — the parse generation it was created in no longer matches. Two nodes share a door exactly when they belong to the same parse (or the same session, after it); a node handed to an operation on another door is refused, never read as a bare address.
 - The post-parse door (session node reads, tree edits, walkers, snapshots) refuses with `session in use` while a parse holds the session, and with `invalid node` once a later parse — successful or failed — has reset node storage behind the last successful result; no stashed handle bypasses it.
-- Installs and clears made mid-parse apply to later parses only.
-- Nested parses restore the enclosing hook set on unwind.
-- Gates restore from one last-in-first-out stack of hook sets, scoped to the artifact where the gates live: a parse pushes its entry set, and unwind pops it, restoring the enclosing frame, never a session's own prior state.
+- A session's hooks are fixed for the length of a parse: a change attempted while a parse is in flight — from a hook, or from another thread — is refused with `session in use` and leaves the hooks as they were.
+- A nested parse is a parse of another session, so each parse runs with its own session's hooks and neither sees the other's.
+- Sessions of one artifact, and of different artifacts, may parse at the same time on different threads: nothing in hook dispatch is shared between sessions. A hook runs on the thread that parses and must be thread-safe if it shares state with other hooks.
 - A failing hook never aborts the parse.
 
 ## Walking and snapshots
@@ -75,7 +75,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 ## Builds
 
-- Every build links a dispatch shim generated from the metadata hook list (non-empty even when the grammar disables procedures), so a hook installed later fires without a rebuild.
+- Every build links the host shim the generator writes (`--emit-host-procedures`; non-empty even when the grammar disables procedures), so a hook installed later fires without a rebuild.
 - A `procedures.c` / `procedures.cpp` next to a grammar is a fatal build error naming the host file to use instead.
 - Every generated file carries its marker banner, builders refuse to overwrite a file without it, and guards are checked before anything is written.
 - Generated code reports explicit errors, never `assert`, for control flow.

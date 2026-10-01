@@ -143,6 +143,42 @@ long long galley_session_set_message_override(GalleySession *session,
                                               const char *name, size_t name_len,
                                               const char *message, size_t message_len);
 
+/* Host hooks. A library built with a host shim forwards its hooks to the
+ * host language instead of to C functions; each session carries its own
+ * enabled set, callback and handle, so independent sessions hook
+ * independently, even across threads and across libraries. Libraries built
+ * with C, C++, Rust, or Go hooks report zero hooks. */
+
+/* Called on the parsing thread for each enabled hook. handle is the value
+ * given to galley_session_set_hooks, index a hook index below
+ * galley_hooks_count, and args the hook's arguments (valid only until the
+ * call returns; pass them to the galley_procedure_* functions). */
+typedef void (*GalleyHookDispatch)(void *handle, unsigned int index, void *args);
+
+/* Number of hooks the library forwards. Hook indexes run 0 .. count-1 and
+ * are fixed for the library's lifetime. */
+size_t galley_hooks_count(void);
+
+/* Name of hook index (reduction, reduction_<Variable>, or hook_<name>):
+ * static storage valid for the process lifetime. NULL and 0 for an index out
+ * of range. The pointer and the length are separate calls so every host
+ * reads them as plain scalars. */
+const char *galley_hooks_name_data(size_t index);
+size_t galley_hooks_name_length(size_t index);
+
+/* Replaces the session's host hook state in one step. enabled holds one
+ * byte per hook, galley_hooks_count bytes in all (NULL with a zero count
+ * enables none); a nonzero byte routes that hook to dispatch with handle.
+ * Unenabled hooks return before any call. Takes the exclusive lease:
+ * galley_error_session_in_use while a parse is in flight, so the set a parse
+ * runs with is fixed for that parse. NULL enabled with a nonzero count, or a
+ * count other than galley_hooks_count, returns galley_error_null_argument.
+ * WebAssembly hosts pass a NULL dispatch and provide env.galley_host_dispatch
+ * instead. */
+long long galley_session_set_hooks(GalleySession *session, GalleyHookDispatch dispatch,
+                                   void *handle, const unsigned char *enabled,
+                                   size_t enabled_count);
+
 
 /* Parses one NUL-terminated input string. Returns the number of bytes
  * parsed on success, or a negative status code on failure. */

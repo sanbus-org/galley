@@ -69,7 +69,7 @@ npx galley build <language-dir> --native-only
 npx galley build <language-dir> --wasm-only
 ```
 
-Generator flags forward verbatim ahead of `--emit-metadata`: every flag
+Generator flags forward verbatim ahead of `--emit-host-procedures`: every flag
 `galley build` does not own goes to the generator, which owns its surface
 (documented in [Configuration](/configuration)). Anything else is a
 usage error.
@@ -87,7 +87,7 @@ builders (`npx galley-js-node`, `npx galley-js-bun`, `npx galley-js-wasm`,
 the Deno `build.ts`) remain as thin wrappers over the same shared gate
 for single-leg builds.
 
-The command generates the parser (`--emit-metadata`), builds the artifact
+The command generates the parser (`--emit-host-procedures`), builds the artifact
 through Galley's generic consumer build file, and detects optional hook
 files next to your grammar (`procedures.ts` for TypeScript hooks,
 `procedures.c` for legacy C hooks, `procedures.zig`,
@@ -247,18 +247,29 @@ const session = await parser.openSession();
 // parser.installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
 ```
 
-The build detects `procedures.ts` / `procedures.js` and generates a
-shim that routes every grammar hook through one callback. Unregistered
-hooks are silent no-ops. Hooks never cross parsers: two
+The build links the generator's host shim (`host_procedures.zig`), which
+forwards every grammar hook to the parsing session's own dispatch.
+Unregistered hooks are silent no-ops. Hooks never cross parsers: two
 parsers — even on two grammars in one process — resolve same-named
-hooks independently. Manage them on the parser at runtime:
+hooks independently. Hooks installed on the parser are the artifact's
+defaults: every session starts with a copy and owns it from then on, so a
+default installed later reaches only sessions opened later. A session has the
+same methods for its own hooks, and a change throws a `GalleyError`
+(`Status.ErrorSessionInUse`) while a parse is in flight:
 
 ```ts
 parser.installProcedure("reduction_Pair", (args) => { args.currentNode()?.text(); });
 parser.listProcedures(); // { reduction_Pair: [Function], ... }
 parser.procedureHook("reduction_Pair"); // the callable, or undefined
 parser.clearProcedures();
+
+const session = parser.openSession(); // starts with a copy of the defaults
+session.installProcedure("reduction_Number", (args) => { args.currentNode()?.text(); });
 ```
+
+Sessions in different worker threads (Node `worker_threads`, Bun and Deno
+workers) parse at the same time, each with its own hooks; wasm instances are
+independent per worker.
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as

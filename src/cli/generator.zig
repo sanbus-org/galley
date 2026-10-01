@@ -82,6 +82,7 @@ const CliOptions = struct {
     bootstrap_zig_project: bool = false,
     watch: bool = false,
     emit_metadata: bool = false,
+    emit_host_procedures: bool = false,
 };
 
 const GenerationResult = struct {
@@ -103,8 +104,14 @@ pub fn main(init: std.process.Init) !void {
     const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
     try printSuccess(init, language_dir, result, elapsed_ms);
 
-    if (options.emit_metadata) {
-        try writeMetadataAndProcedures(init, language_dir);
+    if (options.emit_metadata or options.emit_host_procedures) {
+        var hook_names = try collectHookNames(init, language_dir);
+        defer {
+            for (hook_names.items) |name| init.gpa.free(name);
+            hook_names.deinit(init.gpa);
+        }
+        if (options.emit_metadata) try writeMetadataAndProcedures(init, language_dir, hook_names.items);
+        if (options.emit_host_procedures) try writeHostProcedures(init, language_dir, hook_names.items);
     }
 
     if (options.bootstrap_zig_project) {
@@ -177,6 +184,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.fill_error_messages = true;
         } else if (std.mem.eql(u8, arg, "--emit-metadata")) {
             result.emit_metadata = true;
+        } else if (std.mem.eql(u8, arg, "--emit-host-procedures")) {
+            result.emit_host_procedures = true;
         } else if (std.mem.eql(u8, arg, "--bootstrap-zig-project")) {
             result.bootstrap_zig_project = true;
         } else if (std.mem.eql(u8, arg, "--watch")) {
@@ -250,6 +259,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --emit-metadata        Write metadata.json and procedures.zig
         \\                             next to the generated parser(s); the
         \\                             bindings workflow consumes both.
+        \\      --emit-host-procedures
+        \\                             Write host_procedures.zig: every hook as a
+        \\                             forwarder to the host language's per-session
+        \\                             dispatch (Python, Java, JavaScript).
         \\      --bootstrap-zig-project
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
@@ -1410,27 +1423,14 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
-/// After generating parsers, writes two files into the language directory:
-///
-/// `metadata.json` — structured description of the generated parser(s):
-/// flags, variable names, symbol names, and the `procedures` hook list
-/// (every extern entry of `procedures.zig`, so bindings render their
-/// dispatch shims from data instead of scanning Zig source). Useful for
-/// build tooling and language-binding generators.
-///
-/// `procedures.zig` — extern declarations for every `reduction_<VariableName>`
-/// hook plus the general `reduction` fallback, and for every author-defined
-/// grammar hook under its generated `hook_<name>` lookup name. The consumer's
-/// C/C++/Rust source implements these functions; the linker resolves them
-/// when the shared library is built.
-fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) !void {
-    // Collect the procedure hook list once: the general `reduction`
-    // fallback, one `reduction_<Variable>` per variable in each generated
-    // parser, and every author-defined `hook_<name>`. Both files below
-    // render from this list, so the extern declarations and the data
-    // description cannot diverge.
+/// The hook list of the generated parser(s): the general `reduction` fallback,
+/// one `reduction_<Variable>` per variable of each generated parser, and every
+/// author-defined `hook_<name>`. Every file below renders from this one list,
+/// so extern declarations, metadata and shims cannot diverge. The caller owns
+/// the list and its names.
+fn collectHookNames(init: std.process.Init, language_dir: []const u8) !std.ArrayList([]const u8) {
     var hook_names: std.ArrayList([]const u8) = .empty;
-    defer {
+    errdefer {
         for (hook_names.items) |name| init.gpa.free(name);
         hook_names.deinit(init.gpa);
     }
@@ -1487,6 +1487,21 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
         }
     }
 
+    return hook_names;
+}
+
+/// Writes two files into the language directory:
+///
+/// `metadata.json` — structured description of the generated parser(s):
+/// flags, variable names, symbol names, and the `procedures` hook list.
+/// Useful for build tooling.
+///
+/// `procedures.zig` — extern declarations for every hook in `hook_names`:
+/// `reduction`, `reduction_<VariableName>`, and every author-defined grammar
+/// hook under its generated `hook_<name>` lookup name. The consumer's
+/// C/C++/Rust source implements these functions; the linker resolves them
+/// when the shared library is built.
+fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8, hook_names: []const []const u8) !void {
     const meta_path = try std.fs.path.join(init.gpa, &.{ language_dir, "metadata.json" });
     defer init.gpa.free(meta_path);
     var file = try std.Io.Dir.cwd().createFile(init.io, meta_path, .{});
@@ -1602,7 +1617,7 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
         // they need no JSON escaping.
         if (wrote_any) try w.writeAll(",\n");
         try w.writeAll("  \"procedures\": [");
-        for (hook_names.items, 0..) |hook_name, i| {
+        for (hook_names, 0..) |hook_name, i| {
             if (i != 0) try w.writeAll(", ");
             try w.print("\"{s}\"", .{hook_name});
         }
@@ -1629,10 +1644,47 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8) 
         try w.writeAll("const root = @import(\"galley\");\n");
         try w.writeAll("pub const Payload = struct {};\n\n");
 
-        const argument_type = "*root.data_structures.ProcedureArguments";
-        for (hook_names.items) |hook_name| {
-            try w.print("pub extern fn {s}({s}) void;\n", .{ hook_name, argument_type });
+        for (hook_names) |hook_name| {
+            try w.print("pub extern fn {s}({s}) void;\n", .{ hook_name, procedure_arguments_type });
         }
         try w.flush();
     }
+}
+
+const procedure_arguments_type = "*root.data_structures.ProcedureArguments";
+
+/// Writes `host_procedures.zig` into the language directory: every hook in
+/// `hook_names` as a forwarder to the parsing session's own dispatch, for a
+/// host language that implements hooks per session. Hook index is list
+/// position; `host_hook_names` lets the runtime size the per-session enabled
+/// set and lets hosts resolve names to indexes. Host builds use this file as
+/// the `procedures` module in place of `procedures.zig`.
+fn writeHostProcedures(init: std.process.Init, language_dir: []const u8, hook_names: []const []const u8) !void {
+    const path = try std.fs.path.join(init.gpa, &.{ language_dir, "host_procedures.zig" });
+    defer init.gpa.free(path);
+    var file = try std.Io.Dir.cwd().createFile(init.io, path, .{});
+    defer file.close(init.io);
+    var buffer: [4096]u8 = undefined;
+    var fw = file.writer(init.io, &buffer);
+    const w = &fw.interface;
+
+    try w.writeAll("// Auto-generated by Galley; DO NOT EDIT.\n");
+    try w.writeAll("// Every hook forwards to the parsing session's host dispatch.\n");
+    try w.writeAll("const root = @import(\"galley\");\n");
+    try w.writeAll("pub const Payload = struct {};\n\n");
+    try w.writeAll("pub const host_hook_names = [_][]const u8{\n");
+    for (hook_names) |hook_name| {
+        try w.print("    \"{s}\",\n", .{hook_name});
+    }
+    try w.writeAll("};\n");
+    for (hook_names, 0..) |hook_name, index| {
+        try w.print(
+            \\
+            \\pub fn {s}(args: {s}) void {{
+            \\    root.data_structures.host_hooks.forward({d}, args);
+            \\}}
+            \\
+        , .{ hook_name, procedure_arguments_type, index });
+    }
+    try w.flush();
 }
