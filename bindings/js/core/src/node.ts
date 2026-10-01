@@ -1,71 +1,79 @@
 import type { Session } from "./session.ts";
 import { decodeUtf8 } from "./text.ts";
-import { SessionClosedError } from "./errors.ts";
 
 /**
- * One of the two doors over node storage: a `Session` after a parse, or
- * the parse's `HookDoor` during one. Both expose the same reads and
- * edits, so a `Node` is a handle that delegates every accessor to the
- * door that owns its storage. Each door gates its own crossings — its
- * liveness, the node's parse generation, and that a node argument
- * belongs to this door — through `nodeAddress`, so no accessor can
- * cross without passing it.
+ * One of the two doors over node storage, as the address-level crossing a
+ * `Session` call makes: the session door (`galley_node_*`, refused by the
+ * core while a parse runs) or the hook door of one hook dispatch
+ * (`galley_hook_*` over the parse's native door). The session picks the door
+ * per call; a `Node` stores neither.
+ * @internal
  */
 export interface NodeDoor {
-  childCount(node: Node | bigint | number): number;
-  firstChild(node: Node | bigint | number): Node | null;
-  lastChild(node: Node | bigint | number): Node | null;
-  nextSibling(node: Node | bigint | number): Node | null;
-  priorSibling(node: Node | bigint | number): Node | null;
-  parent(node: Node | bigint | number): Node | null;
-  text(node: Node | bigint | number): Uint8Array | null;
-  symbolNameBytes(node: Node | bigint | number): Uint8Array | null;
-  span(node: Node | bigint | number): [bigint, bigint] | null;
-  lineColumn(node: Node | bigint | number): [number, number] | null;
-  cleanChildren(node: Node | bigint | number): Node | null;
-  appendChildren(parent: Node | bigint | number, chain: Node | bigint | number): void;
+  /** True for the hook door of a running parse. */
+  readonly isHook: boolean;
+  /**
+   * The core generation a node must carry to cross this door: the running
+   * parse's on the hook door, the published tree's on the session door.
+   */
+  readonly generation: bigint;
+  nodeValid(address: bigint): boolean;
+  childCount(address: bigint): number;
+  firstChild(address: bigint): bigint;
+  lastChild(address: bigint): bigint;
+  nextSibling(address: bigint): bigint;
+  priorSibling(address: bigint): bigint;
+  parent(address: bigint): bigint;
+  text(address: bigint): Uint8Array | null;
+  symbolNameBytes(address: bigint): Uint8Array | null;
+  span(address: bigint): [bigint, bigint] | null;
+  lineColumn(address: bigint): [number, number] | null;
+  /** The raw variable index, or null when the node has no variable. */
+  variableIndex(address: bigint): number | null;
+  /** Head of the detached chain; `INVALID_NODE` when there were no children. */
+  cleanChildren(address: bigint): bigint;
+  appendChildren(parent: bigint, chain: bigint): void;
+  insertBefore(target: bigint, chain: bigint): void;
+  insertAfter(target: bigint, chain: bigint): void;
+  /** Head of the detached chain; `INVALID_NODE` when empty. */
+  removeSiblings(address: bigint, count: number): bigint;
+  removeSelf(address: bigint): bigint;
+  promoteChildrenOverWrapper(wrapper: bigint): bigint;
+  unlinkWrapper(wrapper: bigint): void;
+  insertChildrenAt(parent: bigint, index: number, chain: bigint): void;
+  removeChildrenAt(parent: bigint, index: number, count: number): bigint;
 }
 
 /**
- * The one children iteration: count-bounded, first to last. Both doors
- * run it — the session door after a parse, the hook door during one —
- * so every step crosses (and is gated by) the door that owns the node and
- * a mismatch between the count and the chain still fails loudly.
- */
-export function childrenVia(door: NodeDoor, node: Node | bigint | number): Node[] {
-  const count = door.childCount(node);
-  const out: Node[] = [];
-  let child = door.firstChild(node);
-  for (let i = 0; i < count; i++) {
-    if (child === null) throw new Error("child count changed during iteration");
-    out.push(child);
-    child = door.nextSibling(child);
-  }
-  return out;
-}
-
-/**
- * Handle for a node in the non-relocating AST storage, bound to one of
- * the two doors: its `Session` (post-parse) or the parse's `HookDoor`
- * (parse-time). Every accessor is one delegation to that door, which
- * gates it: a closed session or a re-parsed generation throws.
+ * Handle for a node in the non-relocating AST storage: its owning
+ * `Session`, the core's parse generation it belongs to, and its address.
+ * Every accessor is one delegation to the session, which chooses the door
+ * when the call is made (the parse's hook door from inside a hook of its
+ * running parse, the post-parse door everywhere else) and gates it: a
+ * closed session or a generation that is gone throws. Nodes handed out by
+ * the hooks of a parse that publishes its tree stay valid until the
+ * session parses again; nodes of a failed parse are gone.
  */
 export class Node {
   readonly #session: Session;
-  readonly #door: NodeDoor;
   readonly #address: bigint;
   /**
-   * Parse generation stamped at construction. The constructor is the
-   * single creation gate: every node carries the generation it belongs
-   * to, so no accessor can read storage from an older parse.
+   * The core's parse generation, stamped at construction. The constructor
+   * is the single creation gate: every node carries the generation it
+   * belongs to, so no accessor can read storage from another parse.
    */
-  readonly #generation: number;
+  readonly #generation: bigint;
 
-  constructor(session: Session, address: bigint | number, door?: NodeDoor) {
+  /**
+   * Wraps a raw address, stamped with the generation of the door a call
+   * made now would cross unless `generation` says otherwise. A raw address
+   * carries no generation of its own, so this is the explicit conversion
+   * and the caller vouches for it.
+   */
+  constructor(session: Session, address: bigint | number, generation?: bigint) {
     this.#session = session;
-    this.#door = door ?? session;
     this.#address = typeof address === "bigint" ? address : BigInt(address);
-    this.#generation = session.parseGeneration;
+    this.#generation = generation ?? session.currentGeneration;
   }
 
   /** Raw address (stable index in the session's node storage). */
@@ -73,39 +81,24 @@ export class Node {
     return this.#address;
   }
 
-  /**
-   * The door this node belongs to: its session, or the parse's hook door.
-   * Internal: the doors' gate compares it to refuse a node from another
-   * door.
-   * @internal
-   */
-  get door(): NodeDoor {
-    return this.#door;
+  /** The owning session. Internal: the session's gate compares it. @internal */
+  get session(): Session {
+    return this.#session;
   }
 
-  /**
-   * The liveness check behind `nodeAddress`: a closed session or a node
-   * left over from a previous parse generation throws instead of reading
-   * stale storage. Internal: only the doors' gate calls it.
-   * @internal
-   */
-  ensureAlive(): void {
-    if (this.#session.isClosed) {
-      throw new SessionClosedError("node's session is closed");
-    }
-    if (this.#generation !== this.#session.parseGeneration) {
-      throw new SessionClosedError("node is invalidated");
-    }
+  /** The core generation this node belongs to. Internal: the session's gate compares it. @internal */
+  get generation(): bigint {
+    return this.#generation;
   }
 
   /** Tuple of direct children, from first to last (empty when leaf). */
   children(): Node[] {
-    return childrenVia(this.#door, this);
+    return this.#session.children(this);
   }
 
   /** Text bytes of this node, or null for invalid node. */
   text(): Uint8Array | null {
-    return this.#door.text(this);
+    return this.#session.text(this);
   }
 
   /** Symbol name bytes as string, or null for invalid node. Terminal-only nodes → "". */
@@ -117,57 +110,58 @@ export class Node {
 
   /** Raw symbol name bytes (Uint8Array) or null. */
   symbolNameBytes(): Uint8Array | null {
-    return this.#door.symbolNameBytes(this);
+    return this.#session.symbolNameBytes(this);
   }
 
   /** (start, length) byte span, or null. */
   span(): [bigint, bigint] | null {
-    return this.#door.span(this);
+    return this.#session.span(this);
   }
 
   /** 1-based (line, column) of first byte, or null. */
   lineColumn(): [number, number] | null {
-    return this.#door.lineColumn(this);
+    return this.#session.lineColumn(this);
   }
 
   /** Parent node, or null for root. */
   parent(): Node | null {
-    return this.#door.parent(this);
+    return this.#session.parent(this);
   }
 
   nextSibling(): Node | null {
-    return this.#door.nextSibling(this);
+    return this.#session.nextSibling(this);
   }
 
   priorSibling(): Node | null {
-    return this.#door.priorSibling(this);
+    return this.#session.priorSibling(this);
   }
 
   firstChild(): Node | null {
-    return this.#door.firstChild(this);
+    return this.#session.firstChild(this);
   }
 
   lastChild(): Node | null {
-    return this.#door.lastChild(this);
+    return this.#session.lastChild(this);
   }
 
   cleanChildren(): Node | null {
-    return this.#door.cleanChildren(this);
+    return this.#session.cleanChildren(this);
   }
 
   /**
-   * Appends `chain` behind this node's last child. The chain must live
-   * on this node's door; the door's gate refuses one that does not.
+   * Appends `chain` behind this node's last child. The chain must belong
+   * to the same session and be live for the same door; the session's gate
+   * refuses one that is not.
    *
-   * @throws TypeError when `chain` is a `Node` on a different door.
+   * @throws TypeError when `chain` is a `Node` of a different session.
    */
   appendChildren(chain: Node | bigint | number): void {
-    this.#door.appendChildren(this, chain);
+    this.#session.appendChildren(this, chain);
   }
 
   /** Number of direct children. */
   get length(): number {
-    return this.#door.childCount(this);
+    return this.#session.childCount(this);
   }
 
   /** Child at index (negative indices supported). */
@@ -188,7 +182,7 @@ export class Node {
    * Raw address for `Number(node)` / `BigInt(node)`. Comparison
    * belongs in {@link equals}: loose `==` against a bigint or number
    * coerces through the primitive conversion below and compares by
-   * address alone, with no door check.
+   * address alone, with no generation check.
    */
   valueOf(): bigint {
     return this.#address;
@@ -200,7 +194,11 @@ export class Node {
 
   equals(other: unknown): boolean {
     if (other instanceof Node) {
-      return this.#address === other.#address && this.#door === other.#door;
+      return (
+        this.#address === other.#address &&
+        this.#generation === other.#generation &&
+        this.#session === other.#session
+      );
     }
     if (typeof other === "bigint") return this.#address === other;
     if (typeof other === "number") return this.#address === BigInt(other);
@@ -215,24 +213,4 @@ export class Node {
     if (hint === "string") return this.toString();
     return this.#address;
   }
-}
-
-/**
- * The single gate for every node argument a door accepts: a `Node`
- * handle must reference an open session on its own parse generation and
- * belong to `door` — the crossing sends a bare address and native storage
- * only bounds-checks it, so a node from another door would alias whichever
- * node holds that index here. Raw addresses carry no generation or door
- * and pass through unguarded by design.
- *
- * @throws TypeError when `node` is a `Node` on a different door.
- */
-export function nodeAddress(node: Node | bigint | number, door: NodeDoor): bigint {
-  if (typeof node === "bigint") return node;
-  if (typeof node === "number") return BigInt(node);
-  node.ensureAlive();
-  if (node.door !== door) {
-    throw new TypeError("node belongs to a different door than this operation");
-  }
-  return node.address;
 }

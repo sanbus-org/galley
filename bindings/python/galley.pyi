@@ -158,11 +158,16 @@ class Node:
 
     A ``Node`` keeps a strong reference to its ``Session`` and raises
     ``ValueError`` after the session is closed (``close()`` or exiting
-    ``with``) or parses again: nodes read only the parse generation that
-    created them. It also carries the door it crosses through: nodes from
-    ``Session`` queries use the session door (which refuses while a parse
-    holds the session), nodes reached from a hook use the hook door over
-    the live parse. ``int(node)`` and ``operator.index(node)`` return the
+    ``with``) or when its parse generation is gone: a node carries the
+    core's parse generation and reads only while that generation is live.
+    Inside a hook of the session's running parse, on the thread running
+    it, a node is live when it belongs to the running parse and reads the
+    live parse; anywhere else it is live when it belongs to the tree the
+    last successful parse published, so nodes handed out by the hooks of a
+    successful parse stay usable until the session parses again, and nodes
+    of a failed parse are gone. A call from another thread while a parse
+    runs raises ``GalleyError`` with ``ERROR_SESSION_IN_USE``.
+    ``int(node)`` and ``operator.index(node)`` return the
     raw address; plain ``int`` addresses are accepted wherever a ``Node``
     is expected.
     """
@@ -239,7 +244,7 @@ class Node:
         ...
     def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool:
-        """Equal when same session, same door, and same address."""
+        """Equal when same session, same parse generation, and same address."""
         ...
 
     def __ne__(self, other: object) -> bool: ...
@@ -295,9 +300,9 @@ class ProcedureArguments:
 
     Valid only while the hook runs: a reference kept past its hook raises
     ``ValueError``. Tree queries use ``current_node()`` and the ordinary
-    ``Node`` methods on the returned handle. Those nodes cross the parse's
-    hook door, so they read the live parse while the session door refuses,
-    and they stay usable from later hooks of the same parse. Drop/replace
+    ``Node`` methods on the returned handle. Those nodes read the live parse
+    while the hook runs and stay usable from later hooks of the same parse
+    and, when the parse succeeds, until the session parses again. Drop/replace
     talks to the parser through the current-node channel, not
     ``Session.remove_self``.
     """

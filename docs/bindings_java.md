@@ -84,7 +84,7 @@ The Panama FFI boundary is the only overhead over the C API:
 - `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
 - `parse(String)` encodes to UTF-8 once per call (`String.getBytes(UTF_8)`). The session copies into its own storage so node text stays valid after return.
 
-Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their door is still open and throw after `session.close()` — nodes reached from a hook throw once that parse has ended. A failed parse counts as a later parse: reading the previous tree throws (`GalleyClosedException` through existing handles, `GalleyException` with `ERROR_INVALID_NODE` from `snapshot()`) until a successful parse, while `lastInput()` keeps the last successful input.
+Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their session is still open and their parse generation still live, and throw after `session.close()` — a node reached from a hook stays valid until the next parse when its parse succeeds, and throws once a parse that failed has ended. A failed parse counts as a later parse: reading the previous tree throws (`GalleyClosedException` through existing handles, `GalleyException` with `ERROR_INVALID_NODE` from `snapshot()`) until a successful parse, while `lastInput()` keeps the last successful input.
 
 ## Procedures
 
@@ -148,7 +148,13 @@ each with its own hooks; hooks run on the parsing thread.
 
 `ProcedureArguments` is valid only while its hook runs and throws afterwards.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
-of the same parse, and it throws once that parse ends.
+of the same parse and, when the parse succeeds, for use after it until the
+session parses again. A node of a failed parse throws
+`GenerationInvalidatedException`. A node reads through the parse's hook door
+only inside a hook of that parse on the thread running it; from any other
+thread while the parse runs it throws a `GalleyException` with
+`ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
+`Node.equals` compares session, parse generation, and address.
 
 Mechanically, the build links the generator's host shim (`host_procedures.zig`,
 written by `--emit-host-procedures`), which forwards every hook to the parsing

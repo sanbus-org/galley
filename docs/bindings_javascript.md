@@ -219,7 +219,10 @@ export function hook_print(args: ProcedureArguments): void {
 
 `ProcedureArguments` is valid only while its hook runs and throws afterwards.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
-of the same parse, and it throws once that parse ends.
+of the same parse and, when the parse succeeds, for use after it until the
+session parses again. A node of a failed parse throws `SessionClosedError`. A
+parse the core refuses (a hook parsing its own session throws a `GalleyError`
+with status `-13`) invalidates nothing.
 
 Every parser owns its hooks: the generated package entry (and the
 internal `openLanguageDirectory` behind it) loads the language
@@ -369,7 +372,7 @@ node. Editing helpers are available both ways:
 `removeChildrenAt`, `promoteChildrenOverWrapper`, `unlinkWrapper`)
 live on `Session` and accept `Node | bigint`. Missing links return `null`.
 `session.diagnostics()` returns every recorded diagnostic. Nodes compare by
-identity (`a.equals(b)` checks same session, door, and address), and support
+identity (`a.equals(b)` checks same session, parse generation, and address), and support
 `Number(node)` / `BigInt(node)` to recover the raw address.
 
 `session.diagnostic()` returns a frozen snapshot (`Diagnostic`) with `kind`,

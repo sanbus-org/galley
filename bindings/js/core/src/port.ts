@@ -231,6 +231,33 @@ export interface FfiPort {
   hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null;
   hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number;
   hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint };
+  hookNodeValid(door: Handle, node: bigint): boolean;
+  /** Raw variable index; -1 when the node has no variable. */
+  hookNodeVariableIndex(door: Handle, node: bigint): number;
+  hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number;
+  hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number;
+  hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint };
+  hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint };
+  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint };
+  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number;
+  hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number;
+  hookTreeRemoveChildrenAt(
+    door: Handle,
+    parent: bigint,
+    index: number,
+    count: number,
+  ): { status: number; head: bigint };
+  /**
+   * The core's parse generation of the parse that owns `door`: constant
+   * for the whole parse, so the core reads it once per hook dispatch.
+   */
+  hookGeneration(door: Handle): bigint;
+  /**
+   * The core's generation of the session's published tree: 0n when
+   * nothing is published or the tree went stale, a negative status (`-13`
+   * while a parse is in flight) when the core refuses.
+   */
+  publishedGeneration(handle: Handle): { status: number; generation: bigint };
   /**
    * Hook names in hook-index order, from the library's own list; empty
    * for a library that forwards no hooks to a host. Queried once and

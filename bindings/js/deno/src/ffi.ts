@@ -148,6 +148,18 @@ interface GalleySymbols {
   galley_hook_node_line_column(door: Deno.PointerValue, node: bigint, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_hook_tree_append_children(door: Deno.PointerValue, parent: bigint, first: bigint): bigint;
   galley_hook_tree_clean_children(door: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
+  galley_hook_node_is_valid(door: Deno.PointerValue, node: bigint): number;
+  galley_hook_node_variable_index(door: Deno.PointerValue, node: bigint): bigint;
+  galley_hook_tree_insert_before(door: Deno.PointerValue, target: bigint, first: bigint): bigint;
+  galley_hook_tree_insert_after(door: Deno.PointerValue, target: bigint, first: bigint): bigint;
+  galley_hook_tree_remove_siblings(door: Deno.PointerValue, node: bigint, count: number, outHead: FfiOut): bigint;
+  galley_hook_tree_remove_self(door: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
+  galley_hook_tree_promote_children_over_wrapper(door: Deno.PointerValue, wrapper: bigint, outHead: FfiOut): bigint;
+  galley_hook_tree_unlink_wrapper(door: Deno.PointerValue, wrapper: bigint): bigint;
+  galley_hook_tree_insert_children_at(door: Deno.PointerValue, parent: bigint, index: number, first: bigint): bigint;
+  galley_hook_tree_remove_children_at(door: Deno.PointerValue, parent: bigint, index: number, count: number, outHead: FfiOut): bigint;
+  galley_hook_generation(door: Deno.PointerValue, outGeneration: FfiOut): bigint;
+  galley_published_generation(session: Deno.PointerValue, outGeneration: FfiOut): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): bigint;
   galley_hooks_name_data(index: bigint): bigint;
@@ -334,6 +346,18 @@ const BASE_SYMBOLS = {
   galley_hook_node_line_column: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_hook_tree_append_children: { parameters: ["pointer", "u64", "u64"], result: "i64" },
   galley_hook_tree_clean_children: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
+  galley_hook_node_is_valid: { parameters: ["pointer", "u64"], result: "i32" },
+  galley_hook_node_variable_index: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_hook_tree_insert_before: { parameters: ["pointer", "u64", "u64"], result: "i64" },
+  galley_hook_tree_insert_after: { parameters: ["pointer", "u64", "u64"], result: "i64" },
+  galley_hook_tree_remove_siblings: { parameters: ["pointer", "u64", "usize", "buffer"], result: "i64" },
+  galley_hook_tree_remove_self: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
+  galley_hook_tree_promote_children_over_wrapper: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
+  galley_hook_tree_unlink_wrapper: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_hook_tree_insert_children_at: { parameters: ["pointer", "u64", "usize", "u64"], result: "i64" },
+  galley_hook_tree_remove_children_at: { parameters: ["pointer", "u64", "usize", "usize", "buffer"], result: "i64" },
+  galley_hook_generation: { parameters: ["pointer", "buffer"], result: "i64" },
+  galley_published_generation: { parameters: ["pointer", "buffer"], result: "i64" },
 } as const;
 
 const HOOK_SYMBOLS = {
@@ -1112,6 +1136,66 @@ export class DenoPort implements FfiPort {
     const outHead = lenOut();
     const st = this.native.galley_hook_tree_clean_children(door as Deno.PointerValue, node, outHead);
     return { status: Number(st), head: outHead[0] };
+  }
+
+  hookNodeValid(door: Handle, node: bigint): boolean {
+    return this.native.galley_hook_node_is_valid(door as Deno.PointerValue, node) !== 0;
+  }
+
+  hookNodeVariableIndex(door: Handle, node: bigint): number {
+    return Number(this.native.galley_hook_node_variable_index(door as Deno.PointerValue, node));
+  }
+
+  hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number {
+    return Number(this.native.galley_hook_tree_insert_before(door as Deno.PointerValue, target, first));
+  }
+
+  hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number {
+    return Number(this.native.galley_hook_tree_insert_after(door as Deno.PointerValue, target, first));
+  }
+
+  hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint } {
+    const outHead = lenOut();
+    const st = this.native.galley_hook_tree_remove_siblings(door as Deno.PointerValue, node, count, outHead);
+    return { status: Number(st), head: outHead[0] };
+  }
+
+  hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
+    const outHead = lenOut();
+    const st = this.native.galley_hook_tree_remove_self(door as Deno.PointerValue, node, outHead);
+    return { status: Number(st), head: outHead[0] };
+  }
+
+  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint } {
+    const outHead = lenOut();
+    const st = this.native.galley_hook_tree_promote_children_over_wrapper(door as Deno.PointerValue, wrapper, outHead);
+    return { status: Number(st), head: outHead[0] };
+  }
+
+  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number {
+    return Number(this.native.galley_hook_tree_unlink_wrapper(door as Deno.PointerValue, wrapper));
+  }
+
+  hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {
+    return Number(this.native.galley_hook_tree_insert_children_at(door as Deno.PointerValue, parent, index, first));
+  }
+
+  hookTreeRemoveChildrenAt(door: Handle, parent: bigint, index: number, count: number): { status: number; head: bigint } {
+    const outHead = lenOut();
+    const st = this.native.galley_hook_tree_remove_children_at(door as Deno.PointerValue, parent, index, count, outHead);
+    return { status: Number(st), head: outHead[0] };
+  }
+
+  hookGeneration(door: Handle): bigint {
+    const outGeneration = lenOut();
+    const status = this.native.galley_hook_generation(door as Deno.PointerValue, outGeneration);
+    return status < 0n ? 0n : outGeneration[0];
+  }
+
+  publishedGeneration(handle: Handle): { status: number; generation: bigint } {
+    const outGeneration = lenOut();
+    const status = this.native.galley_published_generation(handle as Deno.PointerValue, outGeneration);
+    return { status: Number(status), generation: outGeneration[0] };
   }
 }
 

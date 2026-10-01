@@ -116,8 +116,9 @@ void reduction_Number(void *args) {
 /* The suite stashes the session before parsing. During the parse,
  * reduction_Pair keeps the first Pair's door and node, and reduction_Document
  * records what the parse-time door returns, what that earlier door still
- * returns from a later hook of the same parse, and what the post-parse door
- * returns when reached through the stashed session. */
+ * returns from a later hook of the same parse, what the post-parse door
+ * returns when reached through the stashed session, and the parse's
+ * generation as the hook door and the stashed session report it. */
 static GalleySession *stashed_session = NULL;
 static long long hook_text_status = galley_ok;
 static long long stashed_kind_status = galley_ok;
@@ -125,6 +126,10 @@ static GalleyHookDoor *first_pair_door = NULL;
 static GalleyNodeAddress first_pair_node = GALLEY_INVALID_NODE;
 static int later_hook_shares_door = 0;
 static long long later_hook_child_count = -1;
+static unsigned long long hook_generation = 0;
+static long long hook_generation_status = galley_ok;
+static unsigned long long stashed_published_generation = 1;
+static long long stashed_published_status = galley_ok;
 
 void fixture_stash_session(GalleySession *session) {
     stashed_session = session;
@@ -134,6 +139,10 @@ void fixture_stash_session(GalleySession *session) {
     first_pair_node = GALLEY_INVALID_NODE;
     later_hook_shares_door = 0;
     later_hook_child_count = -1;
+    hook_generation = 0;
+    hook_generation_status = galley_ok;
+    stashed_published_generation = 1;
+    stashed_published_status = galley_ok;
 }
 
 long long fixture_hook_text_status(void) { return hook_text_status; }
@@ -143,6 +152,14 @@ long long fixture_stashed_kind_status(void) { return stashed_kind_status; }
 int fixture_later_hook_shares_door(void) { return later_hook_shares_door; }
 
 long long fixture_later_hook_child_count(void) { return later_hook_child_count; }
+
+unsigned long long fixture_hook_generation(void) { return hook_generation; }
+
+long long fixture_hook_generation_status(void) { return hook_generation_status; }
+
+unsigned long long fixture_stashed_published_generation(void) { return stashed_published_generation; }
+
+long long fixture_stashed_published_status(void) { return stashed_published_status; }
 
 void reduction_Pair(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
@@ -184,6 +201,8 @@ void reduction_Document(void *args) {
     if (stashed_session != NULL) {
         hook_text_status = galley_hook_node_text(door, node, &recorded, &recorded_len);
         stashed_kind_status = galley_diagnostic_kind(stashed_session);
+        hook_generation_status = galley_hook_generation(door, &hook_generation);
+        stashed_published_status = galley_published_generation(stashed_session, &stashed_published_generation);
         if (first_pair_door != NULL) {
             later_hook_shares_door = first_pair_door == door;
             later_hook_child_count = galley_hook_node_child_count(first_pair_door, first_pair_node);

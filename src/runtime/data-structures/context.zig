@@ -328,6 +328,11 @@ pub const Context = struct {
     /// Hook state copied from `Session.host_hooks`: fixed for the whole parse.
     host_hooks: data_structures.HostHooks = .{},
 
+    /// The session's parse generation, stamped when the parse acquires the
+    /// session: the generation of every node this parse's hooks see and of
+    /// the tree it publishes on success. Zero outside a session parse.
+    generation: usize = 0,
+
     // These fields are defined based on build mode and generated-parser options.
     verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
 

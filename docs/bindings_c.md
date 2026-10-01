@@ -63,7 +63,11 @@ it, and the nodes it reads, for later hooks of the same parse. The session
 door — `galley_node_*`,
 `galley_tree_*`, diagnostics — refuses with `galley_error_session_in_use`
 until the parse finishes, so a session stashed from a hook gains no
-privilege. Drop/replace the current node with
+privilege. The core numbers parses: `galley_hook_generation(door, &g)` reports
+the generation of the running parse, and `galley_published_generation(session,
+&g)` the generation of the tree the last successful parse published (`0` when
+none, or stale after a later parse), so a host can tell which nodes are live
+without counting parses itself. Drop/replace the current node with
 `galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
 talk to the parser through `args.node_address` and are not the same as
 `galley_tree_remove_self`.

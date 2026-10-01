@@ -219,6 +219,17 @@ unsigned long long galley_node_capacity(GalleySession *session);
  * GALLEY_INVALID_NODE when there is none. */
 GalleyNodeAddress galley_root_node(GalleySession *session);
 
+/* Writes the parse generation of the session's published tree to
+ * out_generation: the generation every node of that tree carries, equal to
+ * what galley_hook_generation reported while that parse ran. Writes 0 when
+ * nothing is published (no parse has succeeded) or the tree is stale (a
+ * later parse began); real generations start at 1. Returns
+ * galley_error_session_in_use, with 0 written, while a parse is in flight.
+ * A node is live on this door exactly when its generation equals this
+ * value. */
+long long galley_published_generation(GalleySession *session,
+                                      unsigned long long *out_generation);
+
 /* Returns nonzero when address refers to a live node of the most recent
  * parse. */
 int galley_node_is_valid(GalleySession *session, GalleyNodeAddress node);
@@ -561,6 +572,13 @@ long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned l
  * (args.node_address). galley_tree_remove_self is not a substitute for
  * galley_procedure_drop_self. */
 GalleyHookDoor *galley_procedure_door(void *args);
+
+/* Writes the parse generation of the parse that owns door to out_generation:
+ * the generation of every node its hooks see, and of the tree it publishes
+ * if it succeeds (galley_published_generation reports it afterwards).
+ * Constant for the whole parse; takes no lock. Returns
+ * galley_error_null_argument for a NULL door or output. */
+long long galley_hook_generation(GalleyHookDoor *door, unsigned long long *out_generation);
 unsigned long long galley_procedure_current_node(void *args);
 void galley_procedure_set_current_node(void *args, unsigned long long node);
 int galley_procedure_rule_present(void *args);

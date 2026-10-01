@@ -166,7 +166,11 @@ def hook_print(args: ProcedureArguments) -> None:
 
 `ProcedureArguments` is valid only while its hook runs and raises `ValueError`
 afterwards. The nodes it yields belong to the parse: a hook may keep one for
-later hooks of the same parse, and it raises once that parse ends.
+later hooks of the same parse, and, when the parse succeeds, for use after it
+until the session parses again. A node of a failed parse raises. A node reads
+through the parse's hook door only inside a hook of that parse on the thread
+running it; from any other thread while the parse runs it raises `GalleyError`
+with `ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
 
 Mechanically, `python -m galley` links the generator's host shim
 (`host_procedures.zig`, written by `--emit-host-procedures`), which forwards
@@ -273,9 +277,9 @@ directly from the node. Editing helpers are available both ways:
 `remove_children_at`, `promote_children_over_wrapper`, `unlink_wrapper`)
 live on `Session` and accept `Node` or `int`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
-snapshots. Nodes compare by identity (`==` checks same session, door, and
-address), hash by address, and support `int(node)` to recover the raw
-address.
+snapshots. Nodes compare by identity (`==` checks same session, parse
+generation, and address), hash consistently with that, and support `int(node)`
+to recover the raw address.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `line`, `column`, `message`, `message_ansi`,

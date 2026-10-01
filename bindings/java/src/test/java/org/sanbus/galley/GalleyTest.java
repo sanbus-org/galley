@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -160,24 +162,40 @@ public class GalleyTest {
         }
 
         @Test
-        void hookDoorReadsWhileSessionDoorRefuses() {
+        void hookThreadReadsWhileEveryOtherThreadIsRefused() throws Exception {
             // Establish a parse result: the refusal below is then the gate
             // itself, not the no-result default.
             session.parse("alpha:1");
             List<Boolean> hookReads = new ArrayList<>();
+            List<Boolean> sameThreadReads = new ArrayList<>();
             List<StatusCode> refusals = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 hookReads.add(node != null && node.text() != null);
-                // Same address, other door: the parse holds the session, so
-                // the post-parse door refuses with a status. A raw address
-                // carries no door, so no Java identity check stands in the
-                // way and the native refusal is what answers.
+                // A raw address carries no generation. Called on the thread
+                // running the hook it crosses the parse's hook door and reads.
                 try {
                     session.variableIndex(node.getAddress());
-                    refusals.add(null);
+                    sameThreadReads.add(true);
                 } catch (GalleyException e) {
-                    refusals.add(e.getCode());
+                    sameThreadReads.add(false);
+                }
+                // The same call from any other thread crosses the session
+                // door, which the core refuses while the parse holds the
+                // session.
+                Thread other = new Thread(() -> {
+                    try {
+                        session.variableIndex(node.getAddress());
+                        refusals.add(null);
+                    } catch (GalleyException e) {
+                        refusals.add(e.getCode());
+                    }
+                });
+                other.start();
+                try {
+                    other.join();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
                 }
             });
             try {
@@ -186,6 +204,7 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             assertEquals(List.of(true, true), hookReads);
+            assertEquals(List.of(true, true), sameThreadReads);
             assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), refusals);
         }
 
@@ -792,15 +811,228 @@ public class GalleyTest {
             session.installProcedure("reduction_Pair", useFresh);
             session.parse("alpha:12,beta:3");
             assertTrue(seen.get() instanceof GenerationInvalidatedException);
-            // No cross-session identity gate: what still refuses the
-            // leftover handle is its generation, whichever session drives
-            // the parse.
+            // A handle of another session is refused as such, whichever
+            // generation the other session is in.
             seen.set(null);
             try (Session other = parser.openSession()) {
                 other.installProcedure("reduction_Pair", useFresh);
                 other.parse("alpha:12,beta:3");
             }
-            assertTrue(seen.get() instanceof GenerationInvalidatedException);
+            assertTrue(seen.get() instanceof IllegalArgumentException);
+        }
+    }
+
+    @Nested
+    class GenerationTests {
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession();
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        private List<Node> stashPairsWhileParsing(String text) {
+            List<Node> stashed = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> stashed.add(args.currentNode()));
+            try {
+                session.parse(text);
+            } finally {
+                session.clearProcedures();
+            }
+            return stashed;
+        }
+
+        @Test
+        void refusedParseLeavesRunningHookNodesAndThePublishedTreeValid() throws Exception {
+            // The core refuses a parse of a session that is already parsing
+            // and changes nothing: a node stashed by hook 1 still reads in
+            // hook 2, and the tree the running parse publishes is readable
+            // afterwards.
+            AtomicReference<Node> stashed = new AtomicReference<>();
+            CountDownLatch firstHookDone = new CountDownLatch(1);
+            CountDownLatch refusedParseDone = new CountDownLatch(1);
+            List<String> laterReads = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) {
+                    stashed.set(args.currentNode());
+                    firstHookDone.countDown();
+                    try {
+                        assertTrue(refusedParseDone.await(30, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                } else {
+                    laterReads.add(new String(stashed.get().text(), StandardCharsets.UTF_8));
+                }
+            });
+            AtomicInteger parsed = new AtomicInteger();
+            Thread worker = new Thread(() -> parsed.set(session.parse("alpha:12,beta:3")));
+            worker.start();
+            try {
+                assertTrue(firstHookDone.await(30, TimeUnit.SECONDS));
+                GalleyException refusal = assertThrows(GalleyException.class, () -> session.parse("gamma:1"));
+                assertEquals(StatusCode.ERROR_SESSION_IN_USE, refusal.getCode());
+            } finally {
+                refusedParseDone.countDown();
+                worker.join(30_000);
+            }
+            assertEquals(15, parsed.get());
+            assertEquals(List.of("alpha:12"), laterReads);
+            Node root = session.rootNode();
+            assertNotNull(root);
+            assertEquals("alpha:12,beta:3", new String(session.text(root), StandardCharsets.UTF_8));
+            assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
+        }
+
+        @Test
+        void hookThatParsesItsOwnSessionIsRefusedAndKeepsItsNodes() {
+            List<StatusCode> refusals = new ArrayList<>();
+            List<String> reads = new ArrayList<>();
+            AtomicReference<Node> stashed = new AtomicReference<>();
+            session.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) {
+                    stashed.set(args.currentNode());
+                    try {
+                        session.parse("gamma:1");
+                    } catch (GalleyException e) {
+                        refusals.add(e.getCode());
+                    }
+                }
+                reads.add(new String(stashed.get().text(), StandardCharsets.UTF_8));
+            });
+            session.parse("alpha:12,beta:3");
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), refusals);
+            assertEquals(List.of("alpha:12", "alpha:12"), reads);
+            assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
+        }
+
+        @Test
+        void hookNodeAfterASuccessfulParseReadsThroughTheSession() {
+            List<Node> stashed = stashPairsWhileParsing("alpha:12,beta:3");
+            assertEquals(2, stashed.size());
+            Node first = stashed.get(0);
+            assertEquals("alpha:12", new String(first.text(), StandardCharsets.UTF_8));
+            assertEquals("alpha:12", new String(session.text(first), StandardCharsets.UTF_8));
+            assertEquals(first.childCount(), session.childCount(first));
+            Node found = null;
+            try (Walker walker = session.walk(session.rootNode(), false)) {
+                for (Walker.WalkStep step : walker) {
+                    if (step.node.getAddress() == first.getAddress()) {
+                        found = step.node;
+                        break;
+                    }
+                }
+            }
+            assertNotNull(found);
+            assertEquals(found, first);
+            assertEquals(found.hashCode(), first.hashCode());
+            assertEquals("session", Map.of(found, "session").get(first));
+        }
+
+        @Test
+        void hookNodeOfAFailedParseIsRefusedAfterwards() {
+            List<Node> stashed = new ArrayList<>();
+            session.installProcedure("reduction_Number", args -> stashed.add(args.currentNode()));
+            assertThrows(GalleyException.class, () -> session.parse("alpha:12,beta:"));
+            assertFalse(stashed.isEmpty());
+            assertThrows(GenerationInvalidatedException.class, () -> stashed.get(0).text());
+            assertThrows(GenerationInvalidatedException.class, () -> session.text(stashed.get(0)));
+            session.clearProcedures();
+            session.parse("alpha:12,beta:3");
+            assertThrows(GenerationInvalidatedException.class, () -> stashed.get(0).text());
+        }
+
+        @Test
+        void hookNodeUsedFromAnotherThreadIsRefusedBySessionDoor() throws Exception {
+            // The hook door is ungated, so it is reachable only from the
+            // thread running the hook. Any other thread crosses the session
+            // door, which the core refuses while the parse runs.
+            AtomicReference<Node> stashed = new AtomicReference<>();
+            CountDownLatch firstHookDone = new CountDownLatch(1);
+            CountDownLatch probesDone = new CountDownLatch(1);
+            List<StatusCode> probeCodes = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) {
+                    stashed.set(args.currentNode());
+                    firstHookDone.countDown();
+                    try {
+                        assertTrue(probesDone.await(30, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+            Thread worker = new Thread(() -> session.parse("alpha:12,beta:3"));
+            worker.start();
+            try {
+                assertTrue(firstHookDone.await(30, TimeUnit.SECONDS));
+                Node node = stashed.get();
+                for (Executable probe : List.<Executable>of(
+                        node::text, node::children, () -> session.text(node), node::cleanChildren)) {
+                    GalleyException refusal = assertThrows(GalleyException.class, probe);
+                    probeCodes.add(refusal.getCode());
+                }
+            } finally {
+                probesDone.countDown();
+                worker.join(30_000);
+            }
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE,
+                    StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), probeCodes);
+            assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
+        }
+
+        @Test
+        void nodeOfAnEarlierParseIsNotTheNodeAtTheSameAddress() {
+            session.parse("alpha:12");
+            Node firstRoot = session.rootNode();
+            session.parse("alpha:12");
+            Node secondRoot = session.rootNode();
+            assertNotNull(firstRoot);
+            assertNotNull(secondRoot);
+            assertEquals(firstRoot.getAddress(), secondRoot.getAddress());
+            assertNotEquals(firstRoot, secondRoot);
+            assertEquals(2, java.util.Set.of(firstRoot, secondRoot).size());
+            assertThrows(GenerationInvalidatedException.class, firstRoot::text);
+            assertEquals("alpha:12", new String(secondRoot.text(), StandardCharsets.UTF_8));
+        }
+
+        @Test
+        void walkInsideAHookIsRefusedNotEmpty() {
+            // Walkers exist only on the session door, which the core refuses
+            // while a parse runs: a refused creation throws session in use,
+            // never the null that means an invalid root.
+            session.parse("alpha:12");
+            Node previousRoot = session.rootNode();
+            assertNotNull(previousRoot);
+            List<StatusCode> codes = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> {
+                try {
+                    session.walk(previousRoot, false);
+                } catch (GalleyException e) {
+                    codes.add(e.getCode());
+                }
+            });
+            session.parse("alpha:12");
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), codes);
+            session.clearProcedures();
+            assertNull(session.walk(1L << 40, false));
+            assertNotNull(session.walk(session.rootNode(), false));
+        }
+
+        @Test
+        void nodeEqualityIgnoresTheDoor() {
+            List<Node> stashed = stashPairsWhileParsing("alpha:12");
+            Node pair = session.firstChild(session.firstChild(session.rootNode()));
+            assertEquals(stashed.get(0), pair);
+            assertEquals(stashed.get(0).hashCode(), pair.hashCode());
         }
     }
 
@@ -879,12 +1111,12 @@ public class GalleyTest {
         }
 
         @Test
-        void editsRefuseNodesFromAnotherDoor() {
-            // Every session is its own door: a node crosses as a bare
-            // address and the native side only bounds-checks it, so a node
-            // from another door would alias whatever node holds that index
-            // here. Every entry that takes a node refuses one from another
-            // door, not only the Node convenience methods.
+        void editsRefuseNodesFromAnotherSession() {
+            // A node crosses as a bare address and the native side only
+            // bounds-checks it, so a node from another session would alias
+            // whatever node holds that index here. Every entry that takes a
+            // node refuses one from another session, not only the Node
+            // convenience methods.
             Session other = parser.openSession();
             try {
                 other.parse("alpha:12");
@@ -901,40 +1133,37 @@ public class GalleyTest {
             } finally {
                 other.close();
             }
-            // A hook's node handed to the session door is refused by door
-            // identity, whatever state the parse is in.
-            AtomicInteger refusals = new AtomicInteger();
+            // A hook's node handed to the session from inside that hook is
+            // this session's node on the running parse, so it reads.
+            AtomicInteger reads = new AtomicInteger();
             session.installProcedure("reduction_Pair", args -> {
-                try {
-                    session.variableIndex(args.currentNode());
-                } catch (IllegalArgumentException expected) {
-                    refusals.incrementAndGet();
-                }
+                session.variableIndex(args.currentNode());
+                reads.incrementAndGet();
             });
             try {
                 session.parse("alpha:12,beta:3");
             } finally {
                 session.clearProcedures();
             }
-            assertEquals(2, refusals.get());
+            assertEquals(2, reads.get());
         }
 
         @Test
-        void hookAndSessionDoorsDoNotMix() {
-            // Post-parse session node versus parse-time hook node, both
-            // directions; the refusal must fire inside the hook.
+        void hookRefusesNodesOfAnEarlierParse() {
+            // A node of the previous parse against a node of the running
+            // parse, both directions; the refusal must fire inside the hook.
             AtomicInteger refusals = new AtomicInteger();
             session.installProcedure("reduction_Pair", args -> {
                 Node hookNode = args.currentNode();
                 assertNotNull(hookNode);
                 try {
                     root.appendChildren(hookNode);
-                } catch (IllegalArgumentException expected) {
+                } catch (GenerationInvalidatedException expected) {
                     refusals.incrementAndGet();
                 }
                 try {
                     hookNode.appendChildren(root);
-                } catch (IllegalArgumentException expected) {
+                } catch (GenerationInvalidatedException expected) {
                     refusals.incrementAndGet();
                 }
             });
@@ -947,9 +1176,10 @@ public class GalleyTest {
         }
 
         @Test
-        void hooksOfOneParseShareADoor() {
+        void chainDetachedInOneHookAttachesInALaterHook() {
             // A chain detached in one hook can be attached in a later hook
-            // of the same parse: both nodes cross the same parse's door.
+            // of the same parse: both nodes carry the running parse's
+            // generation.
             AtomicReference<Node> detached = new AtomicReference<>();
             List<String> outcomes = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
@@ -975,10 +1205,11 @@ public class GalleyTest {
         }
 
         @Test
-        void hookNodesOutliveTheirHookWithinTheParse() {
+        void hookNodesOutliveTheirHookAndTheirParse() {
             // The tree belongs to the parse, not to the hook that handed out
             // a node: a node stashed by one hook stays usable from a later
-            // hook of the same parse and refuses once the parse ends.
+            // hook of the same parse, after the parse succeeds, and refuses
+            // only once the session parses again.
             AtomicReference<Node> stashed = new AtomicReference<>();
             List<String> seen = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
@@ -993,6 +1224,8 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             assertEquals(List.of("alpha:12"), seen);
+            assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
+            session.parse("gamma:7");
             assertThrows(GenerationInvalidatedException.class, () -> stashed.get().text());
         }
 

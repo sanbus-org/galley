@@ -6,41 +6,49 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Handle for a node in the non-relocating AST storage, bound to one of the
- * two doors: a {@link Session} (post-parse) or the parse's hook door
- * (parse-time, reached through a hook's {@link ProcedureArguments}). Every
- * accessor is one delegation to that door, which gates it: a session node
- * throws once its session closes or parses again, a hook node once the
- * parse it was handed out in ends.
+ * Handle for a node in the non-relocating AST storage: its owning
+ * {@link Session}, the core's parse generation it belongs to, and its
+ * address. Every accessor is one delegation to the session, which chooses
+ * the door when the call is made (the parse's hook door from inside a hook
+ * of its running parse on the thread running that hook, the post-parse door
+ * everywhere else) and gates it: a node throws once its session closes or
+ * its generation is gone. Nodes handed out by the hooks of a parse that
+ * publishes its tree stay valid until the session parses again; nodes of a
+ * failed parse are gone.
  */
 public final class Node implements Iterable<Node> {
-    private final NodeDoor door;           // whichever door owns the storage
+    private final Session session;
     private final long address;
     /**
-     * Parse generation stamped at construction. The constructor is the
-     * single creation gate: every node carries the generation it belongs
-     * to, so no door can read storage from an older parse.
+     * The core's parse generation, stamped at construction. The constructor
+     * is the single creation gate: every node carries the generation it
+     * belongs to, so no door can read storage from another parse.
      */
     private final long generation;
 
+    /**
+     * Wraps a raw address, stamped with the generation of the door a call
+     * made now would cross. A raw address carries no generation of its own,
+     * so this is the explicit conversion and the caller vouches for it.
+     */
     public Node(Session session, long address) {
-        this(Objects.requireNonNull(session, "session"), address, session.parseGeneration());
+        this(Objects.requireNonNull(session, "session"), address, session.currentGeneration());
     }
 
-    Node(NodeDoor door, long address, long generation) {
-        this.door = door;
+    Node(Session session, long address, long generation) {
+        this.session = session;
         this.address = address;
         this.generation = generation;
     }
 
     public long getAddress() { return address; }
 
-    NodeDoor door() { return door; }
+    Session session() { return session; }
 
     long generation() { return generation; }
 
     public byte[] text() {
-        return door.text(this);
+        return session.text(this);
     }
 
     /**
@@ -55,67 +63,67 @@ public final class Node implements Iterable<Node> {
 
     /** Raw bytes behind {@link #symbolName()}. Null for invalid nodes. */
     public byte[] symbolNameBytes() {
-        return door.symbolNameBytes(this);
+        return session.symbolNameBytes(this);
     }
 
     public long[] span() {
-        return door.span(this);
+        return session.span(this);
     }
 
     public int[] lineColumn() {
-        return door.lineColumn(this);
+        return session.lineColumn(this);
     }
 
     public Node parent() {
-        return door.parent(this);
+        return session.parent(this);
     }
 
     public Node firstChild() {
-        return door.firstChild(this);
+        return session.firstChild(this);
     }
 
     public Node lastChild() {
-        return door.lastChild(this);
+        return session.lastChild(this);
     }
 
     public Node nextSibling() {
-        return door.nextSibling(this);
+        return session.nextSibling(this);
     }
 
     public Node priorSibling() {
-        return door.priorSibling(this);
+        return session.priorSibling(this);
     }
 
     public Integer variableIndex() {
-        return door.variableIndex(this);
+        return session.variableIndex(this);
     }
 
     public int childCount() {
-        return door.childCount(this);
+        return session.childCount(this);
     }
 
     public boolean isValid() {
-        return door.nodeValid(this);
+        return session.nodeValid(this);
     }
 
     public List<Node> children() {
-        return door.children(this);
+        return session.children(this);
     }
 
     public Node cleanChildren() {
-        return door.cleanChildren(this);
+        return session.cleanChildren(this);
     }
 
     /**
      * Appends {@code chain} behind this node's last child. Both handles
-     * must belong to the same door; the door's gate refuses one that does
-     * not.
+     * must belong to the same session and be live for the same door; the
+     * session's gate refuses one that is not.
      *
-     * @throws IllegalArgumentException if {@code chain} belongs to a
-     *         different door (another session, or another parse's hook door)
+     * @throws IllegalArgumentException if {@code chain} belongs to another session
+     * @throws GenerationInvalidatedException if {@code chain}'s generation is gone
      */
     public void appendChildren(Node chain) {
-        door.appendChildren(this, chain);
+        session.appendChildren(this, chain);
     }
 
     public int length() { return childCount(); }
@@ -141,12 +149,12 @@ public final class Node implements Iterable<Node> {
         if (this == o) return true;
         if (!(o instanceof Node)) return false;
         Node node = (Node) o;
-        return address == node.address && door == node.door;
+        return address == node.address && generation == node.generation && session == node.session;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(System.identityHashCode(door), address);
+        return Objects.hash(System.identityHashCode(session), generation, address);
     }
 
     @Override
