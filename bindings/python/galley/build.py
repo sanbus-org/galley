@@ -57,6 +57,7 @@ import shlex
 import subprocess
 import sys
 import sysconfig
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
@@ -339,6 +340,27 @@ def find_python_procedures_file(language_dir: Path) -> Path | None:
     return None
 
 
+def rewrite_archive_for_darwin_linker(archive_path: Path) -> None:
+    """Rebuild the archive with Apple's libtool so ld accepts it.
+
+    Zig's archive writer does not pad the `__.SYMDEF` member, so whether the
+    object member after it is 8-byte aligned depends on the symbol table
+    size, and ld ignores a misaligned Mach-O member. Apple's libtool aligns
+    members; `ar` and `libtool` ship with the same command line tools as the
+    clang that links the extension.
+    """
+    with tempfile.TemporaryDirectory() as members_directory:
+        run(["ar", "x", archive_path], cwd=members_directory)
+        members = sorted(Path(members_directory).glob("*.o"))
+        if not members:
+            fatal(f"no object members found in {archive_path}")
+        for member in members:
+            member.chmod(0o644)
+        rewritten = Path(members_directory) / archive_path.name
+        run(["libtool", "-static", "-o", rewritten, *members])
+        os.replace(rewritten, archive_path)
+
+
 def compile_extension(
     source_root: Path,
     archive_path: Path,
@@ -476,6 +498,8 @@ def main() -> None:
     # config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
     # build from the parser location.
     run(consumer_arguments, cwd=language_dir)
+    if sys.platform == "darwin":
+        rewrite_archive_for_darwin_linker(language_dir / archive_name)
 
     output_path = language_dir / extension_file_name()
     compile_extension(source_root, language_dir / archive_name, output_path)
