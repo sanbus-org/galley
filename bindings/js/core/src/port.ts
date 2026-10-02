@@ -40,8 +40,12 @@ export interface WalkedStep {
  * node carries a semantic error, 0 elsewhere — `WalkedStep`'s flag as a
  * raw column. Parent, firstChild, and next alone
  * describe the whole tree with no further calls.
+ *
+ * The port returns the columns alone; the session's public
+ * `TreeSnapshot` extends this with `node(address)`, the sanctioned
+ * conversion back to a node of the parse these columns describe.
  */
-export interface TreeSnapshot {
+export interface SnapshotColumns {
   count: number;
   parent: BigUint64Array;
   firstChild: BigUint64Array;
@@ -111,8 +115,8 @@ export interface FfiPort {
   nextSibling(handle: Handle, node: bigint): bigint;
   priorSibling(handle: Handle, node: bigint): bigint;
   parent(handle: Handle, node: bigint): bigint;
-  /** Flat bulk read of the most recent successful parse (see `TreeSnapshot`). */
-  treeSnapshot(handle: Handle): TreeSnapshot;
+  /** Flat bulk read of the most recent successful parse (see `SnapshotColumns`). */
+  treeSnapshot(handle: Handle): SnapshotColumns;
 
   // -- walker ------------------------------------------------------------
   /** Null without AST construction or on invalid arguments. */

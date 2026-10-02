@@ -14,6 +14,7 @@ concurrency tests.
 from __future__ import annotations
 
 import gc
+import operator
 import os
 import shutil
 import subprocess
@@ -59,6 +60,14 @@ def _restore_procedures(saved: dict[str, Any]) -> None:
 
 
 class ParserSurfaceTests(unittest.TestCase):
+    def test_node_and_snapshot_cannot_be_constructed(self):
+        # Creation happens only inside the extension (the session's read
+        # paths); both types expose no constructor.
+        with self.assertRaises(TypeError):
+            grammar.Node()
+        with self.assertRaises(TypeError):
+            grammar.Snapshot()
+
     def test_stub_matches_extension_surface(self):
         # __init__.pyi is a hand-kept mirror of the package API: it must
         # name exactly what the module exposes, in either direction, or
@@ -459,7 +468,7 @@ class HookDispatchTests(unittest.TestCase):
         def reduction_Number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
-            fired.append(int(node))
+            fired.append(node.address)
             raise ValueError("hook body failure")
 
         self.session.install_procedure("reduction_Number", reduction_Number)
@@ -480,9 +489,10 @@ class HookDispatchTests(unittest.TestCase):
             calls.append(args is None)
             if args is None:
                 return
-            node = int(args.current_node())
-            if node not in attempted:
-                attempted.add(node)
+            node = args.current_node()
+            assert node is not None
+            if node.address not in attempted:
+                attempted.add(node.address)
                 raise TypeError("body boom")
 
         self.session.install_procedure("reduction_Number", reduction_Number)
@@ -549,15 +559,15 @@ class ProcedureChannelTests(unittest.TestCase):
         def reduction_Pair(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
-            args.set_current_node(int(node))
+            args.set_current_node(node)
             current = args.current_node()
             assert current is not None
-            self.assertEqual(int(current), int(node))
+            self.assertEqual(current, node)
             # Tree edits during a parse cross the hook door: the session
             # door refuses while the parse holds the session.
             head = current.clean_children()
             assert head is not None
-            detached.append(int(head))
+            detached.append(head.address)
             current.append_children(head)
 
         self.session.install_procedure("reduction_Pair", reduction_Pair)
@@ -566,6 +576,26 @@ class ProcedureChannelTests(unittest.TestCase):
         finally:
             self.session.clear_procedures()
         self.assertEqual(len(detached), 2)
+
+    def test_set_current_node_refuses_a_raw_address(self) -> None:
+        refusals: list[BaseException] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            try:
+                args.set_current_node(node.address)
+            except BaseException as error:
+                refusals.append(error)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            self.session.clear_procedures()
+        self.assertGreater(len(refusals), 0)
+        for error in refusals:
+            self.assertIsInstance(error, TypeError)
 
 
 class WalkTests(unittest.TestCase):
@@ -584,7 +614,8 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         self.assertTrue(self.session.node_valid(root))
         self.assertIsNone(self.session.parent(root))
-        self.assertFalse(self.session.node_valid(grammar.INVALID_NODE))
+        with self.assertRaisesRegex(TypeError, "expected a Node"):
+            self.session.node_valid(grammar.INVALID_NODE)
 
         first = self.session.first_child(root)
         last = self.session.last_child(root)
@@ -603,13 +634,21 @@ class WalkTests(unittest.TestCase):
             child = self.session.next_sibling(child)
         self.assertEqual(len(visited), self.session.child_count(root))
 
-    def test_address_matches_int_conversion(self) -> None:
+    def test_address_is_display_only(self) -> None:
         root = self.session.root_node()
         assert root is not None
-        self.assertEqual(root.address, int(root))
         again = self.session.root_node()
         assert again is not None
         self.assertEqual(again.address, root.address)
+        self.assertEqual(again, root)
+        # The address never converts back into something a call accepts:
+        # neither int()/operator.index() nor the raw address itself.
+        with self.assertRaises(TypeError):
+            int(root)
+        with self.assertRaises(TypeError):
+            operator.index(root)
+        with self.assertRaisesRegex(TypeError, "expected a Node"):
+            self.session.child_count(root.address)
 
     def test_symbol_names_text_spans_and_positions(self) -> None:
         root = self.session.root_node()
@@ -649,14 +688,24 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         self.assertIsNotNone(contains_terminal_only(root))
 
-    def test_invalid_node_accessors_return_none(self):
-        invalid = grammar.INVALID_NODE
-        self.assertIsNone(self.session.symbol_name(invalid))
-        self.assertIsNone(self.session.text(invalid))
-        self.assertIsNone(self.session.span(invalid))
-        self.assertIsNone(self.session.line_column(invalid))
-        self.assertIsNone(self.session.variable_index(invalid))
-        self.assertEqual(self.session.child_count(invalid), 0)
+    def test_accessors_refuse_raw_addresses(self) -> None:
+        # A raw address carries no generation, so an accessor that takes a
+        # node refuses it instead of reading whichever node happens to
+        # hold that index.
+        root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
+        for address in (grammar.INVALID_NODE, root.address):
+            for call in (
+                self.session.symbol_name,
+                self.session.text,
+                self.session.span,
+                self.session.line_column,
+                self.session.variable_index,
+                self.session.child_count,
+            ):
+                with self.assertRaisesRegex(TypeError, "expected a Node"):
+                    call(address)
 
     def test_walk_matches_hand_rolled_recursion(self) -> None:
         if not grammar.has_ast():
@@ -666,7 +715,7 @@ class WalkTests(unittest.TestCase):
         assert root is not None
 
         def recurse(node: grammar.Node, depth: int, out: list[tuple[int, int]]) -> None:
-            out.append((int(node), depth))
+            out.append((node.address, depth))
             child = self.session.first_child(node)
             while child is not None:
                 recurse(child, depth + 1, out)
@@ -677,7 +726,7 @@ class WalkTests(unittest.TestCase):
         self.assertGreater(len(expected), 1)
 
         walked = [
-            (int(step["node"]), step["depth"]) for step in self.session.walk(root)
+            (step["node"].address, step["depth"]) for step in self.session.walk(root)
         ]
         self.assertEqual(expected, walked)
         first = next(iter(self.session.walk(root)))
@@ -690,9 +739,9 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         snap = self.session.snapshot()
         count = self.session.node_count()
-        self.assertEqual(snap["count"], count)
+        self.assertEqual(snap.count, count)
         self.assertGreater(count, 0)
-        for key in (
+        for name in (
             "parent",
             "first_child",
             "next",
@@ -702,55 +751,107 @@ class WalkTests(unittest.TestCase):
             "span_len",
             "is_semantic_error",
         ):
-            self.assertEqual(len(snap[key]), count)
+            self.assertEqual(len(getattr(snap, name)), count)
         for address in range(count):
-            parent = self.session.parent(address)
+            node = snap.node(address)
+            self.assertIsNotNone(node)
+            assert node is not None
+            parent = self.session.parent(node)
             self.assertEqual(
-                snap["parent"][address], None if parent is None else int(parent)
+                snap.parent[address], None if parent is None else parent.address
             )
-            first = self.session.first_child(address)
+            first = self.session.first_child(node)
             self.assertEqual(
-                snap["first_child"][address], None if first is None else int(first)
+                snap.first_child[address],
+                None if first is None else first.address,
             )
-            nxt = self.session.next_sibling(address)
-            self.assertEqual(snap["next"][address], None if nxt is None else int(nxt))
+            nxt = self.session.next_sibling(node)
+            self.assertEqual(snap.next[address], None if nxt is None else nxt.address)
+            self.assertEqual(snap.child_count[address], self.session.child_count(node))
+            self.assertEqual(snap.variable[address], self.session.variable_index(node))
             self.assertEqual(
-                snap["child_count"][address], self.session.child_count(address)
-            )
-            self.assertEqual(
-                snap["variable"][address], self.session.variable_index(address)
-            )
-            self.assertEqual(
-                (snap["span_start"][address], snap["span_len"][address]),
-                self.session.span(address),
+                (snap.span_start[address], snap.span_len[address]),
+                self.session.span(node),
             )
         # Spans index last_input.
         data = self.session.last_input()
         self.assertEqual(data, b"alpha:12,beta:3")
         for address in range(count):
-            start = snap["span_start"][address]
-            length = snap["span_len"][address]
+            start = snap.span_start[address]
+            length = snap.span_len[address]
             assert isinstance(start, int) and isinstance(length, int)
-            text = self.session.text(address)
+            node = snap.node(address)
+            assert node is not None
+            text = self.session.text(node)
             assert text is not None
             self.assertEqual(data[start : start + length], text)
         # The snapshot alone drives the same preorder walk as the walker.
         root = self.session.root_node()
         assert root is not None
         preorder: list[int] = []
-        stack = [int(root)]
+        stack = [root.address]
         while stack:
-            node = stack.pop()
-            preorder.append(node)
-            child = snap["first_child"][node]
+            address = stack.pop()
+            preorder.append(address)
+            child = snap.first_child[address]
             chain: list[int] = []
             while child is not None:
                 chain.append(child)
-                child = snap["next"][child]
-            self.assertEqual(len(chain), snap["child_count"][node])
+                child = snap.next[child]
+            self.assertEqual(len(chain), snap.child_count[address])
             stack.extend(reversed(chain))
-        walked = [int(step["node"]) for step in self.session.walk(root)]
+        walked = [step["node"].address for step in self.session.walk(root)]
         self.assertEqual(preorder, walked)
+
+    def test_snapshot_node_round_trips_columns_and_accessors(self) -> None:
+        snap = self.session.snapshot()
+        root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
+        node = snap.node(root.address)
+        self.assertEqual(node, root)
+        first = self.session.first_child(node)
+        self.assertIsNotNone(first)
+        assert first is not None
+        self.assertEqual(snap.first_child[node.address], first.address)
+        self.assertEqual(snap.node(first.address), first)
+        # An absent node link answers None, never a node.
+        self.assertIsNone(snap.node(grammar.INVALID_NODE))
+
+    def test_snapshot_node_out_of_range_raises(self) -> None:
+        snap = self.session.snapshot()
+        self.assertGreater(snap.count, 0)
+        with self.assertRaises(IndexError):
+            snap.node(snap.count)
+        with self.assertRaises(IndexError):
+            snap.node(-1)
+
+    def test_snapshot_node_rejects_bool(self) -> None:
+        # bool subclasses int, but True/False are not node addresses.
+        snap = self.session.snapshot()
+        for flag in (True, False):
+            with self.assertRaises(TypeError):
+                snap.node(flag)
+
+    def test_snapshot_is_stale_after_a_reparse(self) -> None:
+        root = self.session.root_node()
+        self.assertIsNotNone(root)
+        assert root is not None
+        snap = self.session.snapshot()
+        stale = snap.node(root.address)
+        self.assertIsNotNone(stale)
+        assert stale is not None
+        self.session.parse("alpha:12")
+        fresh = self.session.root_node()
+        self.assertIsNotNone(fresh)
+        assert fresh is not None
+        # The columns never follow a later parse: node() keeps answering
+        # for its own parse, and that node reads as invalidated.
+        self.assertEqual(snap.node(root.address), stale)
+        self.assertNotEqual(stale, fresh)
+        with self.assertRaisesRegex(ValueError, "invalidated"):
+            stale.text()
+        self.assertEqual(fresh.text(), b"alpha:12")
 
     def test_walk_skip_children_prunes_subtree(self) -> None:
         if not grammar.has_ast():
@@ -762,12 +863,13 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(first["node"], root)
         walker.skip_children()
         self.assertEqual(list(walker), [])
-        self.assertIsNone(self.session.walk(grammar.INVALID_NODE))
+        with self.assertRaisesRegex(TypeError, "expected a Node"):
+            self.session.walk(grammar.INVALID_NODE)
 
     def test_walk_stale_root_raises(self) -> None:
         # A Node root from a previous parse generation is stale: the
         # walk refuses it loudly instead of reading reallocated storage.
-        # (Unresolvable int addresses return None; see above.)
+        # (A raw address never reaches the walk at all.)
         root = self.session.root_node()
         assert root is not None
         self.session.parse("alpha:12,beta:3")
@@ -859,10 +961,9 @@ class WalkTests(unittest.TestCase):
         ]
         self.assertEqual(flagged, [])
         pruned = [
-            int(step["node"])
-            for step in self.session.walk(root, skip_semantic_errors=True)
+            step["node"] for step in self.session.walk(root, skip_semantic_errors=True)
         ]
-        full = [int(step["node"]) for step in self.session.walk(root)]
+        full = [step["node"] for step in self.session.walk(root)]
         self.assertEqual(pruned, full)
 
 
@@ -1251,7 +1352,8 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE])
         root = self.session.root_node()
         assert root is not None
-        self.assertIsNone(self.session.walk(2**40))
+        with self.assertRaisesRegex(TypeError, "expected a Node"):
+            self.session.walk(2**40)
         self.assertIsNotNone(self.session.walk(root))
 
     def test_node_equality_ignores_the_door(self) -> None:

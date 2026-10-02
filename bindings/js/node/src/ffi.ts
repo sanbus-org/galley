@@ -18,7 +18,7 @@ import type {
   Handle,
   DispatchHandler,
   SessionCOptions,
-  TreeSnapshot,
+  SnapshotColumns,
   WalkedStep,
 } from "@sanbus/galley-core";
 import { GalleyError, MissingArtifactError, Status } from "@sanbus/galley-core";
@@ -530,7 +530,7 @@ export class NodePort implements FfiPort {
     return this.api.galley_node_parent(handle as bigint, node);
   }
 
-  treeSnapshot(handle: Handle): TreeSnapshot {
+  treeSnapshot(handle: Handle): SnapshotColumns {
     // No await between sizing and filling, so the count cannot change.
     for (let attempt = 0; attempt < 2; attempt++) {
       const count = this.nodeCount(handle);

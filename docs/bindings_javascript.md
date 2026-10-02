@@ -142,9 +142,13 @@ The FFI boundary is the only overhead over the C API:
   marshalling.
 - Node handles are `Node` objects that wrap a stable address in the
   library's non-relocating storage and keep a strong reference to their
-  owning `Session`; plain `bigint` addresses are also accepted wherever a
-  `Node` is expected, and `Number(node)` / `BigInt(node)` recovers the
-  address. Iteration and indexing are zero-copy (`for (const child of node)`, `node.at(0)`, `node.length`).
+  owning `Session`; the session interns one object per (session, parse
+  generation, address) while that generation is live, so node identity is
+  `===` within it and `node.address` is display-only. A method that takes
+  a node takes a `Node` — a bare `bigint` address throws `TypeError` at
+  call entry, and `session.snapshot().node(address)` is the one sanctioned
+  conversion from a stored address back to a node. Iteration and indexing
+  are zero-copy (`for (const child of node)`, `node.at(0)`, `node.length`).
 - Text accessors (`text`, `symbolNameBytes`, diagnostic tokens) return
   `Uint8Array` copies with no UTF-8 decoding; decode on demand
   (`new TextDecoder().decode(bytes)` — global on every runtime).
@@ -169,9 +173,9 @@ Node text, diagnostics, and expected-token data remain valid only until the
 next parse on the same session; every accessor copies before returning.
 `Node` methods check that their session is still open on the node's parse
 generation and throw `SessionClosedError` after `close()`, exiting a `using`
-block, or a re-parse. A failed parse counts: node reads fall back to their
-empty values and `snapshot()` throws `ErrorInvalidNode` until a successful
-parse, while `lastInput()` keeps the last successful input.
+block, or a re-parse. A failed parse counts: node reads throw
+`SessionClosedError` and `snapshot()` throws `ErrorInvalidNode` until a
+successful parse, while `lastInput()` keeps the last successful input.
 
 ## Procedures
 
@@ -357,8 +361,9 @@ the last diagnostic). Use after close throws `SessionClosedError` instead.
 
 `Session` implements `Symbol.dispose` so `using`/`await using` closes on
 exit, and `close()` is idempotent. Every session method that takes a node
-also accepts `Node | bigint`; session methods that return nodes return
-`Node`. Nodes are bound to their session:
+takes a `Node` and refuses a bare `bigint` address with `TypeError`;
+session methods that return nodes return `Node`. Nodes are bound to their
+session:
 `root = session.rootNode()` then `root.text()`, `root.symbolName()`,
 `root.span()`, `root.lineColumn()`, `root.parent()`,
 `root.firstChild()` / `root.lastChild()` / `root.nextSibling()` /
@@ -370,10 +375,16 @@ node. Editing helpers are available both ways:
 (where `chain` is a detached head); the remaining tree edits
 (`insertBefore`, `removeSelf`, `removeSiblings`, `insertChildrenAt`,
 `removeChildrenAt`, `promoteChildrenOverWrapper`, `unlinkWrapper`)
-live on `Session` and accept `Node | bigint`. Missing links return `null`.
+live on `Session` and accept `Node`. Missing links return `null`.
 `session.diagnostics()` returns every recorded diagnostic. Nodes compare by
-identity (`a.equals(b)` checks same session, parse generation, and address), and support
-`Number(node)` / `BigInt(node)` to recover the raw address.
+identity (`a === b`): the session interns one object per (session, parse
+generation, address) while that generation is live, so `Map`/`Set` keying
+by reference matches session, generation, and address for the live parse;
+a stale handle, such as a snapshot's `node()` read after a re-parse, is a
+fresh object each call. `node.address` (a `bigint`) is display-only, no
+call accepts it where a node is expected, `Number(node)` never yields it,
+and `BigInt(node)` throws; `session.snapshot().node(address)` is the one
+conversion from a stored address back to a node.
 
 `session.diagnostic()` returns a frozen snapshot (`Diagnostic`) with `kind`,
 `line`, `column`, `message`, `messageAnsi`,

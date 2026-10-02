@@ -6,13 +6,13 @@
  */
 
 import { Session, Walker } from "./session.ts";
-import type { SessionOptions, WalkStep } from "./session.ts";
+import type { SessionOptions, TreeSnapshot, WalkStep } from "./session.ts";
 import { Parser } from "./parser.ts";
 import { Node } from "./node.ts";
 import { GalleyError, MissingArtifactError, SessionClosedError } from "./errors.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
-import type { FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler } from "./port.ts";
+import type { FfiPort, Handle, SessionCOptions, SnapshotColumns, WalkedStep, DispatchHandler } from "./port.ts";
 import { ProcedureArguments } from "./procedures.ts";
 import type { ProcedureRegistry } from "./procedures.ts";
 import type { HookFn, ProceduresOption } from "./procedures.ts";
@@ -27,5 +27,5 @@ export {
   SessionClosedError,
   ProcedureArguments,
 };
-export type { Diagnostic, WalkStep, SessionOptions, FfiPort, Handle, SessionCOptions, TreeSnapshot, WalkedStep, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry };
+export type { Diagnostic, WalkStep, TreeSnapshot, SessionOptions, FfiPort, Handle, SessionCOptions, SnapshotColumns, WalkedStep, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry };
 export * from "./constants.ts";

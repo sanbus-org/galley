@@ -190,8 +190,8 @@ public final class Session implements AutoCloseable {
      * accepts, because the crossing sends a bare address and native storage
      * only bounds-checks it, so a node of another session or generation
      * would silently alias whichever node holds that index here. A node
-     * whose own session is closed reports that first. Raw-address overloads
-     * receive no handle to compare and stay unguarded by design.
+     * whose own session is closed reports that first. Only a {@link Node}
+     * reaches this gate: a raw address carries no generation to compare.
      *
      * @throws IllegalArgumentException if {@code node} belongs to another session
      * @throws GenerationInvalidatedException if its generation is not the door's
@@ -220,13 +220,6 @@ public final class Session implements AutoCloseable {
     private NodeDoor door(Node node) {
         if (node.session().isClosed()) throw new GalleyClosedException("node's session");
         return door();
-    }
-
-    /** The generation a handle made now for a raw address would carry: the chosen door's. */
-    long currentGeneration() {
-        NodeDoor door = door();
-        if (!door.isHook() && publishedGeneration == UNKNOWN_GENERATION) refreshPublishedGeneration();
-        return door.generation();
     }
 
     GalleyException errorFromStatus(long status) {
@@ -545,18 +538,10 @@ public final class Session implements AutoCloseable {
         return new Node(this, addr, generation);
     }
 
-    public boolean nodeValid(long address) {
-        return door().nodeValid(address);
-    }
-
     public boolean nodeValid(Node node) {
         if (node == null) return false;
         NodeDoor door = door(node);
         return door.nodeValid(address(node, door));
-    }
-
-    public int childCount(long address) {
-        return door().childCount(address);
     }
 
     public int childCount(Node node) {
@@ -571,15 +556,10 @@ public final class Session implements AutoCloseable {
         return children(door, address(node, door));
     }
 
-    public List<Node> children(long address) {
-        return children(door(), address);
-    }
-
     /**
-     * The one children iteration, shared by the Node and raw-address entry
-     * points: count-bounded, first to last, every step crossing the same
-     * door. A child count that moves mid-iteration throws instead of
-     * yielding a torn walk.
+     * The one children iteration: count-bounded, first to last, every step
+     * crossing the same door. A child count that moves mid-iteration throws
+     * instead of yielding a torn walk.
      */
     private List<Node> children(NodeDoor door, long address) {
         int count = door.childCount(address);
@@ -598,19 +578,9 @@ public final class Session implements AutoCloseable {
         return node(door, door.firstChild(address(node, door)));
     }
 
-    public Node firstChild(long address) {
-        NodeDoor door = door();
-        return node(door, door.firstChild(address));
-    }
-
     public Node lastChild(Node node) {
         NodeDoor door = door(node);
         return node(door, door.lastChild(address(node, door)));
-    }
-
-    public Node lastChild(long address) {
-        NodeDoor door = door();
-        return node(door, door.lastChild(address));
     }
 
     public Node nextSibling(Node node) {
@@ -618,29 +588,14 @@ public final class Session implements AutoCloseable {
         return node(door, door.nextSibling(address(node, door)));
     }
 
-    public Node nextSibling(long address) {
-        NodeDoor door = door();
-        return node(door, door.nextSibling(address));
-    }
-
     public Node priorSibling(Node node) {
         NodeDoor door = door(node);
         return node(door, door.priorSibling(address(node, door)));
     }
 
-    public Node priorSibling(long address) {
-        NodeDoor door = door();
-        return node(door, door.priorSibling(address));
-    }
-
     public Node parent(Node node) {
         NodeDoor door = door(node);
         return node(door, door.parent(address(node, door)));
-    }
-
-    public Node parent(long address) {
-        NodeDoor door = door();
-        return node(door, door.parent(address));
     }
 
     /**
@@ -649,10 +604,17 @@ public final class Session implements AutoCloseable {
      * (matching {@link #INVALID_NODE} bits), missing variables as -1, and
      * spans index {@link #lastInput()}. Walk {@code parent}/
      * {@code firstChild}/{@code next} directly instead of one call per
-     * node.
+     * node; {@link TreeSnapshot#node(long)} is the one conversion from a
+     * stored address back to a node.
      */
     public TreeSnapshot snapshot() {
         requireOpen();
+        // Stamp from the published-generation cache: the columns describe
+        // the published tree, so node() must return nodes of exactly that
+        // parse. A refusal (a parse is in flight) leaves the cache as it
+        // was, which is still the parse the columns come from.
+        readPublishedGeneration();
+        long generation = publishedGeneration;
         long count = lib.galley_node_count(handle);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment parent = arena.allocate(ValueLayout.JAVA_LONG, count);
@@ -678,9 +640,9 @@ public final class Session implements AutoCloseable {
             for (int i = 0; i < semanticArray.length; i++) {
                 semanticArray[i] = semantic.get(ValueLayout.JAVA_INT, (long) i * Integer.BYTES) != 0;
             }
-            return new TreeSnapshot(count, parentArray, firstChildArray, nextArray,
-                    childCountArray, variableArray, spanStartArray, spanLenArray,
-                    semanticArray);
+            return new TreeSnapshot(this, generation, count, parentArray,
+                    firstChildArray, nextArray, childCountArray, variableArray,
+                    spanStartArray, spanLenArray, semanticArray);
         }
     }
 
@@ -715,10 +677,10 @@ public final class Session implements AutoCloseable {
         // session door while that parse runs.
         if (node.session().isClosed()) throw new GalleyClosedException("node's session");
         requireOpen();
-        return walk(address(node, sessionDoor), skipSemanticErrors);
+        return walkAt(address(node, sessionDoor), skipSemanticErrors);
     }
 
-    public Walker walk(long address, boolean skipSemanticErrors) {
+    private Walker walkAt(long address, boolean skipSemanticErrors) {
         requireOpen();
         // Stamp from a fresh read of the core, never the cache. A refusal
         // throws ERROR_SESSION_IN_USE.
@@ -767,25 +729,11 @@ public final class Session implements AutoCloseable {
         return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
-    /**
-     * Grammar name of the node's symbol, decoded as UTF-8 with replacement
-     * for malformed input. Null for invalid nodes.
-     */
-    public String symbolName(long address) {
-        byte[] bytes = symbolNameBytes(address);
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
-    }
-
     /** Raw bytes behind {@link #symbolName(Node)}. Null for invalid nodes. */
     public byte[] symbolNameBytes(Node node) {
         if (node == null) return null;
         NodeDoor door = door(node);
         return door.symbolNameBytes(address(node, door));
-    }
-
-    /** Raw bytes behind {@link #symbolName(long)}. Null for invalid nodes. */
-    public byte[] symbolNameBytes(long address) {
-        return door().symbolNameBytes(address);
     }
 
     public byte[] text(Node node) {
@@ -794,18 +742,10 @@ public final class Session implements AutoCloseable {
         return door.text(address(node, door));
     }
 
-    public byte[] text(long address) {
-        return door().text(address);
-    }
-
     public long[] span(Node node) {
         if (node == null) return null;
         NodeDoor door = door(node);
         return door.span(address(node, door));
-    }
-
-    public long[] span(long address) {
-        return door().span(address);
     }
 
     public int[] lineColumn(Node node) {
@@ -814,18 +754,10 @@ public final class Session implements AutoCloseable {
         return door.lineColumn(address(node, door));
     }
 
-    public int[] lineColumn(long address) {
-        return door().lineColumn(address);
-    }
-
     public Integer variableIndex(Node node) {
         if (node == null) return null;
         NodeDoor door = door(node);
         return door.variableIndex(address(node, door));
-    }
-
-    public Integer variableIndex(long address) {
-        return door().variableIndex(address);
     }
 
     public int[] lastPosition() {
@@ -1259,17 +1191,9 @@ public final class Session implements AutoCloseable {
         door.appendChildren(address(parent, door), address(chain, door));
     }
 
-    public void appendChildren(long parentAddr, long chainAddr) {
-        door().appendChildren(parentAddr, chainAddr);
-    }
-
     public void insertBefore(Node target, Node chain) {
         NodeDoor door = door(target);
         door.insertBefore(address(target, door), address(chain, door));
-    }
-
-    public void insertBefore(long targetAddr, long chainAddr) {
-        door().insertBefore(targetAddr, chainAddr);
     }
 
     public void insertAfter(Node target, Node chain) {
@@ -1277,18 +1201,9 @@ public final class Session implements AutoCloseable {
         door.insertAfter(address(target, door), address(chain, door));
     }
 
-    public void insertAfter(long targetAddr, long chainAddr) {
-        door().insertAfter(targetAddr, chainAddr);
-    }
-
     public Node removeSiblings(Node node, int count) {
         NodeDoor door = door(node);
         return node(door, door.removeSiblings(address(node, door), count));
-    }
-
-    public Node removeSiblings(long nodeAddr, int count) {
-        NodeDoor door = door();
-        return node(door, door.removeSiblings(nodeAddr, count));
     }
 
     public Node removeSelf(Node node) {
@@ -1296,19 +1211,9 @@ public final class Session implements AutoCloseable {
         return node(door, door.removeSelf(address(node, door)));
     }
 
-    public Node removeSelf(long nodeAddr) {
-        NodeDoor door = door();
-        return node(door, door.removeSelf(nodeAddr));
-    }
-
     public Node promoteChildrenOverWrapper(Node wrapper) {
         NodeDoor door = door(wrapper);
         return node(door, door.promoteChildrenOverWrapper(address(wrapper, door)));
-    }
-
-    public Node promoteChildrenOverWrapper(long wrapperAddr) {
-        NodeDoor door = door();
-        return node(door, door.promoteChildrenOverWrapper(wrapperAddr));
     }
 
     public Node cleanChildren(Node node) {
@@ -1316,18 +1221,9 @@ public final class Session implements AutoCloseable {
         return node(door, door.cleanChildren(address(node, door)));
     }
 
-    public Node cleanChildren(long nodeAddr) {
-        NodeDoor door = door();
-        return node(door, door.cleanChildren(nodeAddr));
-    }
-
     public void unlinkWrapper(Node wrapper) {
         NodeDoor door = door(wrapper);
         door.unlinkWrapper(address(wrapper, door));
-    }
-
-    public void unlinkWrapper(long wrapperAddr) {
-        door().unlinkWrapper(wrapperAddr);
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
@@ -1335,18 +1231,9 @@ public final class Session implements AutoCloseable {
         door.insertChildrenAt(address(parent, door), index, address(chain, door));
     }
 
-    public void insertChildrenAt(long parentAddr, int index, long chainAddr) {
-        door().insertChildrenAt(parentAddr, index, chainAddr);
-    }
-
     public Node removeChildrenAt(Node parent, int index, int count) {
         NodeDoor door = door(parent);
         return node(door, door.removeChildrenAt(address(parent, door), index, count));
-    }
-
-    public Node removeChildrenAt(long parentAddr, int index, int count) {
-        NodeDoor door = door();
-        return node(door, door.removeChildrenAt(parentAddr, index, count));
     }
 
     // -- symbol table --

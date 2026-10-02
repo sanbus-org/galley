@@ -12,10 +12,31 @@
  * Java suites).
  *
  * `newParser` resolves a parser of the keyvalue fixture; `SessionClosedError`
- * and `Status` come from the runtime's own entry so identity checks hold.
+ * and `Status` come from the runtime's own entry so identity checks hold;
+ * `collect` is that runtime's forced garbage collection, used by the
+ * release scenario.
  */
 
-export async function runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status }) {
+/**
+ * Creates and registers the snapshot's first `limit` nodes, returning
+ * their addresses. The handles are created inside this frame — which has
+ * returned before the caller awaits anything — because JavaScriptCore
+ * scans the stack conservatively: a node left in a suspended async frame
+ * would stay reachable across the forced collections. Only the addresses
+ * (bigints) cross back out, and nothing here keeps a node alive.
+ */
+function registerInternedNodes(snap, registry, limit) {
+  const addresses = [];
+  for (let i = 0; i < Math.min(snap.count, limit); i++) {
+    const node = snap.node(i);
+    if (node === null) throw new Error(`galley: snapshot node ${i} is invalid`);
+    addresses.push(node.address);
+    registry.register(node, node.address);
+  }
+  return addresses;
+}
+
+export async function runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status, collect }) {
   const decode = (bytes) => new TextDecoder().decode(bytes);
 
   await test("a refused parse leaves hook nodes and the published tree valid", async () => {
@@ -53,7 +74,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a hook node after a successful parse reads through the session and equals its node", async () => {
+  await test("a hook node after a successful parse reads through the session and is the walker's node", async () => {
     const parser = await newParser();
     const s = await parser.openSession();
     try {
@@ -80,8 +101,8 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
         walker.close();
       }
       assert.ok(found !== null);
-      assert.ok(found.equals(first));
-      assert.ok(first.equals(found));
+      assert.ok(found === first);
+      assert.ok(first === found);
     } finally {
       s.close();
     }
@@ -116,8 +137,8 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       s.parse("alpha:12");
       const secondRoot = s.rootNode();
       assert.equal(firstRoot.address, secondRoot.address);
-      assert.ok(!firstRoot.equals(secondRoot));
-      assert.ok(!secondRoot.equals(firstRoot));
+      assert.ok(firstRoot !== secondRoot);
+      assert.ok(secondRoot !== firstRoot);
       assert.throws(() => firstRoot.text(), SessionClosedError);
       assert.equal(decode(secondRoot.text()), "alpha:12");
     } finally {
@@ -146,8 +167,8 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
         trace.push(["text", decode(s.text(node))]);
         trace.push(["span", s.span(node) !== null]);
         trace.push(["lineColumn", s.lineColumn(node) !== null]);
-        trace.push(["navigation", s.parent(kids[0]).equals(node) && s.nextSibling(kids[0]).equals(kids[1]) &&
-          s.priorSibling(kids[1]).equals(kids[0]) && s.lastChild(node).equals(kids[count - 1]) && s.firstChild(node).equals(kids[0])]);
+        trace.push(["navigation", s.parent(kids[0]) === node && s.nextSibling(kids[0]) === kids[1] &&
+          s.priorSibling(kids[1]) === kids[0] && s.lastChild(node) === kids[count - 1] && s.firstChild(node) === kids[0]]);
         // removeSiblings + insertChildrenAt
         const head = s.removeSiblings(kids[0], 1);
         trace.push(["removeSiblings", s.childCount(node) === count - 1]);
@@ -184,8 +205,9 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
 
   await test("a walk inside a hook is refused, not empty", async () => {
     // Walkers exist only on the session door, which the core refuses while
-    // a parse runs: a refused creation throws session in use, never the
-    // null that means an invalid root.
+    // a parse runs: a refused creation throws session in use, never an
+    // empty walk. A raw address never reaches the walk at all — `walk`
+    // takes a node and refuses anything else at entry.
     const parser = await newParser();
     const s = await parser.openSession();
     try {
@@ -202,7 +224,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       s.parse("alpha:12");
       assert.deepEqual(codes, [Status.ErrorSessionInUse]);
       s.clearProcedures();
-      assert.equal(s.walk(2n ** 40n), null);
+      assert.throws(() => s.walk(2n ** 40n), TypeError);
       const walker = s.walk(s.rootNode());
       assert.ok(walker !== null);
       walker.close();
@@ -211,7 +233,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a hook node equals the session node reached after the parse", async () => {
+  await test("a hook node is the session node reached after the parse", async () => {
     const parser = await newParser();
     const s = await parser.openSession();
     try {
@@ -221,8 +243,155 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       });
       s.parse("alpha:12");
       const pair = s.firstChild(s.firstChild(s.rootNode()));
-      assert.ok(stashed[0].equals(pair));
+      assert.ok(stashed[0] === pair);
     } finally {
+      s.close();
+    }
+  });
+
+  await test("a refused parse leaves the running parse's node identity intact", async () => {
+    // The intern table belongs to the parse in flight while its hooks
+    // dispatch: a refused parse changes nothing, so it must not drop the
+    // table either — the hook's node is the same object across the
+    // refusal, and the published tree's node at that address afterwards.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      const refusals = [];
+      let stashed = null;
+      let afterRefusal = null;
+      s.installProcedure("reduction_Pair", (args) => {
+        if (stashed !== null) return;
+        stashed = args.currentNode();
+        try {
+          s.parse("gamma:1");
+        } catch (error) {
+          refusals.push(error);
+        }
+        afterRefusal = args.currentNode();
+      });
+      s.parse("alpha:12,beta:3");
+      assert.equal(refusals.length, 1);
+      assert.ok(refusals[0] instanceof GalleyError);
+      assert.equal(refusals[0].code, Status.ErrorSessionInUse);
+      assert.ok(stashed !== null);
+      assert.ok(afterRefusal === stashed);
+      const snap = s.snapshot();
+      assert.ok(snap.node(stashed.address) === stashed);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("a failed parse drops the intern table", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse("alpha:12,beta:3");
+      const root = s.rootNode();
+      const snap = s.snapshot();
+      assert.ok(snap.node(root.address) === root);
+      // The failure publishes nothing: the pre-failure snapshot's node()
+      // never re-interns that generation — every call answers with a
+      // fresh, uninterned handle, and each reads as invalidated.
+      assert.throws(() => s.parse("gamma:"), (error) => error.code === Status.ErrorSyntax);
+      const first = snap.node(root.address);
+      const second = snap.node(root.address);
+      assert.ok(first !== root);
+      assert.ok(first !== second);
+      assert.throws(() => first.text(), SessionClosedError);
+      // The recovery parse interns its own generation afresh.
+      s.parse("alpha:12,beta:3");
+      const recovered = s.rootNode();
+      assert.ok(recovered !== root);
+      assert.ok(s.snapshot().node(recovered.address) === recovered);
+      assert.ok(s.firstChild(recovered) === s.firstChild(recovered));
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("close() releases the interned nodes", async () => {
+    const released = new Set();
+    const registry = new FinalizationRegistry((address) => released.add(address));
+    const parser = await newParser();
+    const s = await parser.openSession();
+    let expected = [];
+    try {
+      s.parse("alpha:12,beta:3");
+      expected = registerInternedNodes(s.snapshot(), registry, 5);
+      // Smoke check only: a forced collection while the session is open
+      // must find these retained — it proves the collection runs, not
+      // that retention is exhaustive.
+      collect();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(released.size, 0);
+    } finally {
+      s.close();
+    }
+    // After close the table is dropped, so every registered node must
+    // become unreachable: collect until the registry reports them.
+    for (let attempt = 0; attempt < 100 && released.size < expected.length; attempt++) {
+      collect();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(
+      released.size,
+      expected.length,
+      `released ${released.size} of ${expected.length} interned nodes after close()`,
+    );
+  });
+
+  await test("a failed published-generation read drops nothing and UNKNOWN never interns", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    // The fixture's default procedures read nodes while a parse runs,
+    // which would re-adopt any table state this test sets up: only this
+    // test's own hook may cross the gate.
+    s.clearProcedures();
+    const port = s.port;
+    const realPublishedGeneration = port.publishedGeneration;
+    const failingRead = () => ({ status: Status.ErrorSessionInUse, generation: 0n });
+    let stashed = null;
+    // Reading inside the hook interns the parse's own generation, so the
+    // table holds a handle of exactly the parse whose published read fails.
+    s.installProcedure("reduction_Pair", (args) => {
+      if (stashed === null) stashed = args.currentNode();
+    });
+    try {
+      s.parse("alpha:12,beta:3");
+      const root = s.rootNode();
+      const snap = s.snapshot();
+      assert.ok(snap.node(root.address) === root);
+      // A parse that succeeds while its published-generation read fails
+      // stamps UNKNOWN: dropping on that difference would discard the
+      // live table the hook just interned into.
+      stashed = null;
+      port.publishedGeneration = failingRead;
+      s.parse("alpha:12");
+      port.publishedGeneration = realPublishedGeneration;
+      assert.ok(stashed !== null);
+      const parseTree = s.snapshot();
+      assert.ok(parseTree.node(stashed.address) === stashed);
+      // With the hook silent (stashed is set), a real read moves the
+      // published generation past the table and drops it — correctly:
+      // the tree underneath stays live.
+      s.parse("gamma:1");
+      // The failing read then stamps UNKNOWN over the empty table, and
+      // the snapshot's UNKNOWN node() must never make the table adopt
+      // it — repeated reads stay fresh handles.
+      port.publishedGeneration = failingRead;
+      s.parse("alpha:12");
+      const unknownSnap = s.snapshot();
+      assert.ok(unknownSnap.count > 0);
+      assert.ok(unknownSnap.node(0) !== unknownSnap.node(0));
+      // Restoring the read lets the next node adopt the live generation.
+      port.publishedGeneration = realPublishedGeneration;
+      const live = s.rootNode();
+      assert.ok(live !== null);
+      assert.ok(s.snapshot().node(live.address) === live);
+    } finally {
+      port.publishedGeneration = realPublishedGeneration;
       s.close();
     }
   });

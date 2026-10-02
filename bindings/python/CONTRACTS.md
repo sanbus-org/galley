@@ -15,7 +15,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 - Grammar names arrive as `bytes`; token content stays `bytes`.
 - Integers are plain `int`, sequences are tuples, mappings are dicts, and empty is `None`.
 - Failures raise `GalleyError`; lifecycle misuse raises `ValueError`, including use after close.
-- An operation that takes a node refuses one from another session, or of a parse generation that is no longer live, with `ValueError`; raw addresses carry no generation and pass unguarded by design.
+- An operation that takes a node refuses one from another session, or of a parse generation that is no longer live, with `ValueError`; a raw address is refused with `TypeError` instead, because it carries no generation.
 - Every named category the shared contracts define is an integer enum.
 
 ## Inputs and resources
@@ -23,5 +23,5 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 - Parsing accepts `str` plus the buffer protocol; file paths accept path-like objects; rejected interior-NUL paths raise `ValueError`.
 - Sessions are not thread-safe; a parse releases the GIL and every other call holds it.
 - Nodes are hashable with equality over owning session, core parse generation, and address, so they work as dict keys and set members; the door a node was reached through is not part of either.
-- Nodes expose their address as a read-only attribute alongside `int` and `index` conversions.
+- Nodes expose their address as a read-only attribute for display; a session method takes a `Node`, and `Session.snapshot().node(index)` is the one conversion from a stored address back to a node, taking an `int` index only (`TypeError` for anything else, a `bool` included).
 - Walkers support explicit `close` plus context-manager blocks, with collection as the fallback; sessions support `with` blocks.

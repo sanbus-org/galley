@@ -9,10 +9,11 @@ the build command so the language package resolves without inline hints.
 
 Sessions are not thread-safe, but a parse releases the GIL, so sessions on
 different threads parse in parallel.  Node handles are
-``galley_impl.Node`` objects bound to their owning ``Session`` – plain ``int``
-addresses are still accepted wherever a node is expected, and
-``int(node)`` / ``operator.index(node)`` recover the
-address.  Module-level procedure hooks are the artifact's defaults; every
+``galley_impl.Node`` objects bound to their owning ``Session`` – a node is
+the only thing accepted where a node is expected, and
+``Session.snapshot().node(index)`` is the one conversion from a stored
+address back to a node.  Module-level procedure hooks are the artifact's
+defaults; every
 session owns a copy taken when it opens.  All text/diagnostic
 accessors copy before returning.
 """
@@ -167,13 +168,13 @@ class Node:
     successful parse stay usable until the session parses again, and nodes
     of a failed parse are gone. A call from another thread while a parse
     runs raises ``GalleyError`` with ``ERROR_SESSION_IN_USE``.
-    ``int(node)`` and ``operator.index(node)`` return the
-    raw address; plain ``int`` addresses are accepted wherever a ``Node``
-    is expected.
+    ``Session.snapshot().node(index)`` is the only conversion from a
+    stored address back to a node.
     """
 
     address: int
-    """Raw address (stable index in the session's node storage)."""
+    """Display-only raw address (stable index in the session's node
+    storage); never an argument where a node is expected."""
 
     def children(self) -> tuple[Node, ...]:
         """Tuple of direct children, from first to last (empty when leaf)."""
@@ -219,7 +220,7 @@ class Node:
         """Detach all children and return the detached chain head, or ``None``."""
         ...
 
-    def append_children(self, chain: Node | int) -> None:
+    def append_children(self, chain: Node) -> None:
         """Append a detached ``chain`` as children of this node."""
         ...
 
@@ -235,13 +236,6 @@ class Node:
         """Iterate children from first to last."""
         ...
 
-    def __int__(self) -> int:
-        """Raw address (stable index in the session's node storage)."""
-        ...
-
-    def __index__(self) -> int:
-        """Raw address for ``operator.index`` / slicing."""
-        ...
     def __hash__(self) -> int: ...
     def __eq__(self, other: object) -> bool:
         """Equal when same session, same parse generation, and same address."""
@@ -250,6 +244,52 @@ class Node:
     def __ne__(self, other: object) -> bool: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
+
+class Snapshot:
+    """One parse as flat columns: one tuple per node address, read-only.
+
+    Returned by ``Session.snapshot``. ``node(index)`` is the one conversion
+    from a stored address back to a node, stamped with the parse generation
+    these columns describe, so it reads as invalidated once the session
+    parses again.
+    """
+
+    count: int
+    """Number of nodes in the parse these columns describe."""
+
+    parent: tuple[int | None, ...]
+    """Parent address per node; ``None`` where the link does not exist."""
+
+    first_child: tuple[int | None, ...]
+    """First child address per node; ``None`` where the link does not exist."""
+
+    next: tuple[int | None, ...]
+    """Next sibling address per node; ``None`` where the link does not exist."""
+
+    child_count: tuple[int, ...]
+    """Direct child count per node."""
+
+    variable: tuple[int | None, ...]
+    """Variable index per node; ``None`` where there is none."""
+
+    span_start: tuple[int, ...]
+    """Span start offset per node, into ``Session.last_input()``."""
+
+    span_len: tuple[int, ...]
+    """Span length per node."""
+
+    is_semantic_error: tuple[bool, ...]
+    """The semantic-error flag ``walk`` yields, per node."""
+
+    def node(self, index: int) -> Node | None:
+        """Node at ``index`` for this snapshot's parse, or ``None`` for
+        ``INVALID_NODE``.
+
+        Raises ``TypeError`` when ``index`` is not an ``int`` (a ``bool``
+        included), ``IndexError`` when ``index`` is outside
+        ``0 .. count - 1``.
+        """
+        ...
 
 class Walker(Iterator[dict[str, Any]]):
     """Pre-order tree walker over ``{"node", "depth", "is_semantic_error"}`` dicts.
@@ -311,7 +351,7 @@ class ProcedureArguments:
         """The node being reduced, or ``None``."""
         ...
 
-    def set_current_node(self, node: Node | int) -> None:
+    def set_current_node(self, node: Node) -> None:
         """Redirect the current-node channel to ``node``."""
         ...
 
@@ -412,8 +452,12 @@ class Session:
 
     # -- arena --
 
-    def snapshot(self) -> dict[str, Any]:
-        """Flat bulk read of the most recent successful parse: ``count`` plus per-node-address ``parent``, ``first_child``, ``next``, ``child_count``, ``variable``, ``span_start``, ``span_len`` and ``is_semantic_error`` entries (booleans, the flag ``walk`` yields)."""
+    def snapshot(self) -> Snapshot:
+        """Flat bulk read of the most recent successful parse: a ``Snapshot``
+        with ``count`` and one tuple per node address for ``parent``,
+        ``first_child``, ``next``, ``child_count``, ``variable``,
+        ``span_start``, ``span_len`` and ``is_semantic_error`` (booleans, the
+        flag ``walk`` yields). Missing links and variables are ``None``."""
         ...
 
     def last_input(self) -> bytes:
@@ -432,32 +476,30 @@ class Session:
         """Current node storage capacity in nodes."""
         ...
 
-    # -- navigation (all accept ``Node | int`` for backward compat, return ``Node``) --
+    # -- navigation (``Node`` arguments, ``Node`` results) --
 
     def root_node(self) -> Node | None:
         """Root of the last successful parse, or ``None``."""
         ...
 
-    def node_valid(self, node: Node | int) -> bool:
+    def node_valid(self, node: Node) -> bool:
         """Whether ``node`` refers to a live node of the last parse."""
         ...
 
-    def child_count(self, node: Node | int) -> int:
+    def child_count(self, node: Node) -> int:
         """Direct child count (0 for invalid nodes)."""
         ...
 
-    def children(self, node: Node | int) -> tuple[Node, ...]:
+    def children(self, node: Node) -> tuple[Node, ...]:
         """Tuple of direct children, from first to last."""
         ...
 
-    def first_child(self, node: Node | int) -> Node | None: ...
-    def last_child(self, node: Node | int) -> Node | None: ...
-    def next_sibling(self, node: Node | int) -> Node | None: ...
-    def prior_sibling(self, node: Node | int) -> Node | None: ...
-    def parent(self, node: Node | int) -> Node | None: ...
-    def walk(
-        self, root: Node | int, skip_semantic_errors: bool = False
-    ) -> Walker | None:
+    def first_child(self, node: Node) -> Node | None: ...
+    def last_child(self, node: Node) -> Node | None: ...
+    def next_sibling(self, node: Node) -> Node | None: ...
+    def prior_sibling(self, node: Node) -> Node | None: ...
+    def parent(self, node: Node) -> Node | None: ...
+    def walk(self, root: Node, skip_semantic_errors: bool = False) -> Walker | None:
         """Pre-order walker over ``root`` yielding step dicts.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
@@ -468,23 +510,23 @@ class Session:
         session parses again or closes raises ``ValueError``.
         """
         ...
-    def symbol_name(self, node: Node | int) -> bytes | None:
+    def symbol_name(self, node: Node) -> bytes | None:
         """Symbol name bytes, or ``None`` for an invalid node."""
         ...
 
-    def text(self, node: Node | int) -> bytes | None:
+    def text(self, node: Node) -> bytes | None:
         """Text bytes, or ``None`` for an invalid node."""
         ...
 
-    def span(self, node: Node | int) -> tuple[int, int] | None:
+    def span(self, node: Node) -> tuple[int, int] | None:
         """``(start, length)`` byte span, or ``None`` for an invalid node."""
         ...
 
-    def line_column(self, node: Node | int) -> tuple[int, int] | None:
+    def line_column(self, node: Node) -> tuple[int, int] | None:
         """1-based ``(line, column)`` of the first byte, or ``None``."""
         ...
 
-    def variable_index(self, node: Node | int) -> int | None:
+    def variable_index(self, node: Node) -> int | None:
         """Variable table index, or ``None`` for an invalid node."""
         ...
 
@@ -543,49 +585,45 @@ class Session:
         """Return a copy of this session's procedure hooks."""
         ...
 
-    # -- tree editing (accept ``Node | int``) --
+    # -- tree editing (``Node`` arguments) --
 
-    def append_children(self, parent: Node | int, chain: Node | int) -> None:
+    def append_children(self, parent: Node, chain: Node) -> None:
         """Append detached ``chain`` as children of ``parent``."""
         ...
 
-    def insert_before(self, target: Node | int, chain: Node | int) -> None:
+    def insert_before(self, target: Node, chain: Node) -> None:
         """Insert ``chain`` immediately before ``target`` among siblings."""
         ...
 
-    def insert_after(self, target: Node | int, chain: Node | int) -> None:
+    def insert_after(self, target: Node, chain: Node) -> None:
         """Insert ``chain`` immediately after ``target`` among siblings."""
         ...
 
-    def remove_siblings(self, node: Node | int, count: int) -> Node | None:
+    def remove_siblings(self, node: Node, count: int) -> Node | None:
         """Remove ``count`` siblings after ``node`` and return the detached head."""
         ...
 
-    def remove_self(self, node: Node | int) -> Node | None:
+    def remove_self(self, node: Node) -> Node | None:
         """Detach ``node`` itself and return the detached head (the node)."""
         ...
 
-    def promote_children_over_wrapper(self, wrapper: Node | int) -> Node | None:
+    def promote_children_over_wrapper(self, wrapper: Node) -> Node | None:
         """Splice ``wrapper``'s children in place of ``wrapper``; return promoted head."""
         ...
 
-    def clean_children(self, node: Node | int) -> Node | None:
+    def clean_children(self, node: Node) -> Node | None:
         """Detach all children of ``node`` and return the detached head."""
         ...
 
-    def unlink_wrapper(self, wrapper: Node | int) -> None:
+    def unlink_wrapper(self, wrapper: Node) -> None:
         """Detach ``wrapper`` without touching its children."""
         ...
 
-    def insert_children_at(
-        self, parent: Node | int, index: int, chain: Node | int
-    ) -> None:
+    def insert_children_at(self, parent: Node, index: int, chain: Node) -> None:
         """Insert ``chain`` into ``parent``'s children at ``index`` (``len`` appends)."""
         ...
 
-    def remove_children_at(
-        self, parent: Node | int, index: int, count: int
-    ) -> Node | None:
+    def remove_children_at(self, parent: Node, index: int, count: int) -> Node | None:
         """Remove ``count`` children of ``parent`` at ``index`` and return the head."""
         ...
 

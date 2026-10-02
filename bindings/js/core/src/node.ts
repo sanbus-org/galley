@@ -45,6 +45,15 @@ export interface NodeDoor {
 }
 
 /**
+ * The module-private credential the {@link Node} constructor demands.
+ * Never exported — no package entry point can hand it out — so the
+ * emitted types mark the constructor `private` and every runtime
+ * construction that reaches it without the token throws: node creation
+ * lives in the session's intern table, through {@link createNode}.
+ */
+const NODE_CONSTRUCTION_TOKEN: symbol = Symbol("galley.Node.construction");
+
+/**
  * Handle for a node in the non-relocating AST storage: its owning
  * `Session`, the core's parse generation it belongs to, and its address.
  * Every accessor is one delegation to the session, which chooses the door
@@ -53,6 +62,13 @@ export interface NodeDoor {
  * closed session or a generation that is gone throws. Nodes handed out by
  * the hooks of a parse that publishes its tree stay valid until the
  * session parses again; nodes of a failed parse are gone.
+ *
+ * The session interns one object per (generation, address) while that
+ * generation is live, so identity (`===`) answers "the same node of the
+ * same parse" everywhere a node is reached; once its generation is
+ * superseded, reading it again answers with a fresh, uninterned handle.
+ * The address is display-only: no public method accepts a bare
+ * address where a `Node` is expected — {@link nodeAddress} refuses one.
  */
 export class Node {
   readonly #session: Session;
@@ -65,18 +81,35 @@ export class Node {
   readonly #generation: bigint;
 
   /**
-   * Wraps a raw address, stamped with the generation of the door a call
-   * made now would cross unless `generation` says otherwise. A raw address
-   * carries no generation of its own, so this is the explicit conversion
-   * and the caller vouches for it.
+   * Internal: the session's intern table ({@link createNode}) is the
+   * creation gate, and the emitted types mark this constructor `private`,
+   * so no package entry point can even compile a `new Node`. The leading
+   * token stays module-private, so runtime reflection reaches the same
+   * gate — a raw address carries no generation of its own, and without
+   * the token the caller would be vouching for one that nothing verifies.
    */
-  constructor(session: Session, address: bigint | number, generation?: bigint) {
+  private constructor(token: symbol, session: Session, address: bigint, generation: bigint) {
+    if (token !== NODE_CONSTRUCTION_TOKEN) {
+      throw new TypeError("galley: Node cannot be constructed directly");
+    }
     this.#session = session;
-    this.#address = typeof address === "bigint" ? address : BigInt(address);
-    this.#generation = generation ?? session.currentGeneration;
+    this.#address = address;
+    this.#generation = generation;
   }
 
-  /** Raw address (stable index in the session's node storage). */
+  /**
+   * The in-class entry a `private` constructor leaves open, for this
+   * module's {@link createNode}: it forwards the token it demands, and
+   * any other token throws exactly like a direct construction would.
+   */
+  static create(token: symbol, session: Session, address: bigint, generation: bigint): Node {
+    return new Node(token, session, address, generation);
+  }
+
+  /**
+   * Raw address (stable index in the session's node storage), for
+   * display only: it never converts back into something a call accepts.
+   */
   get address(): bigint {
     return this.#address;
   }
@@ -155,7 +188,7 @@ export class Node {
    *
    * @throws TypeError when `chain` is a `Node` of a different session.
    */
-  appendChildren(chain: Node | bigint | number): void {
+  appendChildren(chain: Node): void {
     this.#session.appendChildren(this, chain);
   }
 
@@ -178,39 +211,33 @@ export class Node {
     yield* this.children();
   }
 
-  /**
-   * Raw address for `Number(node)` / `BigInt(node)`. Comparison
-   * belongs in {@link equals}: loose `==` against a bigint or number
-   * coerces through the primitive conversion below and compares by
-   * address alone, with no generation check.
-   */
-  valueOf(): bigint {
-    return this.#address;
-  }
-
   toString(): string {
     return `Node(${this.#address.toString()})`;
   }
+}
 
-  equals(other: unknown): boolean {
-    if (other instanceof Node) {
-      return (
-        this.#address === other.#address &&
-        this.#generation === other.#generation &&
-        this.#session === other.#session
-      );
-    }
-    if (typeof other === "bigint") return this.#address === other;
-    if (typeof other === "number") return this.#address === BigInt(other);
-    return false;
-  }
+/**
+ * Builds a node stamped with `generation`. Internal: the session's intern
+ * table calls it, and no package entry point re-exports it, so node
+ * creation stays unreachable from the public surface while
+ * `instanceof Node` keeps answering everywhere a node is reached.
+ */
+export function createNode(session: Session, address: bigint, generation: bigint): Node {
+  return Node.create(NODE_CONSTRUCTION_TOKEN, session, address, generation);
+}
 
-  // Conversion for `Number(node)`, `+node`, and template strings.
-  // `==` also routes here (default hint), so it stays address-only;
-  // equals() is the sanctioned comparison.
-  [Symbol.toPrimitive](hint: string): bigint | string | number {
-    if (hint === "number") return Number(this.#address);
-    if (hint === "string") return this.toString();
-    return this.#address;
+/**
+ * The single gate for a public node argument: the address of `value` when
+ * it is a `Node`, otherwise a `TypeError`. A bare address carries no
+ * session and no generation, so accepting one would read whichever node
+ * happens to hold that index in whichever parse is current; every method
+ * that takes a node crosses here at entry.
+ *
+ * @throws TypeError when `value` is not a `Node`.
+ */
+export function nodeAddress(value: unknown): bigint {
+  if (!(value instanceof Node)) {
+    throw new TypeError(`galley: expected a Node, got ${typeof value}`);
   }
+  return value.address;
 }

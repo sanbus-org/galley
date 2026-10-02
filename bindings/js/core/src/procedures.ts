@@ -35,21 +35,22 @@ export class HookDoor implements NodeDoor {
   readonly isHook = true;
   readonly #door: Handle;
   readonly #port: FfiPort;
-  readonly #session: Session;
   /** The core generation of the parse that owns the native door. */
   readonly generation: bigint;
+  /** The session's intern gate, bound to this door's parse generation. */
+  readonly #intern: (address: bigint) => Node;
 
-  constructor(door: Handle, generation: bigint, session: Session, port: FfiPort) {
+  constructor(door: Handle, generation: bigint, port: FfiPort, intern: (address: bigint) => Node) {
     this.#door = door;
     this.generation = generation;
-    this.#session = session;
     this.#port = port;
+    this.#intern = intern;
   }
 
   /** Wraps an address on the running parse; invalid becomes null. @internal */
   node(address: bigint): Node | null {
     if (address === INVALID_NODE) return null;
-    return new Node(this.#session, address, this.generation);
+    return this.#intern(address);
   }
 
   nodeValid(address: bigint): boolean {
@@ -207,7 +208,7 @@ export class ProcedureArguments {
     return this.#door.node(this.#port.procCurrentNode(this.#live()));
   }
 
-  setCurrentNode(node: Node | bigint | number): void {
+  setCurrentNode(node: Node): void {
     const args = this.#live();
     this.#port.procSetCurrentNode(args, this.#session.admit(node, this.#door));
   }

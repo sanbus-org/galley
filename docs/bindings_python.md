@@ -106,9 +106,8 @@ The module is designed so the FFI boundary adds as little as possible:
   tuples.
 - Node handles are `Node` objects that wrap a stable address in the
   library's non-relocating node storage and keep a strong reference to
-  their owning `Session`; plain `int` addresses are still accepted wherever
-  a node is expected for backward compatibility, and `Node` supports
-  `int(node)` / `operator.index(node)` to retrieve the address. Iteration
+  their owning `Session`; a session method takes a `Node` and refuses a
+  raw address, so `Node.address` stays display-only. Iteration
   and indexing are zero-copy (`for child in node:`, `node[0]`, `len(node)`).
 - Text accessors (`text`, `symbol_name`, diagnostic tokens) return `bytes`
   with no UTF-8 decoding step; decode on demand.
@@ -261,9 +260,10 @@ Failures raise `parser.GalleyError`, whose `code` and `diagnostic` attributes ca
 status code and the snapshot for that failure (`error.diagnostic` is `None` when no diagnostic, otherwise a `parser.Diagnostic`; `session.diagnostic()` remains for the last diagnostic).
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
-and `close()` is idempotent. Every session method that takes a node also
-accepts a `parser.Node` or a plain `int` address; session methods that
-return nodes now return `parser.Node`. Nodes are bound to their session:
+and `close()` is idempotent. Every session method that takes a node takes
+a `parser.Node` and refuses a raw address with `TypeError`; session
+methods that return nodes return `parser.Node`. Nodes are bound to their
+session:
 `root = session.root_node()` then `root.text()`, `root.symbol_name()`,
 `root.span()`, `root.line_column()`, `root.parent()`,
 `root.first_child()` / `root.last_child()` / `root.next_sibling()` /
@@ -275,11 +275,12 @@ directly from the node. Editing helpers are available both ways:
 (where `chain` is a detached head); the remaining tree edits
 (`insert_before`, `remove_self`, `remove_siblings`, `insert_children_at`,
 `remove_children_at`, `promote_children_over_wrapper`, `unlink_wrapper`)
-live on `Session` and accept `Node` or `int`. Missing links return `None`.
+live on `Session` and take `Node`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
 snapshots. Nodes compare by identity (`==` checks same session, parse
-generation, and address), hash consistently with that, and support `int(node)`
-to recover the raw address.
+generation, and address), hash consistently with that, and expose
+`node.address` for display; `session.snapshot().node(index)` is the one
+conversion from a stored address back to a node.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `line`, `column`, `message`, `message_ansi`,
