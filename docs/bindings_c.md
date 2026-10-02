@@ -246,13 +246,22 @@ Returns the number of bytes parsed on success, or a negative
 ### Walking the AST
 
 Node handles are stable byte indices (`GalleyNodeAddress`); editing never
-invalidates them. Walk depth-first through the shared walker rather than
-hand-rolling recursion, so order and depths match every binding:
+invalidates them. Walk depth-first through the shared walk cursor rather
+than hand-rolling recursion, so order and depths match every binding. The
+cursor is a 40-byte struct you own — no native allocation, so there is
+nothing to destroy: zero it, set `root`, `generation`, and `options`, then
+step once per node:
 
 ```c
-GalleyWalker *walker = galley_walker_create(session, galley_root_node(session), 0);
-GalleyNodeAddress n; unsigned int depth; int is_semantic_error;
-while (galley_walker_next(walker, &n, &depth, &is_semantic_error)) {
+GalleyWalkCursor cursor = {0};
+unsigned long long generation = 0;
+galley_published_generation(session, &generation);
+cursor.generation = generation;
+cursor.root = galley_root_node(session);
+long long status;
+while ((status = galley_walk_next(session, &cursor)) > 0) {
+    GalleyNodeAddress n = cursor.current;
+    unsigned int depth = cursor.depth;
     const char *name_data; size_t name_len;
     const char *text_data; size_t text_len;
     unsigned int line = 0, column = 0;
@@ -260,13 +269,22 @@ while (galley_walker_next(walker, &n, &depth, &is_semantic_error)) {
     galley_node_text(session, n, &text_data, &text_len);
     galley_node_line_column(session, n, &line, &column);
 }
-galley_walker_destroy(walker);
 ```
 
-`galley_walker_skip_children` prunes the last yielded node's children, and
-a nonzero third `galley_walker_create` argument prunes subtrees rooted at
-semantic-error nodes. Destroy the walker before destroying the session or
-parsing again.
+`galley_walk_next` returns 1 for a yielded node, 0 when the walk is done
+(further steps keep returning 0), or a negative code: `galley_error_stale_tree`
+after a re-parse, `galley_error_session_in_use` while a parse runs, or
+`galley_error_invalid_node` for a cursor that is not a walk position, an
+invalid root, or a step whose position is no longer inside the walk's root
+(removed, or moved elsewhere) — steps follow the live links, so edits
+between steps are visible, and a detached step repeats that failure rather
+than yielding anything past the detachment. Skipping is host-side —
+write `cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN` and the next
+step continues with the next sibling — and `GALLEY_WALK_SKIP_SEMANTIC_ERRORS`
+in `cursor.options` prunes subtrees rooted at semantic-error nodes.
+`galley_hook_walk_next(door, &cursor)` is the same walk through the hook
+door, for stepping inside a running parse's hook (stamp `generation` with
+`galley_hook_generation`).
 
 `galley_node_first_child`, `galley_node_next_sibling`,
 `galley_node_child_count`, `galley_node_last_child`,

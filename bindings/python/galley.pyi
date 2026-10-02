@@ -81,6 +81,7 @@ class Status(enum.IntEnum):
     ERROR_IO = -11
     ERROR_SEMANTIC = -12
     ERROR_SESSION_IN_USE = -13
+    ERROR_STALE_TREE = -14
 
 INVALID_NODE: Final[int]
 """All-ones address marking an absent node link."""
@@ -294,18 +295,23 @@ class Snapshot:
 class Walker(Iterator[dict[str, Any]]):
     """Pre-order tree walker over ``{"node", "depth", "is_semantic_error"}`` dicts.
 
-    Returned by ``Session.walk``; the root yields at depth 0. The walker is
-    bound to the parse that created it: stepping it after the session
-    parses again or closes raises ``ValueError``. Close the walker (or use
-    it as a context manager, or let it go out of scope) before closing the
-    session or parsing again.
+    Returned by ``Session.walk``; the root yields at depth 0. The walker
+    owns no native resource: abandoning it is free, and parsing again with
+    a walker alive succeeds — its next step raises ``ValueError`` instead.
+    Each step picks its door like any node call, so a walk created inside a
+    hook of a running parse walks that parse's in-flight tree.
     """
 
     def __next__(self) -> dict[str, Any]:
         """Next ``{"node", "depth", "is_semantic_error"}`` dict in pre-order.
 
-        Raises ``ValueError`` when the walker is closed or the session has
-        parsed again or closed since the walker was created.
+        Raises ``ValueError`` when the session has closed or parsed again
+        since the walker was created; raises ``GalleyError`` while a parse
+        holds the session (``ERROR_SESSION_IN_USE``) or when a step's
+        position is no longer inside the walk's root — removed, or moved
+        elsewhere (``ERROR_INVALID_NODE``). Raises ``StopIteration`` at the
+        end of the walk, including after a later parse: a finished walker
+        stays finished.
         """
         ...
 
@@ -316,23 +322,10 @@ class Walker(Iterator[dict[str, Any]]):
     def skip_children(self) -> None:
         """Prune the children of the last yielded node.
 
-        Raises ``ValueError`` when the walker is closed or the session has
-        parsed again or closed since the walker was created.
+        No effect without a last step; raises ``ValueError`` when the
+        session has closed. Staleness is the next step's answer, not this
+        one's.
         """
-        ...
-
-    def close(self) -> None:
-        """Destroy the walker; safe to call more than once."""
-        ...
-
-    def __enter__(self) -> Walker: ...
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: Any | None,
-    ) -> None:
-        """Close the walker even when the ``with`` block raises."""
         ...
 
 class ProcedureArguments:
@@ -499,15 +492,13 @@ class Session:
     def next_sibling(self, node: Node) -> Node | None: ...
     def prior_sibling(self, node: Node) -> Node | None: ...
     def parent(self, node: Node) -> Node | None: ...
-    def walk(self, root: Node, skip_semantic_errors: bool = False) -> Walker | None:
+    def walk(self, root: Node, skip_semantic_errors: bool = False) -> Walker:
         """Pre-order walker over ``root`` yielding step dicts.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
-        semantic-error nodes. Returns ``None`` for an unresolvable root
-        or a build without AST construction; a stale node — its session
-        parsed again or closed — raises ``ValueError``.
-        The walker is bound to the current parse: stepping it after the
-        session parses again or closes raises ``ValueError``.
+        semantic-error nodes. Always returns a walker; an invalid root
+        fails at its first step (``GalleyError``). A stale node — its
+        session parsed again or closed — raises ``ValueError``.
         """
         ...
     def symbol_name(self, node: Node) -> bytes | None:

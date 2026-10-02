@@ -83,14 +83,13 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 			stack = append(stack, chain[i])
 		}
 	}
-	walker, ok := session.Walk(root, false)
-	if !ok {
-		t.Fatal("expected a walker")
-	}
-	defer walker.Close()
+	walker := session.Walk(root, false)
 	var walked []galley.Node
 	for {
-		step, ok := walker.Next()
+		step, ok, err := walker.Next()
+		if err != nil {
+			t.Fatalf("walk step: %v", err)
+		}
 		if !ok {
 			break
 		}

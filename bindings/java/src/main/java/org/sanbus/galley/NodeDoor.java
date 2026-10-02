@@ -165,6 +165,18 @@ final class NodeDoor {
         return (int) index;
     }
 
+    // -- walking --
+
+    /**
+     * One step of a walk over the host-owned cursor: 1 yields a node, 0
+     * ends the walk (and keeps ending it), negative is a failure
+     * (stale tree, session in use, invalid cursor bytes).
+     */
+    long walkStep(MemorySegment cursor) {
+        return hookDoor != null ? lib.galley_hook_walk_next(hookDoor, cursor)
+                                : lib.galley_walk_next(session.handle(), cursor);
+    }
+
     // -- tree edits --
 
     void appendChildren(long parent, long chain) {

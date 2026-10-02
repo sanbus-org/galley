@@ -51,6 +51,11 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         allocator: std.mem.Allocator,
         counter: NodeType.Pointer = 0,
+        /// Change counter for the tree's parent structure: bumped by every
+        /// `setParent` write. Walk cursors stamp it on each step, so a later
+        /// step can tell that its position must be re-verified against the
+        /// live links before stepping.
+        structure_version: u64 = 0,
         memory: []NodeType = &.{},
         segments: [][]NodeType = &.{},
         memory_benchmark: if (root.ast_memory_benchmark_enabled) ASTMemoryBenchmarkCounters else void =
@@ -225,6 +230,16 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             } else {
                 return &self.segments[@as(usize, address) >> segment_shift][@as(usize, address) & segment_mask];
             }
+        }
+
+        /// The one write path for a node's parent link: writes the link and
+        /// bumps `structure_version`, which walk cursors stamp so a later
+        /// step re-verifies its position after any structural edit. Node
+        /// initialization (`create`, struct literals) writes `parent` direct
+        /// — a fresh node belongs to no structure yet.
+        pub inline fn setParent(self: *Self, address: NodeType.Pointer, parent: NodeType.Pointer) void {
+            self.at(address).parent = parent;
+            self.structure_version += 1;
         }
 
         pub inline fn atConst(self: *const Self, address: NodeType.Pointer) *const NodeType {
@@ -472,7 +487,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                 var current = first_node;
                 while (true) {
                     const node = node_allocator.at(current);
-                    node.parent = self.parent;
+                    node_allocator.setParent(current, self.parent);
                     if (current == last_node) break;
                     current = node.next;
                 }
@@ -517,7 +532,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                 var current = first_node;
                 while (true) {
                     const node = node_allocator.at(current);
-                    node.parent = self.parent;
+                    node_allocator.setParent(current, self.parent);
                     if (current == last_node) break;
                     current = node.next;
                 }
@@ -553,7 +568,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                 var current = first_node;
                 while (true) {
                     const node = node_allocator.at(current);
-                    node.parent = self_address;
+                    node_allocator.setParent(current, self_address);
                     if (current == last_node) break;
                     current = node.next;
                 }
@@ -611,7 +626,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             var added: u32 = 0;
             while (true) {
                 const node = node_allocator.at(current);
-                node.parent = self_address;
+                node_allocator.setParent(current, self_address);
                 added += 1;
                 if (current == last_node) break;
                 current = node.next;
@@ -646,7 +661,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         ) void {
             const child = node_allocator.at(child_address);
 
-            child.parent = self_address;
+            node_allocator.setParent(child_address, self_address);
             child.prior = self.last_child;
             child.next = invalid_pointer;
 
@@ -676,7 +691,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             var added: u32 = 0;
             while (true) {
                 const node = node_allocator.at(current);
-                node.parent = self_address;
+                node_allocator.setParent(current, self_address);
                 added += 1;
                 last_node = current;
                 if (node.next == invalid_pointer) break;
@@ -767,7 +782,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 
             var c = first;
             while (true) {
-                node_allocator.at(c).parent = wparent;
+                node_allocator.setParent(c, wparent);
                 if (c == last) break;
                 c = node_allocator.at(c).next;
             }
@@ -822,7 +837,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             var current = self_address;
             while (true) {
                 const node = node_allocator.at(current);
-                node.parent = invalid_pointer;
+                node_allocator.setParent(current, invalid_pointer);
                 if (current == last_removed_address) break;
                 current = node.next;
             }
@@ -885,7 +900,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 
             var c = first;
             while (true) {
-                node_allocator.at(c).parent = invalid_pointer;
+                node_allocator.setParent(c, invalid_pointer);
                 if (c == last) break;
                 c = node_allocator.at(c).next;
             }
@@ -1512,8 +1527,8 @@ fn testPromoteChildrenOverWrapper(fixture: *TestFixture) !void {
     fixture.nodes[wrapper].first_child = child_a;
     fixture.nodes[wrapper].last_child = child_b;
     fixture.nodes[wrapper].children_count = 2;
-    fixture.nodes[child_a].parent = wrapper;
-    fixture.nodes[child_b].parent = wrapper;
+    node_allocator.setParent(child_a, wrapper);
+    node_allocator.setParent(child_b, wrapper);
 
     try TestNode.insertChildren(root_node, node_allocator, 2, wrapper);
 

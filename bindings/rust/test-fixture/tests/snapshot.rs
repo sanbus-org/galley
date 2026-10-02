@@ -69,8 +69,7 @@ fn snapshot_matches_per_node_accessors() {
     }
     let walked: Vec<u64> = session
         .walk(root, false)
-        .expect("walk")
-        .map(|step| step.node.index())
+        .map(|step| step.expect("walk step").node.index())
         .collect();
     assert_eq!(preorder, walked);
     // Spans index last_input.
@@ -95,9 +94,7 @@ fn snapshot_after_failed_parse_refuses() {
     assert!(matches!(session.snapshot(), Err(Error::InvalidNode)));
     assert!(session.text(NodeHandle::from_index(0)).is_none());
     // A successful re-parse reopens the door.
-    session
-        .parse_sentinel("alpha:12,beta:3")
-        .expect("re-parse");
+    session.parse_sentinel("alpha:12,beta:3").expect("re-parse");
     let snap = session.snapshot().expect("snapshot");
     assert!(snap.count > 0);
 }

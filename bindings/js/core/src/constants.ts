@@ -22,6 +22,7 @@ export enum Status {
   ErrorIo = -11,
   ErrorSemantic = -12,
   ErrorSessionInUse = -13,
+  ErrorStaleTree = -14,
 }
 
 /** Parser families. */

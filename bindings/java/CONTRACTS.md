@@ -8,7 +8,7 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - `Galley.load` takes an explicit artifact path and returns the `Parser` for that file; the no-arg form resolves through `GALLEY_LIBRARY_PATH` / `galley.library.path`.
 - Parsers are cached by canonical artifact path for the process lifetime.
 - Sessions open from the `Parser` via `parser.openSession()`, with `SessionOptions` for the non-default shape.
-- `Parser` is not closeable: it owns no unloadable native state. `Session` and `Walker` are `AutoCloseable`.
+- `Parser` is not closeable: it owns no unloadable native state. `Session` is `AutoCloseable`; `Walker` owns no native resource and is never closed.
 - The `Parser` holds the artifact's default hooks and every `Session` owns its own copy, taken at open: both have `installProcedure` / `installProcedures` / `listProcedures` / `lookupProcedure` / `clearProcedures`.
 - Bulk installs take a `Map<String, hook>`; single installs take a name plus a hook. Hooks are `Consumer<ProcedureArguments>` or zero-arg `Runnable`.
 - The generated `Parser` per grammar wires bundled hooks inside its `load()` method from the `metadata.json` hook list.
@@ -31,4 +31,4 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - A node handle is bound to the core's parse generation it was created in: reading through it once that generation is no longer live throws `GenerationInvalidatedException` (a `GalleyClosedException`), never a stale read.
 - Tree edits cross the door chosen when they are made, for `Session` methods and `Node` sugar alike: the parse's hook door inside a hook dispatch on the dispatching thread, the post-parse door everywhere else, where the core refuses with `ERROR_SESSION_IN_USE` while a parse runs. Every entry that takes a node refuses one from another session with `IllegalArgumentException`.
 - Sessions are not thread-safe.
-- Sessions and walkers close explicitly or through try-with-resources, and closing is idempotent. A walk from an invalid root returns `null`.
+- Sessions close explicitly or through try-with-resources, and closing is idempotent. A walk from an invalid root hands back a walker whose first step fails with the invalid-node error — the same failure for a step whose position is no longer inside the walk's root (removed, or moved elsewhere); steps otherwise follow the live links, so edits between steps are visible, and `skipChildren()` is only a state write.

@@ -9,8 +9,8 @@
  * and `--allow-read` (library discovery, `parseFile`).
  */
 
-import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, Status } from "@sanbus/galley-core";
+import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import { GalleyError, NATIVE_LITTLE_ENDIAN, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
 
@@ -69,10 +69,8 @@ interface GalleySymbols {
     outIsSemanticError: FfiOut,
     capacity: bigint,
   ): bigint;
-  galley_walker_create(session: Deno.PointerValue, node: bigint, skipSemanticErrors: number): Deno.PointerValue;
-  galley_walker_next(walker: Deno.PointerValue, outNode: FfiOut, outDepth: FfiOut, outFlag: FfiOut): number;
-  galley_walker_skip_children(walker: Deno.PointerValue): void;
-  galley_walker_destroy(walker: Deno.PointerValue): void;
+  galley_walk_next(session: Deno.PointerValue, cursor: ArrayBuffer): bigint;
+  galley_hook_walk_next(door: Deno.PointerValue, cursor: ArrayBuffer): bigint;
   galley_node_span(session: Deno.PointerValue, node: bigint, outStart: FfiOut, outLen: FfiOut): bigint;
   galley_node_symbol_name(session: Deno.PointerValue, node: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_node_variable_index(session: Deno.PointerValue, node: bigint): bigint;
@@ -266,10 +264,8 @@ const BASE_SYMBOLS = {
     parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
     result: "i64",
   },
-  galley_walker_create: { parameters: ["pointer", "u64", "i32"], result: "pointer" },
-  galley_walker_next: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i32" },
-  galley_walker_skip_children: { parameters: ["pointer"], result: "void" },
-  galley_walker_destroy: { parameters: ["pointer"], result: "void" },
+  galley_walk_next: { parameters: ["pointer", "buffer"], result: "i64" },
+  galley_hook_walk_next: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_node_span: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_node_symbol_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_node_variable_index: { parameters: ["pointer", "u64"], result: "i64" },
@@ -637,28 +633,17 @@ export class DenoPort implements FfiPort {
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
-  // -- walker ------------------------------------------------------------
+  // -- walking ------------------------------------------------------------
 
-  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null {
-    const walker = this.native.galley_walker_create(handle as Deno.PointerValue, node, skipSemanticErrors ? 1 : 0);
-    if (walker === null) return null;
-    return walker;
+  /** Native code reads and writes the cursor struct in the platform's order. */
+  readonly walkCursorLittleEndian = NATIVE_LITTLE_ENDIAN;
+
+  walkNext(handle: Handle, cursor: ArrayBuffer): number {
+    return Number(this.native.galley_walk_next(handle as Deno.PointerValue, cursor));
   }
 
-  walkerNext(walker: Handle): WalkedStep | null {
-    const outNode = lenOut();
-    const outDepth = u32Out();
-    const outFlag = u32Out();
-    if (this.native.galley_walker_next(walker as Deno.PointerValue, outNode, outDepth, outFlag) === 0) return null;
-    return { node: outNode[0], depth: outDepth[0], isSemanticError: outFlag[0] !== 0 };
-  }
-
-  walkerSkipChildren(walker: Handle): void {
-    this.native.galley_walker_skip_children(walker as Deno.PointerValue);
-  }
-
-  walkerDestroy(walker: Handle): void {
-    this.native.galley_walker_destroy(walker as Deno.PointerValue);
+  hookWalkNext(door: Handle, cursor: ArrayBuffer): number {
+    return Number(this.native.galley_hook_walk_next(door as Deno.PointerValue, cursor));
   }
 
   // -- node accessors -----------------------------------------------------

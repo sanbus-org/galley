@@ -14,8 +14,10 @@
 #include <galley.h>
 
 #include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static const char *valid_sample = "alpha:12,beta:3";
 static const char *broken_sample = "alpha:";
@@ -150,36 +152,138 @@ static void test_buffer_parse(void) {
     galley_session_destroy(session);
 }
 
+/* The walk cursor is host-owned: zero it, bind it to the published
+ * generation and any root, then step. Steps end by exhaustion (0), and a
+ * done cursor keeps reporting completion; malformed bytes and null
+ * arguments are refused instead of ending the walk silently. */
 static void test_walker(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    /* 38 nodes allocated, 33 reachable: dropped procedure nodes stay
+     * allocated but unreachable (demo prints "38 AST nodes"). */
+    CHECK(galley_node_count(session) == 38);
     GalleyNodeAddress root = galley_root_node(session);
-    GalleyWalker *walker = galley_walker_create(session, root, 0);
-    CHECK(walker != NULL);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    CHECK(generation >= 1);
+
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
     unsigned long long visited = 0;
     int saw_root_at_zero = 0;
-    GalleyNodeAddress node = GALLEY_INVALID_NODE;
-    unsigned int depth = 0;
-    while (galley_walker_next(walker, &node, &depth, NULL)) {
+    long long status = 0;
+    while ((status = galley_walk_next(session, &cursor)) == 1) {
         ++visited;
-        if (node == root && depth == 0) saw_root_at_zero = 1;
+        if (cursor.current == root && cursor.depth == 0) saw_root_at_zero = 1;
         const char *name_data = NULL;
         size_t name_len = 0;
         const char *text_data = NULL;
         size_t text_len = 0;
-        if (galley_node_symbol_name(session, node, &name_data, &name_len) != galley_ok ||
-            galley_node_text(session, node, &text_data, &text_len) != galley_ok) {
+        if (galley_node_symbol_name(session, cursor.current, &name_data, &name_len) != galley_ok ||
+            galley_node_text(session, cursor.current, &text_data, &text_len) != galley_ok) {
             break;
         }
     }
+    CHECK(status == 0); /* ended by exhaustion, not by an error */
     CHECK(saw_root_at_zero);
-    /* 38 nodes allocated, 33 reachable: dropped procedure nodes stay
-     * allocated but unreachable (demo prints "38 AST nodes"). */
-    CHECK(galley_node_count(session) == 38);
     CHECK(visited == 33);
-    galley_walker_destroy(walker);
-    galley_walker_destroy(NULL);
-    CHECK(galley_walker_create(NULL, root, 0) == NULL);
+    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(galley_walk_next(session, &cursor) == 0);
+
+    /* Null arguments and malformed cursor bytes are refused, and a failed
+     * step leaves the cursor where it was: fixing the bytes walks the whole
+     * tree again. The cursor still holds the finished walk; reset it first,
+     * because a done cursor answers 0 before any session check. */
+    memset(&cursor, 0, sizeof cursor);
+    CHECK(galley_walk_next(NULL, &cursor) == galley_error_null_argument);
+    CHECK(galley_walk_next(session, NULL) == galley_error_null_argument);
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    cursor.state = 99;
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.state = GALLEY_WALK_STATE_NOT_STARTED;
+    cursor.options = 0x02;
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.options = 0;
+    cursor.root = galley_node_count(session);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.root = root;
+    cursor.state = GALLEY_WALK_STATE_YIELDED;
+    cursor.current = galley_node_count(session);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+
+    /* Depth beyond the node count is malformed too: refused before the
+     * step could overflow depth + 1 or run an unbounded climb. */
+    cursor.current = root;
+    cursor.depth = (unsigned int)galley_node_count(session);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.depth = 0xFFFFFFFFu;
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.depth = 0;
+
+    cursor.state = GALLEY_WALK_STATE_NOT_STARTED;
+    cursor.current = 0;
+    cursor.depth = 0;
+    visited = 0;
+    while ((status = galley_walk_next(session, &cursor)) == 1) ++visited;
+    CHECK(status == 0);
+    CHECK(visited == 33);
+    galley_session_destroy(session);
+}
+
+/* Skipping children is a host-side state write — no native call. Skipping
+ * the root prunes the whole tree; mid-tree it prunes that node's subtree
+ * and the walk continues with what would have followed it. */
+static void test_walk_skip_children(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    GalleyNodeAddress root = galley_root_node(session);
+
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    CHECK(galley_walk_next(session, &cursor) == 1);
+    CHECK(cursor.current == root && cursor.depth == 0);
+    cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN;
+    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(galley_walk_next(session, &cursor) == 0);
+
+    /* Mid-tree: walk to the first interior node below the root and skip
+     * it. Pair nodes always have children here, so one exists. */
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    int found = 0;
+    while (galley_walk_next(session, &cursor) == 1) {
+        if (cursor.depth >= 1 &&
+            galley_node_first_child(session, cursor.current) != GALLEY_INVALID_NODE) {
+            found = 1;
+            break;
+        }
+    }
+    CHECK(found);
+    if (found) {
+        GalleyNodeAddress interior = cursor.current;
+        unsigned interior_depth = cursor.depth;
+        GalleyNodeAddress next_sibling = galley_node_next_sibling(session, interior);
+        cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN;
+        long long status = galley_walk_next(session, &cursor);
+        if (next_sibling != GALLEY_INVALID_NODE) {
+            CHECK(status == 1);
+            CHECK(cursor.current == next_sibling);
+            CHECK(cursor.depth == interior_depth);
+        } else {
+            CHECK(status == 0);
+        }
+        while ((status = galley_walk_next(session, &cursor)) == 1) {}
+        CHECK(status == 0);
+    }
     galley_session_destroy(session);
 }
 
@@ -217,17 +321,19 @@ static void test_snapshot(void) {
     }
     CHECK(visited == 33);
     CHECK(child_sum == visited - 1);
-    /* The snapshot's semantic flag reads what the walker yields, node
-     * for node, over the same reachable set. */
-    GalleyWalker *walker = galley_walker_create(session, root, 0);
-    CHECK(walker != NULL);
-    GalleyNodeAddress walked_node = GALLEY_INVALID_NODE;
-    unsigned int walked_depth = 0;
-    int walked_flag = 0;
-    while (galley_walker_next(walker, &walked_node, &walked_depth, &walked_flag)) {
-        CHECK(walked_flag == is_semantic_error[walked_node]);
+    /* The snapshot's semantic flag reads what each cursor step yields,
+     * node for node, over the same reachable set. */
+    unsigned long long walk_generation = 0;
+    CHECK(galley_published_generation(session, &walk_generation) == galley_ok);
+    GalleyWalkCursor walk_cursor;
+    memset(&walk_cursor, 0, sizeof walk_cursor);
+    walk_cursor.generation = walk_generation;
+    walk_cursor.root = root;
+    long long walk_status = 0;
+    while ((walk_status = galley_walk_next(session, &walk_cursor)) == 1) {
+        CHECK(walk_cursor.is_semantic_error == is_semantic_error[walk_cursor.current]);
     }
-    galley_walker_destroy(walker);
+    CHECK(walk_status == 0);
     CHECK(galley_tree_snapshot(NULL, parent, first_child, next, child_count,
                                   NULL, NULL, NULL, is_semantic_error,
                                   count) == galley_error_null_argument);
@@ -483,6 +589,16 @@ unsigned long long fixture_hook_generation(void);
 long long fixture_hook_generation_status(void);
 unsigned long long fixture_stashed_published_generation(void);
 long long fixture_stashed_published_status(void);
+long long fixture_hook_walk_status(void);
+long long fixture_stashed_walk_status(void);
+int fixture_hook_walk_count(void);
+int fixture_hook_walk_skipped(void);
+GalleyNodeAddress fixture_hook_walk_root(void);
+GalleyNodeAddress fixture_hook_walk_node(int index);
+unsigned fixture_hook_walk_depth(int index);
+void fixture_arm_gate(void);
+int fixture_gate_entered(void);
+void fixture_release_gate(void);
 #ifdef __cplusplus
 }
 #endif
@@ -536,6 +652,283 @@ static void test_generations(void) {
     galley_session_destroy(session);
 }
 
+/* A cursor is bound to the parse generation it was created against: once
+ * the session parses again — or nothing of that generation is live — the
+ * next step reports stale tree, and the host recreates the walk. */
+static void test_walk_stale(void) {
+    GalleySession *session = make_session();
+    GalleyWalkCursor cursor;
+
+    /* No parse has ever published: there is no tree to step over. */
+    memset(&cursor, 0, sizeof cursor);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = galley_root_node(session);
+    CHECK(galley_walk_next(session, &cursor) == 1);
+
+    /* A later successful parse retires the cursor. */
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+
+    /* So does a failed one: nothing of the old generation stays live. */
+    CHECK(galley_parse_sentinel(session, broken_sample) < 0);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+
+    /* A cursor that never matched the published tree (generation 0) is
+     * stale from the first step. */
+    memset(&cursor, 0, sizeof cursor);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+
+    /* A finished cursor stays finished: done reports 0 before any session
+     * or generation check, so a later parse cannot resurrect the walk as
+     * a stale error. */
+    unsigned long long live = 0;
+    CHECK(galley_published_generation(session, &live) == galley_ok);
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = live;
+    cursor.root = galley_root_node(session);
+    while (galley_walk_next(session, &cursor) == 1) {
+    }
+    CHECK(cursor.state == GALLEY_WALK_STATE_DONE);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(galley_walk_next(NULL, &cursor) == 0);
+    galley_session_destroy(session);
+}
+
+/* Removing the yielded node between steps: the next step has no live
+ * position to advance from and reports invalid node — again on the step
+ * after that, since the cursor never moves past the failure. */
+static void test_walk_removed_current(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    GalleyNodeAddress root = galley_root_node(session);
+
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    /* Walk to the first childless node below the root. */
+    int found = 0;
+    while (galley_walk_next(session, &cursor) == 1) {
+        if (cursor.depth >= 1 &&
+            galley_node_first_child(session, cursor.current) == GALLEY_INVALID_NODE) {
+            found = 1;
+            break;
+        }
+    }
+    CHECK(found);
+    if (found) {
+        GalleyNodeAddress leaf = cursor.current;
+        GalleyNodeAddress removed_head = GALLEY_INVALID_NODE;
+        CHECK(galley_tree_remove_self(session, leaf, &removed_head) == galley_ok);
+        CHECK(removed_head == leaf);
+        CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+        CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    }
+    galley_session_destroy(session);
+}
+
+struct WalkStep {
+    GalleyNodeAddress node;
+    unsigned depth;
+};
+
+/* Steps follow the live links: a node removed between steps disappears
+ * from the remainder of the walk, and one re-inserted afterwards rejoins
+ * it. */
+static void test_walk_sees_edits(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    GalleyNodeAddress root = galley_root_node(session);
+
+    struct WalkStep baseline[64];
+    int total = 0;
+    long long status;
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    while ((status = galley_walk_next(session, &cursor)) == 1) {
+        if (total == 64) break;
+        baseline[total].node = cursor.current;
+        baseline[total].depth = cursor.depth;
+        ++total;
+    }
+    CHECK(status == 0);
+    CHECK(total == 33);
+
+    /* Remove the root's first child between steps. */
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    CHECK(galley_walk_next(session, &cursor) == 1); /* root */
+    GalleyNodeAddress removed = galley_node_first_child(session, root);
+    CHECK(removed != GALLEY_INVALID_NODE);
+    CHECK(removed == baseline[1].node);
+    GalleyNodeAddress removed_head = GALLEY_INVALID_NODE;
+    CHECK(galley_tree_remove_self(session, removed, &removed_head) == galley_ok);
+    CHECK(removed_head == removed);
+
+    /* The remainder walks the edited tree: everything the removed subtree
+     * held — and only that — is gone from the sequence. */
+    int skip = 2;
+    while (skip < total && baseline[skip].depth > baseline[1].depth) ++skip;
+    int walked = 0;
+    int identical = 1;
+    while ((status = galley_walk_next(session, &cursor)) == 1) {
+        if (walked + skip >= total ||
+            baseline[skip + walked].node != cursor.current ||
+            baseline[skip + walked].depth != cursor.depth) {
+            identical = 0;
+        }
+        ++walked;
+    }
+    CHECK(status == 0);
+    CHECK(identical);
+    CHECK(walked == total - skip);
+
+    /* Re-insert the removed subtree: a fresh walk yields the restored
+     * count again, including the node that was removed. */
+    CHECK(galley_tree_append_children(session, root, removed) == galley_ok);
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    int saw_removed = 0;
+    int restored = 0;
+    while ((status = galley_walk_next(session, &cursor)) == 1) {
+        if (cursor.current == removed) saw_removed = 1;
+        ++restored;
+    }
+    CHECK(status == 0);
+    CHECK(restored == total);
+    CHECK(saw_removed);
+    galley_session_destroy(session);
+}
+
+typedef struct {
+    GalleySession *session;
+    long long parse_status;
+} GatedParse;
+
+static void *parse_while_gated(void *argument) {
+    GatedParse *gated = (GatedParse *)argument;
+    gated->parse_status = galley_parse_sentinel(gated->session, valid_sample);
+    return NULL;
+}
+
+/* A parse holds the session exclusively for its whole run, hooks included:
+ * a step from another thread mid-parse is refused as in-use, and the
+ * cursor is stale once that parse publishes a new generation. The wait is
+ * bounded — a gate never reached fails instead of hanging. */
+static void test_walk_in_use(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = galley_root_node(session);
+    CHECK(galley_walk_next(session, &cursor) == 1);
+
+    fixture_arm_gate();
+    GatedParse gated = {session, 0};
+    pthread_t parser;
+    CHECK(pthread_create(&parser, NULL, parse_while_gated, &gated) == 0);
+    struct timespec deadline;
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    deadline.tv_sec += 10;
+    int entered = 0;
+    while (!entered) {
+        entered = fixture_gate_entered();
+        if (entered) break;
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec >= deadline.tv_sec) break;
+        sched_yield();
+    }
+    CHECK(entered);
+    if (entered) {
+        CHECK(galley_walk_next(session, &cursor) == galley_error_session_in_use);
+    }
+    fixture_release_gate();
+    CHECK(pthread_join(parser, NULL) == 0);
+    CHECK(gated.parse_status >= 0);
+
+    /* The parse it waited for published a new generation: stale now. */
+    CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
+    galley_session_destroy(session);
+}
+
+/* Walking inside a hook goes through the parse's own door and sees the
+ * in-flight tree: the same walk after the parse publishes reproduces it
+ * node for node, while the session door refuses the same step mid-parse. */
+static void test_walk_in_hook(void) {
+    GalleySession *session = make_session();
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(NULL);
+
+    CHECK(fixture_stashed_walk_status() == galley_error_session_in_use);
+    CHECK(fixture_hook_walk_status() == 0);
+    int hook_count = fixture_hook_walk_count();
+    CHECK(hook_count > 0);
+    CHECK(fixture_hook_walk_skipped() == hook_count); /* no semantic errors here */
+    GalleyNodeAddress hook_root = fixture_hook_walk_root();
+    CHECK(galley_node_is_valid(session, hook_root));
+
+    unsigned long long generation = 0;
+    CHECK(galley_published_generation(session, &generation) == galley_ok);
+    GalleyWalkCursor cursor;
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = hook_root;
+    int index = 0;
+    int identical = 1;
+    long long status;
+    while ((status = galley_walk_next(session, &cursor)) == 1) {
+        if (index >= hook_count ||
+            fixture_hook_walk_node(index) != cursor.current ||
+            fixture_hook_walk_depth(index) != cursor.depth) {
+            identical = 0;
+        }
+        ++index;
+    }
+    CHECK(status == 0);
+    CHECK(identical);
+    CHECK(index == hook_count);
+    galley_session_destroy(session);
+}
+
+/* Semantic-error subtrees are marked during the parse, so a hook walking
+ * with the prune option skips them where the plain walk yields them. */
+static void test_walk_semantic_skip_in_hook(void) {
+    GalleySession *session = make_session();
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, "alpha:1,beta:2000") == galley_error_semantic);
+    fixture_stash_session(NULL);
+
+    CHECK(fixture_hook_walk_status() == 0);
+    int full = fixture_hook_walk_count();
+    int pruned = fixture_hook_walk_skipped();
+    CHECK(full > 0);
+    CHECK(pruned < full); /* the flagged Number subtree was pruned */
+    galley_session_destroy(session);
+}
+
 int main(void) {
     test_version();
     test_metadata_flags();
@@ -558,6 +951,13 @@ int main(void) {
     test_tree_edit();
     test_hook_door();
     test_generations();
+    test_walk_skip_children();
+    test_walk_stale();
+    test_walk_removed_current();
+    test_walk_sees_edits();
+    test_walk_in_use();
+    test_walk_in_hook();
+    test_walk_semantic_skip_in_hook();
     printf("%d tests, %d failures\n", ran, failures);
     return failures == 0 ? 0 : 1;
 }

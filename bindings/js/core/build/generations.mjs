@@ -90,15 +90,11 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       assert.equal(s.childCount(first), first.length);
       let found = null;
       const walker = s.walk(s.rootNode());
-      try {
-        for (const step of walker) {
-          if (step.node.address === first.address) {
-            found = step.node;
-            break;
-          }
+      for (const step of walker) {
+        if (step.node.address === first.address) {
+          found = step.node;
+          break;
         }
-      } finally {
-        walker.close();
       }
       assert.ok(found !== null);
       assert.ok(found === first);
@@ -203,31 +199,133 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a walk inside a hook is refused, not empty", async () => {
-    // Walkers exist only on the session door, which the core refuses while
-    // a parse runs: a refused creation throws session in use, never an
-    // empty walk. A raw address never reaches the walk at all — `walk`
-    // takes a node and refuses anything else at entry.
+  await test("a walk inside a hook equals the post-parse walk", async () => {
+    // A walk created and stepped inside a hook goes through the parse's
+    // own door over the in-flight tree; replayed after the parse
+    // publishes from the same roots, each yields the identical sequence.
+    // A raw address never reaches the walk at all — `walk` takes a node
+    // and refuses anything else at entry.
     const parser = await newParser();
     const s = await parser.openSession();
     try {
-      s.parse("alpha:12");
-      const previousRoot = s.rootNode();
-      const codes = [];
-      s.installProcedure("reduction_Pair", () => {
-        try {
-          s.walk(previousRoot);
-        } catch (error) {
-          codes.push(error instanceof GalleyError ? error.code : String(error));
-        }
+      const recorded = [];
+      const hookRoots = [];
+      s.installProcedure("reduction_Pair", (args) => {
+        const node = args.currentNode();
+        hookRoots.push(node);
+        recorded.push([...s.walk(node)].map((step) => [step.node.address, step.depth]));
       });
-      s.parse("alpha:12");
-      assert.deepEqual(codes, [Status.ErrorSessionInUse]);
+      s.parse("alpha:12,beta:3");
       s.clearProcedures();
+      assert.ok(recorded.length > 0);
+      for (let index = 0; index < hookRoots.length; index++) {
+        const replayed = [...s.walk(hookRoots[index])].map((step) => [step.node.address, step.depth]);
+        assert.deepEqual(replayed, recorded[index]);
+      }
       assert.throws(() => s.walk(2n ** 40n), TypeError);
-      const walker = s.walk(s.rootNode());
-      assert.ok(walker !== null);
-      walker.close();
+      // walk() always hands back a walker, never null.
+      assert.ok(s.walk(s.rootNode()) !== null);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("a hook walk prunes semantic error subtrees", async () => {
+    // Error marks exist only in the in-flight tree: a semantic-failed
+    // parse publishes nothing, so a walk inside the final hook is the
+    // binding-side view that prunes a marked subtree where the plain
+    // walk yields it.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      const recorded = [];
+      s.installProcedure("reduction_Number", (args) => {
+        const node = args.currentNode();
+        if (parseInt(decode(node.text()), 10) > 99) args.reportSemanticError("value out of range");
+      });
+      s.installProcedure("reduction_Document", (args) => {
+        const node = args.currentNode();
+        const full = [...s.walk(node)].map((step) => [step.node.address, step.depth, step.isSemanticError]);
+        const pruned = [...s.walk(node, true)].map((step) => [step.node.address, step.depth]);
+        recorded.push({ full, pruned });
+      });
+      assert.throws(
+        () => s.parse("alpha:1,beta:2000"),
+        (error) => error instanceof GalleyError && error.code === Status.ErrorSemantic,
+      );
+      assert.ok(recorded.length > 0);
+      const { full, pruned } = recorded.at(-1);
+      const flagged = full.filter((step) => step[2]).map((step) => step[0]);
+      assert.ok(flagged.length > 0);          // the plain walk saw a mark
+      assert.ok(pruned.length < full.length); // and the pruned walk dropped it
+      const prunedAddresses = new Set(pruned.map((step) => step[0]));
+      for (const address of flagged) assert.ok(!prunedAddresses.has(address));
+    } finally {
+      s.clearProcedures();
+      s.close();
+    }
+  });
+
+  await test("a walk step after removing the current node reports invalid node", async () => {
+    // The step has no live position to advance from: invalid node, and
+    // the cursor never moves past the failure.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse("alpha:12,beta:3");
+      const root = s.rootNode();
+      const walker = s.walk(root);
+      let leaf = null;
+      for (const step of walker) {
+        if (step.depth >= 1 && step.node.length === 0) {
+          leaf = step.node;
+          break;
+        }
+      }
+      assert.ok(leaf !== null);
+      s.removeSelf(leaf);
+      assert.throws(() => walker.next(), (error) => {
+        assert.ok(error instanceof GalleyError);
+        assert.equal(error.code, Status.ErrorInvalidNode);
+        return true;
+      });
+      assert.throws(() => walker.next(), GalleyError);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("walk steps see edits between steps", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse("alpha:12,beta:3");
+      const root = s.rootNode();
+      const baseline = [...s.walk(root)].map((step) => [step.node.address, step.depth]);
+      assert.ok(baseline.length > 1);
+
+      const walker = s.walk(root);
+      const first = walker.next();
+      assert.equal(first.value.node, root);
+      const removed = s.firstChild(root);
+      assert.ok(removed !== null);
+      assert.equal(removed.address, baseline[1][0]);
+      const head = s.removeSelf(removed);
+      assert.ok(head !== null);
+      // The remainder follows the live links: the removed subtree — and
+      // only it — is gone from the sequence.
+      let skip = 2;
+      while (skip < baseline.length && baseline[skip][1] > baseline[1][1]) skip++;
+      const remaining = [];
+      for (let step = walker.next(); !step.done; step = walker.next()) {
+        remaining.push([step.value.node.address, step.value.depth]);
+      }
+      assert.deepEqual(remaining, baseline.slice(skip));
+      // Re-inserting the removed subtree brings it back into the walk.
+      s.appendChildren(root, head);
+      const restored = [...s.walk(root)].map((step) => step.node.address);
+      assert.equal(restored.length, baseline.length);
+      assert.ok(restored.includes(removed.address));
     } finally {
       s.close();
     }

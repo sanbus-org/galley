@@ -7,11 +7,25 @@
  * instead of C out-parameters: adapters own all memory copying (bytes are
  * already-copied `Uint8Array`s here, valid after the next parse) and all
  * integer normalization (addresses are `bigint`, counts and statuses are
- * `number`). Opaque native pointers (sessions, walkers, procedure args)
- * cross the seam as `Handle` and are never inspected by the core.
+ * `number`). Opaque native pointers (sessions, procedure args)
+ * cross the seam as `Handle` and are never inspected by the core; the walk
+ * cursor crosses as a 40-byte `ArrayBuffer`, copied in and out per step
+ * because a wasm guest may grow its memory during the call.
  */
 
 export type Handle = unknown;
+
+/**
+ * The platform's native byte order, detected once. The walk cursor is a
+ * struct the native side reads and writes in place, so hosts that pass
+ * bytes straight through must view it in native order; wasm guests are
+ * always little-endian regardless of the host. A typed array stores in
+ * native order (a DataView would only re-interpret in the order it is
+ * told), so the first byte of a written 1 is the platform's low byte.
+ */
+const endianProbe = new Uint16Array(1);
+endianProbe[0] = 1;
+export const NATIVE_LITTLE_ENDIAN = new Uint8Array(endianProbe.buffer)[0] === 1;
 
 /** `GalleyCOptions` fields as plain data; null selects library defaults. */
 export interface SessionCOptions {
@@ -24,20 +38,13 @@ export interface SessionCOptions {
   astPreallocationCap: bigint;
 }
 
-/** One pre-order walker step. */
-export interface WalkedStep {
-  node: bigint;
-  depth: number;
-  isSemanticError: boolean;
-}
-
 /**
  * Flat bulk read of the most recent successful parse, one slot per node
  * address. `parent` holds `INVALID_NODE` for the root, `firstChild`/`next`
  * hold `INVALID_NODE` where the link does not exist, `variable` holds -1
  * for nodes without a variable, `spanStart`/`spanLen` are byte
  * offsets into the parsed input, and `isSemanticError` holds 1 where the
- * node carries a semantic error, 0 elsewhere — `WalkedStep`'s flag as a
+ * node carries a semantic error, 0 elsewhere — a walk step's flag as a
  * raw column. Parent, firstChild, and next alone
  * describe the whole tree with no further calls.
  *
@@ -118,13 +125,22 @@ export interface FfiPort {
   /** Flat bulk read of the most recent successful parse (see `SnapshotColumns`). */
   treeSnapshot(handle: Handle): SnapshotColumns;
 
-  // -- walker ------------------------------------------------------------
-  /** Null without AST construction or on invalid arguments. */
-  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null;
-  /** Null when the walk is done. */
-  walkerNext(walker: Handle): WalkedStep | null;
-  walkerSkipChildren(walker: Handle): void;
-  walkerDestroy(walker: Handle): void;
+  // -- walking ------------------------------------------------------------
+  /**
+   * The byte order native code reads and writes the walk cursor struct
+   * in: the platform's order for FFI ports that hand bytes straight to
+   * native code, little for a wasm guest.
+   */
+  readonly walkCursorLittleEndian: boolean;
+  /**
+   * One step of a walk through the session door over the host-owned
+   * 40-byte cursor: 1 yields a node, 0 ends the walk (and keeps ending
+   * it), negative is a failure (stale tree, session in use, malformed
+   * cursor bytes).
+   */
+  walkNext(handle: Handle, cursor: ArrayBuffer): number;
+  /** The hook-door twin over one running parse's in-flight tree. */
+  hookWalkNext(door: Handle, cursor: ArrayBuffer): number;
 
   // -- node accessors (null on invalid node) ------------------------------
   nodeSymbolName(handle: Handle, node: bigint): Uint8Array | null;

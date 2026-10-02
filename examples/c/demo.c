@@ -10,11 +10,15 @@ static const char *broken_sample = "alpha:";
 static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
 
 static int print_tree(GalleySession *session, GalleyNodeAddress root) {
-    GalleyWalker *walker = galley_walker_create(session, root, 0);
-    if (walker == NULL) return 1;
-    GalleyNodeAddress node;
-    unsigned int depth;
-    while (galley_walker_next(walker, &node, &depth, NULL)) {
+    GalleyWalkCursor cursor = {0};
+    unsigned long long generation = 0;
+    if (galley_published_generation(session, &generation) != galley_ok) return 1;
+    cursor.generation = generation;
+    cursor.root = root;
+    long long status;
+    while ((status = galley_walk_next(session, &cursor)) > 0) {
+        const GalleyNodeAddress node = cursor.current;
+        const unsigned int depth = cursor.depth;
         const char *name_data = NULL;
         size_t name_len = 0;
         const char *text_data = NULL;
@@ -22,7 +26,6 @@ static int print_tree(GalleySession *session, GalleyNodeAddress root) {
 
         if (galley_node_symbol_name(session, node, &name_data, &name_len) != galley_ok ||
             galley_node_text(session, node, &text_data, &text_len) != galley_ok) {
-            galley_walker_destroy(walker);
             return 1;
         }
 
@@ -31,8 +34,7 @@ static int print_tree(GalleySession *session, GalleyNodeAddress root) {
         galley_node_line_column(session, node, &line, &column);
         printf("%.*s [line %u, %zu bytes]\n", (int)name_len, name_data, line, text_len);
     }
-    galley_walker_destroy(walker);
-    return 0;
+    return status < 0 ? 1 : 0;
 }
 
 int main(int argc, char **argv) {

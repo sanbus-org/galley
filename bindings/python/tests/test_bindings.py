@@ -88,9 +88,10 @@ class ParserSurfaceTests(unittest.TestCase):
         module_names = [n for n in dir(grammar) if not n.startswith("_")]
         self.assertEqual(sorted(set(names)), sorted(set(module_names)))
 
-    def test_stub_walk_return_allows_none(self):
-        # Runtime returns None for an invalid root (shared contract: host
-        # empty value); the stub must spell the same `Walker | None`.
+    def test_stub_walk_return_is_walker(self):
+        # Runtime always returns a Walker (the cursor lives host-side; an
+        # invalid root fails at its first step instead of yielding None);
+        # the stub must spell the same non-optional `Walker`.
         import ast
         import pathlib
 
@@ -107,7 +108,7 @@ class ParserSurfaceTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name == "walk"
         )
         assert walk.returns is not None
-        self.assertEqual(ast.unparse(walk.returns), "Walker | None")
+        self.assertEqual(ast.unparse(walk.returns), "Walker")
 
     def test_version_returns_non_empty_string(self):
         self.assertIsInstance(grammar.version(), str)
@@ -231,7 +232,11 @@ class SessionTests(unittest.TestCase):
                 stashed.append(args)
 
         def use_in_document(args: grammar.ProcedureArguments) -> None:
-            for use in (stashed[0].current_line, stashed[0].current_node, stashed[0].drop_if_empty):
+            for use in (
+                stashed[0].current_line,
+                stashed[0].current_node,
+                stashed[0].drop_if_empty,
+            ):
                 try:
                     use()
                 except ValueError as error:
@@ -876,18 +881,6 @@ class WalkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.session.walk(root)
 
-    def test_walker_close_is_idempotent_and_scoped(self) -> None:
-        root = self.session.root_node()
-        assert root is not None
-        walker = self.session.walk(root)
-        next(walker)
-        walker.close()
-        walker.close()
-        with self.assertRaises(ValueError):
-            next(walker)
-        with self.session.walk(root) as scoped:
-            self.assertIsNotNone(next(scoped))
-
     def test_walker_step_after_reparse_raises(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
@@ -898,10 +891,20 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         with self.assertRaises(ValueError):
             next(walker)
+
+    def test_skipping_children_on_a_stale_walker_waits_for_the_next_step(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        self.assertIsNotNone(next(walker))
+        self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        # skip_children is a pure host-side state write: staleness is the
+        # next step's answer, not this one's.
+        walker.skip_children()
         with self.assertRaises(ValueError):
-            walker.skip_children()
-        walker.close()
-        walker.close()
+            next(walker)
 
     def test_parse_with_abandoned_walker_succeeds(self) -> None:
         if not grammar.has_ast():
@@ -914,7 +917,6 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         with self.assertRaises(ValueError):
             next(walker)
-        walker.close()
         fresh = self.session.root_node()
         assert fresh is not None
         self.assertGreater(len(list(self.session.walk(fresh))), 1)
@@ -930,7 +932,118 @@ class WalkTests(unittest.TestCase):
             self.session.parse("alpha:")
         with self.assertRaises(ValueError):
             next(walker)
-        walker.close()
+
+    def test_walker_step_during_a_parse_reports_in_use(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        # The parse holds the session exclusively: a step from another
+        # thread mid-parse is refused as in use, never a silent stop.
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        self.assertIsNotNone(next(walker))
+        first_hook_done = threading.Event()
+        probes_done = threading.Event()
+        codes: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            if not first_hook_done.is_set():
+                first_hook_done.set()
+                self.assertTrue(probes_done.wait(30))
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        thread = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        thread.start()
+        try:
+            self.assertTrue(first_hook_done.wait(30))
+            with self.assertRaises(grammar.GalleyError) as refusal:
+                next(walker)
+            codes.append(refusal.exception.code)
+        finally:
+            probes_done.set()
+            thread.join(30)
+        self.session.clear_procedures()
+        self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE])
+
+    def test_walk_step_after_removing_current_node_raises(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        leaf: grammar.Node | None = None
+        for step in walker:
+            if step["depth"] >= 1 and len(step["node"]) == 0:
+                leaf = step["node"]
+                break
+        self.assertIsNotNone(leaf)
+        assert leaf is not None
+        self.session.remove_self(leaf)
+        # The step has no live position to advance from: invalid node, and
+        # the cursor never moves past the failure.
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+        with self.assertRaises(grammar.GalleyError):
+            next(walker)
+
+    def test_walk_step_after_removing_current_node_with_children_raises(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        # Advance to an interior node with children beneath it.
+        interior: grammar.Node | None = None
+        for step in walker:
+            if step["depth"] == 1:
+                interior = step["node"]
+                break
+        self.assertIsNotNone(interior)
+        assert interior is not None
+        self.assertGreater(len(interior), 0)
+        self.session.remove_self(interior)
+        # Removal clears the parent link but keeps first_child, so the very
+        # next step must fail rather than descend into the detached subtree;
+        # stepping again fails the same way, so nothing under the removed
+        # node is ever yielded.
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+
+    def test_walk_steps_see_edits_between_steps(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        baseline = [
+            (step["node"].address, step["depth"]) for step in self.session.walk(root)
+        ]
+        self.assertGreater(len(baseline), 1)
+
+        walker = self.session.walk(root)
+        first = next(walker)
+        self.assertEqual(first["node"], root)
+        removed = self.session.first_child(root)
+        assert removed is not None
+        self.assertEqual(removed.address, baseline[1][0])
+        head = self.session.remove_self(removed)
+        self.assertIsNotNone(head)
+        # The remainder follows the live links: the removed subtree — and
+        # only it — is gone from the sequence.
+        skip = 2
+        while skip < len(baseline) and baseline[skip][1] > baseline[1][1]:
+            skip += 1
+        remaining = [(step["node"].address, step["depth"]) for step in walker]
+        self.assertEqual(remaining, baseline[skip:])
+        # Re-inserting the removed subtree brings it back into the walk.
+        assert head is not None
+        self.session.append_children(root, head)
+        restored = [
+            (step["node"].address, step["depth"]) for step in self.session.walk(root)
+        ]
+        self.assertEqual(len(restored), len(baseline))
+        self.assertIn((removed.address, baseline[1][1]), restored)
 
     def test_node_after_reparse_raises(self) -> None:
         root = self.session.root_node()
@@ -945,26 +1058,175 @@ class WalkTests(unittest.TestCase):
         assert fresh is not None
         self.assertGreater(self.session.child_count(fresh), 0)
 
-    def test_walk_reports_no_error_flags_on_a_clean_tree(self) -> None:
+    def test_walk_step_after_moving_an_ancestor_under_the_walk_root_raises(
+        self,
+    ) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
-        # Failed parses keep the previous successful tree, so error-marked
-        # nodes are only reachable through the Zig-native session; bindings
-        # walk the last successful parse, which carries no marks. Semantic
-        # pruning itself is covered by the runtime fixture tests.
+        # R->A->B->C below a walk root R that has a next sibling S, cursor
+        # at C (depth 3). Moving B directly under R makes the climb reach R
+        # one level early and steer onto S -- so the step refuses instead of
+        # leaving the walk's subtree.
         root = self.session.root_node()
         assert root is not None
-        flagged = [
-            step["node"]
-            for step in self.session.walk(root)
-            if step["is_semantic_error"]
-        ]
-        self.assertEqual(flagged, [])
-        pruned = [
-            step["node"] for step in self.session.walk(root, skip_semantic_errors=True)
-        ]
-        full = [step["node"] for step in self.session.walk(root)]
-        self.assertEqual(pruned, full)
+        pair_list = self.session.first_child(root)
+        assert pair_list is not None
+        pair = self.session.first_child(pair_list)  # R: Pair alpha
+        assert pair is not None
+        self.assertIsNotNone(self.session.next_sibling(pair))  # S exists
+
+        walker = self.session.walk(pair)
+        step = None
+        for step in walker:
+            # C: the leaf digit '2' at depth 3 (its NumberTail parent
+            # matches the same text one level up, so the depth disambiguates).
+            if step["node"].text() == b"2" and step["depth"] == 3:
+                break
+        assert step is not None
+        self.assertEqual(step["node"].text(), b"2")
+        self.assertEqual(step["depth"], 3)
+        node_c = step["node"]
+        node_b = self.session.parent(node_c)
+        node_a = self.session.parent(node_b) if node_b else None
+        assert node_b is not None and node_a is not None
+        self.assertEqual(self.session.parent(node_a), pair)  # R -> A -> B -> C
+
+        head = self.session.remove_self(node_b)
+        assert head is not None
+        self.session.append_children(pair, head)  # B directly under R
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+        # And again: nothing below the moved position is ever yielded.
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+
+    def test_walk_step_after_moving_an_ancestor_under_a_foreign_node_raises(
+        self,
+    ) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        pair_list = self.session.first_child(root)
+        assert pair_list is not None
+        pair = self.session.first_child(pair_list)  # walk root
+        assert pair is not None
+        key = self.session.first_child(pair)  # an ancestor of the cursor
+        assert key is not None
+        first_letter = self.session.first_child(key)
+        assert first_letter is not None
+
+        walker = self.session.walk(pair)
+        step = None
+        for step in walker:
+            if step["node"].address == first_letter.address:
+                break
+        assert step is not None
+
+        # Reparent the ancestor under a node the walk never entered: the
+        # climb from its child lands outside the subtree, not on the root.
+        head = self.session.remove_self(key)
+        assert head is not None
+        self.session.append_children(root, head)  # foreign: Document itself
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+        with self.assertRaisesRegex(grammar.GalleyError, "invalid node"):
+            next(walker)
+
+    def test_walk_sees_a_child_inserted_under_a_not_yet_visited_node(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        pair_list = self.session.first_child(root)
+        assert pair_list is not None
+        pair_alpha = self.session.first_child(pair_list)
+        assert pair_alpha is not None
+        tail = self.session.next_sibling(pair_alpha)  # PairListTail
+        assert tail is not None
+        first_tail_child = self.session.first_child(tail)
+        assert first_tail_child is not None
+        inner_list = self.session.next_sibling(first_tail_child)  # second PairList
+        assert inner_list is not None
+        pair_beta = self.session.first_child(inner_list)  # not yet visited below
+        assert pair_beta is not None
+        key_alpha = self.session.first_child(pair_alpha)  # the subtree to insert
+        assert key_alpha is not None
+        old_depth = 3  # Document -> PairList -> Pair alpha -> Key
+
+        walker = self.session.walk(root)
+        first = next(walker)
+        self.assertEqual(first["depth"], 0)  # the edit happens at the root step
+
+        head = self.session.remove_self(key_alpha)
+        assert head is not None
+        self.session.append_children(pair_beta, head)
+
+        steps = [(step["node"].address, step["depth"]) for step in walker]
+        new_depth = 5  # Document -> PairList -> PairListTail -> PairList -> beta -> Key
+        self.assertNotIn((key_alpha.address, old_depth), steps)
+        self.assertIn((key_alpha.address, new_depth), steps)
+
+    def test_completed_walk_stays_done_after_a_reparse(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        walker = self.session.walk(root)
+        self.assertGreater(len(list(walker)), 0)
+        with self.assertRaises(StopIteration):
+            next(walker)
+        # Done answers before the generation check: a reparse cannot
+        # resurrect the finished walk as a stale error.
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaises(StopIteration):
+            next(walker)
+
+    def test_hook_walk_prunes_semantic_error_subtrees(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        # Error marks exist only in the in-flight tree: a semantic-failed
+        # parse publishes nothing, so a walk inside the final hook is the
+        # binding-side view that prunes a marked subtree where the plain
+        # walk yields it.
+        recorded: list[tuple[list[tuple[int, int, bool]], list[tuple[int, int]]]] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            if int(text) > 99:
+                args.report_semantic_error("value out of range")
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            full = [
+                (step["node"].address, step["depth"], step["is_semantic_error"])
+                for step in self.session.walk(node)
+            ]
+            pruned = [
+                (step["node"].address, step["depth"])
+                for step in self.session.walk(node, skip_semantic_errors=True)
+            ]
+            recorded.append((full, pruned))
+
+        self.session.install_procedure("reduction_Number", reduction_Number)
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        try:
+            with self.assertRaises(grammar.GalleyError) as raised:
+                self.session.parse("alpha:1,beta:2000")
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_SEMANTIC)
+
+        self.assertGreater(len(recorded), 0)
+        full, pruned = recorded[-1]
+        flagged = {address for address, _, has_error in full if has_error}
+        self.assertGreater(len(flagged), 0)  # the plain walk saw a mark
+        self.assertLess(len(pruned), len(full))  # and the pruned walk dropped it
+        self.assertTrue(flagged.isdisjoint({address for address, _ in pruned}))
 
 
 class EditTests(unittest.TestCase):
@@ -1179,7 +1441,9 @@ class GenerationTests(unittest.TestCase):
             self.session.clear_procedures()
         return stashed
 
-    def test_refused_parse_leaves_running_hook_nodes_and_the_published_tree_valid(self) -> None:
+    def test_refused_parse_leaves_running_hook_nodes_and_the_published_tree_valid(
+        self,
+    ) -> None:
         # The core refuses a parse of a session that is already parsing and
         # changes nothing: a node stashed by hook 1 still reads in hook 2,
         # and the tree the running parse publishes is readable afterwards.
@@ -1200,13 +1464,17 @@ class GenerationTests(unittest.TestCase):
 
         self.session.install_procedure("reduction_Pair", reduction_Pair)
         outcomes: list[int] = []
-        thread = threading.Thread(target=lambda: outcomes.append(self.session.parse("alpha:12,beta:3")))
+        thread = threading.Thread(
+            target=lambda: outcomes.append(self.session.parse("alpha:12,beta:3"))
+        )
         thread.start()
         try:
             self.assertTrue(first_hook_done.wait(30))
             with self.assertRaises(grammar.GalleyError) as refusal:
                 self.session.parse("gamma:1")
-            self.assertEqual(refusal.exception.code, grammar.Status.ERROR_SESSION_IN_USE)
+            self.assertEqual(
+                refusal.exception.code, grammar.Status.ERROR_SESSION_IN_USE
+            )
         finally:
             refused_parse_done.set()
             thread.join(30)
@@ -1217,7 +1485,9 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(self.session.text(root), b"alpha:12,beta:3")
         self.assertEqual(stashed[0].text(), b"alpha:12")
 
-    def test_a_hook_that_parses_its_own_session_is_refused_and_keeps_its_nodes(self) -> None:
+    def test_a_hook_that_parses_its_own_session_is_refused_and_keeps_its_nodes(
+        self,
+    ) -> None:
         refusals: list[int] = []
         reads: list[bytes | None] = []
         stashed: list[grammar.Node] = []
@@ -1249,11 +1519,10 @@ class GenerationTests(unittest.TestCase):
         root = self.session.root_node()
         assert root is not None
         found: grammar.Node | None = None
-        with self.session.walk(root) as walker:
-            for step in walker:
-                if step["node"].address == first.address:
-                    found = step["node"]
-                    break
+        for step in self.session.walk(root):
+            if step["node"].address == first.address:
+                found = step["node"]
+                break
         self.assertIsNotNone(found)
         assert found is not None
         self.assertEqual(found, first)
@@ -1281,7 +1550,9 @@ class GenerationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalidated"):
             stashed[0].text()
 
-    def test_hook_node_used_from_another_thread_is_refused_by_the_session_door(self) -> None:
+    def test_hook_node_used_from_another_thread_is_refused_by_the_session_door(
+        self,
+    ) -> None:
         # The hook door is ungated, so it is reachable only from the thread
         # running the hook. Any other thread crosses the session door, which
         # the core refuses while the parse runs.
@@ -1332,28 +1603,37 @@ class GenerationTests(unittest.TestCase):
             first_root.text()
         self.assertEqual(second_root.text(), b"alpha:12")
 
-    def test_walk_inside_a_hook_is_refused_not_empty(self) -> None:
-        # Walkers exist only on the session door, which the core refuses
-        # while a parse runs: a refused creation raises session in use,
-        # never the None that means an invalid root.
-        self.session.parse("alpha:12")
-        previous_root = self.session.root_node()
-        assert previous_root is not None
-        codes: list[int] = []
+    def test_walk_inside_a_hook_equals_the_post_parse_walk(self) -> None:
+        # A walk created and stepped inside a hook goes through the parse's
+        # own door over the in-flight tree; replayed after the parse
+        # publishes, the same root yields the identical sequence.
+        recorded: list[tuple[list[tuple[int, int]], grammar.Node]] = []
 
         def reduction_Pair(args: grammar.ProcedureArguments) -> None:
-            try:
-                self.session.walk(previous_root)
-            except grammar.GalleyError as error:
-                codes.append(error.code)
+            node = args.current_node()
+            assert node is not None
+            steps = [
+                (step["node"].address, step["depth"])
+                for step in self.session.walk(node)
+            ]
+            recorded.append((steps, node))
 
         self.session.install_procedure("reduction_Pair", reduction_Pair)
-        self.session.parse("alpha:12")
-        self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.session.parse("alpha:12,beta:3")
+        self.session.clear_procedures()
+        self.assertGreater(len(recorded), 0)
+        for steps, hook_root in recorded:
+            replayed = [
+                (step["node"].address, step["depth"])
+                for step in self.session.walk(hook_root)
+            ]
+            self.assertEqual(replayed, steps)
+
         root = self.session.root_node()
         assert root is not None
         with self.assertRaisesRegex(TypeError, "expected a Node"):
             self.session.walk(2**40)
+        # walk() always hands back a walker, never None.
         self.assertIsNotNone(self.session.walk(root))
 
     def test_node_equality_ignores_the_door(self) -> None:
@@ -1431,8 +1711,6 @@ class LifetimeTests(unittest.TestCase):
             next(walker)
         with self.assertRaises(ValueError):
             walker.skip_children()
-        walker.close()
-        walker.close()
 
     def test_options_round_trip(self):
         session = grammar.Session(
@@ -1723,7 +2001,9 @@ class SessionHookTests(unittest.TestCase):
 
     def test_hooks_naming_no_grammar_hook_are_listed_but_never_fire(self) -> None:
         with grammar.Session() as session:
-            session.install_procedure("reduction_Nonexistent", lambda: self.fail("fired"))
+            session.install_procedure(
+                "reduction_Nonexistent", lambda: self.fail("fired")
+            )
             self.assertIn("reduction_Nonexistent", session.list_procedures())
             session.parse("alpha:12")
 
@@ -1759,7 +2039,13 @@ _SECOND_FIXTURE_DIRECTORY = BINDINGS_DIRECTORY / "test_fixture_second"
 class _Worker:
     """One session's configuration and what its hooks saw."""
 
-    def __init__(self, parser: Any, text: str, hooks: tuple[str, ...], barrier: threading.Barrier | None) -> None:
+    def __init__(
+        self,
+        parser: Any,
+        text: str,
+        hooks: tuple[str, ...],
+        barrier: threading.Barrier | None,
+    ) -> None:
         self.parser = parser
         self.text = text
         self.hooks = hooks
@@ -1841,14 +2127,21 @@ class ConcurrencyTests(unittest.TestCase):
         suffix = sysconfig.get_config_var("EXT_SUFFIX")
         impl = _SECOND_FIXTURE_DIRECTORY / f"galley_impl{suffix}"
         if not impl.is_file():
-            raise FileNotFoundError(f"build {_SECOND_FIXTURE_DIRECTORY} first (python -m galley)")
+            raise FileNotFoundError(
+                f"build {_SECOND_FIXTURE_DIRECTORY} first (python -m galley)"
+            )
         cls.second = galley.load(impl)
 
     def _expected(self, worker: _Worker, first: bool) -> None:
         specific = "hook_print" if first else "hook_tally"
         reduction = "reduction_Pair" if first else "reduction_Word"
-        self.assertEqual(worker.calls.get(specific, 0), self.ITEMS if specific in worker.hooks else 0)
-        self.assertEqual(worker.calls.get(reduction, 0), self.ITEMS if reduction in worker.hooks else 0)
+        self.assertEqual(
+            worker.calls.get(specific, 0), self.ITEMS if specific in worker.hooks else 0
+        )
+        self.assertEqual(
+            worker.calls.get(reduction, 0),
+            self.ITEMS if reduction in worker.hooks else 0,
+        )
         self.assertEqual(worker.wrong_thread, 0)
         self.assertEqual(worker.foreign_text, 0)
 
@@ -1875,7 +2168,9 @@ class ConcurrencyTests(unittest.TestCase):
             self.assertIsNone(worker.barrier_failure, "the four parses did not overlap")
             self._expected(worker, first=index < 2)
             self.assertIsInstance(worker.refusal, worker.parser.GalleyError)
-            self.assertEqual(worker.refusal.code, worker.parser.Status.ERROR_SESSION_IN_USE)
+            self.assertEqual(
+                worker.refusal.code, worker.parser.Status.ERROR_SESSION_IN_USE
+            )
             self.assertEqual(len(worker.session.list_procedures()), len(worker.hooks))
 
         # Stress: the same four sessions parse again and again without the

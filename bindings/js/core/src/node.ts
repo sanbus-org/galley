@@ -30,6 +30,12 @@ export interface NodeDoor {
   lineColumn(address: bigint): [number, number] | null;
   /** The raw variable index, or null when the node has no variable. */
   variableIndex(address: bigint): number | null;
+  /**
+   * One step of a walk over the host-owned 40-byte cursor: 1 yields a
+   * node, 0 ends the walk (and keeps ending it), negative is a failure
+   * (stale tree, session in use, malformed cursor bytes).
+   */
+  walkNext(cursor: ArrayBuffer): number;
   /** Head of the detached chain; `INVALID_NODE` when there were no children. */
   cleanChildren(address: bigint): bigint;
   appendChildren(parent: bigint, chain: bigint): void;

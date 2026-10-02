@@ -34,12 +34,10 @@ fn symbolName(node: *const parser.data_structures.Node) []const u8 {
 fn printTree(
     stdout: *std.Io.Writer,
     session: *parser.Session,
-    gpa: std.mem.Allocator,
     root: parser.data_structures.Node.Pointer,
 ) !void {
-    var walker = parser.data_structures.TreeWalker.init(gpa, &session.node_allocator, root, .{});
-    defer walker.deinit();
-    while (walker.next()) |step| {
+    var walker = parser.data_structures.TreeWalker.init(&session.node_allocator, root, .{});
+    while (try walker.next()) |step| {
         const node = session.node_allocator.at(step.address);
         var i: u32 = 0;
         while (i <= step.depth) : (i += 1) try stdout.writeAll("  ");
@@ -125,7 +123,7 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("expected a root node\n", .{});
             std.process.exit(1);
         };
-        try printTree(stdout, &session, init.gpa, root);
+        try printTree(stdout, &session, root);
     } else {
         try stdout.writeAll("AST construction disabled; skipping tree walk\n");
     }

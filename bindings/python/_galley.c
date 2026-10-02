@@ -386,8 +386,9 @@ typedef struct {
 typedef struct WalkerObject {
     PyObject_HEAD
     PyObject *session_obj;
-    GalleyWalker *walker;
-    unsigned long long generation;
+    /* The whole walk: host-owned cursor, no native resource, one native
+     * call per step (galley_walk_next or its hook twin). */
+    GalleyWalkCursor cursor;
 } WalkerObject;
 
 static PyTypeObject Session_Type;
@@ -424,15 +425,6 @@ static void choose_door(SessionObject *session_object, NodeCrossing *cross)
         cross->hook = NULL;
         cross->generation = session_object->published_generation;
     }
-}
-
-/* The session door unconditionally, for what has no hook twin (walkers):
- * from inside a hook the core refuses it while the parse runs. */
-static void session_door_only(SessionObject *session_object, NodeCrossing *cross)
-{
-    cross->session = session_object->session;
-    cross->hook = NULL;
-    cross->generation = session_object->published_generation;
 }
 
 /* Reads the published generation from the core without raising and
@@ -654,27 +646,6 @@ static PyObject *children_via(PyObject *session_obj, NodeCrossing cross,
                            galley_hook_node_next_sibling);
     }
     return tuple;
-}
-
-/* Single gate for walker steps: closed walkers, closed sessions, and
- * walkers whose generation is no longer the core's published one all raise
- * instead of touching reallocated storage. A walker steps through native
- * storage with no lock, so it never reads while a parse runs: the check
- * asks the core again whenever its cache disagrees. */
-static int require_walker(WalkerObject *self)
-{
-    SessionObject *session_object = (SessionObject *)self->session_obj;
-    NodeCrossing cross;
-    if (self->walker == NULL) {
-        PyErr_SetString(PyExc_ValueError, "walker is closed");
-        return -1;
-    }
-    if (session_object->session == NULL) {
-        PyErr_SetString(PyExc_ValueError, "session is closed");
-        return -1;
-    }
-    session_door_only(session_object, &cross);
-    return admit_generation(session_object, &cross, self->generation, "walker");
 }
 
 /* Shared body of the five session-method link accessors: missing links
@@ -1494,57 +1465,54 @@ PyDoc_STRVAR(walk_doc,
 "Returns a pre-order Walker over the subtree rooted at ``root``. Each\n"
 "iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
 "with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
-"subtrees rooted at semantic-error nodes. Returns None for an unresolvable\n"
-"root or a build without AST construction; raises GalleyError with\n"
-"ERROR_SESSION_IN_USE while a parse holds the session; a stale node -- its session\n"
-"parsed again or closed -- raises ValueError. The walker is bound to the\n"
-"parse that created it: stepping it after the session parses again or\n"
-"closes raises ValueError, so parsing with an abandoned walker still\n"
-"succeeds and the walker fails at its next step.");
+"subtrees rooted at semantic-error nodes.\n"
+"\n"
+"The walker owns no native resource: abandoning it is free, and parsing\n"
+"again while one exists succeeds -- its next step raises ValueError\n"
+"(\"walker is invalidated\"). Each step picks its door like any node\n"
+"call: inside a hook of the running parse it walks that parse's\n"
+"in-flight tree, otherwise the published one. Steps follow the live\n"
+"links, so edits between steps are visible; a step whose position is no\n"
+"longer inside the walk's root (removed, or moved elsewhere) raises\n"
+"GalleyError (invalid node), and stepping while a parse holds the\n"
+"session raises GalleyError with ERROR_SESSION_IN_USE.");
 
 static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords)
 {
-    GalleySession *session = require_session(self);
     PyObject *root = NULL;
     GalleyNodeAddress address;
     int skip = 0;
-    GalleyWalker *walker;
     WalkerObject *walker_obj;
+    NodeCrossing cross;
     static char *names[] = {"root", "skip_semantic_errors", NULL};
 
-    if (session == NULL)
+    if (require_session(self) == NULL)
         return NULL;
     if (!PyArg_ParseTupleAndKeywords(args, keywords, "O|$p:walk", names,
                                      &root, &skip))
         return NULL;
-    NodeCrossing cross;
-    /* Walkers exist only on the session door: from inside a hook a node of
-     * the running parse is refused, because the core refuses the session
-     * door while that parse runs. */
-    session_door_only((SessionObject *)self, &cross);
+    /* Door choice like every other node call, so a walk created inside a
+     * hook belongs to that parse and steps through its door. */
+    if (session_crossing(self, &cross) < 0)
+        return NULL;
     if (node_argument(root, self, &cross, &address) < 0)
         return NULL;
-    /* Stamp from a fresh read of the core, never the cache. A refusal
-     * raises `session in use`. */
-    if (refresh_published_generation((SessionObject *)self) < 0)
-        return NULL;
-    cross.generation = ((SessionObject *)self)->published_generation;
-    walker = galley_walker_create(session, address, skip);
-    if (walker == NULL) {
-        /* The native NULL is ambiguous: a refusal must raise, only an
-         * invalid root answers None. */
-        if (refresh_published_generation((SessionObject *)self) < 0)
-            return NULL;
-        Py_RETURN_NONE;
-    }
     walker_obj = PyObject_New(WalkerObject, &Walker_Type);
-    if (walker_obj == NULL) {
-        galley_walker_destroy(walker);
+    if (walker_obj == NULL)
         return NULL;
-    }
     walker_obj->session_obj = Py_NewRef(self);
-    walker_obj->walker = walker;
-    walker_obj->generation = cross.generation;
+    /* The walk is bound to the tree the root node came from: stamp the
+     * cursor from the node's own generation, which node_argument just
+     * proved live against this door — no refresh of its own. */
+    walker_obj->cursor = (GalleyWalkCursor){
+        .generation = ((NodeObject *)root)->generation,
+        .root = address,
+        .current = 0,
+        .depth = 0,
+        .state = GALLEY_WALK_STATE_NOT_STARTED,
+        .options = (unsigned char)(skip ? GALLEY_WALK_SKIP_SEMANTIC_ERRORS : 0),
+        .is_semantic_error = 0,
+    };
     return (PyObject *)walker_obj;
 }
 
@@ -3404,38 +3372,51 @@ static PyTypeObject Node_Type = {
 
 static void Walker_dealloc(WalkerObject *self)
 {
-    if (self->walker != NULL) {
-        galley_walker_destroy(self->walker);
-        self->walker = NULL;
-    }
     Py_XDECREF(self->session_obj);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *Walker_iternext(WalkerObject *self)
 {
-    GalleyNodeAddress address = GALLEY_INVALID_NODE;
-    unsigned int depth = 0;
-    int is_semantic_error = 0;
+    SessionObject *session_object = (SessionObject *)self->session_obj;
+    NodeCrossing cross;
+    long long status;
     NodeObject *node_obj;
     PyObject *depth_obj;
     PyObject *flag_obj;
 
-    /* Gate first: never touch walker storage that a close or re-parse may
-     * have freed or reallocated. */
-    if (require_walker(self) < 0)
+    if (session_object->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
         return NULL;
-    if (!galley_walker_next(self->walker, &address, &depth, &is_semantic_error))
+    }
+    /* Door per step, like every other node call: the hook door inside the
+     * dispatching thread of the running parse, the session door otherwise. */
+    choose_door(session_object, &cross);
+    if (cross.hook != NULL)
+        status = galley_hook_walk_next(cross.hook, &self->cursor);
+    else
+        status = galley_walk_next(cross.session, &self->cursor);
+    if (status < 0) {
+        /* The core owns the stale check: the cursor's generation is not
+         * the tree's anymore. Same message the generation gate raised. */
+        if (status == galley_error_stale_tree)
+            PyErr_SetString(PyExc_ValueError, "walker is invalidated");
+        else
+            set_error_from_status(status);
         return NULL;
-    node_obj = make_node(self->session_obj, self->generation, address);
+    }
+    if (status == 0)
+        return NULL; /* walk done */
+    node_obj = make_node(self->session_obj, self->cursor.generation,
+                         self->cursor.current);
     if (node_obj == NULL)
         return NULL;
-    depth_obj = PyLong_FromUnsignedLong(depth);
+    depth_obj = PyLong_FromUnsignedLong(self->cursor.depth);
     if (depth_obj == NULL) {
         Py_DECREF(node_obj);
         return NULL;
     }
-    flag_obj = PyBool_FromLong(is_semantic_error);
+    flag_obj = PyBool_FromLong(self->cursor.is_semantic_error != 0);
     if (flag_obj == NULL) {
         Py_DECREF(node_obj);
         Py_DECREF(depth_obj);
@@ -3471,51 +3452,21 @@ PyDoc_STRVAR(walker_skip_children_doc,
 
 static PyObject *Walker_skip_children(WalkerObject *self, PyObject *Py_UNUSED(ignored))
 {
-    if (require_walker(self) < 0)
+    SessionObject *session_object = (SessionObject *)self->session_obj;
+    if (session_object->session == NULL) {
+        PyErr_SetString(PyExc_ValueError, "session is closed");
         return NULL;
-    galley_walker_skip_children(self->walker);
-    Py_RETURN_NONE;
-}
-
-PyDoc_STRVAR(walker_close_doc,
-"close()\n"
-"\n"
-"Destroy the walker. Idempotent; collection destroys it as a fallback.\n"
-"Close the walker before closing the session or parsing again.");
-
-static PyObject *Walker_close(WalkerObject *self, PyObject *Py_UNUSED(ignored))
-{
-    if (self->walker != NULL) {
-        galley_walker_destroy(self->walker);
-        self->walker = NULL;
     }
-    Py_RETURN_NONE;
-}
-
-static PyObject *Walker_enter(WalkerObject *self, PyObject *Py_UNUSED(ignored))
-{
-    Py_INCREF(self);
-    return (PyObject *)self;
-}
-
-static PyObject *Walker_exit(WalkerObject *self, PyObject *Py_UNUSED(args))
-{
-    if (self->walker != NULL) {
-        galley_walker_destroy(self->walker);
-        self->walker = NULL;
-    }
+    /* A pure host-side state write: staleness is the next step's answer,
+     * not this one's. */
+    if (self->cursor.state == GALLEY_WALK_STATE_YIELDED)
+        self->cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN;
     Py_RETURN_NONE;
 }
 
 static PyMethodDef Walker_methods[] = {
     {"skip_children", (PyCFunction)(void (*)(void))Walker_skip_children,
      METH_NOARGS, walker_skip_children_doc},
-    {"close", (PyCFunction)(void (*)(void))Walker_close,
-     METH_NOARGS, walker_close_doc},
-    {"__enter__", (PyCFunction)(void (*)(void))Walker_enter,
-     METH_NOARGS, "Enter the walker's context (itself)."},
-    {"__exit__", (PyCFunction)Walker_exit,
-     METH_VARARGS, "Close the walker on context exit."},
     {NULL, NULL, 0, NULL},
 };
 
@@ -3960,7 +3911,8 @@ static int add_binding_enums(PyObject *module)
         "ERROR_INVALID_NODE",
         "ERROR_IO",
         "ERROR_SEMANTIC",
-        "ERROR_SESSION_IN_USE"};
+        "ERROR_SESSION_IN_USE",
+        "ERROR_STALE_TREE"};
     static const long long status_values[] = {
         galley_ok,
         galley_error_null_argument,
@@ -3975,7 +3927,8 @@ static int add_binding_enums(PyObject *module)
         galley_error_invalid_node,
         galley_error_io,
         galley_error_semantic,
-        galley_error_session_in_use};
+        galley_error_session_in_use,
+        galley_error_stale_tree};
 
     if (add_int_enum(module, "ParserType", parser_type_members,
                      parser_type_values, 2) < 0 ||
