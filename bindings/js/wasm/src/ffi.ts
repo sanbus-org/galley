@@ -24,7 +24,7 @@ import type {
   Handle,
   DispatchHandler,
   SessionCOptions,
-  TreeSnapshot,
+  SnapshotColumns,
   WalkedStep,
 } from "@sanbus/galley-core";
 import { GalleyError, Status } from "@sanbus/galley-core";
@@ -952,7 +952,7 @@ export class WasmPort implements FfiPort {
     return asAddress(this.wasm.galley_node_parent(handle as number, asI64(node)));
   }
 
-  treeSnapshot(handle: Handle): TreeSnapshot {
+  treeSnapshot(handle: Handle): SnapshotColumns {
     for (let attempt = 0; attempt < 2; attempt++) {
       const count = this.nodeCount(handle);
       const empty = {

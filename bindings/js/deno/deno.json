@@ -8,6 +8,6 @@
   },
   "tasks": {
     "check": "deno check src/index.ts",
-    "test": "deno check src/index.ts && deno run --no-check --allow-ffi --allow-read --allow-write --allow-run --allow-env tests/test_bindings.ts"
+    "test": "deno check src/index.ts && deno run --no-check --v8-flags=--expose-gc --allow-ffi --allow-read --allow-write --allow-run --allow-env tests/test_bindings.ts"
   }
 }

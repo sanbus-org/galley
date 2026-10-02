@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { artifactFileName } from "@sanbus/galley-core/internal";
+import { collect } from "../../../js/core/build/collect.mjs";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
 import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
@@ -375,7 +376,8 @@ await test("root and navigation links", async () => {
     assert.ok(root !== null);
     assert.equal(s.nodeValid(root), true);
     assert.equal(s.parent(root), null);
-    assert.equal(s.nodeValid(INVALID_NODE), false);
+    // A raw address is refused at entry: it carries no session or generation.
+    assert.throws(() => s.nodeValid(INVALID_NODE), TypeError);
     const first = s.firstChild(root);
     const last = s.lastChild(root);
     assert.ok(first !== null);
@@ -430,7 +432,8 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
     assert.equal(snap.variable.length, snap.count);
     assert.equal(snap.isSemanticError.length, snap.count);
     for (let i = 0; i < snap.count; i++) {
-      const node = BigInt(i);
+      const node = snap.node(i);
+      assert.ok(node !== null);
       const parent = s.parent(node);
       assert.equal(snap.parent[i], parent === null ? INVALID_NODE : parent.address);
       const first = s.firstChild(node);
@@ -476,6 +479,150 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
   }
 });
 
+await test("snapshot node round-trips columns and accessors", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const snap = s.snapshot();
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    // Same parse, same address: the interned node is the very object.
+    const node = snap.node(root.address);
+    assert.ok(node === root);
+    const first = s.firstChild(node);
+    assert.ok(first !== null);
+    assert.equal(snap.firstChild[Number(node.address)], first.address);
+    assert.ok(snap.node(first.address) === first);
+    // An absent node link answers null, never a node.
+    assert.equal(snap.node(INVALID_NODE), null);
+  } finally {
+    s.close();
+  }
+});
+
+await test("snapshot node out of range throws", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const snap = s.snapshot();
+    assert.ok(snap.count > 0);
+    assert.throws(() => snap.node(snap.count), RangeError);
+    assert.throws(() => snap.node(-1), RangeError);
+  } finally {
+    s.close();
+  }
+});
+
+await test("snapshot node refuses values that are not an address", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const snap = s.snapshot();
+    const rejected = [
+      "0",
+      3.5,
+      NaN,
+      1e300,
+      Number.MAX_SAFE_INTEGER + 2,
+      true,
+      false,
+      null,
+      undefined,
+      {},
+      [0],
+    ];
+    for (const value of rejected) {
+      assert.throws(() => snap.node(value), TypeError, `accepted ${String(value)}`);
+    }
+    // The sanctioned forms still answer.
+    assert.ok(snap.node(0) !== null);
+    assert.ok(snap.node(0n) !== null);
+  } finally {
+    s.close();
+  }
+});
+
+await test("snapshot node is stale after a re-parse", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    const snap = s.snapshot();
+    const stale = snap.node(root.address);
+    assert.ok(stale !== null);
+    s.parse("alpha:12");
+    const fresh = s.rootNode();
+    assert.ok(fresh !== null);
+    // The columns never follow a later parse, and the re-parse's
+    // generation owns the intern table now: the stale snapshot answers
+    // with a fresh, uninterned handle on every call, and each handle
+    // reads as invalidated.
+    assert.ok(snap.node(root.address) !== stale);
+    assert.ok(snap.node(root.address) !== fresh);
+    assert.ok(snap.node(root.address) !== snap.node(root.address));
+    assert.throws(() => stale.text(), SessionClosedError);
+    assert.throws(() => snap.node(root.address).text(), SessionClosedError);
+    assert.equal(Buffer.from(fresh.text()).toString(), "alpha:12");
+  } finally {
+    s.close();
+  }
+});
+
+await test("one interned node per address of a parse", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    assert.ok(s.rootNode() === root);
+    const child = s.firstChild(root);
+    assert.ok(child !== null);
+    assert.ok(s.firstChild(root) === child);
+    assert.ok(root.children()[0] === child);
+    const snap = s.snapshot();
+    assert.ok(snap.node(child.address) === child);
+    const walker = s.walk(root);
+    assert.ok(walker !== null);
+    try {
+      const step = walker.next();
+      assert.equal(step.done, false);
+      assert.ok(step.value.node === root);
+    } finally {
+      walker.close();
+    }
+  } finally {
+    s.close();
+  }
+});
+
+await test("Node construction is closed and the session exposes no creation helpers", async () => {
+  const s = await newSession();
+  try {
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    assert.ok(root instanceof Node);
+    // The constructor demands a module-private token: no argument
+    // combination reachable from outside builds a node.
+    assert.throws(() => Reflect.construct(Node, []), TypeError);
+    assert.throws(() => Reflect.construct(Node, [s, root.address, 0n]), TypeError);
+    assert.throws(
+      () => Reflect.construct(Node, [Symbol("galley.Node"), s, root.address, 0n]),
+      TypeError,
+    );
+    assert.throws(
+      () => Reflect.construct(Node, [s, s, root.address, 0n]),
+      TypeError,
+    );
+    // The creation helpers are not reachable from the session instance.
+    assert.ok(!("nodeForGeneration" in s));
+    assert.ok(!("publishedGeneration" in s));
+  } finally {
+    s.close();
+  }
+});
+
 await test("lastInput buffers snapshot spans and starts empty", async () => {
   const fresh = await newSession();
   try {
@@ -492,7 +639,7 @@ await test("lastInput buffers snapshot spans and starts empty", async () => {
     const snap = s.snapshot();
     assert.ok(snap.count > 0);
     for (let i = 0; i < snap.count; i++) {
-      const text = s.text(BigInt(i));
+      const text = s.text(snap.node(i));
       assert.ok(text !== null);
       const start = Number(snap.spanStart[i]);
       const end = start + Number(snap.spanLen[i]);
@@ -509,6 +656,8 @@ await test("failed parse keeps the input of the last successful parse", async ()
     s.parse("alpha:12,beta:3");
     const retained = Buffer.from(s.lastInput());
     assert.equal(retained.toString(), "alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
 
     // A failed parse must not clobber the retained input. Its own tree
     // wiped the last successful one when the parse started, so node
@@ -516,14 +665,15 @@ await test("failed parse keeps the input of the last successful parse", async ()
     assert.throws(() => s.parse("gamma:"), (err) => err.code === Status.ErrorSyntax);
     assert.deepEqual(Buffer.from(s.lastInput()), retained);
     assert.throws(() => s.snapshot(), (err) => err.code === Status.ErrorInvalidNode);
-    assert.equal(s.text(0n), null);
+    assert.throws(() => s.text(root), SessionClosedError);
+    assert.throws(() => root.text(), SessionClosedError);
 
     // The door reopens on the next successful parse over the same input.
     s.parse("alpha:12,beta:3");
     const snap = s.snapshot();
     assert.ok(snap.count > 0);
     for (let i = 0; i < snap.count; i++) {
-      const text = s.text(BigInt(i));
+      const text = s.text(snap.node(i));
       assert.ok(text !== null);
       const start = Number(snap.spanStart[i]);
       const end = start + Number(snap.spanLen[i]);
@@ -556,12 +706,15 @@ await test("Node object mirrors Session navigation", async () => {
     for (const child of root) count++;
     assert.equal(count, 1);
     // at()
-    assert.ok(root.at(0).equals(kids[0]));
+    assert.ok(root.at(0) === kids[0]);
     assert.throws(() => root.at(100), RangeError);
-    // equals
+    // identity: one interned object per (session, generation, address)
     const root2 = s.rootNode();
-    assert.ok(root.equals(root2));
-    assert.ok(!root.equals(123n));
+    assert.ok(root === root2);
+    // The address never converts back into something a call accepts.
+    assert.throws(() => s.childCount(root.address), TypeError);
+    assert.throws(() => BigInt(root), SyntaxError);
+    assert.ok(Number.isNaN(+root));
   } finally {
     s.close();
   }
@@ -632,14 +785,15 @@ await test("walk skipChildren prunes the subtree", async () => {
     try {
       const first = walker.next();
       assert.equal(first.done, false);
-      assert.ok(first.value.node.equals(root));
+      assert.ok(first.value.node === root);
       assert.equal(first.value.depth, 0);
       walker.skipChildren();
       assert.equal(walker.next().done, true);
     } finally {
       walker.close();
     }
-    assert.equal(s.walk(INVALID_NODE), null);
+    // A raw address is refused at entry; the walk never sees it.
+    assert.throws(() => s.walk(INVALID_NODE), TypeError);
   } finally {
     s.close();
   }
@@ -744,16 +898,31 @@ await test("walker close is idempotent and using disposes", async () => {
   }
 });
 
-await test("invalid node accessors return null", async () => {
+await test("accessors refuse raw addresses", async () => {
+  // A raw address carries no generation, so an accessor that takes a
+  // node refuses it instead of reading whichever node happens to hold
+  // that index in whichever parse is current.
   const s = await newSession();
   try {
-    const invalid = INVALID_NODE;
-    assert.equal(s.symbolName(invalid), null);
-    assert.equal(s.text(invalid), null);
-    assert.equal(s.span(invalid), null);
-    assert.equal(s.lineColumn(invalid), null);
-    assert.equal(s.variableIndex(invalid), null);
-    assert.equal(s.childCount(invalid), 0);
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    assert.ok(root !== null);
+    const calls = [
+      (address) => s.symbolName(address),
+      (address) => s.text(address),
+      (address) => s.span(address),
+      (address) => s.lineColumn(address),
+      (address) => s.variableIndex(address),
+      (address) => s.childCount(address),
+    ];
+    for (const address of [INVALID_NODE, root.address]) {
+      for (const call of calls) {
+        assert.throws(
+          () => call(address),
+          (err) => err instanceof TypeError && /expected a Node/.test(err.message),
+        );
+      }
+    }
   } finally {
     s.close();
   }
@@ -853,6 +1022,30 @@ await test("a hook refuses nodes of an earlier parse", async () => {
   } finally {
     s.close();
   }
+});
+
+await test("a hook's setCurrentNode refuses a raw address", async () => {
+  const parser = await newParser();
+  const s = await parser.openSession();
+  const refusals = [];
+  s.installProcedure("reduction_Pair", (args) => {
+    const node = args.currentNode();
+    if (node === null) return;
+    try {
+      args.setCurrentNode(node.address);
+      refusals.push(null);
+    } catch (error) {
+      refusals.push(error);
+    }
+  });
+  try {
+    s.parse("alpha:12,beta:3");
+  } finally {
+    s.clearProcedures();
+    s.close();
+  }
+  assert.ok(refusals.length > 0);
+  assert.ok(refusals.every((error) => error instanceof TypeError));
 });
 
 await test("a chain detached in one hook attaches in a later hook", async () => {
@@ -1510,7 +1703,7 @@ await test("two language directories parse independently", async () => {
   }
 });
 
-await runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status });
+await runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status, collect });
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({

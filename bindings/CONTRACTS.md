@@ -43,6 +43,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Parsing with an abandoned walker succeeds; the walker fails at its next step.
 - Walkers and sessions that hold resources release them explicitly, through the mechanism the language file names; closing is idempotent in both.
 - Snapshots bulk-read the last successful parse in a single crossing: parentage, child counts, variables, spans, and the semantic-error flag.
+- A snapshot remembers the parse generation it describes, and `snapshot.node(i)` is the one conversion from a stored address back to a node: the host empty value for the invalid-node sentinel, the host's index error for an out-of-range `i`, and nodes of that parse — stale after a re-parse, never the later parse's nodes at the same address.
 - A session retains the input of its most recent successful parse; snapshots index into that retained input.
 
 ## Names, values, and codes
@@ -64,10 +65,10 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 - Entries accept their host-idiomatic input forms and reject the rest at the earliest boundary the host offers — compile time where the type system catches it, otherwise call entry before the native crossing — with no silent coercion.
 - Message inputs accept text or raw bytes without silent re-encoding.
-- Handles come from sessions; every session method also accepts the same call with all handles replaced by raw addresses, obtained through the node's read-only accessor.
-- Nodes expose their address through a named read-only accessor and compare by owning session, core parse generation, plus address; the door a node was reached through is neither stored in it nor part of its identity.
+- Handles come from sessions; a session method takes the host's node type and nothing else, because a raw address carries no generation to check.
+- Nodes expose their address through a named read-only accessor for display, never as an argument where a node is expected, and compare by owning session, core parse generation, plus address; the door a node was reached through is neither stored in it nor part of its identity.
+- Hosts may narrow object identity to the live generation, as the JavaScript binding does: one object per (session, generation, address) while the generation is live, and a fresh handle after it is superseded — value identity itself is unchanged.
 - A node handle is bound to the core's parse generation it was created in: reading through it once that generation is no longer live signals a failure to the caller, never a stale read.
-- A raw address carries no generation and passes every such guard by design.
 - Node keying in collections follows each host's default semantics; the language files spell it out.
 - Tree edits cross the door chosen when they are made: the parse's hook door inside a hook dispatch on the dispatching thread, the post-parse door everywhere else, for session methods and node sugar alike.
 - Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.

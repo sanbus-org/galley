@@ -13,9 +13,10 @@
  *   belong to. Which door a call crosses is chosen when the call is made:
  *   from inside a hook of the session's running parse, on the thread
  *   running that hook, a node reads through the parse's hook door;
- *   everywhere else it reads through the session door. Plain ints are
- *   still accepted wherever a node is expected for backward compatibility,
- *   and Node supports int() and operator.index() to retrieve its address;
+ *   everywhere else it reads through the session door. A node is the only
+ *   thing accepted where a node is expected: raw addresses carry no
+ *   generation, so they are refused, and snapshot().node(index) is the
+ *   one sanctioned conversion from a stored address back to a node;
  * - text accessors copy straight into `bytes` with no UTF-8 decoding;
  * - parse() passes pointer+length into galley_parse;
  *   str inputs use the interpreter's cached UTF-8 buffer.
@@ -512,35 +513,33 @@ static int node_crossing(NodeObject *node, NodeCrossing *cross)
 }
 
 /* The single gate for a node-typed argument to an operation crossing
- * `cross`: the node must belong to `session_obj` and carry the generation
- * the crossing accepts, because the crossing sends a bare address and
- * native storage only bounds-checks it, so a node of another session or
- * generation would silently alias whichever node holds that index here.
- * Plain integers are raw addresses with no generation and pass unguarded
- * by design. */
+ * `cross`: only a `Node` crosses, and it must belong to `session_obj` and
+ * carry the generation the crossing accepts, because the crossing sends a
+ * bare address and native storage only bounds-checks it, so a node of
+ * another session or generation would silently alias whichever node holds
+ * that index here. A raw address carries no generation, so anything that
+ * is not a `Node` is refused instead of read through. */
 static int node_argument(PyObject *object, PyObject *session_obj,
                          NodeCrossing *cross, GalleyNodeAddress *out)
 {
     int is_node = PyObject_IsInstance(object, (PyObject *)&Node_Type);
     if (is_node < 0)
         return -1;
-    if (is_node) {
-        NodeObject *node_obj = (NodeObject *)object;
-        if (node_obj->session_obj != session_obj) {
-            PyErr_SetString(PyExc_ValueError,
-                            "node belongs to a different session than this operation");
-            return -1;
-        }
-        if (admit_generation((SessionObject *)session_obj, cross,
-                             node_obj->generation, "node") < 0)
-            return -1;
-        *out = node_obj->address;
-        return 0;
-    }
-    unsigned long long value = PyLong_AsUnsignedLongLong(object);
-    if (value == (unsigned long long)-1 && PyErr_Occurred())
+    if (!is_node) {
+        PyErr_Format(PyExc_TypeError, "expected a Node, got %s",
+                     Py_TYPE(object)->tp_name);
         return -1;
-    *out = (GalleyNodeAddress)value;
+    }
+    NodeObject *node_obj = (NodeObject *)object;
+    if (node_obj->session_obj != session_obj) {
+        PyErr_SetString(PyExc_ValueError,
+                        "node belongs to a different session than this operation");
+        return -1;
+    }
+    if (admit_generation((SessionObject *)session_obj, cross,
+                         node_obj->generation, "node") < 0)
+        return -1;
+    *out = node_obj->address;
     return 0;
 }
 
@@ -1193,14 +1192,152 @@ static PyObject *address_or_none(GalleyNodeAddress address)
     return PyLong_FromUnsignedLongLong(address);
 }
 
+/* ------------------------------------------------------------------ */
+/* Snapshot — one parse as flat columns, with the one sanctioned       */
+/* address → node conversion                                           */
+/* ------------------------------------------------------------------ */
+
+typedef struct SnapshotObject {
+    PyObject_HEAD
+    /* The session the columns came from, and the published parse
+     * generation they describe: node() stamps that generation, so its
+     * nodes belong to this snapshot's parse and read as stale once the
+     * session parses again. */
+    PyObject *session_obj;
+    unsigned long long generation;
+    unsigned long long count;
+    PyObject *parent;
+    PyObject *first_child;
+    PyObject *next;
+    PyObject *child_count;
+    PyObject *variable;
+    PyObject *span_start;
+    PyObject *span_len;
+    PyObject *is_semantic_error;
+} SnapshotObject;
+
+static void Snapshot_dealloc(SnapshotObject *self)
+{
+    Py_XDECREF(self->session_obj);
+    Py_XDECREF(self->parent);
+    Py_XDECREF(self->first_child);
+    Py_XDECREF(self->next);
+    Py_XDECREF(self->child_count);
+    Py_XDECREF(self->variable);
+    Py_XDECREF(self->span_start);
+    Py_XDECREF(self->span_len);
+    Py_XDECREF(self->is_semantic_error);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+PyDoc_STRVAR(Snapshot_node_doc,
+"node(index)\n"
+"\n"
+"Returns the node at ``index`` for the parse these columns describe,\n"
+"or None for ``INVALID_NODE``. Raises TypeError when ``index`` is not\n"
+"an ``int`` (a ``bool`` included), IndexError when ``index`` is\n"
+"outside ``0 .. count - 1``. The node carries this snapshot's parse\n"
+"generation, so it reads as invalidated once the session parses again.");
+
+static PyObject *Snapshot_node(SnapshotObject *self, PyObject *arg)
+{
+    unsigned long long index;
+
+    /* bool subclasses int, but True/False are not node addresses. */
+    if (PyBool_Check(arg)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "node index must be an int, not a bool");
+        return NULL;
+    }
+    index = PyLong_AsUnsignedLongLong(arg);
+    if (index == (unsigned long long)-1 && PyErr_Occurred()) {
+        /* A negative index is out of range; anything else is not an index. */
+        if (PyErr_ExceptionMatches(PyExc_OverflowError)) {
+            PyErr_Clear();
+            PyErr_SetString(PyExc_IndexError, "node index out of range");
+        }
+        return NULL;
+    }
+    if (index == GALLEY_INVALID_NODE)
+        Py_RETURN_NONE;
+    if (index >= self->count) {
+        PyErr_Format(PyExc_IndexError,
+                     "node index %llu out of range for a snapshot of %llu nodes",
+                     index, self->count);
+        return NULL;
+    }
+    return (PyObject *)make_node(self->session_obj, self->generation,
+                                 (GalleyNodeAddress)index);
+}
+
+static PyMethodDef Snapshot_methods[] = {
+    {"node", (PyCFunction)Snapshot_node, METH_O, Snapshot_node_doc},
+    {NULL, NULL, 0, NULL}
+};
+
+/* One getter for every column: the closure is the field's offset, and
+ * the columns are read-only tuples, so a caller cannot rewrite them. */
+static PyObject *Snapshot_column(SnapshotObject *self, void *closure)
+{
+    PyObject **slot = (PyObject **)((char *)self + (size_t)closure);
+    return Py_NewRef(*slot);
+}
+
+static PyObject *Snapshot_get_count(SnapshotObject *self,
+                                    void *Py_UNUSED(closure))
+{
+    return PyLong_FromUnsignedLongLong(self->count);
+}
+
+#define SNAPSHOT_COLUMN(name, field, docstring)                              \
+    {name, (getter)Snapshot_column, NULL, docstring, (void *)offsetof(SnapshotObject, field)}
+
+static PyGetSetDef Snapshot_getset[] = {
+    {"count", (getter)Snapshot_get_count, NULL,
+     "Number of nodes in the parse these columns describe.", NULL},
+    SNAPSHOT_COLUMN("parent", parent,
+                    "Parent address per node; None where the link does not exist."),
+    SNAPSHOT_COLUMN("first_child", first_child,
+                    "First child address per node; None where the link does not exist."),
+    SNAPSHOT_COLUMN("next", next,
+                    "Next sibling address per node; None where the link does not exist."),
+    SNAPSHOT_COLUMN("child_count", child_count,
+                    "Direct child count per node."),
+    SNAPSHOT_COLUMN("variable", variable,
+                    "Variable index per node; None where there is none."),
+    SNAPSHOT_COLUMN("span_start", span_start,
+                    "Span start offset per node, into ``last_input()``."),
+    SNAPSHOT_COLUMN("span_len", span_len,
+                    "Span length per node."),
+    SNAPSHOT_COLUMN("is_semantic_error", is_semantic_error,
+                     "The semantic-error flag ``walk`` yields, per node."),
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
+static PyTypeObject Snapshot_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = GALLEY_MODULE_STRING ".Snapshot",
+    .tp_basicsize = sizeof(SnapshotObject),
+    .tp_itemsize = 0,
+    .tp_dealloc = (destructor)Snapshot_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "One parse as flat columns: read-only attributes per node "
+              "address, plus node(index) as the only address to node conversion.",
+    .tp_methods = Snapshot_methods,
+    .tp_getset = Snapshot_getset,
+};
+
 PyDoc_STRVAR(snapshot_doc,
 "snapshot()\n"
 "\n"
 "Returns the most recent successful parse as flat tuples in a single\n"
-"call: a dict with ``count`` and one entry per node address for\n"
+"call: a Snapshot with ``count`` and one tuple per node address for\n"
 "``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
 "``span_start``, ``span_len`` and ``is_semantic_error`` (the flag\n"
-"``walk`` yields). Missing links and variables are None.\n"
+"``walk`` yields). Missing links and variables are None. The columns\n"
+"are read-only; ``snapshot.node(index)`` is the one conversion from a\n"
+"column address back to a node, and only for the parse these columns\n"
+"describe.\n"
 "Walk ``parent``/``first_child``/``next`` directly instead of one call\n"
 "per node; resolve spans against ``last_input()``.");
 
@@ -1217,7 +1354,8 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     unsigned long long *span_len = NULL;
     int *is_semantic_error = NULL;
     long long total;
-    PyObject *result = NULL;
+    SnapshotObject *snapshot = NULL;
+    unsigned long long generation;
     PyObject *t_parent = NULL;
     PyObject *t_first = NULL;
     PyObject *t_next = NULL;
@@ -1230,6 +1368,12 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
 
     if (session == NULL)
         return NULL;
+    /* Stamp from the published-generation cache: the columns describe the
+     * published tree, so node() must return nodes of exactly that parse.
+     * A refusal (a parse is in flight) leaves the cache as it was, which
+     * is still the parse the columns come from. */
+    generation = ((SessionObject *)self)->published_generation;
+    (void)read_published_generation((SessionObject *)self, &generation);
     count = galley_node_count(session);
     if (count > 0) {
         parent = PyMem_Malloc(count * sizeof(*parent));
@@ -1302,30 +1446,28 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         if (item == NULL) goto done;
         PyTuple_SET_ITEM(t_semantic, (Py_ssize_t)i, item);
     }
-    result = PyDict_New();
-    if (result == NULL)
+    snapshot = PyObject_New(SnapshotObject, &Snapshot_Type);
+    if (snapshot == NULL)
         goto done;
-    {
-        PyObject *count_obj = PyLong_FromUnsignedLongLong(count);
-        int ok = -1;
-        if (count_obj != NULL) {
-            ok = PyDict_SetItemString(result, "count", count_obj);
-            Py_DECREF(count_obj);
-        }
-        if (ok < 0)
-            Py_CLEAR(result);
-    }
-    if (result == NULL)
-        goto done;
-    if (PyDict_SetItemString(result, "parent", t_parent) < 0 ||
-        PyDict_SetItemString(result, "first_child", t_first) < 0 ||
-        PyDict_SetItemString(result, "next", t_next) < 0 ||
-        PyDict_SetItemString(result, "child_count", t_child_count) < 0 ||
-        PyDict_SetItemString(result, "variable", t_variable) < 0 ||
-        PyDict_SetItemString(result, "span_start", t_span_start) < 0 ||
-        PyDict_SetItemString(result, "span_len", t_span_len) < 0 ||
-        PyDict_SetItemString(result, "is_semantic_error", t_semantic) < 0)
-        Py_CLEAR(result);
+    snapshot->session_obj = Py_NewRef(self);
+    snapshot->generation = generation;
+    snapshot->count = count;
+    snapshot->parent = t_parent;
+    snapshot->first_child = t_first;
+    snapshot->next = t_next;
+    snapshot->child_count = t_child_count;
+    snapshot->variable = t_variable;
+    snapshot->span_start = t_span_start;
+    snapshot->span_len = t_span_len;
+    snapshot->is_semantic_error = t_semantic;
+    t_parent = NULL;
+    t_first = NULL;
+    t_next = NULL;
+    t_child_count = NULL;
+    t_variable = NULL;
+    t_span_start = NULL;
+    t_span_len = NULL;
+    t_semantic = NULL;
 done:
     Py_XDECREF(t_parent);
     Py_XDECREF(t_first);
@@ -1343,7 +1485,7 @@ done:
     PyMem_Free(span_start);
     PyMem_Free(span_len);
     PyMem_Free(is_semantic_error);
-    return result;
+    return (PyObject *)snapshot;
 }
 
 PyDoc_STRVAR(walk_doc,
@@ -3225,11 +3367,6 @@ static Py_hash_t Node_hash(NodeObject *self)
     return h;
 }
 
-static PyObject *Node_int(NodeObject *self)
-{
-    return PyLong_FromUnsignedLongLong(self->address);
-}
-
 static PyObject *Node_get_address(NodeObject *self, void *Py_UNUSED(closure))
 {
     return PyLong_FromUnsignedLongLong(self->address);
@@ -3237,13 +3374,9 @@ static PyObject *Node_get_address(NodeObject *self, void *Py_UNUSED(closure))
 
 static PyGetSetDef Node_getset[] = {
     {"address", (getter)Node_get_address, NULL,
-     "Raw address (stable index in the session's node storage).", NULL},
+     "Display-only raw address (stable index in the session's node "
+     "storage); never an argument where a node is expected.", NULL},
     {NULL, NULL, NULL, NULL, NULL}
-};
-
-static PyNumberMethods Node_number_methods = {
-    .nb_int = (unaryfunc)Node_int,
-    .nb_index = (unaryfunc)Node_int,
 };
 
 static PyTypeObject Node_Type = {
@@ -3258,7 +3391,6 @@ static PyTypeObject Node_Type = {
     .tp_getset = Node_getset,
     .tp_as_sequence = &Node_sequence_methods,
     .tp_as_mapping = &Node_mapping_methods,
-    .tp_as_number = &Node_number_methods,
     .tp_iter = (getiterfunc)Node_iter,
     .tp_richcompare = Node_richcompare,
     .tp_hash = (hashfunc)Node_hash,
@@ -3571,7 +3703,7 @@ static PyMethodDef ProcedureArgs_methods[] = {
     {"report_semantic_error", (PyCFunction)ProcedureArgs_report_semantic_error, METH_O,
      "report_semantic_error(message)\n\nRecord a semantic error on the current node and return the total count. Parsing continues."},
     {"set_current_node", (PyCFunction)ProcedureArgs_set_current_node, METH_O,
-     "set_current_node(node)\n\nRedirect the current-node channel to node (a Node or address)."},
+     "set_current_node(node)\n\nRedirect the current-node channel to node (a Node)."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3872,6 +4004,8 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
         return NULL;
     if (PyType_Ready(&Walker_Type) < 0)
         return NULL;
+    if (PyType_Ready(&Snapshot_Type) < 0)
+        return NULL;
     if (PyType_Ready(&Diagnostic_Type) < 0)
         return NULL;
 
@@ -3917,6 +4051,11 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
     Py_INCREF(&Walker_Type);
     if (PyModule_AddObject(module, "Walker", (PyObject *)&Walker_Type) < 0) {
         Py_DECREF(&Walker_Type);
+        goto fail;
+    }
+    Py_INCREF(&Snapshot_Type);
+    if (PyModule_AddObject(module, "Snapshot", (PyObject *)&Snapshot_Type) < 0) {
+        Py_DECREF(&Snapshot_Type);
         goto fail;
     }
 

@@ -8,13 +8,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +58,17 @@ public class GalleyTest {
         } catch (MissingArtifactException e) {
             throw new IllegalStateException("fixture library missing: " + e.getMessage(), e);
         }
+    }
+
+    /** Full signature — declaring class, member name, parameter types. */
+    private static String signatureOf(Class<?> declaring, String name, Class<?>[] parameters) {
+        return declaring.getName() + "#" + name + "("
+                + String.join(",", Arrays.stream(parameters).map(Class::getName).toList()) + ")";
+    }
+
+    /** A node-address parameter: primitive, boxed, or arbitrary precision. */
+    private static boolean isAddressShaped(Class<?> type) {
+        return type == long.class || type == Long.class || type == BigInteger.class;
     }
 
     @Test
@@ -172,10 +191,10 @@ public class GalleyTest {
             session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 hookReads.add(node != null && node.text() != null);
-                // A raw address carries no generation. Called on the thread
-                // running the hook it crosses the parse's hook door and reads.
+                // Called on the thread running the hook, the node crosses
+                // the parse's hook door and reads.
                 try {
-                    session.variableIndex(node.getAddress());
+                    session.variableIndex(node);
                     sameThreadReads.add(true);
                 } catch (GalleyException e) {
                     sameThreadReads.add(false);
@@ -185,7 +204,7 @@ public class GalleyTest {
                 // session.
                 Thread other = new Thread(() -> {
                     try {
-                        session.variableIndex(node.getAddress());
+                        session.variableIndex(node);
                         refusals.add(null);
                     } catch (GalleyException e) {
                         refusals.add(e.getCode());
@@ -417,7 +436,6 @@ public class GalleyTest {
             assertNotNull(root);
             assertTrue(session.nodeValid(root));
             assertNull(session.parent(root));
-            assertFalse(session.nodeValid(0xFFFFFFFFFFFFFFFFL));
             Node first = session.firstChild(root);
             Node last = session.lastChild(root);
             assertNotNull(first);
@@ -432,6 +450,81 @@ public class GalleyTest {
                 child = session.nextSibling(child);
             }
             assertEquals(visited.size(), session.childCount(root));
+        }
+
+        @Test
+        void everyPublicClassExposesNoRawAddressParameters() throws Exception {
+            // Java's enforcement is compile time, so reflection proves it
+            // holds for every public class of the package: every public
+            // method and constructor with a `long`, boxed `Long` or
+            // `BigInteger` parameter is a raw address unless its full
+            // signature — class, member name, parameter types — is
+            // sanctioned, so a new `long` overload of an allowed name, or
+            // the same address widened into a box, fails.
+            Set<String> sanctioned = Set.of(
+                    "org.sanbus.galley.DiagnosticKind#fromCode(long)",
+                    "org.sanbus.galley.Galley#statusString(long)",
+                    "org.sanbus.galley.ParserType#fromCode(long)",
+                    "org.sanbus.galley.RecoveryMode#fromCode(long)",
+                    "org.sanbus.galley.RecoveryTarget#fromCode(long)",
+                    "org.sanbus.galley.ResumeSide#fromCode(long)",
+                    "org.sanbus.galley.Session#reserveNodes(long)",
+                    "org.sanbus.galley.Session#symbolNameAt(long)",
+                    "org.sanbus.galley.Session#symbolNameAtBytes(long)",
+                    "org.sanbus.galley.Session#symbolIsTerminal(long)",
+                    "org.sanbus.galley.Session#variableNameAt(long)",
+                    "org.sanbus.galley.Session#variableNameAtBytes(long)",
+                    "org.sanbus.galley.Session#statusString(long)",
+                    "org.sanbus.galley.SessionOptions$Builder#astPreallocationCap(long)",
+                    "org.sanbus.galley.StatusCode#fromCode(long)",
+                    "org.sanbus.galley.TreeSnapshot#node(long)");
+
+            // Scan the package's own classes from its class directory, so a
+            // new public class joins the check without touching this test.
+            Path packageDirectory = Paths.get(
+                            Session.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+                    .resolve("org/sanbus/galley");
+            assertTrue(Files.isDirectory(packageDirectory),
+                    "package classes not found at " + packageDirectory);
+            List<Class<?>> classes = new ArrayList<>();
+            try (Stream<Path> entries = Files.list(packageDirectory)) {
+                for (Path entry : entries.toList()) {
+                    String fileName = entry.getFileName().toString();
+                    if (!fileName.endsWith(".class") || !Files.isRegularFile(entry)) continue;
+                    String binaryName = fileName.substring(0, fileName.length() - ".class".length());
+                    Class<?> type = Class.forName("org.sanbus.galley." + binaryName);
+                    if (Modifier.isPublic(type.getModifiers())) classes.add(type);
+                }
+            }
+            assertTrue(classes.contains(Session.class) && classes.contains(TreeSnapshot.class),
+                    "scan found " + classes.size() + " public classes, missing the API");
+
+            Set<Class<?>> scanned = Set.copyOf(classes);
+            for (Class<?> type : classes) {
+                for (Method method : type.getMethods()) {
+                    if (!scanned.contains(method.getDeclaringClass())) continue;
+                    for (Class<?> parameter : method.getParameterTypes()) {
+                        if (!isAddressShaped(parameter)) continue;
+                        String signature = signatureOf(method.getDeclaringClass(), method.getName(),
+                                method.getParameterTypes());
+                        assertTrue(sanctioned.contains(signature), "raw address parameter: " + signature);
+                    }
+                }
+                // Public constructors, same rule and the same allowlist,
+                // keyed `Class#<init>(parameter types)`.
+                for (Constructor<?> constructor : type.getConstructors()) {
+                    for (Class<?> parameter : constructor.getParameterTypes()) {
+                        if (!isAddressShaped(parameter)) continue;
+                        String signature = signatureOf(type, "<init>", constructor.getParameterTypes());
+                        assertTrue(sanctioned.contains(signature), "raw address parameter: " + signature);
+                    }
+                }
+            }
+            assertThrows(NoSuchMethodException.class, () -> Session.class.getMethod("nodeValid", long.class));
+            assertThrows(NoSuchMethodException.class, () -> Session.class.getMethod("text", long.class));
+            assertThrows(NoSuchMethodException.class, () -> Session.class.getMethod("text", Long.class));
+            assertThrows(NoSuchMethodException.class, () -> Session.class.getMethod("text", BigInteger.class));
+            assertThrows(NoSuchMethodException.class, () -> Session.class.getMethod("walk", long.class, boolean.class));
         }
 
         @Test
@@ -500,14 +593,13 @@ public class GalleyTest {
         }
 
         @Test
-        void invalidNodeAccessorsReturnNull() {
-            long invalid = 0xFFFFFFFFFFFFFFFFL;
-            assertNull(session.symbolName(invalid));
-            assertNull(session.text(invalid));
-            assertNull(session.span(invalid));
-            assertNull(session.lineColumn(invalid));
-            assertNull(session.variableIndex(invalid));
-            assertEquals(0, session.childCount(invalid));
+        void nullNodeAccessorsReturnEmpty() {
+            assertNull(session.symbolName(null));
+            assertNull(session.text(null));
+            assertNull(session.span(null));
+            assertNull(session.lineColumn(null));
+            assertNull(session.variableIndex(null));
+            assertEquals(0, session.childCount(null));
         }
 
         @Test
@@ -550,16 +642,18 @@ public class GalleyTest {
             assertEquals(count, snap.isSemanticError().length);
             for (long address = 0; address < count; address++) {
                 int slot = (int) address;
-                Node parent = session.parent(address);
+                Node at = snap.node(address);
+                assertNotNull(at);
+                Node parent = session.parent(at);
                 assertEquals(parent == null ? -1L : parent.getAddress(), snap.parent()[slot]);
-                Node first = session.firstChild(address);
+                Node first = session.firstChild(at);
                 assertEquals(first == null ? -1L : first.getAddress(), snap.firstChild()[slot]);
-                Node next = session.nextSibling(address);
+                Node next = session.nextSibling(at);
                 assertEquals(next == null ? -1L : next.getAddress(), snap.next()[slot]);
-                assertEquals(session.childCount(address), snap.childCount()[slot]);
-                Integer variable = session.variableIndex(address);
+                assertEquals(session.childCount(at), snap.childCount()[slot]);
+                Integer variable = session.variableIndex(at);
                 assertEquals(variable == null ? -1L : variable.longValue(), snap.variable()[slot]);
-                long[] span = session.span(address);
+                long[] span = session.span(at);
                 assertNotNull(span);
                 assertEquals(span[0], snap.spanStart()[slot]);
                 assertEquals(span[1], snap.spanLen()[slot]);
@@ -613,7 +707,6 @@ public class GalleyTest {
                 walker.skipChildren();
                 assertFalse(walker.hasNext());
             }
-            assertNull(session.walk(0xFFFFFFFFFFFFFFFFL, false));
         }
 
         @Test
@@ -753,22 +846,36 @@ public class GalleyTest {
         }
 
         @Test
-        void rawAddressesReadTheNewParseAfterReparse() {
-            long address = session.rootNode().getAddress();
-            assertNotNull(session.text(address));
+        void snapshotNodeBelongsToTheSnapshotParse() {
+            TreeSnapshot snap = session.snapshot();
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Node node = snap.node(root.getAddress());
+            assertEquals(root, node);
+            Node first = session.firstChild(node);
+            assertNotNull(first);
+            long firstAddress = snap.firstChild()[(int) root.getAddress()];
+            assertEquals(first.getAddress(), firstAddress);
+            assertEquals(first, snap.node(firstAddress));
+            // An absent node link answers null, never a node.
+            assertNull(snap.node(Galley.INVALID_NODE));
+            // The columns never follow a later parse: node() keeps answering
+            // for its own parse, and that node reads as invalidated.
             assertEquals(7, session.parse("alpha:1"));
-            // Raw addresses carry no generation: they read the new parse, never throw.
-            assertNotNull(session.text(address));
-            assertNotNull(session.symbolName(address));
-            assertNotNull(session.symbolNameBytes(address));
-            assertNotNull(session.span(address));
-            assertNotNull(session.lineColumn(address));
-            assertTrue(session.nodeValid(address));
-            assertNotNull(session.children(address));
-            assertNotNull(session.firstChild(address));
-            assertNull(session.parent(address));
-            // Fresh handles read the same new parse.
-            assertNotNull(session.rootNode().text());
+            assertEquals(node, snap.node(root.getAddress()));
+            assertInvalidated(node::text);
+            Node fresh = session.rootNode();
+            assertNotNull(fresh);
+            assertNotEquals(node, fresh);
+            assertNotNull(fresh.text());
+        }
+
+        @Test
+        void snapshotNodeOutOfRangeThrows() {
+            TreeSnapshot snap = session.snapshot();
+            assertTrue(snap.count() > 0);
+            assertThrows(IndexOutOfBoundsException.class, () -> snap.node(snap.count()));
+            assertThrows(IndexOutOfBoundsException.class, () -> snap.node(-2));
         }
 
         @Test
@@ -1023,7 +1130,6 @@ public class GalleyTest {
             session.parse("alpha:12");
             assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), codes);
             session.clearProcedures();
-            assertNull(session.walk(1L << 40, false));
             assertNotNull(session.walk(session.rootNode(), false));
         }
 
@@ -1330,60 +1436,6 @@ public class GalleyTest {
             } else {
                 assertNotEquals(wrapper.getAddress(), first.getAddress());
             }
-        }
-
-        @Test
-        void rawAddressOverloadsMirrorNodeOverloads() {
-            long rootAddr = root.getAddress();
-            int before = session.childCount(rootAddr);
-            Node head = session.cleanChildren(rootAddr);
-            assertNotNull(head);
-            assertEquals(0, session.childCount(rootAddr));
-            session.appendChildren(rootAddr, head.getAddress());
-            assertEquals(before, session.childCount(rootAddr));
-
-            Node wrapper = session.firstChild(rootAddr);
-            assertNotNull(wrapper);
-            long wrapperAddr = wrapper.getAddress();
-            Node pair = session.firstChild(wrapperAddr);
-            assertNotNull(pair);
-            Node tail = session.nextSibling(pair.getAddress());
-            assertNotNull(tail);
-            Node detached = session.removeSiblings(tail.getAddress(), 1);
-            assertNotNull(detached);
-            session.insertBefore(pair.getAddress(), detached.getAddress());
-            assertEquals(tail.getAddress(), session.firstChild(wrapperAddr).getAddress());
-            session.insertAfter(pair.getAddress(), detached.getAddress());
-            assertEquals(detached.getAddress(), session.nextSibling(pair.getAddress()).getAddress());
-
-            Node removedSelf = session.removeSelf(pair.getAddress());
-            assertEquals(pair.getAddress(), removedSelf.getAddress());
-            assertNull(session.parent(pair.getAddress()));
-
-            Node grandchildrenHead = session.cleanChildren(wrapperAddr);
-            assertNotNull(grandchildrenHead);
-            session.appendChildren(wrapperAddr, grandchildrenHead.getAddress());
-            Node promoted = session.promoteChildrenOverWrapper(wrapperAddr);
-            assertNotNull(promoted);
-
-            int original = session.childCount(rootAddr);
-            Node childrenHead = session.cleanChildren(rootAddr);
-            assertNotNull(childrenHead);
-            session.insertChildrenAt(rootAddr, 0, childrenHead.getAddress());
-            assertEquals(original, session.childCount(rootAddr));
-            Node removed = session.removeChildrenAt(rootAddr, 0, original);
-            assertNotNull(removed);
-            assertEquals(0, session.childCount(rootAddr));
-
-            // Fresh tree for the unlink path.
-            session.parse("alpha:12,beta:3");
-            root = session.rootNode();
-            assertNotNull(root);
-            Node freshWrapper = session.firstChild(root.getAddress());
-            assertNotNull(freshWrapper);
-            int wrapperKids = session.childCount(freshWrapper.getAddress());
-            session.unlinkWrapper(freshWrapper.getAddress());
-            assertEquals(wrapperKids, session.childCount(freshWrapper.getAddress()));
         }
     }
 

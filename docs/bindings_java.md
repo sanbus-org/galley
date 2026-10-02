@@ -74,7 +74,7 @@ the `GalleyBuild <language-dir>` build command.
 The Panama FFI boundary is the only overhead over the C API:
 
 - Every method is a direct `Linker.downcallHandle` / `MemorySegment` call; no JSON or subprocess marshalling. Sessions are not thread-safe — keep one per thread or guard it externally.
-- Node handles are `Node` objects that wrap a stable address in the library's non-relocating node storage and keep a strong reference to their owning `Session`; plain `long` addresses are also accepted wherever a node is expected. Iteration and indexing are zero-copy (`for (Node child : session.children(root))`, `root.children()`, `node.length`).
+- Node handles are `Node` objects that wrap a stable address in the library's non-relocating node storage and keep a strong reference to their owning `Session`; a method that takes a node takes a `Node`, `getAddress()` is display-only, and `TreeSnapshot.node(long)` is the one conversion from a stored address back to a node. Iteration and indexing are zero-copy (`for (Node child : session.children(root))`, `root.children()`, `node.length`).
 - Grammar-name accessors (`symbolName`, symbol/variable table names,
   diagnostic context) return `String` decoded as UTF-8 with replacement for
   malformed input; the raw bytes stay available through the `*Bytes` twins

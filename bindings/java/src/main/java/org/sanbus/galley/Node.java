@@ -20,20 +20,13 @@ public final class Node implements Iterable<Node> {
     private final Session session;
     private final long address;
     /**
-     * The core's parse generation, stamped at construction. The constructor
-     * is the single creation gate: every node carries the generation it
-     * belongs to, so no door can read storage from another parse.
+     * The core's parse generation, stamped at construction. The package
+     * constructor is the single creation gate: every node carries the
+     * generation it belongs to, so no door can read storage from another
+     * parse. {@link TreeSnapshot#node(long)} is the one place a stored
+     * address becomes a node.
      */
     private final long generation;
-
-    /**
-     * Wraps a raw address, stamped with the generation of the door a call
-     * made now would cross. A raw address carries no generation of its own,
-     * so this is the explicit conversion and the caller vouches for it.
-     */
-    public Node(Session session, long address) {
-        this(Objects.requireNonNull(session, "session"), address, session.currentGeneration());
-    }
 
     Node(Session session, long address, long generation) {
         this.session = session;
@@ -41,6 +34,10 @@ public final class Node implements Iterable<Node> {
         this.generation = generation;
     }
 
+    /**
+     * Display-only raw address: the stable index of this node in the
+     * session's node storage. Never an argument where a node is expected.
+     */
     public long getAddress() { return address; }
 
     Session session() { return session; }

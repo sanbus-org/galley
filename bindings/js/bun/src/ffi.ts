@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, DispatchHandler, SessionCOptions, TreeSnapshot, WalkedStep } from "@sanbus/galley-core";
+import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns, WalkedStep } from "@sanbus/galley-core";
 import { GalleyError, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -603,7 +603,7 @@ export class BunPort implements FfiPort {
     return this.native.galley_node_parent(handle as NativeHandle, node);
   }
 
-  treeSnapshot(handle: Handle): TreeSnapshot {
+  treeSnapshot(handle: Handle): SnapshotColumns {
     for (let attempt = 0; attempt < 2; attempt++) {
       const count = this.nodeCount(handle);
       const parent = new BigUint64Array(count);
