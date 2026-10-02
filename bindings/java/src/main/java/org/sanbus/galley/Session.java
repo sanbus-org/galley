@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import org.sanbus.galley.internal.GalleyLibrary;
@@ -666,57 +667,45 @@ public final class Session implements AutoCloseable {
     /**
      * Pre-order walker over the subtree rooted at {@code node}, with the
      * root at depth 0. Pass true to prune subtrees rooted at semantic-error
-     * nodes. Returns null for invalid roots and builds without AST
-     * construction. Close the walker before closing the session or parsing
-     * again.
+     * nodes. Always returns a walker; an invalid root fails at its first
+     * step. The walker owns no native resource: abandoning it is free, and
+     * parsing again with one open succeeds — its next step throws instead.
+     * Each step picks its door like any node call, so a walk created
+     * inside a hook of a running parse walks that parse's in-flight tree.
+     * Steps follow the live links, so edits between steps are visible; a
+     * step whose position is no longer inside the walk's root (removed, or
+     * moved elsewhere) throws {@code invalid node}.
      */
     public Walker walk(Node node, boolean skipSemanticErrors) {
-        if (node == null) return null;
-        // Walkers exist only on the session door: from inside a hook a node
-        // of the running parse is refused, because the core refuses the
-        // session door while that parse runs.
-        if (node.session().isClosed()) throw new GalleyClosedException("node's session");
-        requireOpen();
-        return walkAt(address(node, sessionDoor), skipSemanticErrors);
+        Objects.requireNonNull(node, "node");
+        NodeDoor door = door(node);          // closed checks + door choice
+        long address = address(node, door);   // generation gate for that door
+        // The walk is bound to the tree the node came from: stamp from the
+        // node's own generation, which the gate above just proved live for
+        // this door — no refresh of its own.
+        return new Walker(this, address, node.generation(), skipSemanticErrors);
     }
 
-    private Walker walkAt(long address, boolean skipSemanticErrors) {
+    /**
+     * One step of a walk: crosses the door of the calling context — the
+     * hook door inside a hook dispatch of this session's running parse,
+     * the session door everywhere else — and maps the status onto the
+     * walker's contract: null at the end of the walk, the walker's own
+     * {@link GenerationInvalidatedException} when its generation is not
+     * the tree's anymore, {@code door.failure} for everything else.
+     */
+    Walker.WalkStep walkerStep(MemorySegment cursor, long generation) {
         requireOpen();
-        // Stamp from a fresh read of the core, never the cache. A refusal
-        // throws ERROR_SESSION_IN_USE.
-        refreshPublishedGeneration();
-        long generation = publishedGeneration;
-        MemorySegment walker = lib.galley_walker_create(handle, address, skipSemanticErrors ? 1 : 0);
-        if (walker.equals(MemorySegment.NULL)) {
-            // The native NULL is ambiguous: a refusal must throw, only an
-            // invalid root answers null.
-            refreshPublishedGeneration();
-            return null;
-        }
-        return new Walker(this, walker, generation);
-    }
-
-    Walker.WalkStep walkerNext(MemorySegment walker, long generation) {
-        requireOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outNode = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment outDepth = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outFlag = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_walker_next(walker, outNode, outDepth, outFlag) == 0) return null;
-            return new Walker.WalkStep(
-                new Node(this, outNode.get(ValueLayout.JAVA_LONG, 0), generation),
-                outDepth.get(ValueLayout.JAVA_INT, 0),
-                outFlag.get(ValueLayout.JAVA_INT, 0) != 0);
-        }
-    }
-
-    void walkerSkipChildren(MemorySegment walker) {
-        requireOpen();
-        lib.galley_walker_skip_children(walker);
-    }
-
-    void walkerDestroy(MemorySegment walker) {
-        lib.galley_walker_destroy(walker);
+        NodeDoor door = door();
+        long status = door.walkStep(cursor);
+        if (status == StatusCode.ERROR_STALE_TREE.getCode())
+            throw GalleyClosedException.invalidated("walker");
+        if (status < 0) throw door.failure(status);
+        if (status == 0) return null;
+        return new Walker.WalkStep(
+            new Node(this, WalkCursor.current(cursor), generation),
+            WalkCursor.depth(cursor),
+            WalkCursor.isSemanticError(cursor));
     }
 
     /**

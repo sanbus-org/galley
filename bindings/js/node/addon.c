@@ -318,10 +318,8 @@ typedef int (*fn_galley_uses_verbatim_t)(void);
 typedef unsigned long long (*fn_galley_variable_count_t)(void);
 typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
 typedef const char * (*fn_galley_version_t)(void);
-typedef GalleyWalker * (*fn_galley_walker_create_t)(GalleySession *session, GalleyNodeAddress node, int skip_semantic_errors);
-typedef void (*fn_galley_walker_destroy_t)(GalleyWalker *walker);
-typedef int (*fn_galley_walker_next_t)(GalleyWalker *walker, GalleyNodeAddress *out_node, unsigned int *out_depth, int *out_is_semantic_error);
-typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
+typedef long long (*fn_galley_walk_next_t)(GalleySession *session, GalleyWalkCursor *cursor);
+typedef long long (*fn_galley_hook_walk_next_t)(void *door, GalleyWalkCursor *cursor);
 
 /* Single source for every required parser-library symbol: the slot
  * enum and the probe table below both expand from GALLEY_FN_LIST, so the
@@ -382,6 +380,7 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_hook_tree_insert_children_at) \
   X(galley_hook_tree_remove_children_at) \
   X(galley_hook_generation) \
+  X(galley_hook_walk_next) \
   X(galley_published_generation) \
   X(galley_last_input) \
   X(galley_last_position) \
@@ -458,10 +457,7 @@ typedef void (*fn_galley_walker_skip_children_t)(GalleyWalker *walker);
   X(galley_variable_count) \
   X(galley_variable_name) \
   X(galley_version) \
-  X(galley_walker_create) \
-  X(galley_walker_destroy) \
-  X(galley_walker_next) \
-  X(galley_walker_skip_children)
+  X(galley_walk_next)
 
 typedef enum {
 #define GALLEY_FN_SLOT(name) SLOT_##name,
@@ -1402,73 +1398,53 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
   return make_i64(env, status);
 }
 
-static napi_value method_galley_walker_create(napi_env env, Lib *lib, size_t argc,
-                                             napi_value *argv) {
+/* The host-owned walk cursor arrives as an ArrayBuffer; its bytes
+ * are the walker's whole state, so the call mutates the caller's buffer.
+ */
+static GalleyWalkCursor *walk_cursor_arg(napi_env env, size_t argc,
+                                         napi_value *argv, size_t index) {
+  if (argc <= index) {
+    napi_throw_type_error(env, NULL, "expected cursor ArrayBuffer");
+    return NULL;
+  }
+  void *data = NULL;
+  size_t length = 0;
+  if (napi_get_arraybuffer_info(env, argv[index], &data, &length) != napi_ok) {
+    napi_throw_type_error(env, NULL, "expected cursor ArrayBuffer");
+    return NULL;
+  }
+  if (length != sizeof(GalleyWalkCursor)) {
+    char message[64];
+    snprintf(message, sizeof message, "cursor must be %zu bytes",
+             sizeof(GalleyWalkCursor));
+    napi_throw_range_error(env, NULL, message);
+    return NULL;
+  }
+  return (GalleyWalkCursor *)data;
+}
+
+static napi_value method_galley_walk_next(napi_env env, Lib *lib, size_t argc,
+                                          napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 3) {
-    napi_throw_type_error(env, NULL, "expected node and flags");
-    return NULL;
-  }
-  uint64_t node = 0;
-  int32_t skip = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
-  if (!get_i32(env, argv[2], &skip)) return NULL;
-  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_walker_create_t)lib->fn[SLOT_galley_walker_create])(session, (GalleyNodeAddress)node,
-                                                                (int)skip));
+  GalleyWalkCursor *cursor = walk_cursor_arg(env, argc, argv, 1);
+  if (cursor == NULL) return NULL;
+  long long status = ((fn_galley_walk_next_t)lib->fn[SLOT_galley_walk_next])(session, cursor);
+  return make_i64(env, status);
 }
 
-static napi_value method_galley_walker_next(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+static napi_value method_galley_hook_walk_next(napi_env env, Lib *lib, size_t argc,
+                                               napi_value *argv) {
   if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected walker");
+    napi_throw_type_error(env, NULL, "expected door");
     return NULL;
   }
   uint64_t address = 0;
   if (!get_u64(env, argv[0], &address)) return NULL;
-  GalleyWalker *walker = (GalleyWalker *)(uintptr_t)address;
-  GalleyNodeAddress node = 0;
-  unsigned int depth = 0;
-  int is_semantic_error = 0;
-  int yielded = ((fn_galley_walker_next_t)lib->fn[SLOT_galley_walker_next])(walker, &node, &depth, &is_semantic_error);
-  if (yielded == 0) return make_null(env);
-  napi_value triple;
-  napi_value node_value = make_u64(env, (uint64_t)node);
-  napi_value depth_value = make_u32(env, depth);
-  napi_value flag_value = make_i32(env, (int32_t)is_semantic_error);
-  if (node_value == NULL || depth_value == NULL || flag_value == NULL) return NULL;
-  if (napi_create_array_with_length(env, 3, &triple) != napi_ok) return NULL;
-  if (napi_set_element(env, triple, 0, node_value) != napi_ok) return NULL;
-  if (napi_set_element(env, triple, 1, depth_value) != napi_ok) return NULL;
-  if (napi_set_element(env, triple, 2, flag_value) != napi_ok) return NULL;
-  return triple;
-}
-
-static napi_value method_galley_walker_skip_children(napi_env env, Lib *lib, size_t argc,
-                                                    napi_value *argv) {
-  if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected walker");
-    return NULL;
-  }
-  uint64_t address = 0;
-  if (!get_u64(env, argv[0], &address)) return NULL;
-  ((fn_galley_walker_skip_children_t)lib->fn[SLOT_galley_walker_skip_children])((GalleyWalker *)(uintptr_t)address);
-  napi_value undefined_value;
-  if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
-  return undefined_value;
-}
-
-static napi_value method_galley_walker_destroy(napi_env env, Lib *lib, size_t argc,
-                                              napi_value *argv) {
-  if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected walker");
-    return NULL;
-  }
-  uint64_t address = 0;
-  if (!get_u64(env, argv[0], &address)) return NULL;
-  ((fn_galley_walker_destroy_t)lib->fn[SLOT_galley_walker_destroy])((GalleyWalker *)(uintptr_t)address);
-  napi_value undefined_value;
-  if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
-  return undefined_value;
+  GalleyWalkCursor *cursor = walk_cursor_arg(env, argc, argv, 1);
+  if (cursor == NULL) return NULL;
+  long long status = ((fn_galley_hook_walk_next_t)lib->fn[SLOT_galley_hook_walk_next])((void *)(uintptr_t)address, cursor);
+  return make_i64(env, status);
 }
 
 static napi_value method_galley_diagnostic_message(napi_env env, Lib *lib, size_t argc,
@@ -2365,10 +2341,8 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_node_next_sibling);
   BIND_OR_THROW(api, lib, galley_node_prior_sibling);
   BIND_OR_THROW(api, lib, galley_node_parent);
-  BIND_OR_THROW(api, lib, galley_walker_create);
-  BIND_OR_THROW(api, lib, galley_walker_next);
-  BIND_OR_THROW(api, lib, galley_walker_skip_children);
-  BIND_OR_THROW(api, lib, galley_walker_destroy);
+  BIND_OR_THROW(api, lib, galley_walk_next);
+  BIND_OR_THROW(api, lib, galley_hook_walk_next);
   BIND_OR_THROW(api, lib, galley_node_symbol_name);
   BIND_OR_THROW(api, lib, galley_node_text);
   BIND_OR_THROW(api, lib, galley_node_span);

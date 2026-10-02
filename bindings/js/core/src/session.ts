@@ -149,6 +149,10 @@ class SessionDoor implements NodeDoor {
     return index;
   }
 
+  walkNext(cursor: ArrayBuffer): number {
+    return this.#port.walkNext(this.#handle(), cursor);
+  }
+
   cleanChildren(address: bigint): bigint {
     const { status, head } = this.#port.treeCleanChildren(this.#handle(), address);
     this.#check(status);
@@ -846,32 +850,54 @@ export class Session implements HookOwner {
   /**
    * Pre-order walker over the subtree rooted at `root`, with the root at
    * depth 0. Pass true to prune subtrees rooted at semantic-error nodes.
-   * Returns null when the library built no AST. The walker is bound to
-   * the current parse generation: stepping it after the session parses
-   * again or closes throws a `SessionClosedError`, so parsing with an
-   * abandoned walker still succeeds and the walker fails at its next
-   * step.
+   * Always returns a walker; an invalid root fails at its first step. The
+   * walker owns no native resource: abandoning it is free, and parsing
+   * again with one open succeeds — its next step throws a
+   * `SessionClosedError` instead. Each step picks its door like any node
+   * call, so a walk created inside a hook of a running parse walks that
+   * parse's in-flight tree. Steps follow the live links, so edits between
+   * steps are visible; a step whose position is no longer inside the
+   * walk's root (removed, or moved elsewhere) throws an `invalid node`
+   * error.
    */
-  walk(root: Node, skipSemanticErrors = false): Walker | null {
-    const h = this.#requireHandle();
-    // Walkers exist only on the session door: from inside a hook a node of
-    // the running parse is refused, because the core refuses the session
-    // door while that parse runs.
-    const address = this.admit(root, this.#sessionDoor);
-    // Stamp from a fresh read of the core, never the cache. A refusal
-    // throws `ErrorSessionInUse`.
-    this.#refreshPublishedGeneration();
-    const generation = this.#publishedGeneration;
-    const handle = this.port.walkerCreate(h, address, skipSemanticErrors);
-    if (handle === null || handle === undefined) {
-      // The native NULL is ambiguous: a refusal must raise, only an invalid
-      // root answers null.
-      this.#refreshPublishedGeneration();
-      return null;
-    }
-    return new Walker(this, this.port, handle, generation, (address) =>
-      this.#nodeForGeneration(generation, address),
+  walk(root: Node, skipSemanticErrors = false): Walker {
+    const door = this.#door(); // hook-aware; throws when closed
+    const address = this.admit(root, door); // generation gate for that door
+    // The walk is bound to the tree the node came from: stamp from the
+    // node's own generation, which the gate above just proved live for
+    // this door — no refresh of its own.
+    const generation = root.generation;
+    return new Walker(
+      this,
+      address,
+      generation,
+      skipSemanticErrors,
+      this.#port.walkCursorLittleEndian,
+      (address) => this.#nodeForGeneration(generation, address),
     );
+  }
+
+  /**
+   * One step of a walk: crosses the door of the calling context — the
+   * hook door inside a hook dispatch of this session's running parse, the
+   * session door everywhere else — and maps the status onto the walker's
+   * contract: null at the end of the walk, a `SessionClosedError` when
+   * the walker's generation is not the tree's anymore, the session's own
+   * error for everything else.
+   * @internal
+   */
+  walkStep(cursor: ArrayBuffer): { node: bigint; depth: number; isSemanticError: boolean } | null {
+    const status = this.#door().walkNext(cursor);
+    if (status === Status.ErrorStaleTree) throw new SessionClosedError("walker is invalidated");
+    this.#checkStatus(status);
+    if (status === 0) return null;
+    const view = new DataView(cursor);
+    const littleEndian = this.#port.walkCursorLittleEndian;
+    return {
+      node: view.getBigUint64(WALK_OFFSET_CURRENT, littleEndian),
+      depth: view.getUint32(WALK_OFFSET_DEPTH, littleEndian),
+      isSemanticError: view.getUint8(WALK_OFFSET_FLAG) !== 0,
+    };
   }
 
   symbolNameBytes(node: Node): Uint8Array | null {
@@ -1210,50 +1236,87 @@ export interface WalkStep {
   isSemanticError: boolean;
 }
 
+// The host-owned walk cursor, byte-for-byte `GalleyWalkCursor` from
+// galley.h: generation u64 @0, root u64 @8, current u64 @16, depth u32
+// @24, state u16 @28, options u8 @30, is_semantic_error u8 @31,
+// structure_version u64 @32 — 40 bytes in the port's byte order (the
+// last field is stamped by the core and never read host-side, so the
+// zeroed ArrayBuffer supplies it).
+const WALK_CURSOR_BYTES = 40;
+const WALK_OFFSET_GENERATION = 0;
+const WALK_OFFSET_ROOT = 8;
+const WALK_OFFSET_CURRENT = 16;
+const WALK_OFFSET_DEPTH = 24;
+const WALK_OFFSET_STATE = 28;
+const WALK_OFFSET_OPTIONS = 30;
+const WALK_OFFSET_FLAG = 31;
+const WALK_STATE_NOT_STARTED = 0;
+const WALK_STATE_YIELDED = 1;
+const WALK_STATE_YIELDED_SKIP_CHILDREN = 2;
+const WALK_OPTION_SKIP_SEMANTIC_ERRORS = 1;
+
 /**
  * Pre-order tree walker over the last successful parse, yielding one
- * {@link WalkStep} per node. Bound to the core's parse generation of the
- * tree it was created over: stepping after the session parses again or
- * closes throws a `SessionClosedError` instead of reading stale storage. Created by
- * {@link Session.walk}.
+ * {@link WalkStep} per node. Created by {@link Session.walk}.
+ *
+ * The walker owns no native resource: it is one host-side 40-byte
+ * cursor, so abandoning it is free and parsing again with one open never
+ * disturbs the parse — the walker fails at its next step instead. Each
+ * step picks its door like any node call, so a walk created inside a
+ * hook of a running parse walks that parse's in-flight tree, and the
+ * same walk replayed after the parse publishes reproduces it. Steps
+ * follow the live links, so edits between steps are visible; a step
+ * whose position is no longer inside the walk's root (removed, or moved
+ * elsewhere) throws an `invalid node` error.
+ *
+ * Single-pass: iteration resumes, never restarts — a second loop
+ * continues where the first left off. Bound to the core's parse
+ * generation of the tree it was created over: stepping after the session
+ * parses again or closes throws a `SessionClosedError` instead of
+ * reading stale storage.
  */
 export class Walker implements IterableIterator<WalkStep> {
   #session: Session;
-  #port: FfiPort;
-  #handle: Handle | null;
-  #generation: bigint;
+  #cursor: ArrayBuffer;
+  /** The byte order native code reads and writes the cursor struct in. */
+  #littleEndian: boolean;
   /** The session's intern gate, bound to this walker's parse generation. */
   #intern: (address: bigint) => Node;
-  #closed = false;
 
   constructor(
     session: Session,
-    port: FfiPort,
-    handle: Handle,
+    root: bigint,
     generation: bigint,
+    skipSemanticErrors: boolean,
+    littleEndian: boolean,
     intern: (address: bigint) => Node,
   ) {
     this.#session = session;
-    this.#port = port;
-    this.#handle = handle;
-    this.#generation = generation;
+    this.#littleEndian = littleEndian;
     this.#intern = intern;
+    this.#cursor = new ArrayBuffer(WALK_CURSOR_BYTES);
+    const view = new DataView(this.#cursor);
+    view.setBigUint64(WALK_OFFSET_GENERATION, generation, littleEndian);
+    view.setBigUint64(WALK_OFFSET_ROOT, root, littleEndian);
+    view.setBigUint64(WALK_OFFSET_CURRENT, 0n, littleEndian);
+    view.setUint32(WALK_OFFSET_DEPTH, 0, littleEndian);
+    view.setUint16(WALK_OFFSET_STATE, WALK_STATE_NOT_STARTED, littleEndian);
+    view.setUint8(WALK_OFFSET_OPTIONS, skipSemanticErrors ? WALK_OPTION_SKIP_SEMANTIC_ERRORS : 0);
+    view.setUint8(WALK_OFFSET_FLAG, 0);
   }
 
   /**
-   * The single gate for steps: closed walkers, closed sessions, and
-   * walkers left over from a previous parse generation all throw instead
-   * of reading reallocated storage.
+   * The one host gate before any touch: a closed session throws before a
+   * step can reach native code. Staleness is the core's answer on the
+   * step itself (`Status.ErrorStaleTree`), never on a host-side write.
    */
-  #requireHandle(): Handle {
-    if (this.#closed || this.#handle === null) throw new SessionClosedError("walker is closed");
+  #requireLive(): void {
     if (this.#session.isClosed) throw new SessionClosedError("session is closed");
-    this.#session.requireSessionGeneration(this.#generation, "walker");
-    return this.#handle;
   }
 
   next(): IteratorResult<WalkStep> {
-    const step = this.#port.walkerNext(this.#requireHandle());
+    this.#requireLive();
+    const step = this.#session.walkStep(this.#cursor);
     if (step === null) return { done: true, value: undefined };
     return {
       done: false,
@@ -1271,22 +1334,15 @@ export class Walker implements IterableIterator<WalkStep> {
 
   /**
    * Prunes the children of the last yielded step; iteration continues with
-   * its next sibling. No effect without a last step.
+   * its next sibling. No effect without a last step. A pure host-side
+   * state write (state 1 → 2): staleness is the next step's answer, not
+   * this one's.
    */
   skipChildren(): void {
-    this.#port.walkerSkipChildren(this.#requireHandle());
-  }
-
-  close(): void {
-    if (this.#handle !== null) {
-      this.#port.walkerDestroy(this.#handle);
-      this.#handle = null;
+    this.#requireLive();
+    const view = new DataView(this.#cursor);
+    if (view.getUint16(WALK_OFFSET_STATE, this.#littleEndian) === WALK_STATE_YIELDED) {
+      view.setUint16(WALK_OFFSET_STATE, WALK_STATE_YIELDED_SKIP_CHILDREN, this.#littleEndian);
     }
-    this.#closed = true;
-  }
-
-  /** For `using walker = session.walk(...)`. */
-  [Symbol.dispose](): void {
-    this.close();
   }
 }

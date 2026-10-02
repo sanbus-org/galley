@@ -358,56 +358,95 @@ type WalkStep struct {
 	IsSemanticError bool
 }
 
-// Walker is a pre-order tree walker over the last successful parse. Close
-// it before closing the session or parsing again.
+// Walker is a pre-order tree walker over the last successful parse. It owns
+// no native resource: the cursor is the whole walker, so abandoning it is
+// free and there is nothing to close. A walker left behind by a later
+// parse answers ErrInvalidNode at its next step instead of reading stale
+// storage. Steps follow the live links, so edits between steps are
+// visible; a step whose position is no longer inside the walk's root
+// (removed, or moved elsewhere) reports ErrInvalidNode.
 type Walker struct {
-	ptr     *C.GalleyWalker
 	session *Session
+	// hook is the parse's door for a walk created inside a hook dispatch;
+	// nil means the session door. Exactly one door applies.
+	hook   *HookDoor
+	cursor C.GalleyWalkCursor
+}
+
+// walkCursor builds a not-started cursor bound to the tree: generation 0
+// reports staleness at the first step, and skipSemanticErrors prunes
+// subtrees rooted at semantic-error nodes.
+func walkCursor(generation C.ulonglong, root Node, skipSemanticErrors bool) C.GalleyWalkCursor {
+	cursor := C.GalleyWalkCursor{
+		generation: generation,
+		root:       C.ulonglong(root),
+	}
+	if skipSemanticErrors {
+		cursor.options = C.uchar(C.GALLEY_WALK_SKIP_SEMANTIC_ERRORS)
+	}
+	return cursor
 }
 
 // Walk returns a pre-order Walker over the subtree rooted at node, with the
 // root at depth 0. Pass true to prune subtrees rooted at semantic-error
-// nodes. The second result is false for invalid roots and builds without
-// AST construction.
-func (s *Session) Walk(root Node, skipSemanticErrors bool) (*Walker, bool) {
-	if !HasAST() {
-		return nil, false
+// nodes. The walker owns no native resource, so nothing can fail at
+// creation: an invalid root or a build without AST construction fails at
+// the first Next with ErrInvalidNode.
+func (s *Session) Walk(root Node, skipSemanticErrors bool) *Walker {
+	var generation C.ulonglong
+	if C.galley_published_generation(s.ptr, &generation) < 0 {
+		generation = 0
 	}
-	ptr := C.galley_walker_create(s.ptr, C.ulonglong(root), boolToCInt(skipSemanticErrors))
-	if ptr == nil {
-		return nil, false
-	}
-	return &Walker{ptr: ptr, session: s}, true
+	return &Walker{session: s, cursor: walkCursor(generation, root, skipSemanticErrors)}
 }
 
-// Next advances the walker, reporting false when the walk is done.
-func (w *Walker) Next() (WalkStep, bool) {
-	if w.ptr == nil {
-		return WalkStep{}, false
+// Walk is the hook-door twin of Session.Walk: a pre-order walk over the
+// in-flight parse's tree, bound to that parse's own generation
+// (galley_hook_generation) and stepped through galley_hook_walk_next. Like
+// Session.Walk, nothing fails at creation.
+func (d HookDoor) Walk(root Node, skipSemanticErrors bool) *Walker {
+	var generation C.ulonglong
+	if C.galley_hook_generation(d.cptr(), &generation) < 0 {
+		generation = 0
 	}
-	var node C.ulonglong
-	var depth C.uint
-	var flag C.int
-	if C.galley_walker_next(w.ptr, &node, &depth, &flag) == 0 {
-		return WalkStep{}, false
+	return &Walker{hook: &d, cursor: walkCursor(generation, root, skipSemanticErrors)}
+}
+
+// Next advances the walker. ok reports whether a step was yielded: false at
+// the end of the walk and after a failed step, so a plain for/Next loop
+// terminates either way. A non-nil err reports the failure itself:
+// ErrInvalidNode for a stale walker or a removed current node (Go's
+// dead-generation answer), ErrSessionInUse while a parse runs, or
+// ErrNullArgument once the session is closed.
+func (w *Walker) Next() (WalkStep, bool, error) {
+	var status C.longlong
+	if w.hook != nil {
+		status = C.galley_hook_walk_next(w.hook.cptr(), &w.cursor)
+	} else {
+		status = C.galley_walk_next(w.session.ptr, &w.cursor)
 	}
-	return WalkStep{Node: Node(node), Depth: uint32(depth), IsSemanticError: flag != 0}, true
+	if status == 0 {
+		return WalkStep{}, false, nil
+	}
+	if status < 0 {
+		if status == C.galley_error_stale_tree {
+			return WalkStep{}, false, ErrInvalidNode
+		}
+		return WalkStep{}, false, Error(int32(status))
+	}
+	return WalkStep{
+		Node:            Node(w.cursor.current),
+		Depth:           uint32(w.cursor.depth),
+		IsSemanticError: w.cursor.is_semantic_error != 0,
+	}, true, nil
 }
 
 // SkipChildren prunes the children of the last yielded node; the next call
-// continues with its next sibling. No effect without a last step.
+// continues with its next sibling. No effect without a last step. A
+// host-side cursor state write; no native call.
 func (w *Walker) SkipChildren() {
-	if w.ptr == nil {
-		return
-	}
-	C.galley_walker_skip_children(w.ptr)
-}
-
-// Close destroys the walker. Safe to call more than once.
-func (w *Walker) Close() {
-	if w.ptr != nil {
-		C.galley_walker_destroy(w.ptr)
-		w.ptr = nil
+	if w.cursor.state == C.ushort(C.GALLEY_WALK_STATE_YIELDED) {
+		w.cursor.state = C.ushort(C.GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN)
 	}
 }
 

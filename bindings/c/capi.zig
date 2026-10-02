@@ -20,6 +20,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("galley");
 const parser = root.parser;
+const tree_walker = root.data_structures.tree_walker;
 const capi_options = @import("capi_options");
 
 /// Opaque session handle owned by the C side.
@@ -72,6 +73,11 @@ pub const galley_error_semantic: i64 = -12;
 /// parse or a gated read/mutation is in flight, or a post-parse call from
 /// inside a hook that holds the parse exclusively. Retry after it finishes.
 pub const galley_error_session_in_use: i64 = -13;
+/// A walk cursor addresses a tree that no longer exists: the session was
+/// parsed again since the cursor's generation (or never published it), and
+/// in a hook the cursor belongs to a different parse. Recreate the walk
+/// against the live tree.
+pub const galley_error_stale_tree: i64 = -14;
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
 pub const galley_diagnostic_kind_none: i64 = 0;
@@ -932,6 +938,13 @@ fn statusForError(err: anyerror) i64 {
         error.UnterminatedRawString => galley_error_unterminated_raw_string,
         error.OutOfMemory => galley_error_out_of_memory,
         error.SessionInUse => galley_error_session_in_use,
+        // A walk cursor whose tree is gone (reparsed or never published).
+        error.StaleTree => galley_error_stale_tree,
+        // A cursor that cannot be trusted (unknown state or option bits,
+        // root/current outside the node storage) or a walk position that
+        // left the walked subtree: either way there is no live node to step
+        // to, same as addressing one.
+        error.InvalidCursor, error.WalkPositionDetached => galley_error_invalid_node,
         // No result, or a result from a dead parse: either way there are no
         // live nodes in the session's current storage to address.
         error.StaleParseResult, error.NoParseResult => galley_error_invalid_node,
@@ -1230,64 +1243,104 @@ export fn galley_hook_last_input(
     return lastInputCore(&door, out_data, out_len);
 }
 
-const GalleyWalker = struct {
-    walker: root.data_structures.TreeWalker,
-};
+/// The host-owned walk cursor: 40 bytes, no padding, the same layout every
+/// binding hands back to `galley_walk_next` / `galley_hook_walk_next`. See
+/// `galley_walk_next` for the field contract.
+pub const GalleyWalkCursor = root.data_structures.tree_walker.Cursor;
 
-/// Creates a depth-first walker rooted at `root_address` (see
-/// `galley_root_node`). Pass nonzero `skip_semantic_errors` to prune
-/// subtrees rooted at semantic-error nodes. Destroy with
-/// `galley_walker_destroy` before destroying the session or parsing again:
-/// node addresses resolve against the live allocator. Returns null without
-/// AST construction or on invalid arguments.
-export fn galley_walker_create(session_ptr: ?*GalleySession, root_address: GalleyNodeAddress, skip_semantic_errors: i32) ?*GalleyWalker {
-    if (comptime !parser.is_ast_enabled) return null;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return null));
-    var guard = embedded.session.readCurrent() catch return null;
-    defer guard.deinit();
-    const door = sessionDoor(embedded);
-    if (door.nodeAt(root_address) == null) return null;
-    const handle = std.heap.c_allocator.create(GalleyWalker) catch return null;
-    handle.* = .{
-        .walker = root.data_structures.TreeWalker.init(
-            std.heap.c_allocator,
-            door.node_allocator,
-            @intCast(root_address),
-            .{ .skip_semantic_error_subtrees = skip_semantic_errors != 0 },
-        ),
+/// The walk's session door: `readCurrent`'s guard plus the cursor's
+/// generation check, so a step only ever runs over the parse generation the
+/// walk started on. A missing published result and a generation mismatch are
+/// the same failure — the tree the cursor addresses is gone — surfaced as
+/// `error.StaleTree`.
+fn readCurrentForGeneration(
+    embedded: *Embedded,
+    expected_generation: u64,
+) (root.SessionError || error{StaleTree})!root.SessionReadGuard {
+    var guard = embedded.session.readCurrent() catch |err| switch (err) {
+        error.StaleParseResult, error.NoParseResult => return error.StaleTree,
+        else => return err,
     };
-    return handle;
+    errdefer guard.deinit();
+    const live_generation: u64 = guard.generation();
+    if (live_generation != expected_generation) return error.StaleTree;
+    return guard;
 }
 
-/// Yields the next node in pre-order into `out_node`/`out_depth` (and
-/// `out_is_semantic_error` unless null), returning 1. Returns 0 when the
-/// walk is done or the arguments are invalid, so `while` loops terminate.
-export fn galley_walker_next(walker_ptr: ?*GalleyWalker, out_node: ?*GalleyNodeAddress, out_depth: ?*u32, out_is_semantic_error: ?*i32) i32 {
-    if (comptime !parser.is_ast_enabled) return 0;
-    const handle = walker_ptr orelse return 0;
-    const node_slot = out_node orelse return 0;
-    const depth_slot = out_depth orelse return 0;
-    const step = handle.walker.next() orelse return 0;
-    node_slot.* = @intCast(step.address);
-    depth_slot.* = step.depth;
-    if (out_is_semantic_error) |flag| flag.* = if (step.is_semantic_error) 1 else 0;
-    return 1;
+/// The hook door for a walk step, next to the session door's
+/// `readCurrentForGeneration`: the parse that handed out the door is the
+/// only tree the step may walk, so a cursor stamped with any other
+/// generation is stale — the tree it addresses is not this parse's — and
+/// reports null, surfaced as `galley_error_stale_tree`, before any link is
+/// read. The `hookDoor` unwrap cannot fail here: the caller already held
+/// the context.
+fn doorForHookGeneration(
+    context: *root.data_structures.Context,
+    expected_generation: u64,
+) ?Door {
+    if (context.generation != expected_generation) return null;
+    return hookDoor(context);
 }
 
-/// Prunes the children of the last yielded node; the next `galley_walker_next`
-/// continues with its next sibling. No effect without a last step.
-export fn galley_walker_skip_children(walker_ptr: ?*GalleyWalker) void {
-    if (comptime !parser.is_ast_enabled) return;
-    const handle = walker_ptr orelse return;
-    handle.walker.skipChildren();
+/// Advances `cursor` to the next node of its subtree in pre-order, writing
+/// the position back into the cursor (`current`, `depth`, `state`,
+/// `is_semantic_error`, `structure_version`). Returns 1 when a node was
+/// yielded, 0 when the walk is done (the cursor stays
+/// `GALLEY_WALK_STATE_DONE` and further steps keep returning 0, before any
+/// session or generation check), or a negative status:
+///
+/// - `galley_error_stale_tree`: the cursor's `generation` is not the
+///   session's live tree (it was reparsed, or no parse has published that
+///   generation). Recreate the walk against the current tree.
+/// - `galley_error_session_in_use`: a parse is in flight.
+/// - `galley_error_invalid_node`: the cursor bytes are not a walk position
+///   (`state` above `GALLEY_WALK_STATE_DONE`, unknown `options` bits,
+///   `root`/`current`/`depth` at or above `galley_node_count`), or a
+///   structure edit left `current` outside the walk's root — removed, or
+///   moved elsewhere.
+/// - `galley_error_null_argument`: null session or cursor.
+///
+/// The cursor is host-owned and no native resource is allocated or freed:
+/// zero it (state `GALLEY_WALK_STATE_NOT_STARTED`), set `root`
+/// (`galley_root_node` or any node), `generation`
+/// (`galley_published_generation`) and `options`
+/// (`GALLEY_WALK_SKIP_SEMANTIC_ERRORS` to prune semantic-error subtrees),
+/// then step. Skipping a yielded node's children is host-side too: write
+/// `state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN` and the next step
+/// continues with its next sibling. Node storage follows the live links, so
+/// edits between steps are visible; a step whose position is no longer
+/// inside the walk's root (removed, or moved elsewhere) raises invalid
+/// node.
+export fn galley_walk_next(session_ptr: ?*GalleySession, cursor_ptr: ?*GalleyWalkCursor) i64 {
+    const cursor = cursor_ptr orelse return galley_error_null_argument;
+    // A finished walker stays finished: done reports 0 before any session
+    // or generation check, so hosts see the end of the walk rather than a
+    // stale or closed-session error.
+    if (cursor.state == tree_walker.state_done) return 0;
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    var guard = readCurrentForGeneration(embedded, cursor.generation) catch |err| return statusForError(err);
+    defer guard.deinit();
+    const yielded = tree_walker.walkNext(sessionDoor(embedded).node_allocator, cursor) catch |err| return statusForError(err);
+    return if (yielded) 1 else 0;
 }
 
-/// Destroys a walker created by `galley_walker_create`. Null-tolerant.
-export fn galley_walker_destroy(walker_ptr: ?*GalleyWalker) void {
-    if (comptime !parser.is_ast_enabled) return;
-    const handle = walker_ptr orelse return;
-    handle.walker.deinit();
-    std.heap.c_allocator.destroy(handle);
+/// Hook-time twin of `galley_walk_next`: steps `cursor` over the in-flight
+/// parse's tree, reached through the parse's hook door. No lock; the door is
+/// valid until the calling hook returns. Returns the same statuses as
+/// `galley_walk_next`, with `galley_error_stale_tree` when the cursor's
+/// `generation` is not this parse's (read it once with
+/// `galley_hook_generation` when the walk starts).
+export fn galley_hook_walk_next(hook_door: ?*anyopaque, cursor_ptr: ?*GalleyWalkCursor) i64 {
+    const cursor = cursor_ptr orelse return galley_error_null_argument;
+    // A finished walker stays finished, before any door or generation
+    // check — see `galley_walk_next`.
+    if (cursor.state == tree_walker.state_done) return 0;
+    const context: *root.data_structures.Context = @ptrCast(@alignCast(hook_door orelse return galley_error_null_argument));
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    const door = doorForHookGeneration(context, cursor.generation) orelse return galley_error_stale_tree;
+    const yielded = tree_walker.walkNext(door.node_allocator, cursor) catch |err| return statusForError(err);
+    return if (yielded) 1 else 0;
 }
 
 /// Returns nonzero when the previous parse produced a diagnostic. Refuses
@@ -1504,6 +1557,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
         galley_error_invalid_node => "invalid node address",
         galley_error_io => "I/O error",
         galley_error_session_in_use => "session in use",
+        galley_error_stale_tree => "stale tree",
         else => null,
     };
 }
@@ -2658,7 +2712,8 @@ export fn galley_hook_node_variable_index(hook_door: ?*anyopaque, address: Galle
 /// Null arrays skip that column; a null session reports
 /// `galley_error_null_argument`. Before any parse has succeeded the snapshot
 /// is empty (0). The `out_is_semantic_error` column carries 1 where the node
-/// carries a semantic error, else 0 — the flag `galley_walker_next` yields.
+/// carries a semantic error, else 0 — the flag `galley_walk_next` records in
+/// the cursor.
 export fn galley_tree_snapshot(
     session_ptr: ?*GalleySession,
     out_parent: ?[*]GalleyNodeAddress,

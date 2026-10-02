@@ -468,11 +468,7 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
     const walked = [];
     const walker = s.walk(root);
     assert.ok(walker !== null);
-    try {
-      for (const step of walker) walked.push(step.node.address);
-    } finally {
-      walker.close();
-    }
+    for (const step of walker) walked.push(step.node.address);
     assert.deepEqual(preorder, walked);
   } finally {
     s.close();
@@ -584,13 +580,9 @@ await test("one interned node per address of a parse", async () => {
     assert.ok(snap.node(child.address) === child);
     const walker = s.walk(root);
     assert.ok(walker !== null);
-    try {
-      const step = walker.next();
-      assert.equal(step.done, false);
-      assert.ok(step.value.node === root);
-    } finally {
-      walker.close();
-    }
+    const step = walker.next();
+    assert.equal(step.done, false);
+    assert.ok(step.value.node === root);
   } finally {
     s.close();
   }
@@ -760,16 +752,12 @@ await test("walk matches hand-rolled recursion", async () => {
     assert.ok(expected.length > 1);
     const walker = s.walk(root);
     assert.ok(walker !== null);
-    try {
-      const walked = [];
-      for (const step of walker) {
-        assert.equal(step.isSemanticError, false);
-        walked.push([step.node.address, step.depth]);
-      }
-      assert.deepEqual(walked, expected);
-    } finally {
-      walker.close();
+    const walked = [];
+    for (const step of walker) {
+      assert.equal(step.isSemanticError, false);
+      walked.push([step.node.address, step.depth]);
     }
+    assert.deepEqual(walked, expected);
   } finally {
     s.close();
   }
@@ -782,16 +770,12 @@ await test("walk skipChildren prunes the subtree", async () => {
     const root = s.rootNode();
     const walker = s.walk(root);
     assert.ok(walker !== null);
-    try {
-      const first = walker.next();
-      assert.equal(first.done, false);
-      assert.ok(first.value.node === root);
-      assert.equal(first.value.depth, 0);
-      walker.skipChildren();
-      assert.equal(walker.next().done, true);
-    } finally {
-      walker.close();
-    }
+    const first = walker.next();
+    assert.equal(first.done, false);
+    assert.ok(first.value.node === root);
+    assert.equal(first.value.depth, 0);
+    walker.skipChildren();
+    assert.equal(walker.next().done, true);
     // A raw address is refused at entry; the walk never sees it.
     assert.throws(() => s.walk(INVALID_NODE), TypeError);
   } finally {
@@ -810,8 +794,6 @@ await test("walker step after close throws", async () => {
     s.close();
     assert.throws(() => walker.next(), SessionClosedError);
     assert.throws(() => walker.skipChildren(), SessionClosedError);
-    walker.close();
-    walker.close();
   } finally {
     s.close();
   }
@@ -827,17 +809,15 @@ await test("walker step after re-parse throws", async () => {
     assert.equal(walker.next().done, false);
     assert.equal(s.parse("alpha:12,beta:3"), 15);
     assert.throws(() => walker.next(), SessionClosedError);
-    assert.throws(() => walker.skipChildren(), SessionClosedError);
-    walker.close();
+    // skipChildren is a pure host-side state write: staleness is the
+    // next step's answer, not this one's.
+    walker.skipChildren();
+    assert.throws(() => walker.next(), SessionClosedError);
     const fresh = s.rootNode();
     assert.ok(fresh !== null);
     const rewound = s.walk(fresh);
     assert.ok(rewound !== null);
-    try {
-      assert.equal(rewound.next().done, false);
-    } finally {
-      rewound.close();
-    }
+    assert.equal(rewound.next().done, false);
   } finally {
     s.close();
   }
@@ -872,27 +852,6 @@ await test("parse with abandoned walker succeeds", async () => {
     // abandoned walker fails at its next step instead.
     assert.equal(s.parse("alpha:12,beta:3"), 15);
     assert.throws(() => walker.next(), SessionClosedError);
-    walker.close();
-  } finally {
-    s.close();
-  }
-});
-
-await test("walker close is idempotent and using disposes", async () => {
-  const s = await newSession();
-  try {
-    s.parse("alpha:12,beta:3");
-    const root = s.rootNode();
-    const walker = s.walk(root);
-    assert.ok(walker !== null);
-    walker.close();
-    walker.close();
-    assert.throws(() => walker.next(), SessionClosedError);
-    {
-      using scoped = s.walk(root);
-      assert.ok(scoped !== null);
-      assert.equal(scoped.next().done, false);
-    }
   } finally {
     s.close();
   }

@@ -306,13 +306,18 @@ snapshot carries `kind === Kind.Semantic` and a `semantic` pair of
 
 `session.walk(root)` returns a pre-order `Walker` over the last successful
 parse, yielding one `{ node, depth, isSemanticError }` per step with the
-root at depth 0 — the shared runtime walker. The walker is iterable
-and closable (`using`
-supported); `skipChildren()` prunes the last yielded node's children.
-Pass `true` to prune semantic-error subtrees:
+root at depth 0 — the shared runtime walker. The walker is iterable and
+owns no native resource: no `close` and no `using`; a step after the
+session reparses or closes raises the session's dead-generation
+`SessionClosedError` instead of reading stale storage. `skipChildren()`
+prunes the last yielded node's children host-side, without a native call.
+Pass `true` to prune semantic-error subtrees. Steps follow the live
+links, so edits between steps are visible, and a step whose position is
+no longer inside the walk's root (removed, or moved elsewhere) throws a
+`GalleyError` with `Status.ErrorInvalidNode`:
 
 ```ts
-using walker = session.walk(session.rootNode()!)!;
+const walker = session.walk(session.rootNode()!);
 for (const step of walker) {
   console.error(`${"  ".repeat(step.depth)}${step.node.symbolName()}`);
 }

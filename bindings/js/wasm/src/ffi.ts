@@ -25,7 +25,6 @@ import type {
   DispatchHandler,
   SessionCOptions,
   SnapshotColumns,
-  WalkedStep,
 } from "@sanbus/galley-core";
 import { GalleyError, Status } from "@sanbus/galley-core";
 import { resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
@@ -92,10 +91,8 @@ interface GalleyWasmExports {
     outIsSemanticError: number,
     capacity: bigint,
   ): bigint;
-  galley_walker_create(session: number, node: bigint, skipSemanticErrors: number): number;
-  galley_walker_next(walker: number, outNode: number, outDepth: number, outFlag: number): number;
-  galley_walker_skip_children(walker: number): void;
-  galley_walker_destroy(walker: number): void;
+  galley_walk_next(session: number, cursor: number): bigint;
+  galley_hook_walk_next(door: number, cursor: number): bigint;
   galley_node_symbol_name(session: number, node: bigint, outData: number, outLen: number): bigint;
   galley_node_text(session: number, node: bigint, outData: number, outLen: number): bigint;
   galley_node_span(session: number, node: bigint, outStart: number, outLen: number): bigint;
@@ -677,6 +674,9 @@ function asI64(value: bigint): bigint {
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+/** `GalleyWalkCursor` from galley.h: the host-owned walk cursor's size. */
+const WALK_CURSOR_BYTES = 40;
+
 /**
  * The wasm `FfiPort`: normalizes the reactor module's i32/i64 boundary
  * into the structured values the core expects. Memory is allocated with
@@ -694,6 +694,11 @@ export class WasmPort implements FfiPort {
   }
 
   #hookNameTable: string[] | null = null;
+  /**
+   * One 40-byte scratch cursor per port instance: wasm memory never
+   * relocates, so a single guest allocation serves every walk step.
+   */
+  #walkCursorSlot: number | null = null;
 
   hookNames(): string[] {
     if (this.#hookNameTable !== null) return this.#hookNameTable;
@@ -1025,36 +1030,41 @@ export class WasmPort implements FfiPort {
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
-  // -- walker -------------------------------------------------------------------
+  // -- walking ---------------------------------------------------------------
 
-  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null {
-    const walker = this.wasm.galley_walker_create(handle as number, asI64(node), skipSemanticErrors ? 1 : 0);
-    if (walker === 0) return null;
-    return walker;
+  /** The wasm guest is little-endian regardless of the host platform. */
+  readonly walkCursorLittleEndian = true;
+
+  walkNext(handle: Handle, cursor: ArrayBuffer): number {
+    const slot = this.#walkCursor();
+    this.#copyCursorToGuest(slot, cursor);
+    const status = this.wasm.galley_walk_next(handle as number, slot);
+    this.#copyCursorFromGuest(slot, cursor);
+    return Number(status);
   }
 
-  walkerNext(walker: Handle): WalkedStep | null {
-    const out = this.malloc(16);
-    try {
-      const yielded = this.wasm.galley_walker_next(walker as number, out, out + 8, out + 12);
-      if (yielded === 0) return null;
-      const view = this.dataView();
-      return {
-        node: view.getBigUint64(out, true),
-        depth: view.getUint32(out + 8, true),
-        isSemanticError: view.getInt32(out + 12, true) !== 0,
-      };
-    } finally {
-      this.free(out, 16);
-    }
+  hookWalkNext(door: Handle, cursor: ArrayBuffer): number {
+    const slot = this.#walkCursor();
+    this.#copyCursorToGuest(slot, cursor);
+    const status = this.wasm.galley_hook_walk_next(door as number, slot);
+    this.#copyCursorFromGuest(slot, cursor);
+    return Number(status);
   }
 
-  walkerSkipChildren(walker: Handle): void {
-    this.wasm.galley_walker_skip_children(walker as number);
+  #walkCursor(): number {
+    if (this.#walkCursorSlot === null) this.#walkCursorSlot = this.malloc(WALK_CURSOR_BYTES);
+    return this.#walkCursorSlot;
   }
 
-  walkerDestroy(walker: Handle): void {
-    this.wasm.galley_walker_destroy(walker as number);
+  #copyCursorToGuest(slot: number, cursor: ArrayBuffer): void {
+    const memory = this.memoryBytes();
+    memory.set(new Uint8Array(cursor, 0, WALK_CURSOR_BYTES), slot);
+  }
+
+  #copyCursorFromGuest(slot: number, cursor: ArrayBuffer): void {
+    // The call may have grown memory: re-read the buffer, never a stale view.
+    const memory = this.memoryBytes();
+    new Uint8Array(cursor, 0, WALK_CURSOR_BYTES).set(memory.subarray(slot, slot + WALK_CURSOR_BYTES));
   }
 
   // -- node accessors ------------------------------------------------------------

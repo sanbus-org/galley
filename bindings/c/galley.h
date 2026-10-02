@@ -63,6 +63,10 @@ enum {
      * queued. Post-parse node/tree/diagnostic accessors return this while a
      * parse is in flight (hook code must use the galley_hook_* door). */
     galley_error_session_in_use           = -13,
+    /* A walk cursor addresses a tree that no longer exists: the session was
+     * parsed again since the cursor's generation (or never published it), or
+     * in a hook the cursor belongs to another parse. Recreate the walk. */
+    galley_error_stale_tree               = -14,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -246,29 +250,71 @@ GalleyNodeAddress galley_node_next_sibling(GalleySession *session, GalleyNodeAdd
 GalleyNodeAddress galley_node_prior_sibling(GalleySession *session, GalleyNodeAddress node);
 GalleyNodeAddress galley_node_parent(GalleySession *session, GalleyNodeAddress node);
 
-/* Opaque depth-first tree walker; see galley_walker_create. */
-typedef struct GalleyWalker GalleyWalker;
+/* The host-owned walk cursor: 40 bytes, no padding, the same layout on
+ * every platform. Zero it before the first step (state
+ * GALLEY_WALK_STATE_NOT_STARTED), set root (galley_root_node or any node),
+ * generation (galley_published_generation; galley_hook_generation inside a
+ * hook) and options, then step with galley_walk_next. The cursor holds the
+ * whole walk: no native resource is allocated, and there is nothing to
+ * destroy. */
+typedef struct GalleyWalkCursor {
+    unsigned long long generation;   /* parse generation the walk is bound to */
+    unsigned long long root;         /* subtree root: steps never leave it */
+    unsigned long long current;      /* last yielded node */
+    unsigned int depth;              /* depth of current below root */
+    unsigned short state;            /* GALLEY_WALK_STATE_* */
+    unsigned char options;           /* GALLEY_WALK_SKIP_SEMANTIC_ERRORS */
+    unsigned char is_semantic_error; /* 1 while current carries a semantic error */
+    unsigned long long structure_version; /* stamped per step; re-verifies the
+                                             position after structure edits */
+} GalleyWalkCursor;
 
-/* Creates a pre-order walker rooted at node (see galley_root_node). Pass
- * nonzero skip_semantic_errors to prune subtrees rooted at semantic-error
- * nodes. Destroy with galley_walker_destroy before destroying the session
- * or parsing again: node addresses resolve against the live allocator.
- * Returns NULL without AST construction or on invalid arguments. */
-GalleyWalker *galley_walker_create(GalleySession *session, GalleyNodeAddress node,
-                                   int skip_semantic_errors);
+/* Cursor states: 0 not started (next step yields root), 1 yielded, 2 yielded
+ * with children pruned, 3 done (every further step returns 0). */
+enum {
+    GALLEY_WALK_STATE_NOT_STARTED          = 0,
+    GALLEY_WALK_STATE_YIELDED              = 1,
+    GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN = 2,
+    GALLEY_WALK_STATE_DONE                 = 3
+};
 
-/* Yields the next node into *out_node / *out_depth (*out_is_semantic_error
- * unless NULL), returning 1. Returns 0 when the walk is done or the
- * arguments are invalid, so while loops terminate. */
-int galley_walker_next(GalleyWalker *walker, GalleyNodeAddress *out_node,
-                       unsigned int *out_depth, int *out_is_semantic_error);
+/* Cursor option bit 0: prune subtrees rooted at semantic-error nodes
+ * without yielding them. Any other bit is rejected with
+ * galley_error_invalid_node. */
+enum {
+    GALLEY_WALK_SKIP_SEMANTIC_ERRORS = 1
+};
 
-/* Prunes the children of the last yielded node; the next galley_walker_next
- * continues with its next sibling. No effect without a last step. */
-void galley_walker_skip_children(GalleyWalker *walker);
+#if defined(__cplusplus)
+static_assert(sizeof(GalleyWalkCursor) == 40, "GalleyWalkCursor must be 40 bytes");
+#else
+_Static_assert(sizeof(GalleyWalkCursor) == 40, "GalleyWalkCursor must be 40 bytes");
+#endif
 
-/* Destroys a walker created by galley_walker_create. NULL-tolerant. */
-void galley_walker_destroy(GalleyWalker *walker);
+/* Advances cursor to the next node of its subtree in pre-order, writing the
+ * position into the cursor (current/depth/state/is_semantic_error/
+ * structure_version). Returns 1 when a node was yielded, 0 when the walk is
+ * done — a done cursor keeps returning 0 before any session or generation
+ * check — or a negative status:
+ * galley_error_stale_tree (the cursor's generation is not the session's
+ * live tree — it was reparsed; recreate the walk),
+ * galley_error_session_in_use (a parse is in flight),
+ * galley_error_invalid_node (malformed cursor bytes, root/current/depth
+ * outside the node storage, or a structure edit left current outside the
+ * walk's root — removed, or moved elsewhere), or
+ * galley_error_null_argument. Skip a yielded node's children by writing
+ * state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN; the next step continues
+ * with its next sibling. Edits between steps are visible; a step whose
+ * position is no longer inside the walk's root (removed, or moved
+ * elsewhere) raises invalid node. A step never leaving the walk's root is
+ * guaranteed for cursors produced by galley_walk_next / galley_hook_walk_next;
+ * a hand-forged cursor is bounds-checked but not otherwise trusted. */
+long long galley_walk_next(GalleySession *session, GalleyWalkCursor *cursor);
+
+/* Hook-time twin of galley_walk_next over the in-flight parse's tree,
+ * reached through the parse's hook door. Same statuses; the cursor's
+ * generation must be this parse's (galley_hook_generation). */
+long long galley_hook_walk_next(GalleyHookDoor *door, GalleyWalkCursor *cursor);
 
 /* Writes the byte offset and length of a node's matched source span into
  * *out_start / *out_len. Offsets index the input of the most recent
@@ -301,9 +347,9 @@ long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress n
  * child, out_next the next sibling, out_child_count the direct child
  * count, out_variable the variable index (-1 when the node has none),
  * out_span_start/out_span_len the source span, out_is_semantic_error 1
- * where the node carries a semantic error (the flag galley_walker_next
- * yields), else 0. Together parent, first_child, and next describe the
- * whole tree without further calls. */
+ * where the node carries a semantic error (the flag galley_walk_next
+ * records in the cursor), else 0. Together parent, first_child, and next
+ * describe the whole tree without further calls. */
 long long galley_tree_snapshot(GalleySession *session,
                                GalleyNodeAddress *out_parent,
                                GalleyNodeAddress *out_first_child,

@@ -12,8 +12,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns, WalkedStep } from "@sanbus/galley-core";
-import { GalleyError, Status } from "@sanbus/galley-core";
+import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import { GalleyError, NATIVE_LITTLE_ENDIAN, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
 
@@ -70,10 +70,8 @@ interface GalleySymbols {
     outIsSemanticError: number | null,
     capacity: bigint,
   ): bigint;
-  galley_walker_create(session: NativeHandle, node: bigint, skipSemanticErrors: number): NativeHandle;
-  galley_walker_next(walker: NativeHandle, outNode: number, outDepth: number, outFlag: number): number;
-  galley_walker_skip_children(walker: NativeHandle): void;
-  galley_walker_destroy(walker: NativeHandle): void;
+  galley_walk_next(session: NativeHandle, cursor: number): bigint;
+  galley_hook_walk_next(door: NativeHandle, cursor: number): bigint;
   galley_node_span(session: NativeHandle, node: bigint, outStart: number, outLen: number): bigint;
   galley_node_symbol_name(session: NativeHandle, node: bigint, outData: number, outLen: number): bigint;
   galley_node_variable_index(session: NativeHandle, node: bigint): bigint;
@@ -259,10 +257,8 @@ const BASE_SYMBOLS = {
     args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
     returns: FFIType.i64,
   },
-  galley_walker_create: { args: [FFIType.ptr, FFIType.u64, FFIType.i32], returns: FFIType.ptr },
-  galley_walker_next: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-  galley_walker_skip_children: { args: [FFIType.ptr], returns: FFIType.void },
-  galley_walker_destroy: { args: [FFIType.ptr], returns: FFIType.void },
+  galley_walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  galley_hook_walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_node_span: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_node_symbol_name: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_node_variable_index: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
@@ -630,28 +626,17 @@ export class BunPort implements FfiPort {
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
-  // -- walker ------------------------------------------------------------
+  // -- walking ------------------------------------------------------------
 
-  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null {
-    const walker = this.native.galley_walker_create(handle as NativeHandle, node, skipSemanticErrors ? 1 : 0);
-    if (walker === 0 || walker === null || walker === undefined) return null;
-    return walker;
+  /** Native code reads and writes the cursor struct in the platform's order. */
+  readonly walkCursorLittleEndian = NATIVE_LITTLE_ENDIAN;
+
+  walkNext(handle: Handle, cursor: ArrayBuffer): number {
+    return Number(this.native.galley_walk_next(handle as NativeHandle, ptr(cursor)));
   }
 
-  walkerNext(walker: Handle): WalkedStep | null {
-    const outNode = ptrOut64();
-    const outDepth = u32Out();
-    const outFlag = u32Out();
-    if (this.native.galley_walker_next(walker as NativeHandle, ptr(outNode), ptr(outDepth), ptr(outFlag)) === 0) return null;
-    return { node: outNode[0], depth: outDepth[0], isSemanticError: outFlag[0] !== 0 };
-  }
-
-  walkerSkipChildren(walker: Handle): void {
-    this.native.galley_walker_skip_children(walker as NativeHandle);
-  }
-
-  walkerDestroy(walker: Handle): void {
-    this.native.galley_walker_destroy(walker as NativeHandle);
+  hookWalkNext(door: Handle, cursor: ArrayBuffer): number {
+    return Number(this.native.galley_hook_walk_next(door as NativeHandle, ptr(cursor)));
   }
 
   // -- node accessors -----------------------------------------------------

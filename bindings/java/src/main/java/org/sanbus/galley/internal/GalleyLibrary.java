@@ -65,10 +65,8 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_node_parent;
     private final MethodHandle mh_galley_tree_snapshot;
     private final MethodHandle mh_galley_last_input;
-    private final MethodHandle mh_galley_walker_create;
-    private final MethodHandle mh_galley_walker_next;
-    private final MethodHandle mh_galley_walker_skip_children;
-    private final MethodHandle mh_galley_walker_destroy;
+    private final MethodHandle mh_galley_walk_next;
+    private final MethodHandle mh_galley_hook_walk_next;
     private final MethodHandle mh_galley_node_symbol_name;
     private final MethodHandle mh_galley_node_text;
     private final MethodHandle mh_galley_node_span;
@@ -203,10 +201,8 @@ public final class GalleyLibrary {
         this.mh_galley_node_parent = downcall("galley_node_parent", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_tree_snapshot = downcall("galley_tree_snapshot", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_last_input = downcall("galley_last_input", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_walker_create = downcall("galley_walker_create", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-        this.mh_galley_walker_next = downcall("galley_walker_next", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_walker_skip_children = downcall("galley_walker_skip_children", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-        this.mh_galley_walker_destroy = downcall("galley_walker_destroy", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+        this.mh_galley_walk_next = downcall("galley_walk_next", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.mh_galley_hook_walk_next = downcall("galley_hook_walk_next", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_node_symbol_name = downcall("galley_node_symbol_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_node_text = downcall("galley_node_text", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_node_span = downcall("galley_node_span", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -392,10 +388,8 @@ public final class GalleyLibrary {
     public long galley_node_parent(MemorySegment session, long node) { try { return (long) mh_galley_node_parent.invoke(session, node); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_tree_snapshot(MemorySegment session, MemorySegment outParent, MemorySegment outFirstChild, MemorySegment outNext, MemorySegment outChildCount, MemorySegment outVariable, MemorySegment outSpanStart, MemorySegment outSpanLen, MemorySegment outIsSemanticError, long capacity) { try { return (long) mh_galley_tree_snapshot.invoke(session, outParent, outFirstChild, outNext, outChildCount, outVariable, outSpanStart, outSpanLen, outIsSemanticError, capacity); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_last_input(MemorySegment session, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_last_input.invoke(session, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public MemorySegment galley_walker_create(MemorySegment session, long node, int skipSemanticErrors) { try { return (MemorySegment) mh_galley_walker_create.invoke(session, node, skipSemanticErrors); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public int galley_walker_next(MemorySegment walker, MemorySegment outNode, MemorySegment outDepth, MemorySegment outIsSemanticError) { try { return (int) mh_galley_walker_next.invoke(walker, outNode, outDepth, outIsSemanticError); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public void galley_walker_skip_children(MemorySegment walker) { try { mh_galley_walker_skip_children.invoke(walker); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public void galley_walker_destroy(MemorySegment walker) { try { mh_galley_walker_destroy.invoke(walker); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_walk_next(MemorySegment session, MemorySegment cursor) { try { return (long) mh_galley_walk_next.invoke(session, cursor); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_hook_walk_next(MemorySegment door, MemorySegment cursor) { try { return (long) mh_galley_hook_walk_next.invoke(door, cursor); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_node_symbol_name(MemorySegment session, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_node_symbol_name.invoke(session, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_node_text(MemorySegment session, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_node_text.invoke(session, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_node_span(MemorySegment session, long node, MemorySegment outStart, MemorySegment outLen) { try { return (long) mh_galley_node_span.invoke(session, node, outStart, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }

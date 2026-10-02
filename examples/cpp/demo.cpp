@@ -22,18 +22,21 @@ struct SessionGuard {
 };
 
 bool printTree(GalleySession &session, GalleyNodeAddress root) {
-    GalleyWalker *walker = galley_walker_create(&session, root, 0);
-    if (walker == nullptr) return false;
-    GalleyNodeAddress node = GALLEY_INVALID_NODE;
-    unsigned int depth = 0;
-    while (galley_walker_next(walker, &node, &depth, nullptr)) {
+    GalleyWalkCursor cursor{};
+    unsigned long long generation = 0;
+    if (galley_published_generation(&session, &generation) != galley_ok) return false;
+    cursor.generation = generation;
+    cursor.root = root;
+    long long status;
+    while ((status = galley_walk_next(&session, &cursor)) > 0) {
+        const GalleyNodeAddress node = cursor.current;
+        const unsigned int depth = cursor.depth;
         const char *name_data = nullptr;
         std::size_t name_len = 0;
         const char *text_data = nullptr;
         std::size_t text_len = 0;
         if (galley_node_symbol_name(&session, node, &name_data, &name_len) != galley_ok ||
             galley_node_text(&session, node, &text_data, &text_len) != galley_ok) {
-            galley_walker_destroy(walker);
             return false;
         }
 
@@ -43,8 +46,7 @@ bool printTree(GalleySession &session, GalleyNodeAddress root) {
         std::printf("%.*s [line %u, %zu bytes]\n",
                     static_cast<int>(name_len), name_data, line, text_len);
     }
-    galley_walker_destroy(walker);
-    return true;
+    return status >= 0;
 }
 
 }  // namespace

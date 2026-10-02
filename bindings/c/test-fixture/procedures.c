@@ -12,6 +12,7 @@
  * below, which the C/C++ suite drives to assert the two doors mid-parse.
  */
 #include <galley.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -131,6 +132,54 @@ static long long hook_generation_status = galley_ok;
 static unsigned long long stashed_published_generation = 1;
 static long long stashed_published_status = galley_ok;
 
+/* The suite arms this around a parse it wants to observe mid-flight:
+ * reduction_Document blocks below until the gate is released, holding the
+ * session's exclusive lease while another thread calls into it. */
+static atomic_int gate_armed = 0;
+static atomic_int gate_entered = 0;
+
+void fixture_arm_gate(void) {
+    atomic_store(&gate_entered, 0);
+    atomic_store(&gate_armed, 1);
+}
+
+int fixture_gate_entered(void) { return atomic_load(&gate_entered); }
+
+void fixture_release_gate(void) { atomic_store(&gate_armed, 0); }
+
+/* What reduction_Document recorded under fixture_stash_session: a walk of
+ * the in-flight tree through the hook door (plain and pruning), rooted at
+ * the reduction's node, and the same step through the session door, which
+ * the in-flight parse refuses. */
+#define FIXTURE_WALK_CAPACITY 128
+static GalleyNodeAddress hook_walk_root = GALLEY_INVALID_NODE;
+static GalleyNodeAddress hook_walk_node[FIXTURE_WALK_CAPACITY];
+static unsigned hook_walk_depth[FIXTURE_WALK_CAPACITY];
+static int hook_walk_count = 0;
+static int hook_walk_skipped = 0;
+static long long hook_walk_status = galley_ok;
+static long long stashed_walk_status = galley_ok;
+
+long long fixture_hook_walk_status(void) { return hook_walk_status; }
+
+long long fixture_stashed_walk_status(void) { return stashed_walk_status; }
+
+int fixture_hook_walk_count(void) { return hook_walk_count; }
+
+int fixture_hook_walk_skipped(void) { return hook_walk_skipped; }
+
+GalleyNodeAddress fixture_hook_walk_root(void) { return hook_walk_root; }
+
+GalleyNodeAddress fixture_hook_walk_node(int index) {
+    if (index < 0 || index >= FIXTURE_WALK_CAPACITY) return GALLEY_INVALID_NODE;
+    return hook_walk_node[index];
+}
+
+unsigned fixture_hook_walk_depth(int index) {
+    if (index < 0 || index >= FIXTURE_WALK_CAPACITY) return 0;
+    return hook_walk_depth[index];
+}
+
 void fixture_stash_session(GalleySession *session) {
     stashed_session = session;
     if (session == NULL)
@@ -143,6 +192,11 @@ void fixture_stash_session(GalleySession *session) {
     hook_generation_status = galley_ok;
     stashed_published_generation = 1;
     stashed_published_status = galley_ok;
+    hook_walk_root = GALLEY_INVALID_NODE;
+    hook_walk_count = 0;
+    hook_walk_skipped = 0;
+    hook_walk_status = galley_ok;
+    stashed_walk_status = galley_ok;
 }
 
 long long fixture_hook_text_status(void) { return hook_text_status; }
@@ -196,6 +250,15 @@ void reduction_Document(void *args) {
     unsigned count = 0, sum = 0;
     const char *recorded = NULL;
     size_t recorded_len = 0;
+    GalleyWalkCursor refused;
+    GalleyWalkCursor walk;
+    unsigned long long walk_generation = 0;
+    if (atomic_load(&gate_armed)) {
+        atomic_store(&gate_entered, 1);
+        while (atomic_load(&gate_armed)) {
+            /* Held here until the suite finishes its mid-parse call. */
+        }
+    }
     if (node == GALLEY_INVALID_NODE)
         return;
     if (stashed_session != NULL) {
@@ -206,6 +269,36 @@ void reduction_Document(void *args) {
         if (first_pair_door != NULL) {
             later_hook_shares_door = first_pair_door == door;
             later_hook_child_count = galley_hook_node_child_count(first_pair_door, first_pair_node);
+        }
+        /* Two doors, one step: the session door is refused while the parse
+         * holds the lease, and the hook door walks the in-flight tree rooted
+         * at this reduction's node — once plain, once pruning semantic-error
+         * subtrees. */
+        memset(&refused, 0, sizeof refused);
+        stashed_walk_status = galley_walk_next(stashed_session, &refused);
+        hook_walk_root = node;
+        hook_walk_status = galley_hook_generation(door, &walk_generation);
+        if (hook_walk_status == galley_ok) {
+            memset(&walk, 0, sizeof walk);
+            walk.generation = walk_generation;
+            walk.root = node;
+            for (;;) {
+                hook_walk_status = galley_hook_walk_next(door, &walk);
+                if (hook_walk_status != 1) break;
+                if (hook_walk_count < FIXTURE_WALK_CAPACITY) {
+                    hook_walk_node[hook_walk_count] = walk.current;
+                    hook_walk_depth[hook_walk_count] = walk.depth;
+                }
+                ++hook_walk_count;
+            }
+            memset(&walk, 0, sizeof walk);
+            walk.generation = walk_generation;
+            walk.root = node;
+            walk.options = GALLEY_WALK_SKIP_SEMANTIC_ERRORS;
+            for (;;) {
+                if (galley_hook_walk_next(door, &walk) != 1) break;
+                ++hook_walk_skipped;
+            }
         }
     }
     count_pairs(door, node, &count, &sum);

@@ -104,6 +104,10 @@ export class HookDoor implements NodeDoor {
     return index;
   }
 
+  walkNext(cursor: ArrayBuffer): number {
+    return this.#port.hookWalkNext(this.#door, cursor);
+  }
+
   cleanChildren(address: bigint): bigint {
     const { status, head } = this.#port.hookTreeCleanChildren(this.#door, address);
     this.#throwOnFailure("cleanChildren", status);

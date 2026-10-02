@@ -24,9 +24,6 @@ use std::path::Path;
 /// Opaque session handle; never constructed in Rust.
 enum GalleySessionRaw {}
 
-/// Opaque walker handle; never constructed in Rust.
-enum GalleyWalkerRaw {}
-
 extern "C" {
     fn galley_version() -> *const c_char;
     fn galley_session_create() -> *mut GalleySessionRaw;
@@ -45,19 +42,9 @@ extern "C" {
     fn galley_node_next_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
     fn galley_node_prior_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
     fn galley_node_parent(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_walker_create(
-        session: *mut GalleySessionRaw,
-        node: u64,
-        skip_semantic_errors: i32,
-    ) -> *mut GalleyWalkerRaw;
-    fn galley_walker_next(
-        walker: *mut GalleyWalkerRaw,
-        out_node: *mut u64,
-        out_depth: *mut u32,
-        out_is_semantic_error: *mut i32,
-    ) -> i32;
-    fn galley_walker_skip_children(walker: *mut GalleyWalkerRaw);
-    fn galley_walker_destroy(walker: *mut GalleyWalkerRaw);
+    fn galley_published_generation(session: *mut GalleySessionRaw, out_generation: *mut u64)
+        -> i64;
+    fn galley_walk_next(session: *mut GalleySessionRaw, cursor: *mut RawWalkCursor) -> i64;
     fn galley_node_symbol_name(
         session: *mut GalleySessionRaw,
         node: u64,
@@ -275,6 +262,9 @@ impl Error {
             -10 => Error::InvalidNode,
             -11 => Error::Io,
             -13 => Error::SessionInUse,
+            // A stale walk (its generation is not the session's anymore)
+            // answers like every other dead-generation read: invalid node.
+            -14 => Error::InvalidNode,
             _ => Error::Internal,
         }
     }
@@ -388,44 +378,80 @@ pub struct TreeSnapshot {
     pub is_semantic_error: Vec<bool>,
 }
 
-/// Borrowing pre-order walker over the last successful parse's tree. Walks
-/// share the session's node storage: finish the walk before the next parse.
-/// Created by [`Session::walk`].
+/// The host-owned walk cursor, byte for byte `GalleyWalkCursor` from
+/// `galley.h`: generation u64, root u64, current u64, depth u32, state u16,
+/// options u8, is_semantic_error u8, structure_version u64 — 40 bytes with
+/// the header's layout. The core stamps `structure_version` on every step;
+/// the host never reads it (zero-init here).
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RawWalkCursor {
+    generation: u64,
+    root: u64,
+    current: u64,
+    depth: u32,
+    state: u16,
+    options: u8,
+    is_semantic_error: u8,
+    structure_version: u64,
+}
+
+const _: () = assert!(std::mem::size_of::<RawWalkCursor>() == 40);
+
+const WALK_STATE_YIELDED: u16 = 1;
+const WALK_STATE_YIELDED_SKIP_CHILDREN: u16 = 2;
+const WALK_OPTION_SKIP_SEMANTIC_ERRORS: u8 = 1;
+
+/// Borrowing pre-order walker over the last successful parse's tree. The
+/// walker owns no native resource — one host-side cursor stamped with the
+/// session's published generation — so dropping it does nothing, and the
+/// session's borrow is all it holds: no parse can start while it is alive,
+/// which rules out stale walks outright. Created by [`Session::walk`].
+///
+/// A step yields [`Result`]: a failure — a removed current node, a
+/// mid-parse session, a stale generation — ends the walk with the
+/// library's error instead of stopping silently.
 pub struct Walker<'session> {
-    raw: *mut GalleyWalkerRaw,
+    session: *mut GalleySessionRaw,
+    cursor: RawWalkCursor,
+    /// Set by the first failed step: iteration is over, so a consumer
+    /// looping over the iterator terminates instead of re-asking a
+    /// permanently failing step forever (Python's throw and Go's
+    /// `(step, ok, err)` stop the loop the same way).
+    finished: bool,
     _session: PhantomData<&'session Session>,
 }
 
-impl Drop for Walker<'_> {
-    fn drop(&mut self) {
-        unsafe { galley_walker_destroy(self.raw) }
-    }
-}
-
 impl Iterator for Walker<'_> {
-    type Item = WalkStep;
+    type Item = Result<WalkStep, Error>;
 
-    fn next(&mut self) -> Option<WalkStep> {
-        let mut node = 0u64;
-        let mut depth = 0u32;
-        let mut flag = 0i32;
-        let yielded = unsafe { galley_walker_next(self.raw, &mut node, &mut depth, &mut flag) };
-        if yielded == 0 {
+    fn next(&mut self) -> Option<Result<WalkStep, Error>> {
+        if self.finished {
             return None;
         }
-        Some(WalkStep {
-            node: NodeHandle(node),
-            depth,
-            is_semantic_error: flag != 0,
-        })
+        match unsafe { galley_walk_next(self.session, &mut self.cursor) } {
+            0 => None,
+            1 => Some(Ok(WalkStep {
+                node: NodeHandle(self.cursor.current),
+                depth: self.cursor.depth,
+                is_semantic_error: self.cursor.is_semantic_error != 0,
+            })),
+            status => {
+                self.finished = true;
+                Some(Err(Error::from_status(status)))
+            }
+        }
     }
 }
 
 impl Walker<'_> {
     /// Prunes the children of the last yielded step; iteration continues
-    /// with its next sibling. No effect without a last step.
+    /// with its next sibling. No effect without a last step. A host-side
+    /// cursor state write; no native call.
     pub fn skip_children(&mut self) {
-        unsafe { galley_walker_skip_children(self.raw) }
+        if self.cursor.state == WALK_STATE_YIELDED {
+            self.cursor.state = WALK_STATE_YIELDED_SKIP_CHILDREN;
+        }
     }
 }
 
@@ -670,21 +696,34 @@ impl Session {
     }
 
     /// Pre-order walker over the subtree rooted at `root`, yielding one
-    /// [`WalkStep`] per node with the root at depth 0. The walker borrows
-    /// the session, so no new parse can invalidate it mid-walk. Returns
-    /// `None` for invalid roots and builds without AST construction.
-    pub fn walk(&self, root: NodeHandle, skip_semantic_errors: bool) -> Option<Walker<'_>> {
-        if !has_ast() {
-            return None;
-        }
-        let raw = unsafe { galley_walker_create(self.inner, root.0, skip_semantic_errors as i32) };
-        if raw.is_null() {
-            return None;
-        }
-        Some(Walker {
-            raw,
+    /// [`WalkStep`] per node with the root at depth 0. The walker owns no
+    /// native resource — one host-side cursor stamped with the session's
+    /// published generation — and borrows the session, so no new parse can
+    /// invalidate it mid-walk. An invalid root or a build without AST
+    /// construction answers `Err(`[`Error::InvalidNode`]`)` at the first
+    /// step.
+    pub fn walk(&self, root: NodeHandle, skip_semantic_errors: bool) -> Walker<'_> {
+        let mut generation = 0u64;
+        unsafe { galley_published_generation(self.inner, &mut generation) };
+        Walker {
+            session: self.inner,
+            cursor: RawWalkCursor {
+                generation,
+                root: root.0,
+                current: 0,
+                depth: 0,
+                state: 0,
+                options: if skip_semantic_errors {
+                    WALK_OPTION_SKIP_SEMANTIC_ERRORS
+                } else {
+                    0
+                },
+                is_semantic_error: 0,
+                structure_version: 0,
+            },
+            finished: false,
             _session: PhantomData,
-        })
+        }
     }
 
     /// Children of `node`, first to last.

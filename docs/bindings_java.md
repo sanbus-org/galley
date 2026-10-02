@@ -214,20 +214,22 @@ by a `GalleyException`.
 `session.walk(node, skipSemanticErrors)` returns a pre-order `Walker` over
 the last successful parse, yielding one `Walker.WalkStep{node, depth,
 isSemanticError}` per step with the root at depth 0 — the shared runtime
-walker. `Walker` is
-`Iterable` and `AutoCloseable`: close it (try-with-resources) before
-closing the session or parsing again. The walker is bound to the parse
+walker. `Walker` is `Iterable` and owns no native resource: it is never
+closed and takes no try-with-resources. The walker is bound to the parse
 generation that created it: stepping after the session parses again or
 closes throws `GalleyClosedException` instead of reading stale storage,
 so parsing with an abandoned walker still succeeds and the walker fails
 at its next step. `skipChildren()` prunes the last
-yielded node's children:
+yielded node's children host-side, without a native call. Steps follow
+the live links, so edits between steps are visible, and a step whose
+position is no longer inside the walk's root (removed, or moved
+elsewhere) throws `GalleyException` with
+`StatusCode.ERROR_INVALID_NODE`:
 
 ```java
-try (Walker walker = session.walk(session.rootNode(), false)) {
-    for (Walker.WalkStep step : walker) {
-        System.err.println("  ".repeat(step.depth) + session.symbolName(step.node));
-    }
+Walker walker = session.walk(session.rootNode(), false);
+for (Walker.WalkStep step : walker) {
+    System.err.println("  ".repeat(step.depth) + session.symbolName(step.node));
 }
 ```
 

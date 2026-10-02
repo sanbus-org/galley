@@ -19,9 +19,8 @@ import type {
   DispatchHandler,
   SessionCOptions,
   SnapshotColumns,
-  WalkedStep,
 } from "@sanbus/galley-core";
-import { GalleyError, MissingArtifactError, Status } from "@sanbus/galley-core";
+import { GalleyError, MissingArtifactError, NATIVE_LITTLE_ENDIAN, Status } from "@sanbus/galley-core";
 import {
   resolveArtifact,
   resolveArtifactFile,
@@ -87,10 +86,8 @@ export interface AddonApi {
   galley_node_next_sibling(session: bigint, node: bigint): bigint;
   galley_node_prior_sibling(session: bigint, node: bigint): bigint;
   galley_node_parent(session: bigint, node: bigint): bigint;
-  galley_walker_create(session: bigint, node: bigint, skipSemanticErrors: number): bigint;
-  galley_walker_next(walker: bigint): [bigint, number, number] | null;
-  galley_walker_skip_children(walker: bigint): void;
-  galley_walker_destroy(walker: bigint): void;
+  galley_walk_next(session: bigint, cursor: ArrayBuffer): bigint;
+  galley_hook_walk_next(door: bigint, cursor: ArrayBuffer): bigint;
   galley_node_symbol_name(session: bigint, node: bigint): Buffer | null;
   galley_node_text(session: bigint, node: bigint): Buffer | null;
   galley_node_span(session: bigint, node: bigint): [bigint, bigint] | null;
@@ -556,26 +553,17 @@ export class NodePort implements FfiPort {
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);
   }
 
-  // -- walker ------------------------------------------------------------
+  // -- walking ------------------------------------------------------------
 
-  walkerCreate(handle: Handle, node: bigint, skipSemanticErrors: boolean): Handle | null {
-    const walker = this.api.galley_walker_create(handle as bigint, node, skipSemanticErrors ? 1 : 0);
-    if (walker === 0n || walker === null || walker === undefined) return null;
-    return walker;
+  /** Native code reads and writes the cursor struct in the platform's order. */
+  readonly walkCursorLittleEndian = NATIVE_LITTLE_ENDIAN;
+
+  walkNext(handle: Handle, cursor: ArrayBuffer): number {
+    return toNumber(this.api.galley_walk_next(handle as bigint, cursor));
   }
 
-  walkerNext(walker: Handle): WalkedStep | null {
-    const step = this.api.galley_walker_next(walker as bigint);
-    if (step === null) return null;
-    return { node: step[0], depth: step[1], isSemanticError: step[2] !== 0 };
-  }
-
-  walkerSkipChildren(walker: Handle): void {
-    this.api.galley_walker_skip_children(walker as bigint);
-  }
-
-  walkerDestroy(walker: Handle): void {
-    this.api.galley_walker_destroy(walker as bigint);
+  hookWalkNext(door: Handle, cursor: ArrayBuffer): number {
+    return toNumber(this.api.galley_hook_walk_next(door as bigint, cursor));
   }
 
   // -- node accessors -----------------------------------------------------

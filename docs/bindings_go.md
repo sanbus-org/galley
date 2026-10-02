@@ -171,20 +171,28 @@ snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
 `Session.Walk` returns a pre-order `Walker` over the last successful parse,
 yielding one `WalkStep{Node, Depth, IsSemanticError}` per step with the root
 at depth 0 — the shared runtime walker, so order and depths match every
-other binding. Close it before closing the session or parsing again.
-`SkipChildren` prunes the last yielded node's children; passing `true`
-prunes semantic-error subtrees:
+other binding. The walker owns no native resource: there is nothing to
+close, and a walker left behind by a later parse answers `ErrInvalidNode`
+at its next step instead of reading stale storage. `SkipChildren` prunes
+the last yielded node's children host-side; `Walk(root, true)` prunes
+semantic-error subtrees. Steps follow the live links, so edits between
+steps are visible, and a step whose position is no longer inside the
+walk's root (removed, or moved elsewhere) reports `ErrInvalidNode`:
 
 ```go
-walker, ok := session.Walk(root, false)
-if !ok { ... }
-defer walker.Close()
+walker := session.Walk(root, false)
 for {
-    step, ok := walker.Next()
+    step, ok, err := walker.Next()
+    if err != nil { ... }
     if !ok { break }
     _ = step
 }
 ```
+
+`door.Walk(root, skip)` — `door` from a hook's `galley.Args(ptr).Door()` —
+is the hook-door twin: it walks the running parse's in-flight tree through
+`galley_hook_walk_next`, bound to that parse's own generation, and
+reproduces the post-parse walk once the parse publishes.
 
 ## Sessions
 

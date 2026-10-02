@@ -129,19 +129,25 @@ func reduction_Number(ptr unsafe.Pointer) {
 }
 
 // Recorded for door_test.go: the first Pair's door and node, and what that
-// earlier door still answers from a later hook of the same parse.
+// earlier door still answers from a later hook of the same parse. For
+// walk_test.go: the walk reduction_Document ran over the in-flight tree
+// through its hook door.
 var (
 	firstPairSeen       bool
 	firstPairDoor       galley.HookDoor
 	firstPairNode       galley.Node
 	laterHookSharesDoor bool
 	laterHookChildCount uint32
+	hookWalkVisits      []galley.WalkStep
+	hookWalkErr         error
 )
 
 func resetDoorRecording() {
 	firstPairSeen = false
 	laterHookSharesDoor = false
 	laterHookChildCount = 0
+	hookWalkVisits = nil
+	hookWalkErr = nil
 }
 
 //export reduction_Pair
@@ -183,5 +189,19 @@ func reduction_Document(ptr unsafe.Pointer) {
 	if firstPairSeen {
 		laterHookSharesDoor = firstPairDoor == door
 		laterHookChildCount = firstPairDoor.ChildCount(firstPairNode)
+	}
+	// walk_test.go's hook walk: over this parse's in-flight tree, stepped
+	// through the parse's own door.
+	walker := door.Walk(node, false)
+	for {
+		step, ok, err := walker.Next()
+		if err != nil {
+			hookWalkErr = err
+			break
+		}
+		if !ok {
+			break
+		}
+		hookWalkVisits = append(hookWalkVisits, step)
 	}
 }

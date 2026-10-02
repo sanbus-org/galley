@@ -83,18 +83,25 @@ snapshot carries `kind == DiagnosticKind::Semantic` and
 ## Tree Walking
 
 `Session::walk` returns a borrowing pre-order `Walker` over the last
-successful parse, yielding one `WalkStep { node, depth, is_semantic_error }`
-per node with the root at depth 0 — the shared runtime walker, so order
-and depths match every other binding. `skip_children` prunes the last
-yielded node's children; passing `true` prunes semantic-error subtrees.
-A failed parse counts as a later parse: `Session::snapshot` fails with
+successful parse, yielding one `Result<WalkStep { node, depth,
+is_semantic_error }>` per node with the root at depth 0 — the shared
+runtime walker, so order and depths match every other binding. The walker
+owns no native resource: one host-side cursor, nothing dropped, and its
+borrow of the session keeps a parse from starting mid-walk. A failed step
+comes back as `Err(Error::InvalidNode)` — an invalid root, or a position
+no longer inside the walk's root (removed, or moved elsewhere) — and ends
+the iteration; steps otherwise follow the live links, so edits between
+steps are visible. `skip_children` prunes the last
+yielded node's children host-side; passing `true` prunes semantic-error
+subtrees. A failed parse counts as a later parse: `Session::snapshot` fails with
 `Error::InvalidNode` and node accessors fall back to their empty values
 until a successful parse, while `last_input()` keeps the last successful
 input:
 
 ```rust
 let root = session.root_node().expect("root");
-for step in session.walk(root, false).expect("walker") {
+for step in session.walk(root, false) {
+    let step = step.expect("walk step");
     println!("{:width$}{:?}", "", step.node, width = step.depth as usize * 2);
 }
 ```
