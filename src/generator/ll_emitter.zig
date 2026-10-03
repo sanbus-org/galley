@@ -618,10 +618,14 @@ const Generator = struct {
             if (self.options.with_ast) {
                 try writer.writeAll("        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;\n");
             }
+            // Hooks may detach the wrapper (`replaceWithChildren` does) and
+            // the removal below does, which clears its links. The enclosing
+            // wrapper is the loop's next position, so read it before either.
+            try writer.writeAll("        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;\n");
             if (self.options.with_procedures and self.options.with_ast) {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {
-                    try writer.writeAll("        const reduction_occurrence_procedures = if (context.node_allocator.at(repeating_node_address).parent == data_structures.Node.invalid_pointer) occurrence_procedures else ");
+                    try writer.writeAll("        const reduction_occurrence_procedures = if (enclosing_node_address == data_structures.Node.invalid_pointer) occurrence_procedures else ");
                     try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
                     try writer.writeAll(";\n");
                 }
@@ -641,7 +645,7 @@ const Generator = struct {
                     \\                node_address = effective;
                     \\            }
                     \\        } else {
-                    \\            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+                    \\            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
                     \\            if (node_address == repeating_node_address) {
                     \\                node_address = data_structures.Node.invalid_pointer;
                     \\            }
@@ -649,7 +653,7 @@ const Generator = struct {
                     \\
                 );
             }
-            try writer.writeAll("        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;\n");
+            try writer.writeAll("        repeating_node_address = enclosing_node_address;\n");
             try writer.writeAll(
                 \\    }
                 \\    return node_address;
@@ -769,7 +773,7 @@ const Generator = struct {
                     \\{s}if (node_address == data_structures.Node.invalid_pointer) {{
                     \\{s}    node_address = temporary_address;
                     \\{s}}} else {{
-                    \\{s}    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child {d}
+                    \\{s}    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child {d}
                     \\{s}}}
                     \\{s}repeating_node_address = temporary_address;
                     \\

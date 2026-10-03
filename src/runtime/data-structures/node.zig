@@ -51,10 +51,11 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
 
         allocator: std.mem.Allocator,
         counter: NodeType.Pointer = 0,
-        /// Change counter for the tree's parent structure: bumped by every
-        /// `setParent` write. Walk cursors stamp it on each step, so a later
-        /// step can tell that its position must be re-verified against the
-        /// live links before stepping.
+        /// Change counter for the tree's parent structure: bumped once per
+        /// `setParent` or `setChainParent` call (`attachParent` is exempt,
+        /// see its doc). Walk cursors stamp it on each step, so a later step
+        /// can tell that its position must be re-verified against the live
+        /// links before stepping.
         structure_version: u64 = 0,
         memory: []NodeType = &.{},
         segments: [][]NodeType = &.{},
@@ -232,14 +233,46 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             }
         }
 
-        /// The one write path for a node's parent link: writes the link and
-        /// bumps `structure_version`, which walk cursors stamp so a later
-        /// step re-verifies its position after any structural edit. Node
-        /// initialization (`create`, struct literals) writes `parent` direct
-        /// — a fresh node belongs to no structure yet.
+        /// The write path for changing or clearing one node's parent link:
+        /// writes the link and bumps `structure_version`, which walk cursors
+        /// stamp so a later step re-verifies its position after any
+        /// structural edit. Node initialization (`create`, struct literals)
+        /// writes `parent` direct, because a fresh node belongs to no
+        /// structure yet. An edit that re-parents a whole sibling chain uses
+        /// `setChainParent`, so it bumps once per operation.
         pub inline fn setParent(self: *Self, address: NodeType.Pointer, parent: NodeType.Pointer) void {
             self.at(address).parent = parent;
             self.structure_version += 1;
+        }
+
+        /// `setParent` for a sibling chain: writes `parent` on `first` and
+        /// every node reached through `next` until the chain ends, and bumps
+        /// `structure_version` once for the whole operation. The chain must
+        /// end at an invalid `next`, so callers re-parent before they link
+        /// the chain's last node to a following sibling.
+        pub inline fn setChainParent(self: *Self, first: NodeType.Pointer, parent: NodeType.Pointer) void {
+            var current = first;
+            while (current != NodeType.invalid_pointer) {
+                const node = self.at(current);
+                node.parent = parent;
+                current = node.next;
+            }
+            self.structure_version += 1;
+        }
+
+        /// Attaches a node that currently has no parent without bumping
+        /// `structure_version`. Attaching a parentless node cannot move any
+        /// existing walk position: a cursor's position below its root always
+        /// has a parent, and the root bounds the climb. Debug builds assert
+        /// the old parent is invalid; release builds do not check, so a
+        /// caller that attaches a node that already has a parent (for example
+        /// a hook that hands back its own first child) leaves it listed under
+        /// two parents. Every other parent write (re-parenting, detaching)
+        /// goes through `setParent` or `setChainParent`.
+        pub inline fn attachParent(self: *Self, address: NodeType.Pointer, parent: NodeType.Pointer) void {
+            const node = self.at(address);
+            if (comptime builtin.mode == .Debug) std.debug.assert(node.parent == invalid_pointer);
+            node.parent = parent;
         }
 
         pub inline fn atConst(self: *const Self, address: NodeType.Pointer) *const NodeType {
@@ -434,68 +467,80 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             };
         }
 
-        // Find the last node in the chain. This is extremely fast for single nodes (common case).
-        fn getLastNode(node_allocator: NodeAllocator, first_node: Pointer) Pointer {
-            const first = node_allocator.at(first_node);
-            if (first.next != invalid_pointer) {
-                var curr = first.next;
-                while (node_allocator.at(curr).next != invalid_pointer) {
-                    curr = node_allocator.at(curr).next;
-                }
-                return curr;
+        const ChainSpan = struct {
+            last: Pointer,
+            count: u32,
+        };
+
+        /// The one place that gives a parentless chain its parent: writes the parent link of every
+        /// node in the chain starting at `first_node` through `attachParent` (so `structure_version`
+        /// does not move) and returns the chain's span. No sibling links change and nothing is checked.
+        inline fn attachChain(node_allocator: NodeAllocator, parent_address: Pointer, first_node: Pointer) ChainSpan {
+            var current = first_node;
+            var count: u32 = 0;
+            while (true) {
+                node_allocator.attachParent(current, parent_address);
+                count += 1;
+                const next = node_allocator.at(current).next;
+                if (next == invalid_pointer) return .{ .last = current, .count = count };
+                current = next;
             }
-            return first_node;
         }
 
-        fn chainLength(node_allocator: NodeAllocator, first_node: Pointer) u32 {
-            var count: u32 = 0;
-            var curr = first_node;
-            while (curr != invalid_pointer) {
-                count += 1;
-                curr = node_allocator.at(curr).next;
+        const InsertionFault = enum {
+            chain_head_has_parent,
+            chain_head_has_prior,
+            /// The chain contains the anchor or one of its ancestors, so linking it would form a cycle.
+            chain_contains_anchor_or_ancestor,
+            index_out_of_range,
+        };
+
+        /// Misuse of an insertion, or null. `anchor_address` is the node the chain is inserted
+        /// before, after or under; `index` is the child position for `insertChildren`. Debug builds
+        /// assert this is null on entry to the public insertion functions; release builds never run it.
+        fn insertionFault(node_allocator: NodeAllocator, anchor_address: Pointer, first_node: Pointer, index: ?usize) ?InsertionFault {
+            const first = node_allocator.atConst(first_node);
+            if (first.parent != invalid_pointer) return .chain_head_has_parent;
+            if (first.prior != invalid_pointer) return .chain_head_has_prior;
+            var chain_node = first_node;
+            while (chain_node != invalid_pointer) : (chain_node = node_allocator.atConst(chain_node).next) {
+                var ancestor = anchor_address;
+                while (ancestor != invalid_pointer) : (ancestor = node_allocator.atConst(ancestor).parent) {
+                    if (ancestor == chain_node) return .chain_contains_anchor_or_ancestor;
+                }
             }
-            return count;
+            if (index) |position| {
+                if (position > node_allocator.atConst(anchor_address).children_count) return .index_out_of_range;
+            }
+            return null;
+        }
+
+        fn debugAssertInsertable(node_allocator: NodeAllocator, anchor_address: Pointer, first_node: Pointer, index: ?usize) void {
+            if (comptime builtin.mode == .Debug) {
+                std.debug.assert(insertionFault(node_allocator, anchor_address, first_node, index) == null);
+            }
         }
 
         /// Insert `first_node` (and any chain attached via `.next`) immediately before `self_address`.
-        /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insertBefore(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) !void {
+        /// The inserted nodes must be parentless with no prior; Debug builds assert that, and that the
+        /// chain does not contain `self_address` or one of its ancestors. Release builds do not check.
+        pub fn insertBefore(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) void {
+            debugAssertInsertable(node_allocator, self_address, first_node, null);
             const self = node_allocator.at(self_address);
             const first = node_allocator.at(first_node);
 
-            if (comptime builtin.mode == .Debug) {
-                std.debug.assert(first.parent == invalid_pointer);
-                std.debug.assert(first.prior == invalid_pointer);
-            }
+            const span = attachChain(node_allocator, self.parent, first_node);
 
-            const last_node = getLastNode(node_allocator, first_node);
-            const last = node_allocator.at(last_node);
-            const added = Self.chainLength(node_allocator, first_node);
-
-            // 1. Wire siblings
             first.prior = self.prior;
-            last.next = self_address;
+            node_allocator.at(span.last).next = self_address;
             if (self.prior != invalid_pointer) {
                 node_allocator.at(self.prior).next = first_node;
             }
-            self.prior = last_node;
+            self.prior = span.last;
 
-            // 2. Conditionally update parent
             if (self.parent != invalid_pointer) {
                 const parent_node = node_allocator.at(self.parent);
-                // Update parent pointers on all nodes in the inserted chain
-                var current = first_node;
-                while (true) {
-                    const node = node_allocator.at(current);
-                    node_allocator.setParent(current, self.parent);
-                    if (current == last_node) break;
-                    current = node.next;
-                }
-
-                // Update children count
-                parent_node.children_count += added;
-
-                // If self_address was the first_child of the parent, update first_child to first_node
+                parent_node.children_count += span.count;
                 if (parent_node.first_child == self_address) {
                     parent_node.first_child = first_node;
                 }
@@ -503,288 +548,170 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         }
 
         /// Insert `first_node` (and any chain attached via `.next`) immediately after `self_address`.
-        /// The inserted nodes must be detached orphans (no parent, no prior).
-        pub fn insertAfter(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) !void {
+        /// Same contract as `insertBefore`.
+        pub fn insertAfter(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) void {
+            debugAssertInsertable(node_allocator, self_address, first_node, null);
             const self = node_allocator.at(self_address);
             const first = node_allocator.at(first_node);
 
-            if (comptime builtin.mode == .Debug) {
-                std.debug.assert(first.parent == invalid_pointer);
-                std.debug.assert(first.prior == invalid_pointer);
-            }
+            const span = attachChain(node_allocator, self.parent, first_node);
 
-            const last_node = getLastNode(node_allocator, first_node);
-            const last = node_allocator.at(last_node);
-            const added = Self.chainLength(node_allocator, first_node);
-
-            // 1. Wire siblings
             first.prior = self_address;
-            last.next = self.next;
+            node_allocator.at(span.last).next = self.next;
             if (self.next != invalid_pointer) {
-                node_allocator.at(self.next).prior = last_node;
+                node_allocator.at(self.next).prior = span.last;
             }
             self.next = first_node;
 
-            // 2. Conditionally update parent
             if (self.parent != invalid_pointer) {
                 const parent_node = node_allocator.at(self.parent);
-                // Update parent pointers on all nodes in the inserted chain
-                var current = first_node;
-                while (true) {
-                    const node = node_allocator.at(current);
-                    node_allocator.setParent(current, self.parent);
-                    if (current == last_node) break;
-                    current = node.next;
-                }
-
-                // Update children count
-                parent_node.children_count += added;
-
-                // If self_address was the last_child of the parent, update last_child to last_node
+                parent_node.children_count += span.count;
                 if (parent_node.last_child == self_address) {
-                    parent_node.last_child = last_node;
+                    parent_node.last_child = span.last;
                 }
             }
         }
 
         /// Insert `first_node` (and any chain) into `self.children` at position `index`.
-        /// The inserted nodes must be detached orphans (no parent, no prior).
+        /// Same contract as `insertBefore`, and Debug builds also assert `index <= children_count`.
         pub fn insertChildren(self_address: Pointer, node_allocator: NodeAllocator, index: usize, first_node: Pointer) !void {
+            debugAssertInsertable(node_allocator, self_address, first_node, index);
             const self = node_allocator.at(self_address);
-            if (comptime builtin.mode == .Debug) {
-                std.debug.assert(node_allocator.at(first_node).parent == invalid_pointer);
-                std.debug.assert(node_allocator.at(first_node).prior == invalid_pointer);
-            }
 
             if (self.first_child == invalid_pointer) {
-                if (comptime builtin.mode == .Debug) {
-                    std.debug.assert(index == 0);
-                }
+                const span = attachChain(node_allocator, self_address, first_node);
                 self.first_child = first_node;
-                const last_node = getLastNode(node_allocator, first_node);
-                self.last_child = last_node;
-
-                // Update parent pointer on the inserted chain
-                var current = first_node;
-                while (true) {
-                    const node = node_allocator.at(current);
-                    node_allocator.setParent(current, self_address);
-                    if (current == last_node) break;
-                    current = node.next;
-                }
-
-                self.children_count = Self.chainLength(node_allocator, first_node);
+                self.last_child = span.last;
+                self.children_count = span.count;
+            } else if (index == 0) {
+                Self.insertBefore(self.first_child, node_allocator, first_node);
             } else {
-                if (comptime builtin.mode == .Debug) {
-                    // Ensure index is valid
-                    var count: usize = 0;
-                    var curr = self.first_child;
-                    while (curr != invalid_pointer) {
-                        count += 1;
-                        curr = node_allocator.at(curr).next;
-                    }
-                    std.debug.assert(index <= count);
-                }
-
-                if (index == 0) {
-                    try Self.insertBefore(self.first_child, node_allocator, first_node);
-                } else {
-                    // Traverse to find the child at index - 1
-                    var current_child = self.first_child;
-                    var i: usize = 0;
-                    while (i < index - 1) : (i += 1) {
-                        if (current_child != invalid_pointer) {
-                            current_child = node_allocator.at(current_child).next;
-                        } else {
-                            break;
-                        }
-                    }
+                // Traverse to find the child at index - 1
+                var current_child = self.first_child;
+                var i: usize = 0;
+                while (i < index - 1) : (i += 1) {
                     if (current_child != invalid_pointer) {
-                        try Self.insertAfter(current_child, node_allocator, first_node);
+                        current_child = node_allocator.at(current_child).next;
                     } else {
-                        return error.IndexOutOfBounds;
+                        break;
                     }
+                }
+                if (current_child != invalid_pointer) {
+                    Self.insertAfter(current_child, node_allocator, first_node);
+                } else {
+                    return error.IndexOutOfBounds;
                 }
             }
         }
 
         /// Append `first_node` (and any chain) to `self.children` in the end.
-        /// The appended nodes must be detached orphans (no parent, no prior).
-        pub fn appendChildren(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) !void {
-            const self = node_allocator.at(self_address);
-            const first = node_allocator.at(first_node);
-
-            if (comptime builtin.mode == .Debug) {
-                std.debug.assert(first.parent == invalid_pointer);
-                std.debug.assert(first.prior == invalid_pointer);
-            }
-
-            const last_node = getLastNode(node_allocator, first_node);
-
-            // Update parent pointers on all nodes in the appended chain
-            var current = first_node;
-            var added: u32 = 0;
-            while (true) {
-                const node = node_allocator.at(current);
-                node_allocator.setParent(current, self_address);
-                added += 1;
-                if (current == last_node) break;
-                current = node.next;
-            }
-
-            if (self.last_child != invalid_pointer) {
-                const last_addr = self.last_child;
-                const last = node_allocator.at(last_addr);
-                // Wire siblings
-                first.prior = last_addr;
-                node_allocator.at(last_node).next = invalid_pointer; // End of list
-                last.next = first_node;
-                self.last_child = last_node;
-            } else {
-                // First child in the parent
-                self.first_child = first_node;
-                self.last_child = last_node;
-                first.prior = invalid_pointer;
-                node_allocator.at(last_node).next = invalid_pointer;
-            }
-
-            self.children_count += added;
+        /// Same contract as `insertBefore`; the link itself is `immediateAppendChildren`.
+        pub fn appendChildren(self_address: Pointer, node_allocator: NodeAllocator, first_node: Pointer) void {
+            debugAssertInsertable(node_allocator, self_address, first_node, null);
+            node_allocator.at(self_address).immediateAppendChildren(self_address, first_node, node_allocator);
         }
 
-        /// Immediately append a single orphan child node to `self_address` with zero overhead.
-        /// This assumes the child is a single node (not a chain) and is already an orphan and the parent has no children.
-        pub inline fn immediateInsertChild(
-            self: *Self,
-            self_address: Pointer,
-            child_address: Pointer,
-            node_allocator: NodeAllocator,
-        ) void {
-            const child = node_allocator.at(child_address);
-
-            node_allocator.setParent(child_address, self_address);
-            child.prior = self.last_child;
-            child.next = invalid_pointer;
-
-            if (self.last_child != invalid_pointer) {
-                const last_child_node = node_allocator.at(self.last_child);
-                last_child_node.next = child_address;
-            } else {
-                self.first_child = child_address;
-            }
-            self.last_child = child_address;
-            self.children_count += 1;
-        }
-
-        /// Immediately append `first_node` (and its .next chain) to the end of children with zero overhead.
-        /// Like immediateInsertChild but for a chain. Focuses on performance, assumes the chain nodes
-        /// are detached orphans (no parent, no prior), no debug checks.
+        /// Appends the parentless chain starting at `first_node` to the children of `self_address`: the
+        /// one implementation of linking a chain under a parent (sibling links, parent links through
+        /// `attachParent`, counts). Nothing is checked in any build mode and `structure_version` does
+        /// not move. Generated parsers call it directly; `appendChildren` is this plus Debug checks.
+        /// The chain must have no parent and no prior, which holds for nodes the parser just created
+        /// and for chains a hook hands back detached (for example from `replaceWithChildren`). A hook
+        /// must not hand back a node that is still attached to a parent.
         pub inline fn immediateAppendChildren(
             self: *Self,
             self_address: Pointer,
             first_node: Pointer,
             node_allocator: NodeAllocator,
         ) void {
+            const span = attachChain(node_allocator, self_address, first_node);
             const first = node_allocator.at(first_node);
-
-            var current = first_node;
-            var last_node = first_node;
-            var added: u32 = 0;
-            while (true) {
-                const node = node_allocator.at(current);
-                node_allocator.setParent(current, self_address);
-                added += 1;
-                last_node = current;
-                if (node.next == invalid_pointer) break;
-                current = node.next;
-            }
-
             if (self.last_child != invalid_pointer) {
-                const last_addr = self.last_child;
-                const last = node_allocator.at(last_addr);
-                first.prior = last_addr;
-                node_allocator.at(last_node).next = invalid_pointer;
-                last.next = first_node;
-                self.last_child = last_node;
+                first.prior = self.last_child;
+                node_allocator.at(self.last_child).next = first_node;
             } else {
                 self.first_child = first_node;
-                self.last_child = last_node;
                 first.prior = invalid_pointer;
-                node_allocator.at(last_node).next = invalid_pointer;
             }
-
-            self.children_count += added;
+            self.last_child = span.last;
+            self.children_count += span.count;
         }
 
-        /// Removes `wrapper_address` from its parent's child/sibling list without touching its children.
-        pub fn unlinkWrapper(wrapper_address: Pointer, node_allocator: NodeAllocator) void {
-            const wrapper = node_allocator.at(wrapper_address);
-            const p = wrapper.prior;
-            const nx = wrapper.next;
-            const wparent = wrapper.parent;
+        /// Detaches the sibling run from `first_address` through `last_address` (`count` nodes) from its
+        /// parent and from the siblings around it, leaving parent, prior of the first and next of the
+        /// last invalid. The run keeps its own subtrees. The one implementation of detaching; it
+        /// assumes the run is valid.
+        fn detachRun(first_address: Pointer, last_address: Pointer, count: u32, node_allocator: NodeAllocator) void {
+            const first = node_allocator.at(first_address);
+            const last = node_allocator.at(last_address);
+            const prior = first.prior;
+            const next = last.next;
 
-            if (p != invalid_pointer) {
-                node_allocator.at(p).next = nx;
+            if (prior != invalid_pointer) {
+                node_allocator.at(prior).next = next;
             }
-            if (nx != invalid_pointer) {
-                node_allocator.at(nx).prior = p;
+            if (next != invalid_pointer) {
+                node_allocator.at(next).prior = prior;
             }
-            if (wparent != invalid_pointer) {
-                const wp = node_allocator.at(wparent);
-                if (wp.first_child == wrapper_address) wp.first_child = nx;
-                if (wp.last_child == wrapper_address) wp.last_child = p;
-                wp.children_count -= 1;
+            if (first.parent != invalid_pointer) {
+                const parent = node_allocator.at(first.parent);
+                parent.children_count -= count;
+                if (parent.first_child == first_address) parent.first_child = next;
+                if (parent.last_child == last_address) parent.last_child = prior;
             }
+
+            first.prior = invalid_pointer;
+            last.next = invalid_pointer;
+
+            node_allocator.setChainParent(first_address, invalid_pointer);
         }
 
-        /// Detaches all children from `wrapper_address` and splices them in place of the wrapper among
-        /// its siblings. Returns the head of the promoted chain, or `null` when the wrapper has no children.
-        pub fn promoteChildrenOverWrapper(wrapper_address: Pointer, node_allocator: NodeAllocator) ?Pointer {
+        /// Internal, used only by the standard procedure `replaceWithChildren`; not part of the C ABI
+        /// or any binding. Splices all children of `wrapper_address` into the wrapper's place among
+        /// its siblings and detaches the wrapper, returning the head of the promoted chain, or `null`
+        /// when the wrapper has no children (the wrapper is then left untouched). A wrapper without a
+        /// parent leaves its children as a parentless chain.
+        ///
+        /// It is one pass: the sibling and parent links are rewritten once, and each child is
+        /// visited once to set its new parent. Composing the public `cleanChildren`, `insertBefore` and
+        /// `removeSelf` gives the same tree but visits the children several times, which dominated
+        /// list-tail flattening.
+        /// The children's parent links go through `setChainParent` (and the wrapper's through
+        /// `setParent`), because the edit changes depth and walk cursors must re-verify after it;
+        /// the version moves twice however many children are promoted.
+        ///
+        /// The wrapper ends fully detached (parent, prior, next, children cleared) because a
+        /// replaced node stays reachable by user code, which must not see a live parent, sibling or
+        /// child through it.
+        pub fn immediatePromoteChildrenOverWrapper(wrapper_address: Pointer, node_allocator: NodeAllocator) ?Pointer {
             const wrapper = node_allocator.at(wrapper_address);
             const first = wrapper.first_child;
             if (first == invalid_pointer) return null;
             const last = wrapper.last_child;
             const count = wrapper.children_count;
+            const prior = wrapper.prior;
+            const next = wrapper.next;
+            const parent = wrapper.parent;
 
             wrapper.first_child = invalid_pointer;
             wrapper.last_child = invalid_pointer;
             wrapper.children_count = 0;
+            wrapper.prior = invalid_pointer;
+            wrapper.next = invalid_pointer;
+            node_allocator.setParent(wrapper_address, invalid_pointer);
 
-            const p = wrapper.prior;
-            const nx = wrapper.next;
-            const wparent = wrapper.parent;
+            // Re-parent before the last child links to `next`: the chain ends at an invalid `next`.
+            node_allocator.setChainParent(first, parent);
 
-            if (p != invalid_pointer) {
-                node_allocator.at(p).next = nx;
-            }
-            if (nx != invalid_pointer) {
-                node_allocator.at(nx).prior = p;
-            }
-            if (wparent != invalid_pointer) {
-                const wp = node_allocator.at(wparent);
-                if (wp.first_child == wrapper_address) wp.first_child = nx;
-                if (wp.last_child == wrapper_address) wp.last_child = p;
-            }
-
-            node_allocator.at(first).prior = p;
-            node_allocator.at(last).next = nx;
-            if (p != invalid_pointer) {
-                node_allocator.at(p).next = first;
-            }
-            if (nx != invalid_pointer) {
-                node_allocator.at(nx).prior = last;
-            }
-            if (wparent != invalid_pointer) {
-                const wp = node_allocator.at(wparent);
-                if (p == invalid_pointer) wp.first_child = first;
-                if (nx == invalid_pointer) wp.last_child = last;
-                wp.children_count += count - 1;
-            }
-
-            var c = first;
-            while (true) {
-                node_allocator.setParent(c, wparent);
-                if (c == last) break;
-                c = node_allocator.at(c).next;
+            node_allocator.at(first).prior = prior;
+            node_allocator.at(last).next = next;
+            if (prior != invalid_pointer) node_allocator.at(prior).next = first;
+            if (next != invalid_pointer) node_allocator.at(next).prior = last;
+            if (parent != invalid_pointer) {
+                const parent_node = node_allocator.at(parent);
+                if (prior == invalid_pointer) parent_node.first_child = first;
+                if (next == invalid_pointer) parent_node.last_child = last;
+                parent_node.children_count += count - 1;
             }
 
             return first;
@@ -797,58 +724,20 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                 return invalid_pointer;
             }
 
-            const self = node_allocator.at(self_address);
-
             var last_removed_address = self_address;
             var i: usize = 1;
             while (i < count) : (i += 1) {
-                const last_removed = node_allocator.at(last_removed_address);
-                last_removed_address = last_removed.next;
+                last_removed_address = node_allocator.at(last_removed_address).next;
                 if (last_removed_address == invalid_pointer) return error.CountExceedsRemainingSiblings;
             }
 
-            const prior_node_address = self.prior;
-            const next_node_address = node_allocator.at(last_removed_address).next;
-
-            if (prior_node_address != invalid_pointer) {
-                node_allocator.at(prior_node_address).next = next_node_address;
-            }
-            if (next_node_address != invalid_pointer) {
-                node_allocator.at(next_node_address).prior = prior_node_address;
-            }
-
-            self.prior = invalid_pointer;
-            node_allocator.at(last_removed_address).next = invalid_pointer;
-
-            if (self.parent != invalid_pointer) {
-                const parent_node = node_allocator.at(self.parent);
-
-                parent_node.children_count -= @intCast(count);
-
-                // Update parent's first_child and last_child if they were removed
-                if (parent_node.first_child == self_address) {
-                    parent_node.first_child = next_node_address;
-                }
-                if (parent_node.last_child == last_removed_address) {
-                    parent_node.last_child = prior_node_address;
-                }
-            }
-
-            var current = self_address;
-            while (true) {
-                const node = node_allocator.at(current);
-                node_allocator.setParent(current, invalid_pointer);
-                if (current == last_removed_address) break;
-                current = node.next;
-            }
-
+            detachRun(self_address, last_removed_address, @intCast(count), node_allocator);
             return self_address;
         }
 
-        /// Remove `self_address`, detaching from parent and sibling chains.
-        /// Returns the removed node address.
-        pub fn removeSelf(self_address: Pointer, node_allocator: NodeAllocator) !Pointer {
-            return try Self.remove(self_address, node_allocator, 1);
+        /// Remove `self_address`, detaching it from its parent and siblings. It cannot fail.
+        pub fn removeSelf(self_address: Pointer, node_allocator: NodeAllocator) void {
+            detachRun(self_address, self_address, 1, node_allocator);
         }
 
         /// Remove `count` consecutive children starting at `index`, detaching them from parent
@@ -885,7 +774,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 
         /// Clean all children detaching them from parent and sibling chains.
         /// Returns the head of the detached chain, or `invalid_pointer` when there are no children.
-        pub fn cleanChildren(self_address: Pointer, node_allocator: NodeAllocator) !Pointer {
+        pub fn cleanChildren(self_address: Pointer, node_allocator: NodeAllocator) Pointer {
             const self = node_allocator.at(self_address);
             const first = self.first_child;
             if (first == invalid_pointer) return invalid_pointer;
@@ -898,12 +787,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             node_allocator.at(first).prior = invalid_pointer;
             node_allocator.at(last).next = invalid_pointer;
 
-            var c = first;
-            while (true) {
-                node_allocator.setParent(c, invalid_pointer);
-                if (c == last) break;
-                c = node_allocator.at(c).next;
-            }
+            node_allocator.setChainParent(first, invalid_pointer);
 
             return first;
         }
@@ -1324,7 +1208,7 @@ const TestFixture = struct {
                 .text_length = 1,
                 .payload = .{},
             };
-            try TestNode.appendChildren(root_node, &node_allocator, child_addr);
+            TestNode.appendChildren(root_node, &node_allocator, child_addr);
         }
 
         var counter: TestNode.Pointer = 5;
@@ -1338,7 +1222,7 @@ const TestFixture = struct {
                     .text_length = 1,
                     .payload = .{},
                 };
-                try TestNode.appendChildren(parent_addr, &node_allocator, child_addr);
+                TestNode.appendChildren(parent_addr, &node_allocator, child_addr);
             }
         }
 
@@ -1436,7 +1320,7 @@ fn testInsertBefore(fixture: *TestFixture) !void {
     fixture.nodes[new_a].next = new_b;
     fixture.nodes[new_b].prior = new_a;
 
-    try TestNode.insertBefore(3, node_allocator, new_a);
+    TestNode.insertBefore(3, node_allocator, new_a);
 
     // Root should now have 6 children: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
@@ -1483,7 +1367,7 @@ fn testInsertAfter(fixture: *TestFixture) !void {
     fixture.nodes[new_b].prior = new_a;
 
     // Insert chain after root's children[1] (child2 = 2)
-    try TestNode.insertAfter(2, node_allocator, new_a);
+    TestNode.insertAfter(2, node_allocator, new_a);
 
     // Root: 1, 2, new_a, new_b, 3, 4
     var count: usize = 0;
@@ -1513,51 +1397,6 @@ fn testInsertAfter(fixture: *TestFixture) !void {
 
 test "insertAfter" {
     try runWithContext(testInsertAfter);
-}
-
-fn testPromoteChildrenOverWrapper(fixture: *TestFixture) !void {
-    const node_allocator = &fixture.node_allocator;
-    const root_node = fixture.root;
-
-    const wrapper = fixture.free_nodes[0];
-    const child_a = fixture.free_nodes[1];
-    const child_b = fixture.free_nodes[2];
-    fixture.nodes[child_a].next = child_b;
-    fixture.nodes[child_b].prior = child_a;
-    fixture.nodes[wrapper].first_child = child_a;
-    fixture.nodes[wrapper].last_child = child_b;
-    fixture.nodes[wrapper].children_count = 2;
-    node_allocator.setParent(child_a, wrapper);
-    node_allocator.setParent(child_b, wrapper);
-
-    try TestNode.insertChildren(root_node, node_allocator, 2, wrapper);
-
-    const promoted = TestNode.promoteChildrenOverWrapper(wrapper, node_allocator).?;
-    try std.testing.expectEqual(child_a, promoted);
-
-    var count: usize = 0;
-    var curr = fixture.nodes[root_node].first_child;
-    var children_list: [6]TestNode.Pointer = undefined;
-    while (curr != TestNode.invalid_pointer) {
-        children_list[count] = curr;
-        count += 1;
-        curr = fixture.nodes[curr].next;
-    }
-
-    try std.testing.expectEqual(@as(usize, 6), count);
-    try std.testing.expectEqual(asSize(1), children_list[0]);
-    try std.testing.expectEqual(asSize(2), children_list[1]);
-    try std.testing.expectEqual(child_a, children_list[2]);
-    try std.testing.expectEqual(child_b, children_list[3]);
-    try std.testing.expectEqual(asSize(3), children_list[4]);
-    try std.testing.expectEqual(asSize(4), children_list[5]);
-    try std.testing.expectEqual(root_node, fixture.nodes[child_a].parent);
-    try std.testing.expectEqual(root_node, fixture.nodes[child_b].parent);
-    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[wrapper].first_child);
-}
-
-test "promoteChildrenOverWrapper" {
-    try runWithContext(testPromoteChildrenOverWrapper);
 }
 
 fn testInsertChildren(fixture: *TestFixture) !void {
@@ -1632,9 +1471,9 @@ fn testAugmentedText(fixture: *TestFixture) !void {
     fixture.nodes[nested_empty].text_length = 0;
     fixture.nodes[nested_c].text_start = 2;
     fixture.nodes[nested_c].text_length = 1; // "C"
-    try TestNode.appendChildren(6, &fixture.node_allocator, nested_b);
-    try TestNode.appendChildren(6, &fixture.node_allocator, nested_empty);
-    try TestNode.appendChildren(6, &fixture.node_allocator, nested_c);
+    TestNode.appendChildren(6, &fixture.node_allocator, nested_b);
+    TestNode.appendChildren(6, &fixture.node_allocator, nested_empty);
+    TestNode.appendChildren(6, &fixture.node_allocator, nested_c);
 
     // Child 2 is child 1's next sibling. Its text must not be included.
     fixture.nodes[8].text_start = 23;
@@ -1677,12 +1516,271 @@ test "augmentedText traverses deep trees iteratively" {
     var parent = root_node;
     for (1..depth) |_| {
         const child = try node_allocator.create(0, 0);
-        node_allocator.at(parent).immediateInsertChild(parent, child, &node_allocator);
+        node_allocator.at(parent).immediateAppendChildren(parent, child, &node_allocator);
         parent = child;
     }
     node_allocator.at(parent).text_length = 1;
 
     try std.testing.expectEqualStrings("Z", try TestNode.augmentedText(root_node, &context));
+}
+
+fn expectDetached(fixture: *TestFixture, address: TestNode.Pointer) !void {
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[address].parent);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[address].prior);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[address].next);
+}
+
+fn testDetachedNodeInvariant(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+
+    // removeSelf: a lone removed node is fully detached.
+    TestNode.removeSelf(2, node_allocator);
+    try expectDetached(fixture, 2);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[1].next);
+    try std.testing.expectEqual(asSize(1), fixture.nodes[3].prior);
+
+    // remove(count): the removed chain has no parent and is cut off from
+    // the tree at both ends; only the links inside the chain remain.
+    const head = try TestNode.remove(3, node_allocator, 2);
+    try std.testing.expectEqual(asSize(3), head);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[3].parent);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[3].prior);
+    try std.testing.expectEqual(asSize(4), fixture.nodes[3].next);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[4].parent);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[4].prior);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[4].next);
+}
+
+test "removeSelf and remove leave detached nodes without tree links" {
+    try runWithContext(testDetachedNodeInvariant);
+}
+
+fn testRemoveSelfKeepsSubtreeAndFixesParent(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    const wrapper: TestNode.Pointer = 2; // middle child of root, with children 8, 9, 10
+
+    TestNode.removeSelf(wrapper, node_allocator);
+
+    try expectDetached(fixture, wrapper);
+    // Siblings and the former parent skip the wrapper.
+    try std.testing.expectEqual(asSize(3), fixture.nodes[1].next);
+    try std.testing.expectEqual(asSize(1), fixture.nodes[3].prior);
+    try std.testing.expectEqual(@as(u32, 3), fixture.nodes[fixture.root].children_count);
+    // The wrapper keeps its own subtree.
+    try std.testing.expectEqual(asSize(8), fixture.nodes[wrapper].first_child);
+    try std.testing.expectEqual(@as(u32, 3), fixture.nodes[wrapper].children_count);
+    try std.testing.expectEqual(wrapper, fixture.nodes[8].parent);
+
+    // Removing the first and the last child moves the parent's ends.
+    TestNode.removeSelf(1, node_allocator);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[fixture.root].first_child);
+    try expectDetached(fixture, 1);
+    TestNode.removeSelf(4, node_allocator);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[fixture.root].last_child);
+    try std.testing.expectEqual(asSize(3), fixture.nodes[fixture.root].first_child);
+    try expectDetached(fixture, 4);
+
+    // A node that is already detached stays detached.
+    TestNode.removeSelf(wrapper, node_allocator);
+    try expectDetached(fixture, wrapper);
+}
+
+test "removeSelf detaches the node, keeps its subtree and fixes the parent" {
+    try runWithContext(testRemoveSelfKeepsSubtreeAndFixesParent);
+}
+
+fn testRemoveBumpsStructureVersion(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    const before = node_allocator.structure_version;
+    TestNode.removeSelf(2, node_allocator);
+    try std.testing.expect(node_allocator.structure_version != before);
+}
+
+test "removeSelf bumps the structure version" {
+    try runWithContext(testRemoveBumpsStructureVersion);
+}
+
+fn testCleanChildrenBumpsStructureVersion(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    const parent = fixture.free_nodes[0];
+    TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[1]);
+
+    const before = node_allocator.structure_version;
+    _ = TestNode.cleanChildren(parent, node_allocator);
+    try std.testing.expect(node_allocator.structure_version != before);
+}
+
+test "cleanChildren bumps the structure version" {
+    try runWithContext(testCleanChildrenBumpsStructureVersion);
+}
+
+fn testRemovingSeveralSiblingsBumpsStructureVersion(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    const parent = fixture.free_nodes[0];
+    const first = fixture.free_nodes[1];
+    TestNode.appendChildren(parent, node_allocator, first);
+    TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[2]);
+    TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[3]);
+
+    const before = node_allocator.structure_version;
+    _ = try TestNode.remove(first, node_allocator, 2);
+    try std.testing.expect(node_allocator.structure_version != before);
+}
+
+test "remove of several siblings bumps the structure version" {
+    try runWithContext(testRemovingSeveralSiblingsBumpsStructureVersion);
+}
+
+fn testChainEditsBumpStructureVersionOnce(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+
+    // A parent with four children: cleaning them re-parents four nodes in one bump.
+    const parent = fixture.free_nodes[0];
+    for (fixture.free_nodes[1..5]) |child| TestNode.appendChildren(parent, node_allocator, child);
+    var before = node_allocator.structure_version;
+    _ = TestNode.cleanChildren(parent, node_allocator);
+    try std.testing.expectEqual(before + 1, node_allocator.structure_version);
+
+    // Detaching a run of three siblings is one bump as well. Cleaning left the four siblings
+    // linked as one chain, so appending its head re-attaches all of them.
+    TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[1]);
+    before = node_allocator.structure_version;
+    _ = try TestNode.remove(fixture.free_nodes[1], node_allocator, 3);
+    try std.testing.expectEqual(before + 1, node_allocator.structure_version);
+    // The sibling after the run keeps its parent and stays the parent's only child, unlinked from the run.
+    const survivor = fixture.free_nodes[4];
+    try std.testing.expectEqual(parent, fixture.nodes[survivor].parent);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[survivor].prior);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[survivor].next);
+    try std.testing.expectEqual(survivor, fixture.nodes[parent].first_child);
+    try std.testing.expectEqual(survivor, fixture.nodes[parent].last_child);
+    try std.testing.expectEqual(@as(u32, 1), fixture.nodes[parent].children_count);
+    for (fixture.free_nodes[1..4]) |detached| {
+        try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[detached].parent);
+    }
+
+    // Promoting children over a wrapper is one bump for the wrapper and one for the whole chain,
+    // however many children are promoted.
+    const wrapper = fixture.free_nodes[5];
+    TestNode.appendChildren(parent, node_allocator, wrapper);
+    for (fixture.free_nodes[6..10]) |child| TestNode.appendChildren(wrapper, node_allocator, child);
+    const following = fixture.free_nodes[10];
+    TestNode.appendChildren(parent, node_allocator, following);
+    before = node_allocator.structure_version;
+    try std.testing.expectEqual(@as(?TestNode.Pointer, fixture.free_nodes[6]), TestNode.immediatePromoteChildrenOverWrapper(wrapper, node_allocator));
+    try std.testing.expectEqual(before + 2, node_allocator.structure_version);
+    for (fixture.free_nodes[6..10]) |child| {
+        try std.testing.expectEqual(parent, fixture.nodes[child].parent);
+    }
+    try expectDetached(fixture, wrapper);
+    // The promoted chain sits between the survivor and the wrapper's former next sibling.
+    try std.testing.expectEqual(parent, fixture.nodes[following].parent);
+    try std.testing.expectEqual(fixture.free_nodes[9], fixture.nodes[following].prior);
+    try std.testing.expectEqual(following, fixture.nodes[fixture.free_nodes[9]].next);
+    try std.testing.expectEqual(survivor, fixture.nodes[fixture.free_nodes[6]].prior);
+    try std.testing.expectEqual(following, fixture.nodes[parent].last_child);
+}
+
+test "multi-node edits bump the structure version once per operation" {
+    try runWithContext(testChainEditsBumpStructureVersionOnce);
+}
+
+fn testAttachingKeepsStructureVersion(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+
+    const parent = fixture.free_nodes[0];
+    const first = fixture.free_nodes[1];
+    const second = fixture.free_nodes[2];
+    fixture.nodes[first].next = second;
+    fixture.nodes[second].prior = first;
+
+    const before = node_allocator.structure_version;
+    node_allocator.at(parent).immediateAppendChildren(parent, first, node_allocator);
+
+    // Attaching parentless nodes cannot move a walk position, so the version stays.
+    try std.testing.expectEqual(before, node_allocator.structure_version);
+    try std.testing.expectEqual(first, fixture.nodes[parent].first_child);
+    try std.testing.expectEqual(second, fixture.nodes[parent].last_child);
+    try std.testing.expectEqual(@as(u32, 2), fixture.nodes[parent].children_count);
+    try std.testing.expectEqual(parent, fixture.nodes[first].parent);
+    try std.testing.expectEqual(parent, fixture.nodes[second].parent);
+
+    // Every public way to attach a parentless chain shares that: append after existing children,
+    // insert before, insert after and insert at an index.
+    const third = fixture.free_nodes[3];
+    TestNode.appendChildren(parent, node_allocator, third);
+    try std.testing.expectEqual(third, fixture.nodes[parent].last_child);
+    try std.testing.expectEqual(second, fixture.nodes[third].prior);
+    try std.testing.expectEqual(parent, fixture.nodes[third].parent);
+
+    const fourth = fixture.free_nodes[4];
+    TestNode.insertBefore(first, node_allocator, fourth);
+    const fifth = fixture.free_nodes[5];
+    TestNode.insertAfter(first, node_allocator, fifth);
+    const sixth = fixture.free_nodes[6];
+    try TestNode.insertChildren(parent, node_allocator, 2, sixth);
+    try std.testing.expectEqual(before, node_allocator.structure_version);
+    try std.testing.expectEqual(@as(u32, 6), fixture.nodes[parent].children_count);
+    try std.testing.expectEqual(fourth, fixture.nodes[parent].first_child);
+    for ([_]TestNode.Pointer{ fourth, fifth, sixth }) |attached| {
+        try std.testing.expectEqual(parent, fixture.nodes[attached].parent);
+    }
+    // Order: fourth, first, sixth, fifth, second, third.
+    const expected = [_]TestNode.Pointer{ fourth, first, sixth, fifth, second, third };
+    var current = fixture.nodes[parent].first_child;
+    for (expected) |want| {
+        try std.testing.expectEqual(want, current);
+        current = fixture.nodes[current].next;
+    }
+    try std.testing.expectEqual(TestNode.invalid_pointer, current);
+}
+
+test "attaching a parentless chain leaves the structure version unchanged" {
+    try runWithContext(testAttachingKeepsStructureVersion);
+}
+
+fn testInsertionFaults(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    // A head that still has a parent or a prior.
+    try std.testing.expectEqual(
+        @as(?TestFixtureFault, .chain_head_has_parent),
+        TestNode.insertionFault(node_allocator, fixture.root, 2, null),
+    );
+    const detached = fixture.free_nodes[0];
+    fixture.nodes[detached].prior = 3;
+    try std.testing.expectEqual(
+        @as(?TestFixtureFault, .chain_head_has_prior),
+        TestNode.insertionFault(node_allocator, fixture.root, detached, null),
+    );
+    fixture.nodes[detached].prior = TestNode.invalid_pointer;
+
+    // A chain holding the anchor or one of its ancestors: node 8 sits under 2, which sits under the root.
+    const subtree_root = try TestNode.remove(2, node_allocator, 1);
+    try std.testing.expectEqual(asSize(2), subtree_root);
+    try std.testing.expectEqual(
+        @as(?TestFixtureFault, .chain_contains_anchor_or_ancestor),
+        TestNode.insertionFault(node_allocator, 8, subtree_root, null),
+    );
+    try std.testing.expectEqual(
+        @as(?TestFixtureFault, .chain_contains_anchor_or_ancestor),
+        TestNode.insertionFault(node_allocator, subtree_root, subtree_root, null),
+    );
+    // The same chain is fine under an unrelated node.
+    try std.testing.expectEqual(@as(?TestFixtureFault, null), TestNode.insertionFault(node_allocator, 3, subtree_root, null));
+
+    // An index past the end of the children.
+    const count = fixture.nodes[fixture.root].children_count;
+    try std.testing.expectEqual(@as(?TestFixtureFault, null), TestNode.insertionFault(node_allocator, fixture.root, detached, count));
+    try std.testing.expectEqual(
+        @as(?TestFixtureFault, .index_out_of_range),
+        TestNode.insertionFault(node_allocator, fixture.root, detached, count + 1),
+    );
+}
+
+const TestFixtureFault = TestNode.InsertionFault;
+
+test "insertion misuse is detected by the Debug check" {
+    try runWithContext(testInsertionFaults);
 }
 
 fn testRemoveCountExceeds(fixture: *TestFixture) !void {
@@ -1696,31 +1794,32 @@ test "remove count exceeds remaining siblings" {
     try runWithContext(testRemoveCountExceeds);
 }
 
-fn testImmediateInsertChild(fixture: *TestFixture) !void {
+fn testImmediateAppendChildren(fixture: *TestFixture) !void {
     const node_allocator = &fixture.node_allocator;
 
     const parent = fixture.free_nodes[0];
     const child1 = fixture.free_nodes[1];
     const child2 = fixture.free_nodes[2];
 
-    // Insert first child
-    node_allocator.at(parent).immediateInsertChild(parent, child1, node_allocator);
+    // Append the first child
+    node_allocator.at(parent).immediateAppendChildren(parent, child1, node_allocator);
     try std.testing.expectEqual(child1, fixture.nodes[parent].first_child);
     try std.testing.expectEqual(child1, fixture.nodes[parent].last_child);
     try std.testing.expectEqual(parent, fixture.nodes[child1].parent);
     try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[child1].prior);
     try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[child1].next);
 
-    // Insert second child
-    node_allocator.at(parent).immediateInsertChild(parent, child2, node_allocator);
+    // Append a second child
+    node_allocator.at(parent).immediateAppendChildren(parent, child2, node_allocator);
     try std.testing.expectEqual(child1, fixture.nodes[parent].first_child);
     try std.testing.expectEqual(child2, fixture.nodes[parent].last_child);
     try std.testing.expectEqual(parent, fixture.nodes[child2].parent);
     try std.testing.expectEqual(child1, fixture.nodes[child2].prior);
     try std.testing.expectEqual(child2, fixture.nodes[child1].next);
     try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[child2].next);
+    try std.testing.expectEqual(@as(u32, 2), fixture.nodes[parent].children_count);
 }
 
-test "immediateInsertChild" {
-    try runWithContext(testImmediateInsertChild);
+test "immediateAppendChildren" {
+    try runWithContext(testImmediateAppendChildren);
 }

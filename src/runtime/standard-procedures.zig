@@ -35,7 +35,7 @@ pub fn dropChildren(args: *ProcedureArguments) !void {
     requireAst();
     if (comptime root.parser.is_ast_enabled) {
         if (args.node_address) |node_address| {
-            _ = try data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
+            _ = data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
         }
     }
 }
@@ -70,10 +70,10 @@ pub fn rightRecursiveReduction(args: *ProcedureArguments) !void {
             const tail = args.context.node_allocator.at(tail_address);
             if (tail.variable != node.variable) return;
 
-            _ = try data_structures.Node.removeSelf(tail_address, args.context.node_allocator);
-            const children = try data_structures.Node.cleanChildren(tail_address, args.context.node_allocator);
+            data_structures.Node.removeSelf(tail_address, args.context.node_allocator);
+            const children = data_structures.Node.cleanChildren(tail_address, args.context.node_allocator);
             if (children != data_structures.Node.invalid_pointer) {
-                try data_structures.Node.appendChildren(node_address, args.context.node_allocator, children);
+                data_structures.Node.appendChildren(node_address, args.context.node_allocator, children);
             }
         }
     }
@@ -94,8 +94,8 @@ pub fn leftRecursiveReduction(args: *ProcedureArguments) !void {
             const head = args.context.node_allocator.at(head_address);
             if (head.variable != node.variable) return;
 
-            _ = try data_structures.Node.removeSelf(head_address, args.context.node_allocator);
-            const children = try data_structures.Node.cleanChildren(head_address, args.context.node_allocator);
+            data_structures.Node.removeSelf(head_address, args.context.node_allocator);
+            const children = data_structures.Node.cleanChildren(head_address, args.context.node_allocator);
             if (children != data_structures.Node.invalid_pointer) {
                 try data_structures.Node.insertChildren(node_address, args.context.node_allocator, 0, children);
             }
@@ -103,9 +103,11 @@ pub fn leftRecursiveReduction(args: *ProcedureArguments) !void {
     }
 }
 
-/// Replaces the current node with its first child (if any).
-/// The current node's structure is dropped and the first direct child
-/// (and its siblings if chained) take its place in the parent.
+/// Replaces the current node with all of its children.
+/// The current node is detached and its direct children, in order, take its
+/// place among its siblings. With no children the result is null and the node
+/// stays where it is. A node that has no parent yet leaves its children as a
+/// detached chain, which becomes the result.
 /// Commonly used with `@replaceWithChildren` on list tails and member containers
 /// so that e.g. an `ArrayMembers` node disappears and its `Value` children
 /// become direct children of `Array`.
@@ -115,7 +117,9 @@ pub fn replaceWithChildren(args: *ProcedureArguments) !void {
     requireAst();
     if (comptime root.parser.is_ast_enabled) {
         if (args.node_address) |node_address| {
-            args.node_address = data_structures.Node.promoteChildrenOverWrapper(node_address, args.context.node_allocator);
+            // One pass: the children take the wrapper's place and the wrapper
+            // ends detached. Without a parent the children stay a detached chain.
+            args.node_address = data_structures.Node.immediatePromoteChildrenOverWrapper(node_address, args.context.node_allocator);
         }
     }
 }
@@ -141,8 +145,8 @@ test "dropChildren keeps the node and detaches its children" {
     const parent = try node_allocator.create(0, 1);
     const first = try node_allocator.create(0, 2);
     const last = try node_allocator.create(0, 3);
-    try data_structures.Node.appendChildren(parent, &node_allocator, first);
-    try data_structures.Node.appendChildren(parent, &node_allocator, last);
+    data_structures.Node.appendChildren(parent, &node_allocator, first);
+    data_structures.Node.appendChildren(parent, &node_allocator, last);
 
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
@@ -165,7 +169,7 @@ test "dropIfEmpty drops only empty nodes" {
 
     const non_empty = try node_allocator.create(0, 1);
     const child = try node_allocator.create(0, 2);
-    try data_structures.Node.appendChildren(non_empty, &node_allocator, child);
+    data_structures.Node.appendChildren(non_empty, &node_allocator, child);
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
     var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = non_empty };
@@ -190,11 +194,11 @@ test "replaceWithChildren promotes a wrapper's children" {
     const child_first = try node_allocator.create(0, 4);
     const child_last = try node_allocator.create(0, 5);
     const after = try node_allocator.create(0, 6);
-    try data_structures.Node.appendChildren(wrapper, &node_allocator, child_first);
-    try data_structures.Node.appendChildren(wrapper, &node_allocator, child_last);
-    try data_structures.Node.appendChildren(parent, &node_allocator, before);
-    try data_structures.Node.appendChildren(parent, &node_allocator, wrapper);
-    try data_structures.Node.appendChildren(parent, &node_allocator, after);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_first);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_last);
+    data_structures.Node.appendChildren(parent, &node_allocator, before);
+    data_structures.Node.appendChildren(parent, &node_allocator, wrapper);
+    data_structures.Node.appendChildren(parent, &node_allocator, after);
 
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
@@ -211,6 +215,134 @@ test "replaceWithChildren promotes a wrapper's children" {
     try std.testing.expectEqual(data_structures.Node.invalid_pointer, node_allocator.at(wrapper).first_child);
     try std.testing.expectEqual(parent, node_allocator.at(child_first).parent);
     try std.testing.expectEqual(parent, node_allocator.at(child_last).parent);
+    // The replaced wrapper is detached from the tree.
+    try std.testing.expectEqual(data_structures.Node.invalid_pointer, node_allocator.at(wrapper).parent);
+    try std.testing.expectEqual(data_structures.Node.invalid_pointer, node_allocator.at(wrapper).prior);
+    try std.testing.expectEqual(data_structures.Node.invalid_pointer, node_allocator.at(wrapper).next);
+}
+
+test "replaceWithChildren updates the parent's ends when the wrapper is first or last" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 8);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    const parent = try node_allocator.create(0, 1);
+    const first_wrapper = try node_allocator.create(0, 2);
+    const last_wrapper = try node_allocator.create(0, 3);
+    const first_child = try node_allocator.create(0, 4);
+    const last_child = try node_allocator.create(0, 5);
+    data_structures.Node.appendChildren(first_wrapper, &node_allocator, first_child);
+    data_structures.Node.appendChildren(last_wrapper, &node_allocator, last_child);
+    data_structures.Node.appendChildren(parent, &node_allocator, first_wrapper);
+    data_structures.Node.appendChildren(parent, &node_allocator, last_wrapper);
+
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
+    var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = first_wrapper };
+    try replaceWithChildren(&args);
+    try std.testing.expectEqual(first_child, args.node_address.?);
+    try std.testing.expectEqual(first_child, node_allocator.at(parent).first_child);
+
+    args.node_address = last_wrapper;
+    try replaceWithChildren(&args);
+    try std.testing.expectEqual(last_child, args.node_address.?);
+    try std.testing.expectEqual(last_child, node_allocator.at(parent).last_child);
+    try std.testing.expectEqual(last_child, node_allocator.at(first_child).next);
+    try std.testing.expectEqual(first_child, node_allocator.at(last_child).prior);
+    try std.testing.expectEqual(@as(u32, 2), node_allocator.at(parent).children_count);
+}
+
+test "replaceWithChildren on a wrapper without a parent yields the detached children chain" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 3);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    const wrapper = try node_allocator.create(0, 1);
+    const child_first = try node_allocator.create(0, 2);
+    const child_last = try node_allocator.create(0, 3);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_first);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_last);
+
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
+    var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = wrapper };
+    try replaceWithChildren(&args);
+
+    const invalid = data_structures.Node.invalid_pointer;
+    try std.testing.expectEqual(child_first, args.node_address.?);
+    try std.testing.expectEqual(child_last, node_allocator.at(child_first).next);
+    try std.testing.expectEqual(invalid, node_allocator.at(child_first).prior);
+    try std.testing.expectEqual(invalid, node_allocator.at(child_last).next);
+    try std.testing.expectEqual(invalid, node_allocator.at(child_first).parent);
+    try std.testing.expectEqual(invalid, node_allocator.at(child_last).parent);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).parent);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).prior);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).next);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).first_child);
+    try std.testing.expectEqual(@as(u32, 0), node_allocator.at(wrapper).children_count);
+}
+
+test "replaceWithChildren on a wrapper without a parent splices the children among its siblings" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 5);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    // A detached chain: before, wrapper, after. The wrapper has two children.
+    const before = try node_allocator.create(0, 1);
+    const wrapper = try node_allocator.create(0, 2);
+    const after = try node_allocator.create(0, 3);
+    const child_first = try node_allocator.create(0, 4);
+    const child_last = try node_allocator.create(0, 5);
+    data_structures.Node.insertAfter(before, &node_allocator, wrapper);
+    data_structures.Node.insertAfter(wrapper, &node_allocator, after);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_first);
+    data_structures.Node.appendChildren(wrapper, &node_allocator, child_last);
+
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
+    var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = wrapper };
+    try replaceWithChildren(&args);
+
+    const invalid = data_structures.Node.invalid_pointer;
+    try std.testing.expectEqual(child_first, args.node_address.?);
+    // The chain now reads before, child_first, child_last, after, with no parents anywhere.
+    try std.testing.expectEqual(child_first, node_allocator.at(before).next);
+    try std.testing.expectEqual(before, node_allocator.at(child_first).prior);
+    try std.testing.expectEqual(child_last, node_allocator.at(child_first).next);
+    try std.testing.expectEqual(after, node_allocator.at(child_last).next);
+    try std.testing.expectEqual(child_last, node_allocator.at(after).prior);
+    for ([_]data_structures.Node.Pointer{ before, child_first, child_last, after }) |address| {
+        try std.testing.expectEqual(invalid, node_allocator.at(address).parent);
+    }
+    // The wrapper is out of the chain with nothing left linked to it.
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).parent);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).prior);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).next);
+    try std.testing.expectEqual(invalid, node_allocator.at(wrapper).first_child);
+}
+
+test "replaceWithChildren without children clears the result and leaves the wrapper in place" {
+    if (comptime !root.parser.is_ast_enabled) return;
+
+    var node_allocator = try data_structures.ASTAllocator.initWithCapacity(std.testing.allocator, 2);
+    defer node_allocator.deinit(std.testing.allocator);
+
+    const parent = try node_allocator.create(0, 1);
+    const wrapper = try node_allocator.create(0, 2);
+    data_structures.Node.appendChildren(parent, &node_allocator, wrapper);
+
+    var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
+    var args = ProcedureArguments{ .context = &context, .rule = null, .node_address = wrapper };
+    try replaceWithChildren(&args);
+
+    try std.testing.expectEqual(@as(?data_structures.Node.Pointer, null), args.node_address);
+    try std.testing.expectEqual(parent, node_allocator.at(wrapper).parent);
+    try std.testing.expectEqual(wrapper, node_allocator.at(parent).first_child);
+    try std.testing.expectEqual(@as(u32, 1), node_allocator.at(parent).children_count);
 }
 
 test "rightRecursiveReduction flattens a matching tail" {
@@ -224,10 +356,10 @@ test "rightRecursiveReduction flattens a matching tail" {
     const tail = try node_allocator.create(0, 1);
     const tail_first = try node_allocator.create(0, 3);
     const tail_last = try node_allocator.create(0, 4);
-    try data_structures.Node.appendChildren(tail, &node_allocator, tail_first);
-    try data_structures.Node.appendChildren(tail, &node_allocator, tail_last);
-    try data_structures.Node.appendChildren(parent, &node_allocator, first);
-    try data_structures.Node.appendChildren(parent, &node_allocator, tail);
+    data_structures.Node.appendChildren(tail, &node_allocator, tail_first);
+    data_structures.Node.appendChildren(tail, &node_allocator, tail_last);
+    data_structures.Node.appendChildren(parent, &node_allocator, first);
+    data_structures.Node.appendChildren(parent, &node_allocator, tail);
 
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };
@@ -252,10 +384,10 @@ test "leftRecursiveReduction flattens a matching head" {
     const head_first = try node_allocator.create(0, 3);
     const head_last = try node_allocator.create(0, 4);
     const last = try node_allocator.create(0, 2);
-    try data_structures.Node.appendChildren(head, &node_allocator, head_first);
-    try data_structures.Node.appendChildren(head, &node_allocator, head_last);
-    try data_structures.Node.appendChildren(parent, &node_allocator, head);
-    try data_structures.Node.appendChildren(parent, &node_allocator, last);
+    data_structures.Node.appendChildren(head, &node_allocator, head_first);
+    data_structures.Node.appendChildren(head, &node_allocator, head_last);
+    data_structures.Node.appendChildren(parent, &node_allocator, head);
+    data_structures.Node.appendChildren(parent, &node_allocator, last);
 
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context = data_structures.Context{ .runtime_context = &dummy_runtime, .node_allocator = &node_allocator };

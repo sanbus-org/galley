@@ -472,10 +472,7 @@ fn treeAppendChildrenCore(door: *const Door, parent: GalleyNodeAddress, first_no
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
     const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.appendChildren(parent_ptr, door.node_allocator, first_ptr) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-        else => return galley_error_internal,
-    };
+    root.data_structures.Node.appendChildren(parent_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
@@ -483,10 +480,7 @@ fn treeInsertBeforeCore(door: *const Door, target: GalleyNodeAddress, first_node
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const target_ptr = door.livePointer(target) orelse return galley_error_invalid_node;
     const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertBefore(target_ptr, door.node_allocator, first_ptr) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-        else => return galley_error_internal,
-    };
+    root.data_structures.Node.insertBefore(target_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
@@ -494,10 +488,7 @@ fn treeInsertAfterCore(door: *const Door, target: GalleyNodeAddress, first_node:
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const target_ptr = door.livePointer(target) orelse return galley_error_invalid_node;
     const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertAfter(target_ptr, door.node_allocator, first_ptr) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-        else => return galley_error_internal,
-    };
+    root.data_structures.Node.insertAfter(target_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
@@ -512,25 +503,11 @@ fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usi
     return galley_ok;
 }
 
-fn treePromoteChildrenOverWrapperCore(door: *const Door, wrapper: GalleyNodeAddress, out_head: ?*GalleyNodeAddress) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    if (out_head == null) return galley_error_null_argument;
-    const wrapper_ptr = door.livePointer(wrapper) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.promoteChildrenOverWrapper(wrapper_ptr, door.node_allocator) orelse {
-        out_head.?.* = galley_invalid_node;
-        return galley_ok;
-    };
-    out_head.?.* = head;
-    return galley_ok;
-}
-
 fn treeCleanChildrenCore(door: *const Door, node: GalleyNodeAddress, out_head: ?*GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     if (out_head == null) return galley_error_null_argument;
     const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.cleanChildren(node_ptr, door.node_allocator) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-    };
+    const head = root.data_structures.Node.cleanChildren(node_ptr, door.node_allocator);
     if (head == root.data_structures.Node.invalid_pointer) {
         out_head.?.* = galley_invalid_node;
         return galley_ok;
@@ -573,13 +550,6 @@ fn treeRemoveChildrenAtCore(
         return galley_ok;
     }
     out_head.?.* = head;
-    return galley_ok;
-}
-
-fn treeUnlinkWrapperCore(door: *const Door, wrapper: GalleyNodeAddress) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const wrapper_ptr = door.livePointer(wrapper) orelse return galley_error_invalid_node;
-    root.data_structures.Node.unlinkWrapper(wrapper_ptr, door.node_allocator);
     return galley_ok;
 }
 
@@ -2088,36 +2058,6 @@ export fn galley_hook_tree_remove_self(
     return galley_hook_tree_remove_siblings(hook_door, node, 1, out_head);
 }
 
-/// Splices the children of `wrapper` in place of the wrapper among its
-/// siblings, writing the promoted chain head to `out_head`. The wrapper is
-/// left detached with no children.
-export fn galley_tree_promote_children_over_wrapper(
-    session_ptr: ?*GalleySession,
-    wrapper: GalleyNodeAddress,
-    out_head: ?*GalleyNodeAddress,
-) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_internal));
-    if (out_head == null) return galley_error_null_argument;
-    var guard = embedded.session.editCurrent() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treePromoteChildrenOverWrapperCore(&sessionDoor(embedded), wrapper, out_head);
-}
-
-/// Hook-time door: `galley_tree_promote_children_over_wrapper` over the live
-/// parse's node storage, reached through the parse's hook door. No lock;
-/// valid until the parse that produced the door ends.
-export fn galley_hook_tree_promote_children_over_wrapper(
-    hook_door: ?*anyopaque,
-    wrapper: GalleyNodeAddress,
-    out_head: ?*GalleyNodeAddress,
-) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_head == null) return galley_error_null_argument;
-    return treePromoteChildrenOverWrapperCore(&door, wrapper, out_head);
-}
-
 /// Detaches all children of `node`, writing the detached chain head to
 /// `out_head`. Returns `galley_error_no_diagnostic` when the node has no
 /// children.
@@ -2813,25 +2753,6 @@ export fn galley_hook_tree_remove_children_at(
     const door = hookDoor(hook_door) orelse return galley_error_null_argument;
     if (out_head == null) return galley_error_null_argument;
     return treeRemoveChildrenAtCore(&door, parent, index, count, out_head);
-}
-
-/// Detaches `wrapper` from its parent and sibling chains without touching
-/// its children.
-export fn galley_tree_unlink_wrapper(session_ptr: ?*GalleySession, wrapper: GalleyNodeAddress) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_internal));
-    var guard = embedded.session.editCurrent() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeUnlinkWrapperCore(&sessionDoor(embedded), wrapper);
-}
-
-/// Hook-time door: `galley_tree_unlink_wrapper` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_tree_unlink_wrapper(hook_door: ?*anyopaque, wrapper: GalleyNodeAddress) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeUnlinkWrapperCore(&door, wrapper);
 }
 
 /// Preallocates node storage for at least `capacity` nodes, avoiding

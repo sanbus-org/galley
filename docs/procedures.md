@@ -244,6 +244,22 @@ pub fn myHook(args: *ProcedureArguments) !void {
 construction is enabled. Code that allocates or restructures tree nodes must
 use those fields and intentionally fails to compile in no-AST mode.
 
+Tree edits go through the public `Node` functions (`insertBefore`,
+`removeSelf`, `cleanChildren`, ...). They assert misuse in Debug builds only;
+release builds do not check, and misuse corrupts the tree. The `immediate*`
+tier is internal to generated parsers (see
+[Immediate Tree Edits](/architecture#immediate-tree-edits)).
+
+Two rules follow from how generated parsers use the tree:
+
+- A hook that replaces the node (`args.node_address = ...`) must hand back a
+  node or chain that is detached, such as the result of `cleanChildren` or
+  `replaceWithChildren`. Handing back a node that is still attached to a
+  parent, for example the node's own first child, lists it under two parents.
+- A hook must not detach an ancestor of the node being reduced. A repetition
+  climbs from each wrapper to the one enclosing it, so a detached ancestor
+  skips the outer procedures of that repetition.
+
 ### Standard Helper Procedures
 
 Many language implementations leverage standard tree-cleanup procedures:
@@ -257,7 +273,7 @@ mode they fail to compile unless the parser is generated with
   ```zig
   pub fn dropChildren(args: *ProcedureArguments) !void {
       if (args.node_address) |node_address| {
-          _ = try data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
+          _ = data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
       }
   }
   ```
@@ -282,18 +298,17 @@ mode they fail to compile unless the parser is generated with
   pub const dropIfEmpty = standard_procedures.dropIfEmpty;
   ```
 
-- **`replaceWithChildren`**: Discards the current parent node's structure and replaces it with its first child in the AST hierarchy:
+- **`replaceWithChildren`**: Detaches the current node and puts all of its children in its place among its siblings. With no children the result is `null` and the node stays; a node without a parent yields its children as a detached chain:
 
   ```zig
   pub fn replaceWithChildren(args: *ProcedureArguments) !void {
       if (args.node_address) |node_address| {
-          args.node_address = data_structures.Node.promoteChildrenOverWrapper(
-              node_address,
-              args.context.node_allocator,
-          );
+          args.node_address = data_structures.Node.immediatePromoteChildrenOverWrapper(node_address, args.context.node_allocator);
       }
   }
   ```
+
+  `immediatePromoteChildrenOverWrapper` is internal: it does the splice in one pass and leaves the node fully detached. A host that wants the same result through the public tier calls `cleanChildren`, `insertBefore`, and `removeSelf`, which gives the same tree in several passes.
 
 ### Custom AST Node Payload
 

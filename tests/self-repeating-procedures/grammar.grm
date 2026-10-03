@@ -1,0 +1,14 @@
+Start
+| "d" DropChain
+| "r" ReplaceChain
+
+DropChain@dropInner
+| "(" DropChain Close
+| "x"
+
+ReplaceChain@replaceInner
+| "(" ReplaceChain Close
+| "x"
+
+Close
+| ")"

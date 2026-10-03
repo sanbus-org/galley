@@ -950,24 +950,6 @@ impl Session {
         Ok(opt_handle(head))
     }
 
-    pub fn tree_promote_children_over_wrapper(
-        &self,
-        wrapper: NodeHandle,
-    ) -> Result<Option<NodeHandle>, Error> {
-        unsafe extern "C" {
-            fn galley_tree_promote_children_over_wrapper(
-                s: *mut GalleySessionRaw,
-                w: u64,
-                h: *mut u64,
-            ) -> i64;
-        }
-        let mut head = invalid_raw();
-        map_status(unsafe {
-            galley_tree_promote_children_over_wrapper(self.inner, wrapper.0, &mut head)
-        })?;
-        Ok(opt_handle(head))
-    }
-
     pub fn tree_clean_children(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
         unsafe extern "C" {
             fn galley_tree_clean_children(s: *mut GalleySessionRaw, n: u64, h: *mut u64) -> i64;
@@ -975,13 +957,6 @@ impl Session {
         let mut head = invalid_raw();
         map_status(unsafe { galley_tree_clean_children(self.inner, node.0, &mut head) })?;
         Ok(opt_handle(head))
-    }
-
-    pub fn tree_unlink_wrapper(&self, wrapper: NodeHandle) -> Result<(), Error> {
-        unsafe extern "C" {
-            fn galley_tree_unlink_wrapper(s: *mut GalleySessionRaw, w: u64) -> i64;
-        }
-        map_status(unsafe { galley_tree_unlink_wrapper(self.inner, wrapper.0) })
     }
 
     pub fn tree_insert_children_at(

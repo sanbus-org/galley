@@ -113,11 +113,11 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
                 const tail_address = node.last_child;
                 if (!nodeIs(args.context, tail_address, child_name)) return;
 
-                _ = try Node.removeSelf(tail_address, args.context.node_allocator);
+                Node.removeSelf(tail_address, args.context.node_allocator);
                 if (args.context.node_allocator.at(tail_address).first_child != Node.invalid_pointer) {
-                    const tail_children = try Node.cleanChildren(tail_address, args.context.node_allocator);
+                    const tail_children = Node.cleanChildren(tail_address, args.context.node_allocator);
                     if (tail_children != Node.invalid_pointer) {
-                        try Node.appendChildren(node_address, args.context.node_allocator, tail_children);
+                        Node.appendChildren(node_address, args.context.node_allocator, tail_children);
                     }
                 }
             }

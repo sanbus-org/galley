@@ -10,6 +10,7 @@
 - [Optional Stack-Overflow Recovery](#optional-stack-overflow-recovery)
 - [Dense Integer Node Pooling](#dense-integer-node-pooling)
 - [Self-Repeating Decisions](#self-repeating-decisions)
+- [Immediate Tree Edits](#immediate-tree-edits)
 - [Ambiguity Diagnostics](#ambiguity-diagnostics)
 - [Concurrency](/concurrency)
 - [Role of the Self-Hosted Generator](#role-of-the-self-hosted-generator)
@@ -84,6 +85,24 @@ AST allocation is also decided at generation time, per symbol: helper variables 
 ## Self-Repeating Decisions
 
 Rules that repeat a variable on their own right-hand side (list and suffix shapes) are recognized statically during planning. Instead of re-parsing the repeated variable from scratch each time, the generator emits a dedicated decision that steps through the repetition and stops on the first token that no longer matches, folding the loop into the parse flow.
+
+---
+
+## Immediate Tree Edits
+
+`Node` has two tiers of structure functions. The public tier (`insertBefore`, `insertAfter`, `insertChildren`, `appendChildren`, `remove`, `removeSelf`, `removeChildren`, `removeChild`, `cleanChildren`) reaches hosts through the `galley_tree_*` and `galley_hook_tree_*` calls and leaves the tree consistent after every correct call: a node that is not linked into a tree has an invalid parent, prior, and next. Misuse (inserting a chain whose head still has a parent or prior, a chain that contains the target or one of its ancestors, or an index past the end) is caught by assertions in Debug builds only. Release builds do not check, and misuse corrupts the tree.
+
+The `immediate*` tier exists only for the hot paths of generated parsers. Today it is `immediateAppendChildren`, the one implementation of linking a parentless chain under a parent: sibling links, parent links through `attachParent`, and counts. It skips every check. `appendChildren` is the same function behind the Debug assertions, and `insertBefore`, `insertAfter`, and `insertChildren` give the chain its parent through the same `attachChain` step. It is safe for the parser because the chain it appends is parentless with no prior: nodes the parser just created, or a detached chain a hook handed back (for example the children `replaceWithChildren` promoted). A hook must not hand back a node that is still attached to a parent; that would list the node under two parents, and only a Debug build asserts it.
+
+`attachParent` writes a parent link without bumping the allocator's `structure_version`: attaching a parentless node cannot move a walk position, because a cursor's position below its root always has a parent and the root bounds the climb. Every write that changes or clears an existing parent goes through `setParent`, or `setChainParent` for a whole sibling chain, which bump it (once per call, so once per operation for a chain), so walk cursors re-verify their position. Parent links are written only by `setParent`, `setChainParent`, `attachParent`, and node initialization.
+
+Every function in this tier must keep one invariant: whenever user code can observe the tree, it is consistent. Hooks run mid-parse and can walk and edit the tree through the hook door, so no immediate function may leave a half-linked node behind between generated statements that a hook can run in. A hook must also not detach an ancestor of the node being reduced: the repetition loop climbs from wrapper to enclosing wrapper, and a detached ancestor skips the outer procedures of the repetition.
+
+`immediatePromoteChildrenOverWrapper` is the other member: internal, used only by the `replaceWithChildren` procedure, it splices a wrapper's children into its place in one pass and leaves the wrapper fully detached; it is not in the C ABI or any binding.
+
+Removal has no immediate variant. The generated loop removes a dropped wrapper with the public `removeSelf`, which cannot fail and clears the node's parent, prior, and next, so a dropped node never reports a live parent or sibling. The loop reads the enclosing wrapper before the procedures run, because procedures may detach the wrapper.
+
+The tier is not public because its safety depends on the caller knowing what happens next, which an external caller cannot guarantee. The standard `replaceWithChildren` procedure calls `immediatePromoteChildrenOverWrapper`; hosts that need the same result compose the public tier with `cleanChildren`, `insertBefore`, and `removeSelf`, which gives the same tree in several passes.
 
 ---
 

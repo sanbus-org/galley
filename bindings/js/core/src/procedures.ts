@@ -138,16 +138,6 @@ export class HookDoor implements NodeDoor {
     return head;
   }
 
-  promoteChildrenOverWrapper(wrapper: bigint): bigint {
-    const { status, head } = this.#port.hookTreePromoteChildrenOverWrapper(this.#door, wrapper);
-    this.#throwOnFailure("promoteChildrenOverWrapper", status);
-    return head;
-  }
-
-  unlinkWrapper(wrapper: bigint): void {
-    this.#throwOnFailure("unlinkWrapper", this.#port.hookTreeUnlinkWrapper(this.#door, wrapper));
-  }
-
   insertChildrenAt(parent: bigint, index: number, chain: bigint): void {
     this.#throwOnFailure("insertChildrenAt", this.#port.hookTreeInsertChildrenAt(this.#door, parent, index, chain));
   }

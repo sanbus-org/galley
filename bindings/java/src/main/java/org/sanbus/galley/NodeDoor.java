@@ -220,21 +220,10 @@ final class NodeDoor {
                 : lib.galley_tree_remove_self(session.handle(), address, outHead));
     }
 
-    long promoteChildrenOverWrapper(long wrapper) {
-        return detachedHead(outHead -> hookDoor != null
-                ? lib.galley_hook_tree_promote_children_over_wrapper(hookDoor, wrapper, outHead)
-                : lib.galley_tree_promote_children_over_wrapper(session.handle(), wrapper, outHead));
-    }
-
     long cleanChildren(long address) {
         return detachedHead(outHead -> hookDoor != null
                 ? lib.galley_hook_tree_clean_children(hookDoor, address, outHead)
                 : lib.galley_tree_clean_children(session.handle(), address, outHead));
-    }
-
-    void unlinkWrapper(long wrapper) {
-        check(hookDoor != null ? lib.galley_hook_tree_unlink_wrapper(hookDoor, wrapper)
-                               : lib.galley_tree_unlink_wrapper(session.handle(), wrapper));
     }
 
     void insertChildrenAt(long parent, int index, long chain) {

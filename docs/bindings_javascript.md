@@ -379,7 +379,7 @@ node. Editing helpers are available both ways:
 `root.appendChildren(chain)` / `session.appendChildren(root, chain)`
 (where `chain` is a detached head); the remaining tree edits
 (`insertBefore`, `removeSelf`, `removeSiblings`, `insertChildrenAt`,
-`removeChildrenAt`, `promoteChildrenOverWrapper`, `unlinkWrapper`)
+`removeChildrenAt`)
 live on `Session` and accept `Node`. Missing links return `null`.
 `session.diagnostics()` returns every recorded diagnostic. Nodes compare by
 identity (`a === b`): the session interns one object per (session, parse

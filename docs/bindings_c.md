@@ -307,7 +307,8 @@ unaffected: it keeps the last successful input throughout.
 ### Editing the Tree
 
 Chains passed to edit functions must be detached orphans; edits never
-invalidate other addresses.
+invalidate other addresses. Only Debug builds check this: in other builds,
+passing an attached chain corrupts the tree.
 
 ```c
 GalleyNodeAddress head;
@@ -319,8 +320,6 @@ galley_tree_insert_children_at(session, parent, index, chain);
 galley_tree_remove_siblings(session, node, count, &head);
 galley_tree_remove_self(session, node, &head);
 galley_tree_remove_children_at(session, parent, index, count, &head);
-galley_tree_promote_children_over_wrapper(session, wrapper, &head);
-galley_tree_unlink_wrapper(session, wrapper);
 ```
 
 ### Diagnostics

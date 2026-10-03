@@ -86,10 +86,10 @@ test "walker yields depths on a nested synthetic tree" {
     // root(0) -> 1 -> 2, 3; 2 -> 4. Pre-order: 0, 1, 2, 4, 3.
     var addresses: [5]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
-    try Node.appendChildren(addresses[2], &node_allocator, addresses[4]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[2], &node_allocator, addresses[4]);
 
     var walker = Walker.init(&node_allocator, addresses[0], .{});
     const expected = [_]struct { usize, u32 }{
@@ -126,10 +126,10 @@ test "walker skipChildren continues with the next sibling" {
     // root(0) -> 1 -> 2, 3; 2 -> 4. Pre-order: 0, 1, 2, 4, 3.
     var addresses: [5]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
-    try Node.appendChildren(addresses[2], &node_allocator, addresses[4]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[2], &node_allocator, addresses[4]);
 
     var walker = Walker.init(&node_allocator, addresses[0], .{});
     var visited: std.ArrayList(Visit) = .empty;
@@ -199,15 +199,15 @@ test "walk raises WalkPositionDetached when the current node was removed" {
     // root(0) -> 1, 2: node 1 is a childless first child.
     var addresses: [3]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[2]);
 
     var cursor = newCursor(addresses[0]);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // root
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // addresses[1]
     try std.testing.expectEqual(addresses[1], cursor.current);
 
-    _ = try Node.removeSelf(addresses[1], &node_allocator);
+    Node.removeSelf(addresses[1], &node_allocator);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
     // The failure is stable: stepping again reports the same detached position.
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
@@ -219,16 +219,16 @@ test "walk detects a removed interior node with children on the next step" {
     // root(0) -> 1 -> 2, 3: node 1 is yielded with children beneath it.
     var addresses: [4]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
 
     var cursor = newCursor(addresses[0]);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // root
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // addresses[1]
     try std.testing.expectEqual(addresses[1], cursor.current);
 
-    _ = try Node.removeSelf(addresses[1], &node_allocator);
+    Node.removeSelf(addresses[1], &node_allocator);
     // The very next step raises instead of descending through the
     // first_child link that removal leaves in place, and the cursor never
     // yields anything of the detached subtree.
@@ -236,6 +236,36 @@ test "walk detects a removed interior node with children on the next step" {
     try std.testing.expectEqual(addresses[1], cursor.current);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
     try std.testing.expectEqual(addresses[1], cursor.current);
+}
+
+test "a walk rooted at a parentless subtree finishes after the root is attached mid-walk" {
+    var node_allocator = try TestAllocator.initWithCapacity(std.testing.allocator, 8);
+    defer node_allocator.deinit(std.testing.allocator);
+    // subtree root(0) -> a(1) -> b(2); c(3) is a sibling of a. The anchor (4) is an unrelated tree.
+    var addresses: [5]Node.Pointer = undefined;
+    for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+
+    var cursor = newCursor(addresses[0]);
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // 0
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // 1
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // 2
+
+    // Attach the parentless walk root under another node; attaching moves no walk position.
+    const version = node_allocator.structure_version;
+    Node.appendChildren(addresses[4], &node_allocator, addresses[0]);
+    try std.testing.expectEqual(version, node_allocator.structure_version);
+
+    var walked: std.ArrayList(Node.Pointer) = .empty;
+    defer walked.deinit(std.testing.allocator);
+    while (try walkNext(&node_allocator, &cursor)) {
+        try walked.append(std.testing.allocator, cursor.current);
+    }
+    // The rest of the walk stays inside the old root: it neither climbs into the new parent nor stops early.
+    try std.testing.expectEqualSlices(Node.Pointer, &.{addresses[3]}, walked.items);
+    try std.testing.expect(!(try walkNext(&node_allocator, &cursor)));
 }
 
 test "walk rejects cursors with unknown state, options, or out-of-range positions" {
@@ -281,7 +311,7 @@ test "walk steps see edits made between steps" {
     defer node_allocator.deinit(std.testing.allocator);
     var addresses: [3]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
 
     var cursor = newCursor(addresses[0]);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // root
@@ -289,10 +319,35 @@ test "walk steps see edits made between steps" {
     try std.testing.expectEqual(addresses[1], cursor.current);
 
     // A sibling appended between steps joins the walk in place.
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[2]);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // addresses[2]
     try std.testing.expectEqual(addresses[2], cursor.current);
     try std.testing.expect(!(try walkNext(&node_allocator, &cursor)));
+}
+
+test "walk raises WalkPositionDetached when promoting a wrapper's children lowers the cursor's depth" {
+    var node_allocator = try TestAllocator.initWithCapacity(std.testing.allocator, 8);
+    defer node_allocator.deinit(std.testing.allocator);
+    // root(0) -> wrapper(1) -> first(2), second(3).
+    var addresses: [4]Node.Pointer = undefined;
+    for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[3]);
+
+    var cursor = newCursor(addresses[0]);
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // root
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // wrapper
+    try std.testing.expect(try walkNext(&node_allocator, &cursor)); // first
+    try std.testing.expectEqual(addresses[2], cursor.current);
+    try std.testing.expectEqual(@as(u32, 2), cursor.depth);
+
+    // The children now sit directly under the root, one level higher than
+    // the cursor believes.
+    const head = Node.immediatePromoteChildrenOverWrapper(addresses[1], &node_allocator).?;
+    try std.testing.expectEqual(addresses[2], head);
+    try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
+    try std.testing.expectEqual(addresses[2], cursor.current);
 }
 
 test "walk detects an ancestor moved under the walk root between steps" {
@@ -306,11 +361,11 @@ test "walk detects an ancestor moved under the walk root between steps" {
     const node_a = addresses[3];
     const node_b = addresses[4];
     const node_c = addresses[5];
-    try Node.appendChildren(addresses[0], &node_allocator, walk_root);
-    try Node.appendChildren(addresses[0], &node_allocator, sibling);
-    try Node.appendChildren(walk_root, &node_allocator, node_a);
-    try Node.appendChildren(node_a, &node_allocator, node_b);
-    try Node.appendChildren(node_b, &node_allocator, node_c);
+    Node.appendChildren(addresses[0], &node_allocator, walk_root);
+    Node.appendChildren(addresses[0], &node_allocator, sibling);
+    Node.appendChildren(walk_root, &node_allocator, node_a);
+    Node.appendChildren(node_a, &node_allocator, node_b);
+    Node.appendChildren(node_b, &node_allocator, node_c);
 
     var cursor = newCursor(walk_root);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // walk_root 0
@@ -323,8 +378,8 @@ test "walk detects an ancestor moved under the walk root between steps" {
     // Move b directly under the walk root: the climb from c now passes
     // through the root one level early and would steer the walk onto the
     // root's next sibling. The step raises instead.
-    _ = try Node.removeSelf(node_b, &node_allocator);
-    try Node.appendChildren(walk_root, &node_allocator, node_b);
+    Node.removeSelf(node_b, &node_allocator);
+    Node.appendChildren(walk_root, &node_allocator, node_b);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
     try std.testing.expectEqual(node_c, cursor.current);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
@@ -343,9 +398,9 @@ test "walk detects an ancestor moved under a foreign node" {
     const foreign = addresses[3];
     const foreign_before = addresses[4];
     const foreign_after = addresses[5];
-    try Node.appendChildren(walk_root, &node_allocator, node_a);
-    try Node.appendChildren(node_a, &node_allocator, node_b);
-    try Node.appendChildren(foreign, &node_allocator, foreign_before);
+    Node.appendChildren(walk_root, &node_allocator, node_a);
+    Node.appendChildren(node_a, &node_allocator, node_b);
+    Node.appendChildren(foreign, &node_allocator, foreign_before);
 
     var cursor = newCursor(walk_root);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // walk_root 0
@@ -356,9 +411,9 @@ test "walk detects an ancestor moved under a foreign node" {
     // verification the climb from b would step onto a's new next sibling,
     // foreign_after, and yield a node outside the walk; the step raises
     // instead.
-    _ = try Node.removeSelf(node_a, &node_allocator);
-    try Node.appendChildren(foreign, &node_allocator, node_a);
-    try Node.appendChildren(foreign, &node_allocator, foreign_after);
+    Node.removeSelf(node_a, &node_allocator);
+    Node.appendChildren(foreign, &node_allocator, node_a);
+    Node.appendChildren(foreign, &node_allocator, foreign_after);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
     try std.testing.expectEqual(node_b, cursor.current);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
@@ -373,8 +428,8 @@ test "walk sees a child inserted under a not-yet-visited node" {
     const walk_root = addresses[0];
     const first = addresses[1];
     const later = addresses[2];
-    try Node.appendChildren(walk_root, &node_allocator, first);
-    try Node.appendChildren(walk_root, &node_allocator, later);
+    Node.appendChildren(walk_root, &node_allocator, first);
+    Node.appendChildren(walk_root, &node_allocator, later);
 
     var cursor = newCursor(walk_root);
     try std.testing.expect(try walkNext(&node_allocator, &cursor)); // walk_root
@@ -382,7 +437,7 @@ test "walk sees a child inserted under a not-yet-visited node" {
     // An edit the walk has not reached yet: verification passes (the
     // position is unchanged) and the new child appears when reached.
     const inserted = addresses[3];
-    try Node.appendChildren(later, &node_allocator, inserted);
+    Node.appendChildren(later, &node_allocator, inserted);
 
     var walked: std.ArrayList(Visit) = .empty;
     defer walked.deinit(std.testing.allocator);
@@ -405,9 +460,9 @@ test "a walk with no edits leaves the structure version unchanged and matches re
     // root(0) -> a(1) -> b(2), c(3).
     var addresses: [4]Node.Pointer = undefined;
     for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
-    try Node.appendChildren(addresses[0], &node_allocator, addresses[3]);
-    try Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
 
     const structure_version = node_allocator.structure_version;
 

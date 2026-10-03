@@ -30,8 +30,9 @@ pub const Cursor = extern struct {
     options: u8,
     is_semantic_error: u8,
     /// `node_allocator.structure_version` as of the last successful step.
-    /// When a later step sees a different value, a parent link was written
-    /// underneath the walk and the position is re-verified before stepping.
+    /// When a later step sees a different value, a parent link was re-pointed
+    /// or cleared underneath the walk and the position is re-verified before
+    /// stepping. Attaching a parentless chain does not bump it.
     structure_version: u64,
 };
 

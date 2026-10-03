@@ -1538,41 +1538,6 @@ public class GalleyTest {
             assertNotNull(removed);
             assertEquals(0, session.childCount(root));
         }
-
-        @Test
-        void promoteAndUnlinkWrapper() {
-            Node wrapper = session.firstChild(root);
-            assertNotNull(wrapper);
-            Node grandchildrenHead = session.cleanChildren(wrapper);
-            assertNotNull(grandchildrenHead);
-            session.appendChildren(wrapper, grandchildrenHead);
-            Node promoted = session.promoteChildrenOverWrapper(wrapper);
-            assertNotNull(promoted);
-            List<Node> active = new ArrayList<>();
-            Node child = session.firstChild(root);
-            while (child != null) {
-                active.add(child);
-                child = session.nextSibling(child);
-            }
-            assertTrue(active.stream().noneMatch(n -> n.getAddress() == wrapper.getAddress()));
-            assertTrue(active.stream().anyMatch(n -> n.getAddress() == promoted.getAddress()));
-        }
-
-        @Test
-        void unlinkWrapperDetachesWithoutTouchingChildren() {
-            Node wrapper = session.firstChild(root);
-            assertNotNull(wrapper);
-            int before = session.childCount(wrapper);
-            session.unlinkWrapper(wrapper);
-            assertEquals(before, session.childCount(wrapper));
-            Node first = session.firstChild(root);
-            // wrapper was the only child; after unlink root has no children (null) which is not wrapper
-            if (first == null) {
-                assertNotEquals(wrapper.getAddress(), 0xFFFFFFFFFFFFFFFFL);
-            } else {
-                assertNotEquals(wrapper.getAddress(), first.getAddress());
-            }
-        }
     }
 
     @Nested

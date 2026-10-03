@@ -293,9 +293,9 @@ test "AST formatter reports the current node child count" {
     const first_child = try node_allocator.create(0, 0);
     const second_child = try node_allocator.create(0, 0);
     const grandchild = try node_allocator.create(0, 0);
-    try Node.appendChildren(parent, &node_allocator, first_child);
-    try Node.appendChildren(parent, &node_allocator, second_child);
-    try Node.appendChildren(first_child, &node_allocator, grandchild);
+    Node.appendChildren(parent, &node_allocator, first_child);
+    Node.appendChildren(parent, &node_allocator, second_child);
+    Node.appendChildren(first_child, &node_allocator, grandchild);
 
     try std.testing.expectEqual(@as(u32, 2), formattedChildrenCount(node_allocator.at(parent)));
     try std.testing.expectEqual(@as(u32, 1), node_allocator.at(first_child).children_count);

@@ -2294,31 +2294,6 @@ static PyObject *Session_remove_self(PyObject *self, PyObject *node)
     return (PyObject *)make_node(self, cross.generation, head);
 }
 
-PyDoc_STRVAR(promote_children_over_wrapper_doc,
-"promote_children_over_wrapper(wrapper)\n"
-"\n"
-"Splices the children of wrapper in place of the wrapper among its\n"
-"siblings and returns the promoted chain head (None when the wrapper has\n"
-"no children). The wrapper is left detached.");
-
-static PyObject *Session_promote_children_over_wrapper(PyObject *self,
-                                                       PyObject *wrapper)
-{
-    NodeCrossing cross;
-    GalleyNodeAddress address;
-    GalleyNodeAddress head;
-
-    if (session_crossing(self, &cross) < 0)
-        return NULL;
-    if (node_argument(wrapper, self, &cross, &address) < 0)
-        return NULL;
-    if (check_status(GALLEY_CROSS(cross, tree_promote_children_over_wrapper, address, &head)) < 0)
-        return NULL;
-    if (head == GALLEY_INVALID_NODE)
-        Py_RETURN_NONE;
-    return (PyObject *)make_node(self, cross.generation, head);
-}
-
 PyDoc_STRVAR(clean_children_doc,
 "clean_children(node)\n"
 "\n"
@@ -2340,26 +2315,6 @@ static PyObject *Session_clean_children(PyObject *self, PyObject *node)
     if (head == GALLEY_INVALID_NODE)
         Py_RETURN_NONE;
     return (PyObject *)make_node(self, cross.generation, head);
-}
-
-PyDoc_STRVAR(unlink_wrapper_doc,
-"unlink_wrapper(wrapper)\n"
-"\n"
-"Detaches wrapper from its parent and sibling chains without touching\n"
-"its children.");
-
-static PyObject *Session_unlink_wrapper(PyObject *self, PyObject *wrapper)
-{
-    NodeCrossing cross;
-    GalleyNodeAddress address;
-
-    if (session_crossing(self, &cross) < 0)
-        return NULL;
-    if (node_argument(wrapper, self, &cross, &address) < 0)
-        return NULL;
-    if (check_status(GALLEY_CROSS(cross, tree_unlink_wrapper, address)) < 0)
-        return NULL;
-    Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(insert_children_at_doc,
@@ -2986,13 +2941,8 @@ static PyMethodDef Session_methods[] = {
      METH_FASTCALL, remove_siblings_doc},
     {"remove_self", (PyCFunction)(void (*)(void))Session_remove_self, METH_O,
      remove_self_doc},
-    {"promote_children_over_wrapper",
-     (PyCFunction)(void (*)(void))Session_promote_children_over_wrapper,
-     METH_O, promote_children_over_wrapper_doc},
     {"clean_children", (PyCFunction)(void (*)(void))Session_clean_children,
      METH_O, clean_children_doc},
-    {"unlink_wrapper", (PyCFunction)(void (*)(void))Session_unlink_wrapper,
-     METH_O, unlink_wrapper_doc},
     {"insert_children_at",
      (PyCFunction)(void (*)(void))Session_insert_children_at, METH_FASTCALL,
      insert_children_at_doc},

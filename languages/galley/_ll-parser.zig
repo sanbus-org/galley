@@ -646,7 +646,7 @@ fn llRecoveryOffset(context: *data_structures.Context, candidates: []const []con
     var offset = start;
     while (offset < upper) : (offset += 1) {
         for (candidates) |candidate| {
-            if (candidate.len <= lookahead.len - offset and std.mem.eql(u8, lookahead[offset..][0..candidate.len], candidate)) {
+            if (context.recoveryCandidateMatches(lookahead[offset..], candidate)) {
                 context.finishSyntaxRecovery();
                 return offset;
             }
@@ -1556,7 +1556,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Start") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1623,7 +1632,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Start") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1661,7 +1679,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Start") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1720,7 +1747,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Start") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1756,7 +1792,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rules") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1865,7 +1910,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rules") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -1945,7 +1999,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rules") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2049,7 +2112,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rules") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2116,7 +2188,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             35 => { // '#'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2127,7 +2209,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -2171,6 +2253,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2205,12 +2288,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
@@ -2221,7 +2304,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             35 => { // '#'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2232,7 +2325,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -2276,7 +2369,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
@@ -2289,7 +2383,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             35 => { // '#'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2369,7 +2473,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             35 => { // '#'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2408,7 +2522,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Comment") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2530,7 +2653,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Comment") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2594,7 +2726,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Comment") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2701,7 +2842,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Comment") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -2761,7 +2911,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2772,7 +2931,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -2816,6 +2975,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -2850,12 +3010,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
@@ -2866,7 +3026,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -2877,7 +3046,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -2921,7 +3090,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
@@ -2934,7 +3104,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -3014,7 +3193,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -3053,7 +3241,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("OptionalNewLineMany") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3175,7 +3372,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("OptionalNewLineMany") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3239,7 +3445,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("OptionalNewLineMany") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3346,7 +3561,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("OptionalNewLineMany") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3402,7 +3626,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rule") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3511,7 +3745,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rule") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3591,7 +3835,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rule") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3695,7 +3949,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Rule") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -3762,7 +4026,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -3773,7 +4047,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -3817,6 +4091,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -3851,12 +4126,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
@@ -3867,7 +4142,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -3878,7 +4163,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -3922,7 +4207,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
@@ -3935,7 +4221,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4015,7 +4311,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4058,7 +4364,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4069,7 +4384,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -4113,6 +4428,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -4147,12 +4463,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
@@ -4163,7 +4479,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4174,7 +4499,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -4218,7 +4543,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
@@ -4231,7 +4557,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4311,7 +4646,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             10 => { // '\n'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -4350,7 +4694,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RulesTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0 => { // '\x00'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4541,7 +4894,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RulesTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0 => { // '\x00'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4645,7 +5007,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RulesTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0 => { // '\x00'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4816,7 +5187,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RulesTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0 => { // '\x00'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4901,7 +5281,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -4982,7 +5371,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5058,7 +5456,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5110,7 +5517,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5157,7 +5573,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5233,7 +5658,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5301,7 +5735,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5346,7 +5789,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5482,7 +5935,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5613,7 +6076,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5691,7 +6164,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5764,7 +6247,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -5889,7 +6382,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6006,7 +6509,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6075,7 +6588,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6086,7 +6609,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -6144,6 +6667,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6178,12 +6702,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -6194,7 +6718,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6205,7 +6739,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__x64(context, null) catch |err| switch (err) {
@@ -6258,6 +6792,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -6292,12 +6827,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -6308,7 +6843,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6319,7 +6864,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -6377,7 +6922,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -6388,7 +6934,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6399,7 +6955,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__x64(context, null) catch |err| switch (err) {
@@ -6452,7 +7008,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -6465,7 +7022,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6567,7 +7134,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6656,7 +7233,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -6704,7 +7291,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6840,7 +7436,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -6971,7 +7576,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7049,7 +7663,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7122,7 +7745,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7246,7 +7878,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7362,7 +8003,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7427,7 +8077,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7448,7 +8108,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        byte = 10;
+                    }
+                }
+                break :blk byte;
+            }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -7527,7 +8196,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7548,7 +8227,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        byte = 10;
+                    }
+                }
+                break :blk byte;
+            }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -7598,7 +8286,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7621,7 +8319,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     node.appendTemporaryChild(&child_nodes[0].?);
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        byte = 10;
+                    }
+                }
+                break :blk byte;
+            }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -7691,7 +8398,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7707,7 +8424,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        byte = 10;
+                    }
+                }
+                break :blk byte;
+            }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -7755,7 +8481,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7864,7 +8600,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -7968,7 +8714,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8048,7 +8804,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8123,7 +8889,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8229,7 +9005,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8327,7 +9113,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -8388,7 +9184,17 @@ inline fn parse_terminal__x124(context: *data_structures.Context, occurrence_rec
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             context.releaseToken(1);
         },
@@ -8414,7 +9220,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             context.releaseToken(1);
         },
@@ -8426,7 +9242,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             context.releaseToken(1);
         },
@@ -8440,7 +9266,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             context.releaseToken(1);
         },
@@ -8477,7 +9313,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -8488,7 +9334,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -8560,6 +9406,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -8594,12 +9441,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -8610,7 +9457,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -8621,7 +9478,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
@@ -8688,6 +9545,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -8722,12 +9580,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -8738,7 +9596,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -8749,7 +9617,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -8821,7 +9689,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -8832,7 +9701,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -8843,7 +9722,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 3
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 3
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
@@ -8910,7 +9789,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -8923,7 +9803,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -9040,7 +9930,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -9144,7 +10044,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -9201,7 +10111,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9351,7 +10270,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9496,7 +10424,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9588,7 +10525,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9675,7 +10621,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9814,7 +10769,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -9945,7 +10909,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10017,7 +10990,17 @@ inline fn parse_generative_terminal_space(context: *data_structures.Context, occ
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         32 => { // ' '
             context.releaseToken(1);
         },
@@ -10043,7 +11026,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         32 => { // ' '
             context.releaseToken(1);
         },
@@ -10055,7 +11048,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         32 => { // ' '
             context.releaseToken(1);
         },
@@ -10069,7 +11072,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         32 => { // ' '
             context.releaseToken(1);
         },
@@ -10102,7 +11115,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10342,7 +11365,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10466,7 +11499,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10680,7 +11723,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10784,7 +11837,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -10942,7 +12005,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11090,7 +12163,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11190,7 +12273,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11280,7 +12373,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11428,7 +12531,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11562,7 +12675,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11644,7 +12767,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11725,7 +12858,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11777,7 +12920,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11851,7 +13004,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11896,7 +13059,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -11977,7 +13150,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12053,7 +13236,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12105,7 +13298,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12152,7 +13355,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12228,7 +13441,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12296,7 +13519,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -12339,7 +13572,17 @@ inline fn parse_terminal__(context: *data_structures.Context, occurrence_recover
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         95 => { // '_'
             context.releaseToken(1);
         },
@@ -12365,7 +13608,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         95 => { // '_'
             context.releaseToken(1);
         },
@@ -12377,7 +13630,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         95 => { // '_'
             context.releaseToken(1);
         },
@@ -12391,7 +13654,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         95 => { // '_'
             context.releaseToken(1);
         },
@@ -12424,6 +13697,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12525,6 +13799,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12616,6 +13891,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12688,6 +13964,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12750,6 +14027,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12845,6 +14123,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12926,6 +14205,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -12981,7 +14261,17 @@ inline fn parse_terminal__x34(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             context.releaseToken(1);
         },
@@ -13007,7 +14297,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             context.releaseToken(1);
         },
@@ -13019,7 +14319,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             context.releaseToken(1);
         },
@@ -13033,7 +14343,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             context.releaseToken(1);
         },
@@ -13070,7 +14390,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13081,7 +14410,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -13125,6 +14454,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -13159,12 +14489,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -13175,7 +14505,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13186,7 +14525,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
@@ -13225,6 +14564,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -13259,12 +14599,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -13275,7 +14615,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13286,7 +14635,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -13330,7 +14679,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -13341,7 +14691,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13352,7 +14711,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
@@ -13391,7 +14750,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -13404,7 +14764,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13491,7 +14860,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13565,7 +14943,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13608,7 +14995,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13619,7 +15016,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
@@ -13658,6 +15055,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -13692,12 +15090,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
@@ -13708,7 +15106,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13719,7 +15127,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
@@ -13758,7 +15166,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
@@ -13771,7 +15180,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13845,7 +15264,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -13884,7 +15313,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14070,7 +15508,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14251,7 +15698,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14350,7 +15806,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14444,7 +15909,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14611,7 +16085,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14770,7 +16253,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -14853,6 +16345,7 @@ inline fn parse_terminal__x92_x92_x34(context: *data_structures.Context, occurre
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             context.releaseToken(2);
@@ -14879,6 +16372,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             context.releaseToken(2);
@@ -14891,6 +16385,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             context.releaseToken(2);
@@ -14905,6 +16400,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             context.releaseToken(2);
@@ -14938,7 +16434,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15005,7 +16511,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15067,7 +16583,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15105,7 +16631,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15138,7 +16674,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15199,7 +16745,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15251,7 +16807,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15285,7 +16851,17 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -15311,7 +16887,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -15323,7 +16909,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -15337,7 +16933,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -15370,7 +16976,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15451,7 +17067,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15527,7 +17153,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15579,7 +17215,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15626,7 +17272,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15702,7 +17358,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15770,7 +17436,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -15819,7 +17495,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -15830,7 +17516,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -15888,6 +17574,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -15922,12 +17609,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -15938,7 +17625,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -15949,7 +17646,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__x94(context, null) catch |err| switch (err) {
@@ -16002,6 +17699,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -16036,12 +17734,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -16052,7 +17750,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -16063,7 +17771,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -16121,7 +17829,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -16132,7 +17841,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -16143,7 +17862,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 2
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 2
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__x94(context, null) catch |err| switch (err) {
@@ -16196,7 +17915,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -16209,7 +17929,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -16311,7 +18041,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -16400,7 +18140,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -16448,7 +18198,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -16584,7 +18343,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -16715,7 +18483,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -16793,7 +18570,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -16866,7 +18652,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -16990,7 +18785,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17106,7 +18910,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17169,7 +18982,17 @@ inline fn parse_terminal__x94(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         94 => { // '^'
             context.releaseToken(1);
         },
@@ -17195,7 +19018,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         94 => { // '^'
             context.releaseToken(1);
         },
@@ -17207,7 +19040,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         94 => { // '^'
             context.releaseToken(1);
         },
@@ -17221,7 +19064,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         94 => { // '^'
             context.releaseToken(1);
         },
@@ -17252,7 +19105,17 @@ inline fn parse_terminal__x64(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         64 => { // '@'
             context.releaseToken(1);
         },
@@ -17278,7 +19141,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         64 => { // '@'
             context.releaseToken(1);
         },
@@ -17290,7 +19163,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         64 => { // '@'
             context.releaseToken(1);
         },
@@ -17304,7 +19187,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         64 => { // '@'
             context.releaseToken(1);
         },
@@ -17337,7 +19230,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17542,7 +19445,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17737,7 +19650,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17855,7 +19778,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -17963,7 +19896,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18152,7 +20095,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18327,7 +20280,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18421,7 +20384,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18488,7 +20461,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18526,7 +20509,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18585,7 +20578,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18619,7 +20622,17 @@ inline fn parse_terminal__x33(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             context.releaseToken(1);
         },
@@ -18645,7 +20658,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             context.releaseToken(1);
         },
@@ -18657,7 +20680,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             context.releaseToken(1);
         },
@@ -18671,7 +20704,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             context.releaseToken(1);
         },
@@ -18704,7 +20747,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18834,7 +20887,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -18906,7 +20969,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19022,7 +21095,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19084,7 +21167,17 @@ inline fn parse_terminal__x62(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         62 => { // '>'
             context.releaseToken(1);
         },
@@ -19110,7 +21203,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         62 => { // '>'
             context.releaseToken(1);
         },
@@ -19122,7 +21225,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         62 => { // '>'
             context.releaseToken(1);
         },
@@ -19136,7 +21249,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         62 => { // '>'
             context.releaseToken(1);
         },
@@ -19169,7 +21292,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19354,7 +21487,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19534,7 +21677,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19632,7 +21785,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19725,7 +21888,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -19892,7 +22065,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20050,7 +22233,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20134,7 +22327,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20215,7 +22418,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20291,7 +22504,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20343,7 +22566,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20390,7 +22623,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20466,7 +22709,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20534,7 +22787,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20579,7 +22842,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -20806,7 +23079,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21018,7 +23301,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21158,7 +23451,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21283,7 +23586,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21495,7 +23808,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21687,7 +24010,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21796,7 +24129,16 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(c
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -21822,7 +24164,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -21834,7 +24185,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -21848,7 +24208,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -21878,7 +24247,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(38, false) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8Scalar") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21950,7 +24329,17 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(39, false) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8TwoByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -21991,7 +24380,17 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
 fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(40, false) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8ThreeByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -22117,7 +24516,17 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
 fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(41, false) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8FourByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -22271,7 +24680,17 @@ inline fn parse_generative_terminal_utf8_lead_two(context: *data_structures.Cont
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
@@ -22297,7 +24716,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
@@ -22309,7 +24738,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
@@ -22323,7 +24762,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
@@ -22354,7 +24803,17 @@ inline fn parse_generative_terminal_utf8_continuation(context: *data_structures.
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22380,7 +24839,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22392,7 +24861,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22406,7 +24885,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22437,7 +24926,17 @@ inline fn parse_terminal__x92xe0(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             context.releaseToken(1);
         },
@@ -22463,7 +24962,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             context.releaseToken(1);
         },
@@ -22475,7 +24984,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             context.releaseToken(1);
         },
@@ -22489,7 +25008,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             context.releaseToken(1);
         },
@@ -22520,7 +25049,17 @@ inline fn parse_generative_terminal_utf8_continuation_a0_bf(context: *data_struc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22546,7 +25085,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22558,7 +25107,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22572,7 +25131,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22603,7 +25172,17 @@ inline fn parse_generative_terminal_utf8_lead_three_general(context: *data_struc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
@@ -22629,7 +25208,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
@@ -22641,7 +25230,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
@@ -22655,7 +25254,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
@@ -22686,7 +25295,17 @@ inline fn parse_terminal__x92xed(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         237 => { // '\xed'
             context.releaseToken(1);
         },
@@ -22712,7 +25331,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         237 => { // '\xed'
             context.releaseToken(1);
         },
@@ -22724,7 +25353,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         237 => { // '\xed'
             context.releaseToken(1);
         },
@@ -22738,7 +25377,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         237 => { // '\xed'
             context.releaseToken(1);
         },
@@ -22769,7 +25418,17 @@ inline fn parse_generative_terminal_utf8_continuation_80_9f(context: *data_struc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
@@ -22795,7 +25454,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
@@ -22807,7 +25476,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
@@ -22821,7 +25500,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
@@ -22852,7 +25541,17 @@ inline fn parse_terminal__x92xf0(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             context.releaseToken(1);
         },
@@ -22878,7 +25577,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             context.releaseToken(1);
         },
@@ -22890,7 +25599,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             context.releaseToken(1);
         },
@@ -22904,7 +25623,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             context.releaseToken(1);
         },
@@ -22935,7 +25664,17 @@ inline fn parse_generative_terminal_utf8_continuation_90_bf(context: *data_struc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22961,7 +25700,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22973,7 +25722,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -22987,7 +25746,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -23018,7 +25787,17 @@ inline fn parse_generative_terminal_utf8_lead_four_general(context: *data_struct
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
@@ -23044,7 +25823,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
@@ -23056,7 +25845,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
@@ -23070,7 +25869,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
@@ -23101,7 +25910,17 @@ inline fn parse_terminal__x92xf4(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         244 => { // '\xf4'
             context.releaseToken(1);
         },
@@ -23127,7 +25946,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         244 => { // '\xf4'
             context.releaseToken(1);
         },
@@ -23139,7 +25968,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         244 => { // '\xf4'
             context.releaseToken(1);
         },
@@ -23153,7 +25992,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         244 => { // '\xf4'
             context.releaseToken(1);
         },
@@ -23184,7 +26033,17 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f(context: *data_struc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
             context.releaseToken(1);
         },
@@ -23210,7 +26069,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
             context.releaseToken(1);
         },
@@ -23222,7 +26091,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
             context.releaseToken(1);
         },
@@ -23236,7 +26115,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
             context.releaseToken(1);
         },
@@ -23269,7 +26158,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23391,7 +26290,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23503,7 +26412,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23567,7 +26486,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23621,7 +26550,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23731,7 +26670,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23825,7 +26774,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -23879,7 +26838,17 @@ inline fn parse_terminal__x92x01(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -23905,7 +26874,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -23917,7 +26896,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -23931,7 +26920,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -23962,7 +26961,17 @@ inline fn parse_terminal__x92x02(context: *data_structures.Context, occurrence_r
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -23988,7 +26997,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -24000,7 +27019,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -24014,7 +27043,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -24047,7 +27086,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24068,7 +27117,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24149,7 +27208,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24221,7 +27290,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24242,7 +27321,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24318,7 +27407,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24390,7 +27489,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24411,7 +27520,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24463,7 +27582,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24506,7 +27635,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24527,7 +27666,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     context.node_allocator.at(node_address).immediateAppendChildren(node_address, child_node, context.node_allocator); // child 0 (chain if replaceWithChildren)
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24574,7 +27723,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24617,7 +27776,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24640,7 +27809,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     node.appendTemporaryChild(&child_nodes[0].?);
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24716,7 +27895,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     node.appendTemporaryChild(&child_nodes[0].?);
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24781,7 +27970,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24804,7 +28003,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     node.appendTemporaryChild(&child_nodes[0].?);
                 }
             }
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24874,7 +28083,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24937,7 +28156,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -24953,7 +28182,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -24994,7 +28233,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -25033,7 +28282,17 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92n_x34(context: *dat
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -25059,7 +28318,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -25071,7 +28340,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -25085,7 +28364,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -25122,7 +28411,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25133,7 +28432,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -25177,6 +28476,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -25211,12 +28511,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -25227,7 +28527,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25238,7 +28548,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__(context, null) catch |err| switch (err) {
@@ -25277,6 +28587,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -25311,12 +28622,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -25327,7 +28638,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25338,7 +28659,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -25382,7 +28703,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -25393,7 +28715,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25404,7 +28736,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_terminal__(context, null) catch |err| switch (err) {
@@ -25443,7 +28775,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -25456,7 +28789,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25543,7 +28886,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25617,7 +28970,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25660,7 +29023,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25671,7 +29044,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -25715,6 +29088,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -25749,12 +29123,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -25765,7 +29139,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25776,7 +29160,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -25815,6 +29199,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -25849,12 +29234,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -25865,7 +29250,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25876,7 +29271,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -25920,7 +29315,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -25931,7 +29327,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -25942,7 +29348,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -25981,7 +29387,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -25994,7 +29401,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26081,7 +29498,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26155,7 +29582,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26198,7 +29635,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26209,7 +29656,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -26253,6 +29700,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -26287,12 +29735,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -26303,7 +29751,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26314,7 +29772,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -26353,6 +29811,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -26387,12 +29846,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -26403,7 +29862,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26414,7 +29883,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -26458,7 +29927,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -26469,7 +29939,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26480,7 +29960,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -26519,7 +29999,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -26532,7 +30013,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26619,7 +30110,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26693,7 +30194,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -26732,7 +30243,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -26992,7 +30512,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -27237,7 +30766,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -27381,7 +30919,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -27510,7 +31057,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -27747,7 +31303,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -27964,7 +31529,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -28076,7 +31650,17 @@ inline fn parse_generative_terminal_letter(context: *data_structures.Context, oc
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28102,7 +31686,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28114,7 +31708,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28128,7 +31732,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28159,7 +31773,17 @@ inline fn parse_generative_terminal_digit(context: *data_structures.Context, occ
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             context.releaseToken(1);
         },
@@ -28185,7 +31809,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             context.releaseToken(1);
         },
@@ -28197,7 +31831,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             context.releaseToken(1);
         },
@@ -28211,7 +31855,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             context.releaseToken(1);
         },
@@ -28242,7 +31896,17 @@ inline fn parse_generative_terminal_lowercase_letter(context: *data_structures.C
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28268,7 +31932,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28280,7 +31954,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28294,7 +31978,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -28325,7 +32019,17 @@ inline fn parse_generative_terminal_uppercase_letter(context: *data_structures.C
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             context.releaseToken(1);
         },
@@ -28351,7 +32055,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             context.releaseToken(1);
         },
@@ -28363,7 +32077,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             context.releaseToken(1);
         },
@@ -28377,7 +32101,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             context.releaseToken(1);
         },
@@ -28414,7 +32148,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28425,7 +32169,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -28469,6 +32213,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -28503,12 +32248,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -28519,7 +32264,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28530,7 +32285,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -28569,6 +32324,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -28603,12 +32359,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -28619,7 +32375,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28630,7 +32396,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -28674,7 +32440,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -28685,7 +32452,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28696,7 +32473,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -28735,7 +32512,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -28748,7 +32526,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28835,7 +32623,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28909,7 +32707,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28952,7 +32760,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -28963,7 +32781,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -29007,6 +32825,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -29041,12 +32860,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and are_procedures_enabled and !ast_for_terminals) {
@@ -29057,7 +32876,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29068,7 +32897,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -29107,6 +32936,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
 
         var args = data_structures.ProcedureArguments{
             .context = context,
@@ -29141,12 +32971,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 node_address = effective;
             }
         } else {
-            data_structures.Node.unlinkWrapper(repeating_node_address, context.node_allocator);
+            data_structures.Node.removeSelf(repeating_node_address, context.node_allocator);
             if (node_address == repeating_node_address) {
                 node_address = data_structures.Node.invalid_pointer;
             }
         }
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
@@ -29157,7 +32987,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29168,7 +33008,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 {
@@ -29212,7 +33052,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime is_ast_enabled and !are_procedures_enabled and !ast_for_terminals) {
@@ -29223,7 +33064,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     repeating_node_address = repeating_node_address; // dummy store for 0-repetition paths
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29234,7 +33085,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 if (node_address == data_structures.Node.invalid_pointer) {
                     node_address = temporary_address;
                 } else {
-                    context.node_allocator.at(repeating_node_address).immediateInsertChild(repeating_node_address, temporary_address, context.node_allocator); // child 1
+                    context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, temporary_address, context.node_allocator); // child 1
                 }
                 repeating_node_address = temporary_address;
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -29273,7 +33124,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
         }        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;
-        repeating_node_address = context.node_allocator.at(repeating_node_address).parent;
+        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;
+        repeating_node_address = enclosing_node_address;
     }
     return node_address;
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
@@ -29286,7 +33138,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29373,7 +33235,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     defer frames.deinit(semantic_allocator);
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29447,7 +33319,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -29486,7 +33368,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -29677,7 +33568,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -29858,7 +33758,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -29962,7 +33871,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30056,7 +33974,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30229,7 +34156,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30388,7 +34324,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30471,7 +34416,16 @@ inline fn parse_generative_terminal_new_line(context: *data_structures.Context, 
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             context.releaseToken(1);
         },
@@ -30497,7 +34451,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             context.releaseToken(1);
         },
@@ -30509,7 +34472,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             context.releaseToken(1);
         },
@@ -30523,7 +34495,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             context.releaseToken(1);
         },
@@ -30556,7 +34537,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30637,7 +34628,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30713,7 +34714,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30765,7 +34776,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30812,7 +34833,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30888,7 +34919,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30956,7 +34997,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockStart") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -30999,7 +35050,17 @@ inline fn parse_generative_terminal_block_start(context: *data_structures.Contex
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -31025,7 +35086,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -31037,7 +35108,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -31051,7 +35132,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -31084,7 +35175,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31165,7 +35266,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31241,7 +35352,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31293,7 +35414,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31340,7 +35471,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31416,7 +35557,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31484,7 +35635,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("BlockEnd") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31527,7 +35688,17 @@ inline fn parse_generative_terminal_block_end(context: *data_structures.Context,
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -31553,7 +35724,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -31565,7 +35746,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -31579,7 +35770,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -31612,7 +35813,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31697,7 +35908,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31769,7 +35990,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31825,7 +36056,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31868,7 +36109,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -31946,7 +36197,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32008,7 +36269,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32052,7 +36323,17 @@ inline fn parse_terminal__x35(context: *data_structures.Context, occurrence_reco
 if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             context.releaseToken(1);
         },
@@ -32078,7 +36359,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 
     return node_address;
 } else if (comptime !ast_for_terminals or (!is_ast_enabled and !are_procedures_enabled)) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             context.releaseToken(1);
         },
@@ -32090,7 +36381,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime is_ast_enabled and !are_procedures_enabled and ast_for_terminals) {
     const node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), data_structures.Node.invalid_variable);
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             context.releaseToken(1);
         },
@@ -32104,7 +36405,17 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 } else if (comptime !is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     var node = data_structures.Node{ .text_start = context.currentTokenSourceOffset(), .payload = .{} };
 
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             context.releaseToken(1);
         },
@@ -32134,7 +36445,16 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
 fn parse__AugmentedStart(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope, root_reduction: *RootReduction) anyerror!nodeReturnType(72, false) {
 if (comptime is_ast_enabled and are_procedures_enabled) {
     root_reduction.* = .{};
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32176,7 +36496,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
 } else if (comptime is_ast_enabled and !are_procedures_enabled) {
     root_reduction.* = .{};
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32217,7 +36546,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
 } else if (comptime !is_ast_enabled and are_procedures_enabled) {
     root_reduction.* = .{};
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32256,7 +36594,16 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
 } else if (comptime !is_ast_enabled and !are_procedures_enabled) {
     root_reduction.* = .{};
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32296,7 +36643,17 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
 
 // Parser for Symbol "special_EOF" with index 73
 inline fn parse_special_EOF(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(73, false) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         0 => { // '\x00'
             context.releaseToken(1);
         },
@@ -32313,7 +36670,17 @@ inline fn parse_special_EOF(context: *data_structures.Context, occurrence_recove
 fn parse_Comment_0_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(2, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             35 => { // '#'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -32348,7 +36715,16 @@ fn parse_Comment_0_1_(context: *data_structures.Context, occurrence_recovery: ?*
 fn parse_Comment_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(2, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Comment") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32400,7 +36776,16 @@ fn parse_Comment_(context: *data_structures.Context, occurrence_recovery: ?*cons
 fn parse_NewLine_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(6, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("NewLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32441,7 +36826,17 @@ fn parse_NewLine_(context: *data_structures.Context, occurrence_recovery: ?*cons
 fn parse_VariableSymbol_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(7, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VariableSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32503,7 +36898,17 @@ fn parse_VariableSymbol_(context: *data_structures.Context, occurrence_recovery:
 fn parse_AnnotationTail_0_2_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(8, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             64 => { // '@'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -32547,7 +36952,16 @@ fn parse_AnnotationTail_0_2_(context: *data_structures.Context, occurrence_recov
 fn parse_AnnotationTail_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(8, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnnotationTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32 => { // '\n', ' '
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32608,7 +37022,17 @@ fn parse_AnnotationTail_(context: *data_structures.Context, occurrence_recovery:
 fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(9, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSides") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32624,7 +37048,16 @@ fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        byte = 10;
+                    }
+                }
+                break :blk byte;
+            }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -32668,7 +37101,17 @@ fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery:
 fn parse_RightHandSideLine_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(10, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSideLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32725,7 +37168,17 @@ fn parse_RightHandSideLine_(context: *data_structures.Context, occurrence_recove
 
 // AST-Suppressed Parser for Symbol "terminal_|" with index 11
 inline fn parse_terminal__x124_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(11, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         124 => { // '|'
             context.releaseToken(1);
         },
@@ -32741,7 +37194,17 @@ inline fn parse_terminal__x124_(context: *data_structures.Context, occurrence_re
 fn parse_RightHandSide_0_3_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(12, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             32 => { // ' '
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -32794,7 +37257,16 @@ fn parse_RightHandSide_0_3_(context: *data_structures.Context, occurrence_recove
 fn parse_RightHandSide_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(12, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RightHandSide") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32862,7 +37334,17 @@ fn parse_RightHandSide_(context: *data_structures.Context, occurrence_recovery: 
 
 // AST-Suppressed Parser for Symbol "generative_terminal_space" with index 13
 inline fn parse_generative_terminal_space_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(13, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         32 => { // ' '
             context.releaseToken(1);
         },
@@ -32877,7 +37359,17 @@ inline fn parse_generative_terminal_space_(context: *data_structures.Context, oc
 fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(14, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Symbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -32977,7 +37469,17 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
 fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(15, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33055,7 +37557,17 @@ fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery:
 fn parse_GenerativeTerminalSymbol_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(16, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalSymbol") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33096,7 +37608,17 @@ fn parse_GenerativeTerminalSymbol_(context: *data_structures.Context, occurrence
 fn parse_UppercaseId_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(17, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("UppercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33135,7 +37657,17 @@ fn parse_UppercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
 
 // AST-Suppressed Parser for Symbol "terminal__" with index 18
 inline fn parse_terminal___(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(18, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         95 => { // '_'
             context.releaseToken(1);
         },
@@ -33150,6 +37682,7 @@ inline fn parse_terminal___(context: *data_structures.Context, occurrence_recove
 fn parse_RawString_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(19, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawString") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             if (comptime builtin.mode == .Debug) {
@@ -33201,7 +37734,17 @@ fn parse_RawString_(context: *data_structures.Context, occurrence_recovery: ?*co
 
 // AST-Suppressed Parser for Symbol "terminal_"" with index 20
 inline fn parse_terminal__x34_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(20, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             context.releaseToken(1);
         },
@@ -33217,7 +37760,16 @@ inline fn parse_terminal__x34_(context: *data_structures.Context, occurrence_rec
 fn parse_SimpleStringContent_0_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(21, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    byte = 10;
+                }
+            }
+            break :blk byte;
+        }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -33253,7 +37805,17 @@ fn parse_SimpleStringContent_0_1_(context: *data_structures.Context, occurrence_
 fn parse_SimpleStringContent_1_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(21, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -33288,7 +37850,16 @@ fn parse_SimpleStringContent_1_1_(context: *data_structures.Context, occurrence_
 fn parse_SimpleStringContent_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(21, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("SimpleStringContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33367,6 +37938,7 @@ fn parse_SimpleStringContent_(context: *data_structures.Context, occurrence_reco
 
 // AST-Suppressed Parser for Symbol "terminal_\\"" with index 22
 inline fn parse_terminal__x92_x92_x34_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(22, true) {
+    context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
             context.releaseToken(2);
@@ -33382,7 +37954,17 @@ inline fn parse_terminal__x92_x92_x34_(context: *data_structures.Context, occurr
 fn parse_RawIndicator_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(23, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RawIndicator") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33412,7 +37994,17 @@ fn parse_RawIndicator_(context: *data_structures.Context, occurrence_recovery: ?
 
 // AST-Suppressed Parser for Symbol "generative_terminal_character^"\\u{22}"^"\\n"^"\\u{5c}"" with index 24
 inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(24, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -33427,7 +38019,17 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x
 fn parse_LowercaseId_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(25, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("LowercaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33469,7 +38071,17 @@ fn parse_LowercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
 fn parse_GenerativeTerminalExceptions_0_2_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(26, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             94 => { // '^'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -33513,7 +38125,16 @@ fn parse_GenerativeTerminalExceptions_0_2_(context: *data_structures.Context, oc
 fn parse_GenerativeTerminalExceptions_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(26, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("GenerativeTerminalExceptions") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33572,7 +38193,17 @@ fn parse_GenerativeTerminalExceptions_(context: *data_structures.Context, occurr
 
 // AST-Suppressed Parser for Symbol "terminal_^" with index 27
 inline fn parse_terminal__x94_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(27, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         94 => { // '^'
             context.releaseToken(1);
         },
@@ -33585,7 +38216,17 @@ inline fn parse_terminal__x94_(context: *data_structures.Context, occurrence_rec
 
 // AST-Suppressed Parser for Symbol "terminal_@" with index 28
 inline fn parse_terminal__x64_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(28, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         64 => { // '@'
             context.releaseToken(1);
         },
@@ -33600,7 +38241,17 @@ inline fn parse_terminal__x64_(context: *data_structures.Context, occurrence_rec
 fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(29, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Annotation") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33690,7 +38341,17 @@ fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse_Procedure_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(30, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("Procedure") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33720,7 +38381,17 @@ fn parse_Procedure_(context: *data_structures.Context, occurrence_recovery: ?*co
 
 // AST-Suppressed Parser for Symbol "terminal_!" with index 31
 inline fn parse_terminal__x33_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(31, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         33 => { // '!'
             context.releaseToken(1);
         },
@@ -33735,7 +38406,17 @@ inline fn parse_terminal__x33_(context: *data_structures.Context, occurrence_rec
 fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(32, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("RecoveryPoint") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33793,7 +38474,17 @@ fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: 
 
 // AST-Suppressed Parser for Symbol "terminal_>" with index 33
 inline fn parse_terminal__x62_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(33, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         62 => { // '>'
             context.releaseToken(1);
         },
@@ -33808,7 +38499,17 @@ inline fn parse_terminal__x62_(context: *data_structures.Context, occurrence_rec
 fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(34, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("VerbatimMarker") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34, 94 => { // '\"', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33888,7 +38589,17 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
 fn parse_CamelCaseId_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(35, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseId") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -33929,7 +38640,17 @@ fn parse_CamelCaseId_(context: *data_structures.Context, occurrence_recovery: ?*
 fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(36, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("TerminalAndCursor") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         34 => { // '\"'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34034,7 +38755,16 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
 
 // AST-Suppressed Parser for Symbol "generative_terminal_character^"\\u{22}"" with index 37
 inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(37, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -34049,7 +38779,17 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_(
 fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(38, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8Scalar") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34121,7 +38861,17 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
 fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(39, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8TwoByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34162,7 +38912,17 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
 fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(40, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8ThreeByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34288,7 +39048,17 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
 fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(41, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("_Utf8FourByte") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34439,7 +39209,17 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_two" with index 42
 inline fn parse_generative_terminal_utf8_lead_two_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(42, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
             context.releaseToken(1);
         },
@@ -34452,7 +39232,17 @@ inline fn parse_generative_terminal_utf8_lead_two_(context: *data_structures.Con
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation" with index 43
 inline fn parse_generative_terminal_utf8_continuation_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(43, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -34465,7 +39255,17 @@ inline fn parse_generative_terminal_utf8_continuation_(context: *data_structures
 
 // AST-Suppressed Parser for Symbol "terminal_\xe0" with index 44
 inline fn parse_terminal__x92xe0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(44, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         224 => { // '\xe0'
             context.releaseToken(1);
         },
@@ -34478,7 +39278,17 @@ inline fn parse_terminal__x92xe0_(context: *data_structures.Context, occurrence_
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_a0_bf" with index 45
 inline fn parse_generative_terminal_utf8_continuation_a0_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(45, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -34491,7 +39301,17 @@ inline fn parse_generative_terminal_utf8_continuation_a0_bf_(context: *data_stru
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_three_general" with index 46
 inline fn parse_generative_terminal_utf8_lead_three_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(46, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
             context.releaseToken(1);
         },
@@ -34504,7 +39324,17 @@ inline fn parse_generative_terminal_utf8_lead_three_general_(context: *data_stru
 
 // AST-Suppressed Parser for Symbol "terminal_\xed" with index 47
 inline fn parse_terminal__x92xed_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(47, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         237 => { // '\xed'
             context.releaseToken(1);
         },
@@ -34517,7 +39347,17 @@ inline fn parse_terminal__x92xed_(context: *data_structures.Context, occurrence_
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_9f" with index 48
 inline fn parse_generative_terminal_utf8_continuation_80_9f_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(48, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f', '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f'
             context.releaseToken(1);
         },
@@ -34530,7 +39370,17 @@ inline fn parse_generative_terminal_utf8_continuation_80_9f_(context: *data_stru
 
 // AST-Suppressed Parser for Symbol "terminal_\xf0" with index 49
 inline fn parse_terminal__x92xf0_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(49, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         240 => { // '\xf0'
             context.releaseToken(1);
         },
@@ -34543,7 +39393,17 @@ inline fn parse_terminal__x92xf0_(context: *data_structures.Context, occurrence_
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_90_bf" with index 50
 inline fn parse_generative_terminal_utf8_continuation_90_bf_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(50, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191 => { // '\x90', '\x91', '\x92', '\x93', '\x94', '\x95', '\x96', '\x97', '\x98', '\x99', '\x9a', '\x9b', '\x9c', '\x9d', '\x9e', '\x9f', '\xa0', '\xa1', '\xa2', '\xa3', '\xa4', '\xa5', '\xa6', '\xa7', '\xa8', '\xa9', '\xaa', '\xab', '\xac', '\xad', '\xae', '\xaf', '\xb0', '\xb1', '\xb2', '\xb3', '\xb4', '\xb5', '\xb6', '\xb7', '\xb8', '\xb9', '\xba', '\xbb', '\xbc', '\xbd', '\xbe', '\xbf'
             context.releaseToken(1);
         },
@@ -34556,7 +39416,17 @@ inline fn parse_generative_terminal_utf8_continuation_90_bf_(context: *data_stru
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_lead_four_general" with index 51
 inline fn parse_generative_terminal_utf8_lead_four_general_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(51, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
             context.releaseToken(1);
         },
@@ -34569,7 +39439,17 @@ inline fn parse_generative_terminal_utf8_lead_four_general_(context: *data_struc
 
 // AST-Suppressed Parser for Symbol "terminal_\xf4" with index 52
 inline fn parse_terminal__x92xf4_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(52, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         244 => { // '\xf4'
             context.releaseToken(1);
         },
@@ -34582,7 +39462,17 @@ inline fn parse_terminal__x92xf4_(context: *data_structures.Context, occurrence_
 
 // AST-Suppressed Parser for Symbol "generative_terminal_utf8_continuation_80_8f" with index 53
 inline fn parse_generative_terminal_utf8_continuation_80_8f_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(53, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143 => { // '\x80', '\x81', '\x82', '\x83', '\x84', '\x85', '\x86', '\x87', '\x88', '\x89', '\x8a', '\x8b', '\x8c', '\x8d', '\x8e', '\x8f'
             context.releaseToken(1);
         },
@@ -34597,7 +39487,17 @@ inline fn parse_generative_terminal_utf8_continuation_80_8f_(context: *data_stru
 fn parse_ControlCharacter_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(54, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("ControlCharacter") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34647,7 +39547,17 @@ fn parse_ControlCharacter_(context: *data_structures.Context, occurrence_recover
 
 // AST-Suppressed Parser for Symbol "terminal_\x01" with index 55
 inline fn parse_terminal__x92x01_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(55, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1 => { // '\x01'
             context.releaseToken(1);
         },
@@ -34660,7 +39570,17 @@ inline fn parse_terminal__x92x01_(context: *data_structures.Context, occurrence_
 
 // AST-Suppressed Parser for Symbol "terminal_\x02" with index 56
 inline fn parse_terminal__x92x02_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(56, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         2 => { // '\x02'
             context.releaseToken(1);
         },
@@ -34675,7 +39595,17 @@ inline fn parse_terminal__x92x02_(context: *data_structures.Context, occurrence_
 fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(57, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("AnyContent") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         1, 2 => { // '\x01', '\x02'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34691,7 +39621,17 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -34732,7 +39672,17 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            switch (context.head(u8, 0)) {
+            switch (blk: {
+                var byte = context.head(u8, 0);
+                if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                    if (byte == 3) {
+                        @branchHint(.unlikely);
+                        context.skipLeftoverBlockEndNewlines();
+                        byte = context.head(u8, 0);
+                    }
+                }
+                break :blk byte;
+            }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
                     if (comptime builtin.mode == .Debug) {
                         if (context.verbosityLevel() > 1) {
@@ -34767,7 +39717,17 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
 
 // AST-Suppressed Parser for Symbol "generative_terminal_character^"\\n"" with index 58
 inline fn parse_generative_terminal_character_x94_x34_x92_x92n_x34_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(58, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
             context.releaseToken(1);
         },
@@ -34783,7 +39743,17 @@ inline fn parse_generative_terminal_character_x94_x34_x92_x92n_x34_(context: *da
 fn parse_IdTail_2_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(59, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             95 => { // '_'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -34819,7 +39789,17 @@ fn parse_IdTail_2_1_(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse_IdTail_0_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(59, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -34855,7 +39835,17 @@ fn parse_IdTail_0_1_(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse_IdTail_1_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(59, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -34890,7 +39880,16 @@ fn parse_IdTail_1_1_(context: *data_structures.Context, occurrence_recovery: ?*c
 fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(59, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("IdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -34998,7 +39997,17 @@ fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const
 
 // AST-Suppressed Parser for Symbol "generative_terminal_letter" with index 60
 inline fn parse_generative_terminal_letter_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(60, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -35011,7 +40020,17 @@ inline fn parse_generative_terminal_letter_(context: *data_structures.Context, o
 
 // AST-Suppressed Parser for Symbol "generative_terminal_digit" with index 61
 inline fn parse_generative_terminal_digit_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(61, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
             context.releaseToken(1);
         },
@@ -35024,7 +40043,17 @@ inline fn parse_generative_terminal_digit_(context: *data_structures.Context, oc
 
 // AST-Suppressed Parser for Symbol "generative_terminal_lowercase_letter" with index 62
 inline fn parse_generative_terminal_lowercase_letter_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(62, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
             context.releaseToken(1);
         },
@@ -35037,7 +40066,17 @@ inline fn parse_generative_terminal_lowercase_letter_(context: *data_structures.
 
 // AST-Suppressed Parser for Symbol "generative_terminal_uppercase_letter" with index 63
 inline fn parse_generative_terminal_uppercase_letter_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(63, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
             context.releaseToken(1);
         },
@@ -35053,7 +40092,17 @@ inline fn parse_generative_terminal_uppercase_letter_(context: *data_structures.
 fn parse_CamelCaseIdTail_0_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(64, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -35089,7 +40138,17 @@ fn parse_CamelCaseIdTail_0_1_(context: *data_structures.Context, occurrence_reco
 fn parse_CamelCaseIdTail_1_1_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(64, true) {
 
     while (true) {
-        switch (context.head(u8, 0)) {
+        switch (blk: {
+            var byte = context.head(u8, 0);
+            if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+                if (byte == 3) {
+                    @branchHint(.unlikely);
+                    context.skipLeftoverBlockEndNewlines();
+                    byte = context.head(u8, 0);
+                }
+            }
+            break :blk byte;
+        }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
                 if (comptime builtin.mode == .Debug) {
                     if (context.verbosityLevel() > 1) {
@@ -35124,7 +40183,16 @@ fn parse_CamelCaseIdTail_1_1_(context: *data_structures.Context, occurrence_reco
 fn parse_CamelCaseIdTail_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(64, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CamelCaseIdTail") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10, 32, 64 => { // '\n', ' ', '@'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -35203,7 +40271,16 @@ fn parse_CamelCaseIdTail_(context: *data_structures.Context, occurrence_recovery
 
 // AST-Suppressed Parser for Symbol "generative_terminal_new_line" with index 65
 inline fn parse_generative_terminal_new_line_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(65, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                byte = 10;
+            }
+        }
+        break :blk byte;
+    }) {
         10 => { // '\n'
             context.releaseToken(1);
         },
@@ -35218,7 +40295,17 @@ inline fn parse_generative_terminal_new_line_(context: *data_structures.Context,
 fn parse_CommentLine_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(70, true) {
     const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable("CommentLine") else false;
     defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
@@ -35258,7 +40345,17 @@ fn parse_CommentLine_(context: *data_structures.Context, occurrence_recovery: ?*
 
 // AST-Suppressed Parser for Symbol "terminal_#" with index 71
 inline fn parse_terminal__x35_(context: *data_structures.Context, occurrence_recovery: ?*const ExplicitRecoveryScope) anyerror!nodeReturnType(71, true) {
-    switch (context.head(u8, 0)) {
+    switch (blk: {
+        var byte = context.head(u8, 0);
+        if (comptime data_structures.newlineAfterBlockEndEnabled()) {
+            if (byte == 3) {
+                @branchHint(.unlikely);
+                context.skipLeftoverBlockEndNewlines();
+                byte = context.head(u8, 0);
+            }
+        }
+        break :blk byte;
+    }) {
         35 => { // '#'
             context.releaseToken(1);
         },
