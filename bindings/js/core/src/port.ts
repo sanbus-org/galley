@@ -207,9 +207,7 @@ export interface FfiPort {
   treeInsertAfter(handle: Handle, target: bigint, first: bigint): number;
   treeRemoveSiblings(handle: Handle, node: bigint, count: number): { status: number; head: bigint };
   treeRemoveSelf(handle: Handle, node: bigint): { status: number; head: bigint };
-  treePromoteChildrenOverWrapper(handle: Handle, wrapper: bigint): { status: number; head: bigint };
   treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint };
-  treeUnlinkWrapper(handle: Handle, wrapper: bigint): number;
   treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number;
   treeRemoveChildrenAt(
     handle: Handle,
@@ -258,8 +256,6 @@ export interface FfiPort {
   hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number;
   hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint };
   hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint };
-  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint };
-  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number;
   hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number;
   hookTreeRemoveChildrenAt(
     door: Handle,

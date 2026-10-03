@@ -1048,44 +1048,6 @@ await test("insert and remove children at", async () => {
   }
 });
 
-await test("promote and unlink wrapper", async () => {
-  const s = await newSession();
-  try {
-    s.parse("alpha:12,beta:3");
-    const root = s.rootNode();
-    const wrapper = s.firstChild(root);
-    const grandchildrenHead = s.cleanChildren(wrapper);
-    s.appendChildren(wrapper, grandchildrenHead);
-    const promoted = s.promoteChildrenOverWrapper(wrapper);
-    assert.ok(promoted !== null);
-    const active = [];
-    let child = s.firstChild(root);
-    while (child !== null) {
-      active.push(child);
-      child = s.nextSibling(child);
-    }
-    assert.ok(!active.some((n) => n.address === wrapper.address));
-    assert.ok(active.some((n) => n.address === promoted.address));
-  } finally {
-    s.close();
-  }
-});
-
-await test("unlink wrapper detaches without touching children", async () => {
-  const s = await newSession();
-  try {
-    s.parse("alpha:12,beta:3");
-    const root = s.rootNode();
-    const wrapper = s.firstChild(root);
-    const before = s.childCount(wrapper);
-    s.unlinkWrapper(wrapper);
-    assert.equal(s.childCount(wrapper), before);
-    assert.ok(s.firstChild(root)?.address !== wrapper.address);
-  } finally {
-    s.close();
-  }
-});
-
 // ---- SymbolTableTests ----
 
 await test("symbol and variable tables", async () => {

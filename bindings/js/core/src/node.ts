@@ -44,8 +44,6 @@ export interface NodeDoor {
   /** Head of the detached chain; `INVALID_NODE` when empty. */
   removeSiblings(address: bigint, count: number): bigint;
   removeSelf(address: bigint): bigint;
-  promoteChildrenOverWrapper(wrapper: bigint): bigint;
-  unlinkWrapper(wrapper: bigint): void;
   insertChildrenAt(parent: bigint, index: number, chain: bigint): void;
   removeChildrenAt(parent: bigint, index: number, count: number): bigint;
 }

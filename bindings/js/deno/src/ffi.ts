@@ -118,9 +118,7 @@ interface GalleySymbols {
   galley_tree_insert_after(session: Deno.PointerValue, target: bigint, first: bigint): bigint;
   galley_tree_remove_siblings(session: Deno.PointerValue, node: bigint, count: number, outHead: FfiOut): bigint;
   galley_tree_remove_self(session: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
-  galley_tree_promote_children_over_wrapper(session: Deno.PointerValue, wrapper: bigint, outHead: FfiOut): bigint;
   galley_tree_clean_children(session: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
-  galley_tree_unlink_wrapper(session: Deno.PointerValue, wrapper: bigint): bigint;
   galley_tree_insert_children_at(session: Deno.PointerValue, parent: bigint, index: number, first: bigint): bigint;
   galley_tree_remove_children_at(session: Deno.PointerValue, parent: bigint, index: number, count: number, outHead: FfiOut): bigint;
   galley_procedure_current_node(args: Deno.PointerValue): bigint;
@@ -152,8 +150,6 @@ interface GalleySymbols {
   galley_hook_tree_insert_after(door: Deno.PointerValue, target: bigint, first: bigint): bigint;
   galley_hook_tree_remove_siblings(door: Deno.PointerValue, node: bigint, count: number, outHead: FfiOut): bigint;
   galley_hook_tree_remove_self(door: Deno.PointerValue, node: bigint, outHead: FfiOut): bigint;
-  galley_hook_tree_promote_children_over_wrapper(door: Deno.PointerValue, wrapper: bigint, outHead: FfiOut): bigint;
-  galley_hook_tree_unlink_wrapper(door: Deno.PointerValue, wrapper: bigint): bigint;
   galley_hook_tree_insert_children_at(door: Deno.PointerValue, parent: bigint, index: number, first: bigint): bigint;
   galley_hook_tree_remove_children_at(door: Deno.PointerValue, parent: bigint, index: number, count: number, outHead: FfiOut): bigint;
   galley_hook_generation(door: Deno.PointerValue, outGeneration: FfiOut): bigint;
@@ -315,9 +311,7 @@ const BASE_SYMBOLS = {
   galley_tree_insert_after: { parameters: ["pointer", "u64", "u64"], result: "i64" },
   galley_tree_remove_siblings: { parameters: ["pointer", "u64", "usize", "buffer"], result: "i64" },
   galley_tree_remove_self: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
-  galley_tree_promote_children_over_wrapper: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_tree_clean_children: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
-  galley_tree_unlink_wrapper: { parameters: ["pointer", "u64"], result: "i64" },
   galley_tree_insert_children_at: { parameters: ["pointer", "u64", "usize", "u64"], result: "i64" },
   galley_tree_remove_children_at: { parameters: ["pointer", "u64", "usize", "usize", "buffer"], result: "i64" },
   galley_procedure_current_node: { parameters: ["pointer"], result: "u64" },
@@ -348,8 +342,6 @@ const BASE_SYMBOLS = {
   galley_hook_tree_insert_after: { parameters: ["pointer", "u64", "u64"], result: "i64" },
   galley_hook_tree_remove_siblings: { parameters: ["pointer", "u64", "usize", "buffer"], result: "i64" },
   galley_hook_tree_remove_self: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
-  galley_hook_tree_promote_children_over_wrapper: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
-  galley_hook_tree_unlink_wrapper: { parameters: ["pointer", "u64"], result: "i64" },
   galley_hook_tree_insert_children_at: { parameters: ["pointer", "u64", "usize", "u64"], result: "i64" },
   galley_hook_tree_remove_children_at: { parameters: ["pointer", "u64", "usize", "usize", "buffer"], result: "i64" },
   galley_hook_generation: { parameters: ["pointer", "buffer"], result: "i64" },
@@ -987,20 +979,10 @@ export class DenoPort implements FfiPort {
     return { status: Number(st), head: outHead[0] };
   }
 
-  treePromoteChildrenOverWrapper(handle: Handle, wrapper: bigint): { status: number; head: bigint } {
-    const outHead = lenOut();
-    const st = this.native.galley_tree_promote_children_over_wrapper(handle as Deno.PointerValue, wrapper, outHead);
-    return { status: Number(st), head: outHead[0] };
-  }
-
   treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
     const outHead = lenOut();
     const st = this.native.galley_tree_clean_children(handle as Deno.PointerValue, node, outHead);
     return { status: Number(st), head: outHead[0] };
-  }
-
-  treeUnlinkWrapper(handle: Handle, wrapper: bigint): number {
-    return Number(this.native.galley_tree_unlink_wrapper(handle as Deno.PointerValue, wrapper));
   }
 
   treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
@@ -1149,16 +1131,6 @@ export class DenoPort implements FfiPort {
     const outHead = lenOut();
     const st = this.native.galley_hook_tree_remove_self(door as Deno.PointerValue, node, outHead);
     return { status: Number(st), head: outHead[0] };
-  }
-
-  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint } {
-    const outHead = lenOut();
-    const st = this.native.galley_hook_tree_promote_children_over_wrapper(door as Deno.PointerValue, wrapper, outHead);
-    return { status: Number(st), head: outHead[0] };
-  }
-
-  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number {
-    return Number(this.native.galley_hook_tree_unlink_wrapper(door as Deno.PointerValue, wrapper));
   }
 
   hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {

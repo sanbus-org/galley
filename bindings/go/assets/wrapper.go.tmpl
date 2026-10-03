@@ -636,18 +636,6 @@ func (s *Session) TreeRemoveSelf(node Node) (Node, bool, error) {
 	return s.TreeRemoveSiblings(node, 1)
 }
 
-// TreePromoteChildrenOverWrapper splices the children of wrapper in place
-// of the wrapper and returns the promoted chain head.
-func (s *Session) TreePromoteChildrenOverWrapper(wrapper Node) (Node, bool, error) {
-	var head C.ulonglong
-	status := C.galley_tree_promote_children_over_wrapper(s.ptr, C.ulonglong(wrapper), &head)
-	if err := s.treeStatus(status); err != nil {
-		return 0, false, err
-	}
-	node, ok := cToNode(head)
-	return node, ok, nil
-}
-
 // TreeCleanChildren detaches all children of node and returns the detached
 // chain head.
 func (s *Session) TreeCleanChildren(node Node) (Node, bool, error) {
@@ -658,12 +646,6 @@ func (s *Session) TreeCleanChildren(node Node) (Node, bool, error) {
 	}
 	node, ok := cToNode(head)
 	return node, ok, nil
-}
-
-// TreeUnlinkWrapper detaches wrapper from its parent and sibling chains
-// without touching its children.
-func (s *Session) TreeUnlinkWrapper(wrapper Node) error {
-	return s.treeStatus(C.galley_tree_unlink_wrapper(s.ptr, C.ulonglong(wrapper)))
 }
 
 // TreeInsertChildrenAt inserts chain into the children of parent at index;

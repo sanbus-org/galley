@@ -175,14 +175,6 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
         // removeSelf + insertAfter
         const third = s.removeSelf(s.firstChild(node));
         s.insertAfter(s.firstChild(node), third);
-        // unlinkWrapper + insertChildrenAt
-        const wrapper = s.lastChild(node);
-        s.unlinkWrapper(wrapper);
-        s.insertChildrenAt(node, s.childCount(node), wrapper);
-        // promoteChildrenOverWrapper splices a wrapper's children in its
-        // place; the call itself crossing the hook door is what is checked.
-        s.promoteChildrenOverWrapper(s.lastChild(node));
-        trace.push(["promote", true]);
         // cleanChildren + appendChildren
         const chain = s.cleanChildren(node);
         s.appendChildren(node, chain);

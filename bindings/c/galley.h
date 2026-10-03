@@ -451,13 +451,6 @@ long long galley_tree_remove_siblings(GalleySession *session, GalleyNodeAddress 
 long long galley_tree_remove_self(GalleySession *session, GalleyNodeAddress node,
                                   GalleyNodeAddress *out_head);
 
-/* Splices the children of wrapper in place of the wrapper among its
- * siblings, writing the promoted chain head to out_head (GALLEY_INVALID_NODE
- * when the wrapper has no children). The wrapper is left detached. */
-long long galley_tree_promote_children_over_wrapper(GalleySession *session,
-                                                    GalleyNodeAddress wrapper,
-                                                    GalleyNodeAddress *out_head);
-
 /* Detaches all children of node, writing the detached chain head to
  * out_head (GALLEY_INVALID_NODE when there are none). */
 long long galley_tree_clean_children(GalleySession *session, GalleyNodeAddress node,
@@ -473,10 +466,6 @@ long long galley_tree_insert_children_at(GalleySession *session, GalleyNodeAddre
 long long galley_tree_remove_children_at(GalleySession *session, GalleyNodeAddress parent,
                                          size_t index, size_t count,
                                          GalleyNodeAddress *out_head);
-
-/* Detaches wrapper from its parent and sibling chains without touching its
- * children. */
-long long galley_tree_unlink_wrapper(GalleySession *session, GalleyNodeAddress wrapper);
 
 /* Renders a status code as a static, NUL-terminated description, or NULL
  * when the code is unknown. The returned pointer remains valid for the
@@ -686,9 +675,6 @@ long long galley_hook_tree_remove_siblings(GalleyHookDoor *door, GalleyNodeAddre
                                            size_t count, GalleyNodeAddress *out_head);
 long long galley_hook_tree_remove_self(GalleyHookDoor *door, GalleyNodeAddress node,
                                        GalleyNodeAddress *out_head);
-long long galley_hook_tree_promote_children_over_wrapper(GalleyHookDoor *door,
-                                                         GalleyNodeAddress wrapper,
-                                                         GalleyNodeAddress *out_head);
 long long galley_hook_tree_clean_children(GalleyHookDoor *door, GalleyNodeAddress node,
                                           GalleyNodeAddress *out_head);
 long long galley_hook_tree_insert_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
@@ -696,7 +682,6 @@ long long galley_hook_tree_insert_children_at(GalleyHookDoor *door, GalleyNodeAd
 long long galley_hook_tree_remove_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
                                               size_t index, size_t count,
                                               GalleyNodeAddress *out_head);
-long long galley_hook_tree_unlink_wrapper(GalleyHookDoor *door, GalleyNodeAddress wrapper);
 long long galley_hook_tree_snapshot(GalleyHookDoor *door,
                                     GalleyNodeAddress *out_parent,
                                     GalleyNodeAddress *out_first_child,

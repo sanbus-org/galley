@@ -183,16 +183,6 @@ class SessionDoor implements NodeDoor {
     return head;
   }
 
-  promoteChildrenOverWrapper(wrapper: bigint): bigint {
-    const { status, head } = this.#port.treePromoteChildrenOverWrapper(this.#handle(), wrapper);
-    this.#check(status);
-    return head;
-  }
-
-  unlinkWrapper(wrapper: bigint): void {
-    this.#check(this.#port.treeUnlinkWrapper(this.#handle(), wrapper));
-  }
-
   insertChildrenAt(parent: bigint, index: number, chain: bigint): void {
     this.#check(this.#port.treeInsertChildrenAt(this.#handle(), parent, index, chain));
   }
@@ -1186,19 +1176,9 @@ export class Session implements HookOwner {
     return this.#wrap(door, door.removeSelf(this.admit(node, door)));
   }
 
-  promoteChildrenOverWrapper(wrapper: Node): Node | null {
-    const door = this.#door();
-    return this.#wrap(door, door.promoteChildrenOverWrapper(this.admit(wrapper, door)));
-  }
-
   cleanChildren(node: Node): Node | null {
     const door = this.#door();
     return this.#wrap(door, door.cleanChildren(this.admit(node, door)));
-  }
-
-  unlinkWrapper(wrapper: Node): void {
-    const door = this.#door();
-    door.unlinkWrapper(this.admit(wrapper, door));
   }
 
   insertChildrenAt(parent: Node, index: number, chain: Node): void {

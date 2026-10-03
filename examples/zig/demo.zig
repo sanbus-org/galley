@@ -247,18 +247,12 @@ pub fn main(init: std.process.Init) !void {
             };
             const Node = parser.data_structures.Node;
             const children_before = session.node_allocator.at(root).children_count;
-            const head = Node.cleanChildren(root, &session.node_allocator) catch {
-                std.debug.print("expected the root to have children\n", .{});
-                std.process.exit(1);
-            };
+            const head = Node.cleanChildren(root, &session.node_allocator);
             if (head == Node.invalid_pointer) {
                 std.debug.print("expected the root to have children\n", .{});
                 std.process.exit(1);
             }
-            Node.appendChildren(root, &session.node_allocator, head) catch {
-                std.debug.print("failed to reattach children\n", .{});
-                std.process.exit(1);
-            };
+            Node.appendChildren(root, &session.node_allocator, head);
             try stdout.print("tree edit: {d} children before, {d} after reattach\n", .{
                 children_before,
                 session.node_allocator.at(root).children_count,

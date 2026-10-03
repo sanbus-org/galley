@@ -262,8 +262,6 @@ typedef long long (*fn_galley_hook_tree_insert_before_t)(void *door, GalleyNodeA
 typedef long long (*fn_galley_hook_tree_insert_after_t)(void *door, GalleyNodeAddress target, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_hook_tree_remove_siblings_t)(void *door, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_hook_tree_remove_self_t)(void *door, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_hook_tree_promote_children_over_wrapper_t)(void *door, GalleyNodeAddress wrapper, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_hook_tree_unlink_wrapper_t)(void *door, GalleyNodeAddress wrapper);
 typedef long long (*fn_galley_hook_tree_insert_children_at_t)(void *door, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_hook_tree_remove_children_at_t)(void *door, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_hook_generation_t)(void *door, unsigned long long *out_generation);
@@ -308,12 +306,10 @@ typedef long long (*fn_galley_tree_clean_children_t)(GalleySession *session, Gal
 typedef long long (*fn_galley_tree_insert_after_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_tree_insert_before_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_tree_insert_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_promote_children_over_wrapper_t)(GalleySession *session, GalleyNodeAddress wrapper, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_remove_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_remove_self_t)(GalleySession *session, GalleyNodeAddress node, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_remove_siblings_t)(GalleySession *session, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, unsigned long long capacity);
-typedef long long (*fn_galley_tree_unlink_wrapper_t)(GalleySession *session, GalleyNodeAddress wrapper);
 typedef int (*fn_galley_uses_verbatim_t)(void);
 typedef unsigned long long (*fn_galley_variable_count_t)(void);
 typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
@@ -375,8 +371,6 @@ typedef long long (*fn_galley_hook_walk_next_t)(void *door, GalleyWalkCursor *cu
   X(galley_hook_tree_insert_after) \
   X(galley_hook_tree_remove_siblings) \
   X(galley_hook_tree_remove_self) \
-  X(galley_hook_tree_promote_children_over_wrapper) \
-  X(galley_hook_tree_unlink_wrapper) \
   X(galley_hook_tree_insert_children_at) \
   X(galley_hook_tree_remove_children_at) \
   X(galley_hook_generation) \
@@ -447,12 +441,10 @@ typedef long long (*fn_galley_hook_walk_next_t)(void *door, GalleyWalkCursor *cu
   X(galley_tree_insert_after) \
   X(galley_tree_insert_before) \
   X(galley_tree_insert_children_at) \
-  X(galley_tree_promote_children_over_wrapper) \
   X(galley_tree_remove_children_at) \
   X(galley_tree_remove_self) \
   X(galley_tree_remove_siblings) \
   X(galley_tree_snapshot) \
-  X(galley_tree_unlink_wrapper) \
   X(galley_uses_verbatim) \
   X(galley_variable_count) \
   X(galley_variable_name) \
@@ -1903,22 +1895,6 @@ static napi_value method_galley_tree_remove_self(napi_env env, Lib *lib, size_t 
   return head_pair(env, status, head);
 }
 
-static napi_value method_galley_tree_promote_children_over_wrapper(napi_env env, Lib *lib,
-                                                                  size_t argc, napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected wrapper");
-    return NULL;
-  }
-  uint64_t wrapper = 0;
-  if (!get_u64(env, argv[1], &wrapper)) return NULL;
-  GalleyNodeAddress head = 0;
-  long long status =
-      ((fn_galley_tree_promote_children_over_wrapper_t)lib->fn[SLOT_galley_tree_promote_children_over_wrapper])(session, (GalleyNodeAddress)wrapper, &head);
-  return head_pair(env, status, head);
-}
-
 static napi_value method_galley_hook_tree_clean_children(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
   void *door = NULL;
@@ -1993,32 +1969,6 @@ static napi_value method_galley_hook_tree_remove_self(napi_env env, Lib *lib, si
   return head_pair(env, status, head);
 }
 
-static napi_value method_galley_hook_tree_promote_children_over_wrapper(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  void *door = NULL;
-  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected wrapper");
-    return NULL;
-  }
-  uint64_t wrapper = 0;
-  if (!get_u64(env, argv[1], &wrapper)) return NULL;
-  GalleyNodeAddress head = 0;
-  long long status = ((fn_galley_hook_tree_promote_children_over_wrapper_t)lib->fn[SLOT_galley_hook_tree_promote_children_over_wrapper])(door, (GalleyNodeAddress)wrapper, &head);
-  return head_pair(env, status, head);
-}
-
-static napi_value method_galley_hook_tree_unlink_wrapper(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  void *door = NULL;
-  if (!native_handle_arg(env, argc, argv, &door)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected wrapper");
-    return NULL;
-  }
-  uint64_t wrapper = 0;
-  if (!get_u64(env, argv[1], &wrapper)) return NULL;
-  return make_i64(env, ((fn_galley_hook_tree_unlink_wrapper_t)lib->fn[SLOT_galley_hook_tree_unlink_wrapper])(door, (GalleyNodeAddress)wrapper));
-}
-
 static napi_value method_galley_hook_tree_insert_children_at(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   void *door = NULL;
   if (!native_handle_arg(env, argc, argv, &door)) return NULL;
@@ -2084,19 +2034,6 @@ static napi_value method_galley_tree_clean_children(napi_env env, Lib *lib, size
   GalleyNodeAddress head = 0;
   long long status = ((fn_galley_tree_clean_children_t)lib->fn[SLOT_galley_tree_clean_children])(session, (GalleyNodeAddress)node, &head);
   return head_pair(env, status, head);
-}
-
-static napi_value method_galley_tree_unlink_wrapper(napi_env env, Lib *lib, size_t argc,
-                                                   napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected wrapper");
-    return NULL;
-  }
-  uint64_t wrapper = 0;
-  if (!get_u64(env, argv[1], &wrapper)) return NULL;
-  return make_i64(env, ((fn_galley_tree_unlink_wrapper_t)lib->fn[SLOT_galley_tree_unlink_wrapper])(session, (GalleyNodeAddress)wrapper));
 }
 
 static napi_value method_galley_tree_insert_children_at(napi_env env, Lib *lib, size_t argc,
@@ -2366,8 +2303,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_hook_tree_insert_after);
   BIND_OR_THROW(api, lib, galley_hook_tree_remove_siblings);
   BIND_OR_THROW(api, lib, galley_hook_tree_remove_self);
-  BIND_OR_THROW(api, lib, galley_hook_tree_promote_children_over_wrapper);
-  BIND_OR_THROW(api, lib, galley_hook_tree_unlink_wrapper);
   BIND_OR_THROW(api, lib, galley_hook_tree_insert_children_at);
   BIND_OR_THROW(api, lib, galley_hook_tree_remove_children_at);
   BIND_OR_THROW(api, lib, galley_hook_generation);
@@ -2415,9 +2350,7 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_tree_insert_after);
   BIND_OR_THROW(api, lib, galley_tree_remove_siblings);
   BIND_OR_THROW(api, lib, galley_tree_remove_self);
-  BIND_OR_THROW(api, lib, galley_tree_promote_children_over_wrapper);
   BIND_OR_THROW(api, lib, galley_tree_clean_children);
-  BIND_OR_THROW(api, lib, galley_tree_unlink_wrapper);
   BIND_OR_THROW(api, lib, galley_tree_insert_children_at);
   BIND_OR_THROW(api, lib, galley_tree_remove_children_at);
   BIND_OR_THROW(api, lib, galley_procedure_current_node);

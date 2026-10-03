@@ -1373,41 +1373,6 @@ class EditTests(unittest.TestCase):
         self.assertIsNotNone(removed)
         self.assertEqual(self.session.child_count(self.root), 0)
 
-    def test_promote_and_unlink_wrapper(self) -> None:
-        # Promote the document's only child over its wrapper: the
-        # wrapper's children take its place among the root's children.
-        # Note the underlying ABI leaves the promoted-over wrapper with a
-        # readable former-parent pointer, so detachment is asserted via
-        # active membership rather than parent().
-        wrapper = self.session.first_child(self.root)
-        self.assertIsNotNone(wrapper)
-        assert wrapper is not None
-        grandchildren_head = self.session.clean_children(wrapper)
-        self.assertIsNotNone(grandchildren_head)
-        assert grandchildren_head is not None
-        self.session.append_children(wrapper, grandchildren_head)
-        promoted = self.session.promote_children_over_wrapper(wrapper)
-        self.assertIsNotNone(promoted)
-        assert promoted is not None
-        active: list[grammar.Node] = []
-        child = self.session.first_child(self.root)
-        while child is not None:
-            active.append(child)
-            child = self.session.next_sibling(child)
-        self.assertNotIn(wrapper, active)
-        self.assertIn(promoted, active)
-
-    def test_unlink_wrapper_detaches_without_touching_children(self) -> None:
-        # The ABI leaves the unlinked wrapper's former-parent pointer
-        # readable, so detachment is asserted via active membership.
-        wrapper = self.session.first_child(self.root)
-        self.assertIsNotNone(wrapper)
-        assert wrapper is not None
-        children_before = self.session.child_count(wrapper)
-        self.session.unlink_wrapper(wrapper)
-        self.assertEqual(self.session.child_count(wrapper), children_before)
-        self.assertNotEqual(self.session.first_child(self.root), wrapper)
-
 
 class GenerationTests(unittest.TestCase):
     """A node is the owning session, the core's parse generation and an

@@ -192,6 +192,12 @@ pub fn add(b: *std.Build, options: Options) !void {
             test_step.dependOn(&run_self_repeating_tests.step);
             trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_self_repeating_tests.step);
 
+            if (comptime std.mem.eql(u8, parser_type, "ll")) {
+                const run_self_repeating_procedures_tests = try addSelfRepeatingProceduresTests(b, options, parser_type, selection.names);
+                test_step.dependOn(&run_self_repeating_procedures_tests.step);
+                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_self_repeating_procedures_tests.step);
+            }
+
             try option_matrix.addOptionMatrix(
                 b,
                 test_step,
@@ -572,6 +578,72 @@ fn addSelfRepeatingTests(
 
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/tests/self_repeating_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+fn addSelfRepeatingProceduresTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const parser_name = b.fmt("self-repeating-procedures-{s}", .{parser_type});
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/self-repeating-procedures/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(b.fmt("{s}/self-repeating-procedures/tests", .{parser_type}));
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
+    generate_parser.addArgs(&.{
+        "--with-ast",
+        "--with-procedures",
+    });
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/self-repeating-procedures/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/self-repeating-procedures/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+        options.generator.signals_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/self_repeating_procedures_test.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},

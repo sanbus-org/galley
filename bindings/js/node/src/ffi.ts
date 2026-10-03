@@ -172,9 +172,7 @@ export interface AddonApi {
   galley_tree_insert_after(session: bigint, target: bigint, first: bigint): bigint;
   galley_tree_remove_siblings(session: bigint, node: bigint, count: bigint): [bigint, bigint];
   galley_tree_remove_self(session: bigint, node: bigint): [bigint, bigint];
-  galley_tree_promote_children_over_wrapper(session: bigint, wrapper: bigint): [bigint, bigint];
   galley_tree_clean_children(session: bigint, node: bigint): [bigint, bigint];
-  galley_tree_unlink_wrapper(session: bigint, wrapper: bigint): bigint;
   galley_tree_insert_children_at(
     session: bigint,
     parent: bigint,
@@ -225,8 +223,6 @@ export interface AddonApi {
   galley_hook_tree_insert_after(door: bigint, target: bigint, first: bigint): bigint;
   galley_hook_tree_remove_siblings(door: bigint, node: bigint, count: bigint): [bigint, bigint];
   galley_hook_tree_remove_self(door: bigint, node: bigint): [bigint, bigint];
-  galley_hook_tree_promote_children_over_wrapper(door: bigint, wrapper: bigint): [bigint, bigint];
-  galley_hook_tree_unlink_wrapper(door: bigint, wrapper: bigint): bigint;
   galley_hook_tree_insert_children_at(door: bigint, parent: bigint, index: bigint, first: bigint): bigint;
   galley_hook_tree_remove_children_at(door: bigint, parent: bigint, index: bigint, count: bigint): [bigint, bigint];
   /** [status, generation] of the parse that owns the door. */
@@ -781,18 +777,9 @@ export class NodePort implements FfiPort {
     return { status: toNumber(status), head };
   }
 
-  treePromoteChildrenOverWrapper(handle: Handle, wrapper: bigint): { status: number; head: bigint } {
-    const [status, head] = this.api.galley_tree_promote_children_over_wrapper(handle as bigint, wrapper);
-    return { status: toNumber(status), head };
-  }
-
   treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
     const [status, head] = this.api.galley_tree_clean_children(handle as bigint, node);
     return { status: toNumber(status), head };
-  }
-
-  treeUnlinkWrapper(handle: Handle, wrapper: bigint): number {
-    return toNumber(this.api.galley_tree_unlink_wrapper(handle as bigint, wrapper));
   }
 
   treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
@@ -932,15 +919,6 @@ export class NodePort implements FfiPort {
   hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
     const [status, head] = this.api.galley_hook_tree_remove_self(door as bigint, node);
     return { status: toNumber(status), head };
-  }
-
-  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint } {
-    const [status, head] = this.api.galley_hook_tree_promote_children_over_wrapper(door as bigint, wrapper);
-    return { status: toNumber(status), head };
-  }
-
-  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number {
-    return toNumber(this.api.galley_hook_tree_unlink_wrapper(door as bigint, wrapper));
   }
 
   hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {

@@ -280,7 +280,7 @@ directly from the node. Editing helpers are available both ways:
 `root.append_children(chain)` / `session.append_children(root, chain)`
 (where `chain` is a detached head); the remaining tree edits
 (`insert_before`, `remove_self`, `remove_siblings`, `insert_children_at`,
-`remove_children_at`, `promote_children_over_wrapper`, `unlink_wrapper`)
+`remove_children_at`)
 live on `Session` and take `Node`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
 snapshots. Nodes compare by identity (`==` checks same session, parse

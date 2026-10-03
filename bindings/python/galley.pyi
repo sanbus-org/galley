@@ -598,16 +598,8 @@ class Session:
         """Detach ``node`` itself and return the detached head (the node)."""
         ...
 
-    def promote_children_over_wrapper(self, wrapper: Node) -> Node | None:
-        """Splice ``wrapper``'s children in place of ``wrapper``; return promoted head."""
-        ...
-
     def clean_children(self, node: Node) -> Node | None:
         """Detach all children of ``node`` and return the detached head."""
-        ...
-
-    def unlink_wrapper(self, wrapper: Node) -> None:
-        """Detach ``wrapper`` without touching its children."""
         ...
 
     def insert_children_at(self, parent: Node, index: int, chain: Node) -> None:

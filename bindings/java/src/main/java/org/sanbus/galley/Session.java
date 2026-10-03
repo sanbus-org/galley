@@ -1200,19 +1200,9 @@ public final class Session implements AutoCloseable {
         return node(door, door.removeSelf(address(node, door)));
     }
 
-    public Node promoteChildrenOverWrapper(Node wrapper) {
-        NodeDoor door = door(wrapper);
-        return node(door, door.promoteChildrenOverWrapper(address(wrapper, door)));
-    }
-
     public Node cleanChildren(Node node) {
         NodeDoor door = door(node);
         return node(door, door.cleanChildren(address(node, door)));
-    }
-
-    public void unlinkWrapper(Node wrapper) {
-        NodeDoor door = door(wrapper);
-        door.unlinkWrapper(address(wrapper, door));
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {

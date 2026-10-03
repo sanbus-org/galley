@@ -220,9 +220,7 @@ interface GalleyWasmExports {
   galley_tree_insert_after(session: number, target: bigint, first: bigint): bigint;
   galley_tree_remove_siblings(session: number, node: bigint, count: number, outHead: number): bigint;
   galley_tree_remove_self(session: number, node: bigint, outHead: number): bigint;
-  galley_tree_promote_children_over_wrapper(session: number, wrapper: bigint, outHead: number): bigint;
   galley_tree_clean_children(session: number, node: bigint, outHead: number): bigint;
-  galley_tree_unlink_wrapper(session: number, wrapper: bigint): bigint;
   galley_tree_insert_children_at(session: number, parent: bigint, index: number, first: bigint): bigint;
   galley_tree_remove_children_at(
     session: number,
@@ -260,8 +258,6 @@ interface GalleyWasmExports {
   galley_hook_tree_insert_after(door: number, target: bigint, first: bigint): bigint;
   galley_hook_tree_remove_siblings(door: number, node: bigint, count: number, outHead: number): bigint;
   galley_hook_tree_remove_self(door: number, node: bigint, outHead: number): bigint;
-  galley_hook_tree_promote_children_over_wrapper(door: number, wrapper: bigint, outHead: number): bigint;
-  galley_hook_tree_unlink_wrapper(door: number, wrapper: bigint): bigint;
   galley_hook_tree_insert_children_at(door: number, parent: bigint, index: number, first: bigint): bigint;
   galley_hook_tree_remove_children_at(door: number, parent: bigint, index: number, count: number, outHead: number): bigint;
   galley_hook_generation(door: number, outGeneration: number): bigint;
@@ -1554,18 +1550,6 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  treePromoteChildrenOverWrapper(handle: Handle, wrapper: bigint): { status: number; head: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(
-        this.wasm.galley_tree_promote_children_over_wrapper(handle as number, asI64(wrapper), out),
-      );
-      return { status, head: this.dataView().getBigUint64(out, true) };
-    } finally {
-      this.free(out, 8);
-    }
-  }
-
   treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
     const out = this.malloc(8);
     try {
@@ -1574,10 +1558,6 @@ export class WasmPort implements FfiPort {
     } finally {
       this.free(out, 8);
     }
-  }
-
-  treeUnlinkWrapper(handle: Handle, wrapper: bigint): number {
-    return toNumber(this.wasm.galley_tree_unlink_wrapper(handle as number, asI64(wrapper)));
   }
 
   treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
@@ -1761,16 +1741,6 @@ export class WasmPort implements FfiPort {
 
   hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
     return this.#hookHeadCall((out) => this.wasm.galley_hook_tree_remove_self(door as number, asI64(node), out));
-  }
-
-  hookTreePromoteChildrenOverWrapper(door: Handle, wrapper: bigint): { status: number; head: bigint } {
-    return this.#hookHeadCall((out) =>
-      this.wasm.galley_hook_tree_promote_children_over_wrapper(door as number, asI64(wrapper), out),
-    );
-  }
-
-  hookTreeUnlinkWrapper(door: Handle, wrapper: bigint): number {
-    return toNumber(this.wasm.galley_hook_tree_unlink_wrapper(door as number, asI64(wrapper)));
   }
 
   hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {
