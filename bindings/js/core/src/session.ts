@@ -15,7 +15,7 @@ import type { FfiPort, Handle, SessionCOptions, SnapshotColumns } from "./port.t
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
-import { Node, createNode, nodeAddress } from "./node.ts";
+import { Node, createNode, installWalkStart, nodeAddress } from "./node.ts";
 import type { NodeDoor } from "./node.ts";
 import { HookDoor, ProcedureArguments, ProcedureRegistry, registryFor, routerFor } from "./procedures.ts";
 import type { HookFn, HookOwner } from "./procedures.ts";
@@ -195,6 +195,13 @@ class SessionDoor implements NodeDoor {
 }
 
 /**
+ * The module-private credential the {@link Walker} constructor demands.
+ * Never exported, so no package entry point can hand it out: every walker
+ * comes from the walk-start path `Session` installs for `Node.walk`.
+ */
+const WALKER_CONSTRUCTION_TOKEN: symbol = Symbol("galley.Walker.construction");
+
+/**
  * One parsing session. Owns its hooks: a registry copied from the
  * parser's defaults when the session opens, applied to the library at once
  * on every change, so the hooks a parse runs with are fixed for that parse.
@@ -202,6 +209,32 @@ class SessionDoor implements NodeDoor {
  * throws a `GalleyError` with status `-13` (`ErrorSessionInUse`).
  */
 export class Session implements HookOwner {
+  static {
+    // The one walk-start path. It lives in the class body to reach the
+    // private door, port and intern table, and it is installed behind
+    // `Node.walk` only: no member of `Session` starts a walk, so
+    // `Node.walk` is the single way in. The door is hook-aware and throws
+    // when the session is closed; the generation gate is the one every
+    // node argument crosses.
+    installWalkStart((session, root, skipSemanticErrors) => {
+      const door = session.#door(); // hook-aware; throws when closed
+      const address = session.admit(root, door); // generation gate for that door
+      // The walk is bound to the tree the node came from: stamp from the
+      // node's own generation, which the gate above just proved live for
+      // this door — no refresh of its own.
+      const generation = root.generation;
+      return Walker.create(
+        WALKER_CONSTRUCTION_TOKEN,
+        session,
+        address,
+        generation,
+        skipSemanticErrors,
+        session.#port.walkCursorLittleEndian,
+        (nodeAddress) => session.#nodeForGeneration(generation, nodeAddress),
+      );
+    });
+  }
+
   #handle: Handle | null = null;
   #port: FfiPort;
   #closed = false;
@@ -838,36 +871,6 @@ export class Session implements HookOwner {
   }
 
   /**
-   * Pre-order walker over the subtree rooted at `root`, with the root at
-   * depth 0. Pass true to prune subtrees rooted at semantic-error nodes.
-   * Always returns a walker; an invalid root fails at its first step. The
-   * walker owns no native resource: abandoning it is free, and parsing
-   * again with one open succeeds — its next step throws a
-   * `SessionClosedError` instead. Each step picks its door like any node
-   * call, so a walk created inside a hook of a running parse walks that
-   * parse's in-flight tree. Steps follow the live links, so edits between
-   * steps are visible; a step whose position is no longer inside the
-   * walk's root (removed, or moved elsewhere) throws an `invalid node`
-   * error.
-   */
-  walk(root: Node, skipSemanticErrors = false): Walker {
-    const door = this.#door(); // hook-aware; throws when closed
-    const address = this.admit(root, door); // generation gate for that door
-    // The walk is bound to the tree the node came from: stamp from the
-    // node's own generation, which the gate above just proved live for
-    // this door — no refresh of its own.
-    const generation = root.generation;
-    return new Walker(
-      this,
-      address,
-      generation,
-      skipSemanticErrors,
-      this.#port.walkCursorLittleEndian,
-      (address) => this.#nodeForGeneration(generation, address),
-    );
-  }
-
-  /**
    * One step of a walk: crosses the door of the calling context — the
    * hook door inside a hook dispatch of this session's running parse, the
    * session door everywhere else — and maps the status onto the walker's
@@ -1236,8 +1239,9 @@ const WALK_STATE_YIELDED_SKIP_CHILDREN = 2;
 const WALK_OPTION_SKIP_SEMANTIC_ERRORS = 1;
 
 /**
- * Pre-order tree walker over the last successful parse, yielding one
- * {@link WalkStep} per node. Created by {@link Session.walk}.
+ * Pre-order tree walker over a node's subtree, yielding one
+ * {@link WalkStep} per node, the walk's root at depth 0. Created by
+ * {@link Node.walk}, never constructed directly.
  *
  * The walker owns no native resource: it is one host-side 40-byte
  * cursor, so abandoning it is free and parsing again with one open never
@@ -1263,7 +1267,14 @@ export class Walker implements IterableIterator<WalkStep> {
   /** The session's intern gate, bound to this walker's parse generation. */
   #intern: (address: bigint) => Node;
 
-  constructor(
+  /**
+   * Internal: the walk start `Session` installs behind `Node.walk` is the
+   * only creation path, and the emitted types mark this constructor
+   * `private`. The leading token stays module-private, so runtime
+   * reflection reaches the same gate.
+   */
+  private constructor(
+    token: symbol,
     session: Session,
     root: bigint,
     generation: bigint,
@@ -1271,6 +1282,9 @@ export class Walker implements IterableIterator<WalkStep> {
     littleEndian: boolean,
     intern: (address: bigint) => Node,
   ) {
+    if (token !== WALKER_CONSTRUCTION_TOKEN) {
+      throw new TypeError("galley: Walker cannot be constructed directly");
+    }
     this.#session = session;
     this.#littleEndian = littleEndian;
     this.#intern = intern;
@@ -1283,6 +1297,23 @@ export class Walker implements IterableIterator<WalkStep> {
     view.setUint16(WALK_OFFSET_STATE, WALK_STATE_NOT_STARTED, littleEndian);
     view.setUint8(WALK_OFFSET_OPTIONS, skipSemanticErrors ? WALK_OPTION_SKIP_SEMANTIC_ERRORS : 0);
     view.setUint8(WALK_OFFSET_FLAG, 0);
+  }
+
+  /**
+   * The in-class entry a `private` constructor leaves open, for this
+   * module's walk start: any token but the module's own throws
+   * exactly like a direct construction would.
+   */
+  static create(
+    token: symbol,
+    session: Session,
+    root: bigint,
+    generation: bigint,
+    skipSemanticErrors: boolean,
+    littleEndian: boolean,
+    intern: (address: bigint) => Node,
+  ): Walker {
+    return new Walker(token, session, root, generation, skipSemanticErrors, littleEndian, intern);
   }
 
   /**

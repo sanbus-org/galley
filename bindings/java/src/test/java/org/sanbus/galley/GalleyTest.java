@@ -610,7 +610,7 @@ public class GalleyTest {
             List<long[]> expected = new ArrayList<>();
             collectRecursive(root, 0, expected);
             assertTrue(expected.size() > 1);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             List<long[]> walked = new ArrayList<>();
             List<Boolean> flags = new ArrayList<>();
@@ -623,6 +623,42 @@ public class GalleyTest {
                 assertArrayEquals(expected.get(i), walked.get(i));
                 assertFalse(flags.get(i));
             }
+        }
+
+        @Test
+        void sessionHasNoWalkMethod() {
+            for (java.lang.reflect.Method method : Session.class.getDeclaredMethods()) {
+                assertNotEquals("walk", method.getName());
+            }
+            assertDoesNotThrow(() -> Node.class.getMethod("walk", boolean.class));
+        }
+
+        @Test
+        void walkFromANonRootNodeYieldsItsSubtreeWithRelativeDepths() {
+            session.parse("alpha:12,beta:3");
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Node pairList = root.firstChild();
+            assertNotNull(pairList);
+            Node pair = pairList.firstChild();
+            assertNotNull(pair);
+            assertNotEquals(root, pair);
+            List<long[]> expected = new ArrayList<>();
+            collectRecursive(pair, 0, expected);
+            List<long[]> walked = new ArrayList<>();
+            for (Walker.WalkStep step : pair.walk(false)) {
+                walked.add(new long[]{step.node.getAddress(), step.depth});
+            }
+            assertTrue(expected.size() > 1);
+            assertEquals(expected.size(), walked.size());
+            for (int i = 0; i < expected.size(); i++) {
+                assertArrayEquals(expected.get(i), walked.get(i));
+            }
+            assertArrayEquals(new long[]{pair.getAddress(), 0}, walked.get(0));
+            // A strict subtree: the full walk from the root visits more.
+            int full = 0;
+            for (Walker.WalkStep ignored : root.walk(false)) full++;
+            assertTrue(walked.size() < full);
         }
 
         @Test
@@ -675,7 +711,7 @@ public class GalleyTest {
                 assertEquals(chain.size(), snap.childCount()[(int) node]);
                 for (int k = chain.size() - 1; k >= 0; k--) stack.add(chain.get(k));
             }
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             List<Long> walked = new ArrayList<>();
             for (Walker.WalkStep step : walker) walked.add(step.node.getAddress());
@@ -696,7 +732,7 @@ public class GalleyTest {
             session.parse("alpha:12,beta:3");
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             Walker.WalkStep first = walker.next();
@@ -710,7 +746,7 @@ public class GalleyTest {
         void walkerStepAfterReparseThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -723,7 +759,7 @@ public class GalleyTest {
             assertThrows(GenerationInvalidatedException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
-            Walker rewound = session.walk(fresh, false);
+            Walker rewound = fresh.walk(false);
             assertNotNull(rewound);
             assertTrue(rewound.hasNext());
         }
@@ -732,7 +768,7 @@ public class GalleyTest {
         void walkerStepAfterSessionCloseThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -746,7 +782,7 @@ public class GalleyTest {
         void parseWithAbandonedWalkerSucceeds() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             // Parsing never throws merely because a walker is open; the
             // abandoned walker fails at its next step instead.
@@ -754,7 +790,7 @@ public class GalleyTest {
             assertThrows(GalleyClosedException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
-            Walker rewound = session.walk(fresh, false);
+            Walker rewound = fresh.walk(false);
             assertNotNull(rewound);
             int steps = 0;
             while (rewound.hasNext()) {
@@ -768,7 +804,7 @@ public class GalleyTest {
         void failedParseInvalidatesWalkers() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -793,9 +829,9 @@ public class GalleyTest {
             session.installProcedure("reduction_Document", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
-                for (Walker.WalkStep step : session.walk(node, false))
+                for (Walker.WalkStep step : node.walk(false))
                     full.add(new long[]{step.node.getAddress(), step.depth, step.isSemanticError ? 1 : 0});
-                for (Walker.WalkStep step : session.walk(node, true))
+                for (Walker.WalkStep step : node.walk(true))
                     pruned.add(new long[]{step.node.getAddress(), step.depth});
             });
             GalleyException ex = assertThrows(GalleyException.class,
@@ -817,7 +853,7 @@ public class GalleyTest {
             // thread mid-parse is refused as in use, never a silent stop.
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             assertTrue(walker.hasNext());
             walker.next();
             CountDownLatch firstHookDone = new CountDownLatch(1);
@@ -850,7 +886,7 @@ public class GalleyTest {
         void walkStepAfterRemovingCurrentNodeThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             Node leaf = null;
             while (walker.hasNext()) {
                 Walker.WalkStep step = walker.next();
@@ -873,11 +909,11 @@ public class GalleyTest {
             Node root = session.rootNode();
             assertNotNull(root);
             List<long[]> baseline = new ArrayList<>();
-            for (Walker.WalkStep step : session.walk(root, false))
+            for (Walker.WalkStep step : root.walk(false))
                 baseline.add(new long[]{step.node.getAddress(), step.depth});
             assertTrue(baseline.size() > 1);
 
-            Walker walker = session.walk(root, false);
+            Walker walker = root.walk(false);
             Walker.WalkStep first = walker.next();
             assertEquals(root.getAddress(), first.node.getAddress());
             Node removed = session.firstChild(root);
@@ -901,7 +937,7 @@ public class GalleyTest {
             session.appendChildren(root, head);
             int restored = 0;
             boolean sawRemoved = false;
-            for (Walker.WalkStep step : session.walk(root, false)) {
+            for (Walker.WalkStep step : root.walk(false)) {
                 if (step.node.getAddress() == removed.getAddress()) sawRemoved = true;
                 restored++;
             }
@@ -955,6 +991,7 @@ public class GalleyTest {
             assertInvalidated(stale::iterator);
             assertInvalidated(stale::cleanChildren);
             assertInvalidated(() -> stale.appendChildren(staleChild));
+            assertInvalidated(() -> stale.walk(false));
             // Session crossings that take the handle throw too.
             assertInvalidated(() -> session.text(stale));
             assertInvalidated(() -> session.symbolName(stale));
@@ -964,7 +1001,6 @@ public class GalleyTest {
             assertInvalidated(() -> session.parent(stale));
             assertInvalidated(() -> session.nodeValid(stale));
             assertInvalidated(() -> session.cleanChildren(stale));
-            assertInvalidated(() -> session.walk(stale, false));
             // Fresh handles from the new generation read fine.
             Node fresh = session.rootNode();
             assertNotNull(fresh);
@@ -1156,7 +1192,7 @@ public class GalleyTest {
             assertEquals("alpha:12", new String(session.text(first), StandardCharsets.UTF_8));
             assertEquals(first.childCount(), session.childCount(first));
             Node found = null;
-            Walker walker = session.walk(session.rootNode(), false);
+            Walker walker = session.rootNode().walk(false);
             for (Walker.WalkStep step : walker) {
                 if (step.node.getAddress() == first.getAddress()) {
                     found = step.node;
@@ -1249,7 +1285,7 @@ public class GalleyTest {
                 assertNotNull(node);
                 hookRoots.add(node);
                 List<long[]> steps = new ArrayList<>();
-                for (Walker.WalkStep step : session.walk(node, false))
+                for (Walker.WalkStep step : node.walk(false))
                     steps.add(new long[]{step.node.getAddress(), step.depth});
                 recorded.add(steps);
             });
@@ -1258,7 +1294,7 @@ public class GalleyTest {
             assertFalse(recorded.isEmpty());
             for (int i = 0; i < hookRoots.size(); i++) {
                 List<long[]> replayed = new ArrayList<>();
-                for (Walker.WalkStep step : session.walk(hookRoots.get(i), false))
+                for (Walker.WalkStep step : hookRoots.get(i).walk(false))
                     replayed.add(new long[]{step.node.getAddress(), step.depth});
                 List<long[]> expected = recorded.get(i);
                 assertEquals(expected.size(), replayed.size());
@@ -1266,7 +1302,7 @@ public class GalleyTest {
                     assertArrayEquals(expected.get(k), replayed.get(k));
             }
             // walk() always hands back a walker, never null.
-            assertNotNull(session.walk(session.rootNode(), false));
+            assertNotNull(session.rootNode().walk(false));
         }
 
         @Test

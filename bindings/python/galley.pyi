@@ -217,6 +217,16 @@ class Node:
         """Last child, or ``None`` when leaf."""
         ...
 
+    def walk(self, *, skip_semantic_errors: bool = False) -> Walker:
+        """Pre-order walker over this node's subtree, this node included at
+        depth 0.
+
+        Pass ``skip_semantic_errors`` to prune subtrees rooted at
+        semantic-error nodes. A stale node — its session parsed again or
+        closed — raises ``ValueError``.
+        """
+        ...
+
     def clean_children(self) -> Node | None:
         """Detach all children and return the detached chain head, or ``None``."""
         ...
@@ -280,7 +290,7 @@ class Snapshot:
     """Span length per node."""
 
     is_semantic_error: tuple[bool, ...]
-    """The semantic-error flag ``walk`` yields, per node."""
+    """The semantic-error flag a walk step carries, per node."""
 
     def node(self, index: int) -> Node | None:
         """Node at ``index`` for this snapshot's parse, or ``None`` for
@@ -292,18 +302,37 @@ class Snapshot:
         """
         ...
 
-class Walker(Iterator[dict[str, Any]]):
-    """Pre-order tree walker over ``{"node", "depth", "is_semantic_error"}`` dicts.
+class WalkStep:
+    """One position of a walk: read-only, yielded by ``Walker``, never
+    constructed from Python."""
 
-    Returned by ``Session.walk``; the root yields at depth 0. The walker
+    @property
+    def node(self) -> Node:
+        """The node this step visited."""
+        ...
+
+    @property
+    def depth(self) -> int:
+        """Depth below the walk's root node, which is at depth 0."""
+        ...
+
+    @property
+    def is_semantic_error(self) -> bool:
+        """Whether the visited node is flagged as a semantic error."""
+        ...
+
+class Walker(Iterator[WalkStep]):
+    """Pre-order tree walker yielding ``WalkStep`` objects.
+
+    Returned by ``Node.walk``; that node yields at depth 0. The walker
     owns no native resource: abandoning it is free, and parsing again with
     a walker alive succeeds — its next step raises ``ValueError`` instead.
     Each step picks its door like any node call, so a walk created inside a
     hook of a running parse walks that parse's in-flight tree.
     """
 
-    def __next__(self) -> dict[str, Any]:
-        """Next ``{"node", "depth", "is_semantic_error"}`` dict in pre-order.
+    def __next__(self) -> WalkStep:
+        """Next ``WalkStep`` in pre-order.
 
         Raises ``ValueError`` when the session has closed or parsed again
         since the walker was created; raises ``GalleyError`` while a parse
@@ -450,7 +479,7 @@ class Session:
         with ``count`` and one tuple per node address for ``parent``,
         ``first_child``, ``next``, ``child_count``, ``variable``,
         ``span_start``, ``span_len`` and ``is_semantic_error`` (booleans, the
-        flag ``walk`` yields). Missing links and variables are ``None``."""
+        flag a walk step carries). Missing links and variables are ``None``."""
         ...
 
     def last_input(self) -> bytes:
@@ -492,15 +521,6 @@ class Session:
     def next_sibling(self, node: Node) -> Node | None: ...
     def prior_sibling(self, node: Node) -> Node | None: ...
     def parent(self, node: Node) -> Node | None: ...
-    def walk(self, root: Node, skip_semantic_errors: bool = False) -> Walker:
-        """Pre-order walker over ``root`` yielding step dicts.
-
-        Pass ``skip_semantic_errors`` to prune subtrees rooted at
-        semantic-error nodes. Always returns a walker; an invalid root
-        fails at its first step (``GalleyError``). A stale node — its
-        session parsed again or closed — raises ``ValueError``.
-        """
-        ...
     def symbol_name(self, node: Node) -> bytes | None:
         """Symbol name bytes, or ``None`` for an invalid node."""
         ...

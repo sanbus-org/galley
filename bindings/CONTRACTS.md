@@ -36,11 +36,12 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 ## Walking and snapshots
 
-- Walkers yield named steps carrying the node, the depth, and the semantic-error flag; the first step is at depth zero.
+- A walk covers the subtree of its root, the root included at depth zero. Python, Java, and JavaScript start it from the root node itself (`node.walk`); every other host takes the root as an argument.
+- Walkers yield named steps carrying the node, the depth, and the semantic-error flag; the first step is at depth zero. Python's steps are a read-only `WalkStep` type; Java and JavaScript yield their `WalkStep` values.
 - A walker owns no native resource: it is one host-side cursor, one native call per step, nothing to close. Abandoning a walker is free; sessions still release their resources explicitly, through the mechanism the language file names, and that closing stays idempotent.
 - Pruning is host-side too: it changes the cursor's state without a native call, and skips the last yielded subtree.
 - Steps follow the live tree: `galley_tree_*` edits between steps are visible to later steps.
-- A walk from an invalid root hands back a walker whose first step fails with invalid node.
+- Where a host can name an invalid root, a walk from it hands back a walker whose first step fails with invalid node. Python, Java, and JavaScript cannot: a node handle is never an invalid address.
 - A walker belongs to the core's parse generation of the tree it was created over: stepping it after a re-parse raises the host's dead-generation error, never a stale read. Parsing with an abandoned walker succeeds; the walker fails at its next step.
 - Each step crosses through the door a node call of the same session would choose: the session door otherwise, which refuses with `session in use` mid-parse, and — where the binding offers a walk through the hook door — the hook door from the dispatching thread of the running parse, so that walk matches the post-parse walk.
 - A step whose position is no longer inside the walk's root (removed, or moved elsewhere) raises invalid node, and repeats that failure rather than yielding anything past the detached point.

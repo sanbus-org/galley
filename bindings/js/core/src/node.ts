@@ -1,4 +1,4 @@
-import type { Session } from "./session.ts";
+import type { Session, Walker } from "./session.ts";
 import { decodeUtf8 } from "./text.ts";
 
 /**
@@ -181,6 +181,22 @@ export class Node {
     return this.#session.lastChild(this);
   }
 
+  /**
+   * Pre-order walker over the subtree rooted at this node, this node
+   * included at depth 0. Pass true to prune subtrees rooted at
+   * semantic-error nodes. The walker owns no native resource: abandoning
+   * it is free, and parsing again with one open succeeds — its next step
+   * throws a `SessionClosedError` instead. Each step picks its door like
+   * any node call, so a walk created inside a hook of a running parse
+   * walks that parse's in-flight tree. Steps follow the live links, so
+   * edits between steps are visible; a step whose position is no longer
+   * inside the walk's root (removed, or moved elsewhere) throws an
+   * `invalid node` error.
+   */
+  walk(skipSemanticErrors = false): Walker {
+    return walkStart(this.#session, this, skipSemanticErrors);
+  }
+
   cleanChildren(): Node | null {
     return this.#session.cleanChildren(this);
   }
@@ -218,6 +234,22 @@ export class Node {
   toString(): string {
     return `Node(${this.#address.toString()})`;
   }
+}
+
+/**
+ * The walk-start path `Node.walk` calls, installed once by `Session`'s class
+ * body, which alone reaches the door, port and intern table a walk needs.
+ * Held here so `node.ts` imports only types from `session.ts`: a value import
+ * back would make the module graph cyclic.
+ */
+let walkStart: (session: Session, root: Node, skipSemanticErrors: boolean) => Walker;
+
+/**
+ * Installs the walk-start path behind `Node.walk`. Internal: only `Session`
+ * calls it, and no package entry point re-exports it.
+ */
+export function installWalkStart(start: (session: Session, root: Node, skipSemanticErrors: boolean) => Walker): void {
+  walkStart = start;
 }
 
 /**

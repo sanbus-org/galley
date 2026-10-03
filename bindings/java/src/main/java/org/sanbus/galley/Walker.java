@@ -9,8 +9,8 @@ import java.util.Objects;
 
 /**
  * Pre-order tree walker over the last successful parse, yielding one
- * {@link WalkStep} per node with the root at depth 0. Created by
- * {@link Session#walk}.
+ * {@link WalkStep} per node with the walk's root at depth 0. Created by
+ * {@link Node#walk}.
  *
  * <p>The walker owns no native resource: it is one host-side 40-byte
  * cursor, so abandoning it is free and parsing again with one open never

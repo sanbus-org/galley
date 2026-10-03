@@ -211,10 +211,10 @@ by a `GalleyException`.
 
 ## Tree Walking
 
-`session.walk(node, skipSemanticErrors)` returns a pre-order `Walker` over
-the last successful parse, yielding one `Walker.WalkStep{node, depth,
-isSemanticError}` per step with the root at depth 0 — the shared runtime
-walker. `Walker` is `Iterable` and owns no native resource: it is never
+`node.walk(skipSemanticErrors)` returns a pre-order `Walker` over that
+node's subtree, yielding one `Walker.WalkStep{node, depth,
+isSemanticError}` per step with the node itself at depth 0 — the shared
+runtime walker. `Walker` is `Iterable` and owns no native resource: it is never
 closed and takes no try-with-resources. The walker is bound to the parse
 generation that created it: stepping after the session parses again or
 closes throws `GalleyClosedException` instead of reading stale storage,
@@ -227,7 +227,7 @@ elsewhere) throws `GalleyException` with
 `StatusCode.ERROR_INVALID_NODE`:
 
 ```java
-Walker walker = session.walk(session.rootNode(), false);
+Walker walker = session.rootNode().walk(false);
 for (Walker.WalkStep step : walker) {
     System.err.println("  ".repeat(step.depth) + session.symbolName(step.node));
 }
