@@ -125,12 +125,15 @@ The module is designed so the FFI boundary adds as little as possible:
 
 Node text, diagnostics, and expected-token data remain valid only until
 the next parse on the same session; every accessor copies before
-returning, so Python-side values never dangle. `Node` methods check that
-their session is still open on the node's parse generation and raise
-`ValueError` after `session.close()`, exiting a `with` block, or a
-re-parse. A failed parse counts: node methods return their empty values
-and `session.snapshot()` raises `GalleyError` with `ERROR_INVALID_NODE`
-until a successful parse, while `last_input` keeps the last successful
+returning, so Python-side values never dangle. `Node` methods raise
+`ValueError` after `session.close()` or exiting a `with` block. A node
+carries the core's parse generation and the core checks it on every call:
+after a re-parse, or after a failed parse, node methods, walkers, and
+snapshot nodes of the earlier parse raise `galley.StaleTreeError`, a
+`GalleyError` subclass with code `ERROR_STALE_TREE`. Until a successful
+parse, `session.node_count()` and `session.snapshot()` raise it too and
+`session.root_node()` returns `None`, the one "is there a tree here"
+probe; there is no validity probe. `last_input` keeps the last successful
 input.
 
 ## Procedures
@@ -229,7 +232,8 @@ yielding read-only `WalkStep` objects with `node`, `depth` and
 shared runtime walker. The walker owns no native
 resource: no `close` and no context-manager block, and abandoning it is
 free — its next step raises the dead-generation error instead of reading
-stale storage. `walker.skip_children()` prunes the last yielded
+stale storage. `walk()` itself does not raise for a stale node; the first
+step does. `walker.skip_children()` prunes the last yielded
 node's children host-side, without a native call;
 `node.walk(skip_semantic_errors=True)` prunes
 subtrees rooted at semantic-error nodes. Steps follow the live links, so

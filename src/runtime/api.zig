@@ -353,6 +353,12 @@ pub const SessionEditGuard = struct {
         self.* = undefined;
     }
 
+    /// The parse generation of the session's live tree, the same source the
+    /// read guard reports once its result is validated against it.
+    pub fn generation(self: *const SessionEditGuard) usize {
+        return self.session.generation;
+    }
+
     /// Mutable node storage: only an exclusive guard reaches it, so
     /// capacity changes and tree edits cannot race readers.
     pub fn mutableAstAllocator(self: *SessionEditGuard) if (parser.is_ast_enabled) *data_structures.ASTAllocator else void {

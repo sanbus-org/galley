@@ -32,17 +32,16 @@ import { checkMessageBytes } from "./sources.ts";
  * dispatch and uses it only while that hook runs; nodes never hold it.
  */
 export class HookDoor implements NodeDoor {
-  readonly isHook = true;
   readonly #door: Handle;
   readonly #port: FfiPort;
   /** The core generation of the parse that owns the native door. */
-  readonly generation: bigint;
+  readonly parseGeneration: number;
   /** The session's intern gate, bound to this door's parse generation. */
   readonly #intern: (address: bigint) => Node;
 
-  constructor(door: Handle, generation: bigint, port: FfiPort, intern: (address: bigint) => Node) {
+  constructor(door: Handle, generation: number, port: FfiPort, intern: (address: bigint) => Node) {
     this.#door = door;
-    this.generation = generation;
+    this.parseGeneration = generation;
     this.#port = port;
     this.#intern = intern;
   }
@@ -53,96 +52,91 @@ export class HookDoor implements NodeDoor {
     return this.#intern(address);
   }
 
-  nodeValid(address: bigint): boolean {
-    return this.#port.hookNodeValid(this.#door, address);
-  }
-
-  childCount(address: bigint): number {
+  childCount(_generation: number, address: bigint): number {
     return this.#port.hookNodeChildCount(this.#door, address);
   }
 
-  firstChild(address: bigint): bigint {
+  firstChild(_generation: number, address: bigint): bigint {
     return this.#port.hookNodeFirstChild(this.#door, address);
   }
 
-  lastChild(address: bigint): bigint {
+  lastChild(_generation: number, address: bigint): bigint {
     return this.#port.hookNodeLastChild(this.#door, address);
   }
 
-  nextSibling(address: bigint): bigint {
+  nextSibling(_generation: number, address: bigint): bigint {
     return this.#port.hookNodeNextSibling(this.#door, address);
   }
 
-  priorSibling(address: bigint): bigint {
+  priorSibling(_generation: number, address: bigint): bigint {
     return this.#port.hookNodePriorSibling(this.#door, address);
   }
 
-  parent(address: bigint): bigint {
+  parent(_generation: number, address: bigint): bigint {
     return this.#port.hookNodeParent(this.#door, address);
   }
 
-  text(address: bigint): Uint8Array | null {
+  text(_generation: number, address: bigint): Uint8Array | null {
     return this.#port.hookNodeText(this.#door, address);
   }
 
-  symbolNameBytes(address: bigint): Uint8Array | null {
+  symbolNameBytes(_generation: number, address: bigint): Uint8Array | null {
     return this.#port.hookNodeSymbolName(this.#door, address);
   }
 
-  span(address: bigint): [bigint, bigint] | null {
+  span(_generation: number, address: bigint): [bigint, bigint] | null {
     return this.#port.hookNodeSpan(this.#door, address);
   }
 
-  lineColumn(address: bigint): [number, number] | null {
+  lineColumn(_generation: number, address: bigint): [number, number] | null {
     return this.#port.hookNodeLineColumn(this.#door, address);
   }
 
-  variableIndex(address: bigint): number | null {
-    const index = this.#port.hookNodeVariableIndex(this.#door, address);
-    if (index === -1) return null;
-    this.#throwOnFailure("variableIndex", index);
-    return index;
+  variableIndex(_generation: number, address: bigint): number | null {
+    // The port answers null for a node without a variable and for an address
+    // outside the parse's storage, which this door has always read as none.
+    return this.#port.hookNodeVariableIndex(this.#door, address);
   }
 
   walkNext(cursor: ArrayBuffer): number {
     return this.#port.hookWalkNext(this.#door, cursor);
   }
 
-  cleanChildren(address: bigint): bigint {
+  cleanChildren(_generation: number, address: bigint): bigint {
     const { status, head } = this.#port.hookTreeCleanChildren(this.#door, address);
     this.#throwOnFailure("cleanChildren", status);
     return head;
   }
 
-  appendChildren(parent: bigint, chain: bigint): void {
+  appendChildren(_generation: number, parent: bigint, chain: bigint): void {
     this.#throwOnFailure("appendChildren", this.#port.hookTreeAppendChildren(this.#door, parent, chain));
   }
 
-  insertBefore(target: bigint, chain: bigint): void {
+  insertBefore(_generation: number, target: bigint, chain: bigint): void {
     this.#throwOnFailure("insertBefore", this.#port.hookTreeInsertBefore(this.#door, target, chain));
   }
 
-  insertAfter(target: bigint, chain: bigint): void {
+  insertAfter(_generation: number, target: bigint, chain: bigint): void {
     this.#throwOnFailure("insertAfter", this.#port.hookTreeInsertAfter(this.#door, target, chain));
   }
 
-  removeSiblings(address: bigint, count: number): bigint {
+  removeSiblings(_generation: number, address: bigint, count: number): bigint {
     const { status, head } = this.#port.hookTreeRemoveSiblings(this.#door, address, count);
     this.#throwOnFailure("removeSiblings", status);
     return head;
   }
 
-  removeSelf(address: bigint): bigint {
+  removeSelf(_generation: number, address: bigint): bigint {
     const { status, head } = this.#port.hookTreeRemoveSelf(this.#door, address);
     this.#throwOnFailure("removeSelf", status);
     return head;
   }
 
-  insertChildrenAt(parent: bigint, index: number, chain: bigint): void {
+  insertChildrenAt(_generation: number, parent: bigint, index: number, chain: bigint): void {
     this.#throwOnFailure("insertChildrenAt", this.#port.hookTreeInsertChildrenAt(this.#door, parent, index, chain));
   }
 
-  removeChildrenAt(parent: bigint, index: number, count: number): bigint {
+  removeChildrenAt(_generation: number, parent: bigint, index: number, count: number): bigint {
     const { status, head } = this.#port.hookTreeRemoveChildrenAt(this.#door, parent, index, count);
     this.#throwOnFailure("removeChildrenAt", status);
     return head;

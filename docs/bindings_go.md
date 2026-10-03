@@ -89,8 +89,9 @@ func reduction_Pair(ptr unsafe.Pointer) {
 	}
 	text, _ := door.Text(node)
 	line, column, _ := door.LineColumn(node)
+	children, _ := door.ChildCount(node)
 	fmt.Fprintf(os.Stderr, "Pair %s (%d children) at %d:%d\n",
-		text, door.ChildCount(node), line, column)
+		text, children, line, column)
 }
 
 //export reduction_KeyTail
@@ -176,7 +177,7 @@ snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
 yielding one `WalkStep{Node, Depth, IsSemanticError}` per step with the root
 at depth 0 — the shared runtime walker, so order and depths match every
 other binding. The walker owns no native resource: there is nothing to
-close, and a walker left behind by a later parse answers `ErrInvalidNode`
+close, and a walker left behind by a later parse answers `ErrStaleTree`
 at its next step instead of reading stale storage. `SkipChildren` prunes
 the last yielded node's children host-side; `Walk(root, true)` prunes
 semantic-error subtrees. Steps follow the live links, so edits between
@@ -215,9 +216,19 @@ Sessions own their IO backend and allocator and are not safe for
 concurrent use — keep one per goroutine or guard it externally. Node
 handles, text slices, and diagnostics remain valid until the next parse on
 the same session or `Close`. A failed parse counts as a later parse:
-`Snapshot()` fails with `ErrInvalidNode` and node reads fall back to their
-empty values until a successful parse, while `LastInput()` keeps the last
-successful input.
+nothing is published, so `Snapshot()`, `NodeCount()`, and every node read
+return `ErrStaleTree` until a successful parse, while `LastInput()` keeps
+the last successful input. `RootNode()` is the one "is there a tree here"
+probe: it answers `(root, true, nil)` for a published tree, `(_, false, nil)`
+when nothing is published, and an error when the core refuses
+(`ErrSessionInUse` while a parse runs). There is no validity
+probe — a real read is the answer, and it fails. A `Node` carries the
+core's parse generation and its address, and every read and edit hands that
+generation to the core, which refuses one it no longer holds with
+`ErrStaleTree`. `RootNode()` reports the generation with the root, a
+`Snapshot` stamps its own (`Snapshot.Node(index)` makes a handle of that
+parse), and links and walk steps carry their source's. Nothing is cached, so
+no host-side reading can disagree with the core.
 
 ## Development builds
 

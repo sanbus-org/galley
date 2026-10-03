@@ -7,11 +7,15 @@ import (
 	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
 )
 
-func wantLink(node galley.Node, ok bool) galley.Node {
-	if !ok {
-		return galley.InvalidNode
+func wantLink(t *testing.T, node galley.Node, ok bool, err error) uint64 {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("link: %v", err)
 	}
-	return node
+	if !ok {
+		return galley.InvalidNode.Index()
+	}
+	return node.Index()
 }
 
 func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
@@ -20,7 +24,10 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	count := session.NodeCount()
+	count, err := session.NodeCount()
+	if err != nil {
+		t.Fatalf("node count: %v", err)
+	}
 	if snap.Count != count {
 		t.Fatalf("snapshot count %d, node count %d", snap.Count, count)
 	}
@@ -38,42 +45,53 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 			t.Fatalf("snapshot column %s has %d entries, want %d", name, length, count)
 		}
 	}
+	withoutVariable := 0
 	for address := uint64(0); address < count; address++ {
-		node := galley.Node(address)
-		parent, ok := session.Parent(node)
-		if snap.Parent[address] != wantLink(parent, ok) {
-			t.Fatalf("node %d: parent %d, want %d", address, snap.Parent[address], wantLink(parent, ok))
+		node := snap.Node(address)
+		parent, ok, err := session.Parent(node)
+		if want := wantLink(t, parent, ok, err); snap.Parent[address] != want {
+			t.Fatalf("node %d: parent %d, want %d", address, snap.Parent[address], want)
 		}
-		first, ok := session.FirstChild(node)
-		if snap.FirstChild[address] != wantLink(first, ok) {
+		first, ok, err := session.FirstChild(node)
+		if snap.FirstChild[address] != wantLink(t, first, ok, err) {
 			t.Fatalf("node %d: firstChild mismatch", address)
 		}
-		next, ok := session.NextSibling(node)
-		if snap.Next[address] != wantLink(next, ok) {
+		next, ok, err := session.NextSibling(node)
+		if snap.Next[address] != wantLink(t, next, ok, err) {
 			t.Fatalf("node %d: next mismatch", address)
 		}
-		if snap.ChildCount[address] != session.ChildCount(node) {
-			t.Fatalf("node %d: childCount mismatch", address)
+		childCount, err := session.ChildCount(node)
+		if err != nil || snap.ChildCount[address] != childCount {
+			t.Fatalf("node %d: childCount mismatch (%d, %v)", address, childCount, err)
 		}
 		if snap.Variable[address] < -1 {
 			t.Fatalf("node %d: variable %d", address, snap.Variable[address])
 		}
-		start, length, ok := session.Span(node)
-		if !ok {
-			t.Fatalf("node %d: no span", address)
+		if snap.Variable[address] == -1 {
+			withoutVariable++
+		}
+		start, length, err := session.Span(node)
+		if err != nil {
+			t.Fatalf("node %d: no span: %v", address, err)
 		}
 		if snap.SpanStart[address] != start || snap.SpanLen[address] != length {
 			t.Fatalf("node %d: span mismatch", address)
 		}
 	}
-	var preorder []galley.Node
-	stack := []galley.Node{root}
+	if withoutVariable == 0 {
+		t.Fatal("expected a node without a variable to read -1")
+	}
+	if galley.InvalidNode.Index() != 1<<63-1 {
+		t.Fatalf("invalid node sentinel %#x, want INT64_MAX", galley.InvalidNode.Index())
+	}
+	var preorder []uint64
+	stack := []uint64{root.Index()}
 	for len(stack) > 0 {
 		node := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		preorder = append(preorder, node)
-		var chain []galley.Node
-		for child := snap.FirstChild[node]; child != galley.InvalidNode; child = snap.Next[child] {
+		var chain []uint64
+		for child := snap.FirstChild[node]; child != galley.InvalidNode.Index(); child = snap.Next[child] {
 			chain = append(chain, child)
 		}
 		if uint32(len(chain)) != snap.ChildCount[node] {
@@ -84,7 +102,7 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 		}
 	}
 	walker := session.Walk(root, false)
-	var walked []galley.Node
+	var walked []uint64
 	for {
 		step, ok, err := walker.Next()
 		if err != nil {
@@ -93,7 +111,7 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 		if !ok {
 			break
 		}
-		walked = append(walked, step.Node)
+		walked = append(walked, step.Node.Index())
 	}
 	if len(walked) != len(preorder) {
 		t.Fatalf("walker visited %d nodes, snapshot %d", len(walked), len(preorder))
@@ -110,7 +128,7 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 }
 
 // A failed parse resets node storage behind the last successful result:
-// Snapshot must answer ErrInvalidNode through the gate — even at count 0,
+// Snapshot must answer ErrStaleTree through the gate — even at count 0,
 // where NodeCount() reports the natural zero — instead of an empty
 // success, and the retained input must survive until a successful
 // re-parse reopens the door.
@@ -123,17 +141,31 @@ func TestSnapshotAfterFailedParseRefuses(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
+	root, ok, err := session.RootNode()
+	if err != nil || !ok {
+		t.Fatalf("root = (ok %v, %v), want a root", ok, err)
+	}
 	if _, err := session.Parse([]byte("gamma:")); err == nil {
 		t.Fatal("expected a syntax error for gamma:")
 	}
 	if input := session.LastInput(); !bytes.Equal(input, []byte("alpha:12,beta:3")) {
 		t.Fatalf("last input %q, want the last successful parse", input)
 	}
-	if snap, err := session.Snapshot(); err != galley.ErrInvalidNode || snap.Count != 0 {
-		t.Fatalf("snapshot after failed parse = (count %d, %v), want count 0 and ErrInvalidNode", snap.Count, err)
+	if snap, err := session.Snapshot(); err != galley.ErrStaleTree || snap.Count != 0 {
+		t.Fatalf("snapshot after failed parse = (count %d, %v), want count 0 and ErrStaleTree", snap.Count, err)
 	}
-	if text, ok := session.Text(galley.Node(0)); ok {
-		t.Fatalf("text after failed parse = (%q, %v), want no value", text, ok)
+	if _, err := session.NodeCount(); err != galley.ErrStaleTree {
+		t.Fatalf("node count after failed parse = %v, want ErrStaleTree", err)
+	}
+	if _, ok, err := session.RootNode(); ok || err != nil {
+		t.Fatalf("root after failed parse = (ok %v, %v), want (false, nil)", ok, err)
+	}
+	// A node of the parse the failed one replaced is refused on a read and an edit.
+	if _, err := session.Text(root); err != galley.ErrStaleTree {
+		t.Fatalf("text after failed parse = %v, want ErrStaleTree", err)
+	}
+	if _, _, err := session.TreeCleanChildren(root); err != galley.ErrStaleTree {
+		t.Fatalf("edit after failed parse = %v, want ErrStaleTree", err)
 	}
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("re-parse: %v", err)
@@ -144,5 +176,28 @@ func TestSnapshotAfterFailedParseRefuses(t *testing.T) {
 	}
 	if snap.Count == 0 {
 		t.Fatal("expected nodes after a successful re-parse")
+	}
+}
+
+// A node made from a snapshot belongs to its parse: a later parse refuses it
+// on a read and on an edit.
+func TestSnapshotNodesGoStaleWithTheNextParse(t *testing.T) {
+	session, _ := walkSession(t, "alpha:12")
+	snap, err := session.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	node := snap.Node(0)
+	if _, err := session.Text(node); err != nil {
+		t.Fatalf("live read: %v", err)
+	}
+	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
+		t.Fatalf("second parse: %v", err)
+	}
+	if _, err := session.Text(node); err != galley.ErrStaleTree {
+		t.Fatalf("read after re-parse = %v, want ErrStaleTree", err)
+	}
+	if _, _, err := session.TreeCleanChildren(node); err != galley.ErrStaleTree {
+		t.Fatalf("edit after re-parse = %v, want ErrStaleTree", err)
 	}
 }

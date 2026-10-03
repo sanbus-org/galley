@@ -4,7 +4,11 @@
  * in sync with the C header.
  */
 
-export const INVALID_NODE = 0xffffffffffffffffn; // 2^64-1
+/** `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every address, so a status can share its return. */
+export const INVALID_NODE = 0x7fffffffffffffffn; // 2^63-1
+
+/** `GALLEY_NO_VARIABLE`: the core's answer for a node without a variable. */
+export const NO_VARIABLE = 0x7fffffffffffffffn; // 2^63-1
 
 /** Status codes (negative = failure). */
 export enum Status {

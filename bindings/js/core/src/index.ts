@@ -9,7 +9,7 @@ import { Session, Walker } from "./session.ts";
 import type { SessionOptions, TreeSnapshot, WalkStep } from "./session.ts";
 import { Parser } from "./parser.ts";
 import { Node } from "./node.ts";
-import { GalleyError, MissingArtifactError, SessionClosedError } from "./errors.ts";
+import { GalleyError, MissingArtifactError, SessionClosedError, StaleTreeError } from "./errors.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import type { FfiPort, Handle, SessionCOptions, SnapshotColumns, DispatchHandler } from "./port.ts";
@@ -26,6 +26,7 @@ export {
   GalleyError,
   MissingArtifactError,
   SessionClosedError,
+  StaleTreeError,
   ProcedureArguments,
   NATIVE_LITTLE_ENDIAN,
 };

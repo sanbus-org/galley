@@ -1,5 +1,5 @@
 import type { Diagnostic } from "./diagnostic.ts";
-import type { Status } from "./constants.ts";
+import { Status } from "./constants.ts";
 
 /**
  * Freeze the snapshot when the failure is created, one level deep:
@@ -36,6 +36,34 @@ export class GalleyError extends Error {
     this.name = "GalleyError";
     this.code = code;
     this.diagnostic = diagnostic === null ? null : freezeSnapshot(diagnostic);
+  }
+}
+
+/**
+ * A handle left over from a tree that no longer exists: the session parsed
+ * again since, the last parse published nothing, or nothing was ever
+ * published. Never a stale read — the core refuses the generation the handle
+ * carries, so nothing is read through it.
+ *
+ * A {@link GalleyError} with code `ErrorStaleTree`, distinct from
+ * {@link SessionClosedError}: use after close is that error, and this one
+ * never stands in for it. One type for nodes and walkers, because
+ * staleness is one concept.
+ */
+export class StaleTreeError extends GalleyError {
+  constructor(message: string) {
+    super(message, Status.ErrorStaleTree);
+    this.name = "StaleTreeError";
+  }
+
+  /** True for stale-tree failures even across duplicated installs. */
+  static is(error: unknown): error is StaleTreeError {
+    if (error instanceof StaleTreeError) return true;
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (error as { name?: unknown }).name === "StaleTreeError"
+    );
   }
 }
 

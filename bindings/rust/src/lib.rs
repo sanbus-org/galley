@@ -32,39 +32,49 @@ extern "C" {
     fn galley_parse_sentinel(session: *mut GalleySessionRaw, input: *const c_char) -> i64;
     fn galley_parse(session: *mut GalleySessionRaw, data: *const c_char, len: usize) -> i64;
     fn galley_parse_file(session: *mut GalleySessionRaw, path: *const c_char) -> i64;
-    fn galley_node_count(session: *mut GalleySessionRaw) -> u64;
-    fn galley_root_node(session: *mut GalleySessionRaw) -> u64;
+    fn galley_node_count(session: *mut GalleySessionRaw, generation: u64) -> i64;
+    fn galley_root_node(
+        session: *mut GalleySessionRaw,
+        out_root: *mut u64,
+        out_generation: *mut u64,
+    ) -> i64;
     fn galley_has_ast() -> i32;
-    fn galley_node_is_valid(session: *mut GalleySessionRaw, node: u64) -> i32;
-    fn galley_node_child_count(session: *mut GalleySessionRaw, node: u64) -> u32;
-    fn galley_node_first_child(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_last_child(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_next_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_prior_sibling(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_node_parent(session: *mut GalleySessionRaw, node: u64) -> u64;
-    fn galley_published_generation(session: *mut GalleySessionRaw, out_generation: *mut u64)
-        -> i64;
+    fn galley_node_child_count(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_first_child(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_last_child(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_next_sibling(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_prior_sibling(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_parent(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_variable_index(
+        session: *mut GalleySessionRaw,
+        generation: u64,
+        node: u64,
+    ) -> i64;
     fn galley_walk_next(session: *mut GalleySessionRaw, cursor: *mut RawWalkCursor) -> i64;
     fn galley_node_symbol_name(
         session: *mut GalleySessionRaw,
+        generation: u64,
         node: u64,
         out_data: *mut *const c_char,
         out_len: *mut usize,
     ) -> i64;
     fn galley_node_text(
         session: *mut GalleySessionRaw,
+        generation: u64,
         node: u64,
         out_data: *mut *const c_char,
         out_len: *mut usize,
     ) -> i64;
     fn galley_node_span(
         session: *mut GalleySessionRaw,
+        generation: u64,
         node: u64,
         out_start: *mut u64,
         out_len: *mut u64,
     ) -> i64;
     fn galley_tree_snapshot(
         session: *mut GalleySessionRaw,
+        generation: u64,
         out_parent: *mut u64,
         out_first_child: *mut u64,
         out_next: *mut u64,
@@ -82,6 +92,7 @@ extern "C" {
     ) -> i64;
     fn galley_node_line_column(
         session: *mut GalleySessionRaw,
+        generation: u64,
         node: u64,
         out_line: *mut u32,
         out_column: *mut u32,
@@ -244,6 +255,11 @@ pub enum Error {
     InvalidNode,
     Io,
     SessionInUse,
+    /// A handle's tree is gone: the session parsed again since, the last
+    /// parse published nothing, or nothing was ever published. One failure
+    /// for every source that can find a tree gone, so a dead handle never
+    /// reads as a live one and never answers an empty value.
+    StaleTree,
 }
 
 impl Error {
@@ -262,9 +278,7 @@ impl Error {
             -10 => Error::InvalidNode,
             -11 => Error::Io,
             -13 => Error::SessionInUse,
-            // A stale walk (its generation is not the session's anymore)
-            // answers like every other dead-generation read: invalid node.
-            -14 => Error::InvalidNode,
+            -14 => Error::StaleTree,
             _ => Error::Internal,
         }
     }
@@ -284,6 +298,7 @@ impl Error {
             Error::InvalidNode => -10,
             Error::Io => -11,
             Error::SessionInUse => -13,
+            Error::StaleTree => -14,
         }
     }
 
@@ -333,22 +348,28 @@ pub fn has_ast() -> bool {
     unsafe { galley_has_ast() != 0 }
 }
 
-/// Stable handle to a node in the most recent parse's AST.
+/// Handle to a node of one parse's AST: the core's parse generation the node
+/// belongs to, and its address. Every read and edit hands the generation
+/// back to the core, which refuses one it no longer holds with
+/// [`Error::StaleTree`], so a handle from an earlier parse never reads the
+/// node that took its address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NodeHandle(u64);
+pub struct NodeHandle {
+    generation: u64,
+    address: u64,
+}
 
 impl NodeHandle {
-    /// Sentinel meaning "no node here".
-    pub const INVALID: NodeHandle = NodeHandle(u64::MAX);
+    /// Sentinel meaning "no node here". It belongs to no parse (generation
+    /// 0 is never live), so using it is a stale tree.
+    pub const INVALID: NodeHandle = NodeHandle {
+        generation: 0,
+        address: INVALID_ADDRESS,
+    };
 
     /// Raw address backing this handle (indexes [`TreeSnapshot`] columns).
     pub fn index(self) -> u64 {
-        self.0
-    }
-
-    /// Handle for a raw address (see [`NodeHandle::index`]).
-    pub fn from_index(index: u64) -> NodeHandle {
-        NodeHandle(index)
+        self.address
     }
 }
 
@@ -367,6 +388,9 @@ pub struct WalkStep {
 /// [`WalkStep`] yields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeSnapshot {
+    /// The generation of the parse these columns describe; [`TreeSnapshot::node`]
+    /// stamps it on the handles it makes.
+    pub generation: u64,
     pub count: u64,
     pub parent: Vec<u64>,
     pub first_child: Vec<u64>,
@@ -376,6 +400,17 @@ pub struct TreeSnapshot {
     pub span_start: Vec<u64>,
     pub span_len: Vec<u64>,
     pub is_semantic_error: Vec<bool>,
+}
+
+impl TreeSnapshot {
+    /// The handle for column index `index` of this snapshot's parse. It goes
+    /// stale with the snapshot: a later parse refuses it.
+    pub fn node(&self, index: u64) -> NodeHandle {
+        NodeHandle {
+            generation: self.generation,
+            address: index,
+        }
+    }
 }
 
 /// The host-owned walk cursor, byte for byte `GalleyWalkCursor` from
@@ -432,7 +467,10 @@ impl Iterator for Walker<'_> {
         match unsafe { galley_walk_next(self.session, &mut self.cursor) } {
             0 => None,
             1 => Some(Ok(WalkStep {
-                node: NodeHandle(self.cursor.current),
+                node: NodeHandle {
+                    generation: self.cursor.generation,
+                    address: self.cursor.current,
+                },
                 depth: self.cursor.depth,
                 is_semantic_error: self.cursor.is_semantic_error != 0,
             })),
@@ -571,62 +609,102 @@ impl Session {
         self.status_to_result(unsafe { galley_parse_file(self.inner, c_path.as_ptr()) })
     }
 
-    /// Summary of the most recent successful parse, when AST construction is
-    /// enabled.
-    pub fn info(&self) -> Option<ParseInfo> {
+    /// Summary of the most recent successful parse: `Ok(None)` when the
+    /// parser was built without AST construction, an error when the session
+    /// refuses the root read (a parse in flight).
+    pub fn info(&self) -> Result<Option<ParseInfo>, Error> {
         if !has_ast() {
-            return None;
+            return Ok(None);
         }
+        let root = self.published()?.0;
         let mut line = 0u32;
         let mut column = 0u32;
         unsafe { galley_last_position(self.inner, &mut line, &mut column) };
-        Some(ParseInfo {
-            root: self.root_node(),
+        Ok(Some(ParseInfo {
+            root,
             end_position: Some((line, column)),
-        })
+        }))
     }
 
-    /// Number of AST nodes in the last successful parse (0 without AST).
-    pub fn node_count(&self) -> u64 {
-        unsafe { galley_node_count(self.inner) }
-    }
-
-    fn raw_link(&self, f: impl FnOnce(*mut GalleySessionRaw) -> u64) -> Option<NodeHandle> {
-        opt_handle(f(self.inner))
-    }
-
-    /// Root node of the last successful parse.
-    pub fn root_node(&self) -> Option<NodeHandle> {
-        if !has_ast() {
-            return None;
+    /// The published tree's root and the generation every one of its nodes
+    /// carries, read from the core in one call: the only source of that
+    /// generation and the only "is there a tree here" probe. Nothing
+    /// published is `(None, 0)`; a refusal is an error.
+    ///
+    /// Every handle it makes carries that generation, which each later read
+    /// hands back to the core.
+    fn published(&self) -> Result<(Option<NodeHandle>, u64), Error> {
+        let mut root = invalid_raw();
+        let mut generation = 0u64;
+        let status = unsafe { galley_root_node(self.inner, &mut root, &mut generation) };
+        if status < 0 {
+            return Err(Error::from_status(status));
         }
-        self.raw_link(|s| unsafe { galley_root_node(s) })
+        Ok((opt_handle(generation, root), generation))
     }
 
-    /// Whether `node` refers to a live node of the last parse.
-    pub fn node_is_valid(&self, node: NodeHandle) -> bool {
-        unsafe { galley_node_is_valid(self.inner, node.0) != 0 }
+    /// One session-door link, stamped with the generation of `node`; the
+    /// core refuses a generation it no longer holds.
+    fn link(
+        &self,
+        read: unsafe extern "C" fn(*mut GalleySessionRaw, u64, u64) -> i64,
+        node: NodeHandle,
+    ) -> Result<Option<NodeHandle>, Error> {
+        let address = value(unsafe { read(self.inner, node.generation, node.address) })?;
+        Ok(opt_handle(node.generation, address))
+    }
+
+    /// Number of AST nodes in the published tree.
+    ///
+    /// Fails with [`Error::StaleTree`] when nothing is published.
+    pub fn node_count(&self) -> Result<u64, Error> {
+        self.node_count_in(self.published()?.1)
+    }
+
+    /// The node count of the tree `generation` names; the core refuses a
+    /// generation it does not hold, 0 included.
+    fn node_count_in(&self, generation: u64) -> Result<u64, Error> {
+        value(unsafe { galley_node_count(self.inner, generation) })
+    }
+
+    /// Root node of the published tree: `Ok(Some)` is the root, `Ok(None)`
+    /// means nothing is published (or the parser has no AST), and an error is
+    /// the core's refusal, such as [`Error::SessionInUse`] while a parse runs.
+    /// The one "is there a tree here" probe.
+    pub fn root_node(&self) -> Result<Option<NodeHandle>, Error> {
+        if !has_ast() {
+            return Ok(None);
+        }
+        Ok(self.published()?.0)
     }
 
     /// Direct child count of `node`.
-    pub fn child_count(&self, node: NodeHandle) -> u32 {
-        unsafe { galley_node_child_count(self.inner, node.0) }
+    pub fn child_count(&self, node: NodeHandle) -> Result<u32, Error> {
+        Ok(value(unsafe { galley_node_child_count(self.inner, node.generation, node.address) })? as u32)
     }
 
-    pub fn first_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        self.raw_link(|s| unsafe { galley_node_first_child(s, node.0) })
+    pub fn first_child(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
+        self.link(galley_node_first_child, node)
     }
-    pub fn last_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        self.raw_link(|s| unsafe { galley_node_last_child(s, node.0) })
+    pub fn last_child(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
+        self.link(galley_node_last_child, node)
     }
-    pub fn next_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        self.raw_link(|s| unsafe { galley_node_next_sibling(s, node.0) })
+    pub fn next_sibling(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
+        self.link(galley_node_next_sibling, node)
     }
-    pub fn prior_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        self.raw_link(|s| unsafe { galley_node_prior_sibling(s, node.0) })
+    pub fn prior_sibling(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
+        self.link(galley_node_prior_sibling, node)
     }
-    pub fn parent(&self, node: NodeHandle) -> Option<NodeHandle> {
-        self.raw_link(|s| unsafe { galley_node_parent(s, node.0) })
+    pub fn parent(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
+        self.link(galley_node_parent, node)
+    }
+
+    /// Raw variable index of `node`, or `None` when it has no variable.
+    pub fn variable_index(&self, node: NodeHandle) -> Result<Option<i64>, Error> {
+        let index = value(unsafe {
+            galley_node_variable_index(self.inner, node.generation, node.address)
+        })?;
+        Ok(if index == NO_VARIABLE { None } else { Some(index as i64) })
     }
 
     /// Flat bulk read of the last successful parse in a single call: one
@@ -634,14 +712,20 @@ impl Session {
     /// instead of one call per node; `variable` holds -1 for nodes without
     /// a variable and spans index [`Session::last_input`].
     ///
-    /// Fails with [`Error::InvalidNode`] once a later parse — successful or
-    /// failed — has reset node storage behind the last successful result,
-    /// and with [`Error::SessionInUse`] while a parse holds the session.
+    /// Every leg carries one generation, so a parse that runs in between
+    /// fails instead of returning columns that mix two trees.
+    ///
+    /// Fails with [`Error::StaleTree`] when nothing is published, and with
+    /// [`Error::SessionInUse`] while a parse holds the session.
     pub fn snapshot(&self) -> Result<TreeSnapshot, Error> {
-        let count = self.node_count() as usize;
-        let mut parent = vec![u64::MAX; count];
-        let mut first_child = vec![u64::MAX; count];
-        let mut next = vec![u64::MAX; count];
+        // One read of the core fixes the generation every leg carries, so a
+        // parse in between fails the count or the columns instead of mixing
+        // two trees.
+        let generation = self.published()?.1;
+        let count = self.node_count_in(generation)? as usize;
+        let mut parent = vec![INVALID_ADDRESS; count];
+        let mut first_child = vec![INVALID_ADDRESS; count];
+        let mut next = vec![INVALID_ADDRESS; count];
         let mut child_count = vec![0u32; count];
         let mut variable = vec![-1i64; count];
         let mut span_start = vec![0u64; count];
@@ -650,6 +734,7 @@ impl Session {
         let total = unsafe {
             galley_tree_snapshot(
                 self.inner,
+                generation,
                 parent.as_mut_ptr(),
                 first_child.as_mut_ptr(),
                 next.as_mut_ptr(),
@@ -668,12 +753,16 @@ impl Session {
             return Err(Error::Internal);
         }
         Ok(TreeSnapshot {
+            generation,
             count: count as u64,
             parent,
             first_child,
             next,
             child_count,
-            variable,
+            variable: variable
+                .into_iter()
+                .map(|index| if index == NO_VARIABLE as i64 { -1 } else { index })
+                .collect(),
             span_start,
             span_len,
             is_semantic_error: is_semantic_error
@@ -703,13 +792,13 @@ impl Session {
     /// construction answers `Err(`[`Error::InvalidNode`]`)` at the first
     /// step.
     pub fn walk(&self, root: NodeHandle, skip_semantic_errors: bool) -> Walker<'_> {
-        let mut generation = 0u64;
-        unsafe { galley_published_generation(self.inner, &mut generation) };
+        // The walk is bound to the tree `root` came from: the cursor carries
+        // the root's own generation, which the core checks at every step.
         Walker {
             session: self.inner,
             cursor: RawWalkCursor {
-                generation,
-                root: root.0,
+                generation: root.generation,
+                root: root.address,
                 current: 0,
                 depth: 0,
                 state: 0,
@@ -727,62 +816,68 @@ impl Session {
     }
 
     /// Children of `node`, first to last.
-    pub fn children(&self, node: NodeHandle) -> impl Iterator<Item = NodeHandle> + '_ {
-        let mut next = self.first_child(node);
-        std::iter::from_fn(move || {
+    pub fn children(
+        &self,
+        node: NodeHandle,
+    ) -> Result<impl Iterator<Item = Result<NodeHandle, Error>> + '_, Error> {
+        // Each step hands the core the node's own generation, so a parse
+        // that retires the tree mid-iteration ends the walk with an error
+        // instead of a stale address.
+        let mut next = self.first_child(node)?;
+        Ok(std::iter::from_fn(move || {
             let current = next?;
-            next = self.next_sibling(current);
-            Some(current)
-        })
+            match self.next_sibling(current) {
+                Ok(sibling) => {
+                    next = sibling;
+                    Some(Ok(current))
+                }
+                Err(error) => {
+                    next = None;
+                    Some(Err(error))
+                }
+            }
+        }))
     }
 
-    /// Grammar symbol name of `node` (e.g. `"ObjectMembers"`), or `None`
-    /// when the node has no symbol.
-    pub fn symbol_name<'a>(&'a self, node: NodeHandle) -> Option<&'a [u8]> {
-        unsafe {
-            let mut data: *const c_char = std::ptr::null();
-            let mut len = 0usize;
-            if galley_node_symbol_name(self.inner, node.0, &mut data, &mut len) != 0 {
-                return None;
-            }
-            Some(bytes(data, len))
-        }
+    /// Grammar symbol name of `node` (e.g. `"ObjectMembers"`); empty for a
+    /// node with no symbol.
+    pub fn symbol_name<'a>(&'a self, node: NodeHandle) -> Result<&'a [u8], Error> {
+        let mut data: *const c_char = std::ptr::null();
+        let mut len = 0usize;
+        map_status(unsafe {
+            galley_node_symbol_name(self.inner, node.generation, node.address, &mut data, &mut len)
+        })?;
+        Ok(bytes(data, len))
     }
 
     /// Source text matched by `node`; borrows the session's retained input.
-    pub fn text<'a>(&'a self, node: NodeHandle) -> Option<&'a [u8]> {
-        unsafe {
-            let mut data: *const c_char = std::ptr::null();
-            let mut len = 0usize;
-            if galley_node_text(self.inner, node.0, &mut data, &mut len) != 0 {
-                return None;
-            }
-            Some(bytes(data, len))
-        }
+    pub fn text<'a>(&'a self, node: NodeHandle) -> Result<&'a [u8], Error> {
+        let mut data: *const c_char = std::ptr::null();
+        let mut len = 0usize;
+        map_status(unsafe {
+            galley_node_text(self.inner, node.generation, node.address, &mut data, &mut len)
+        })?;
+        Ok(bytes(data, len))
     }
 
     /// Byte span (offset into the parse input, length) of `node`.
-    pub fn span(&self, node: NodeHandle) -> Option<(u64, u64)> {
-        unsafe {
-            let mut start = 0u64;
-            let mut len = 0u64;
-            if galley_node_span(self.inner, node.0, &mut start, &mut len) != 0 {
-                return None;
-            }
-            Some((start, len))
-        }
+    pub fn span(&self, node: NodeHandle) -> Result<(u64, u64), Error> {
+        let mut start = 0u64;
+        let mut len = 0u64;
+        map_status(unsafe {
+            galley_node_span(self.inner, node.generation, node.address, &mut start, &mut len)
+        })?;
+        Ok((start, len))
     }
 
     /// 1-based line/column of `node`'s first byte.
-    pub fn line_column(&self, node: NodeHandle) -> Option<(u32, u32)> {
-        unsafe {
-            let mut l = 0u32;
-            let mut c = 0u32;
-            if galley_node_line_column(self.inner, node.0, &mut l, &mut c) != 0 {
-                return None;
-            }
-            Some((l, c))
-        }
+    pub fn line_column(&self, node: NodeHandle) -> Result<(u32, u32), Error> {
+        let mut l = 0u32;
+        let mut c = 0u32;
+        map_status(unsafe {
+            galley_node_line_column(self.inner, node.generation, node.address, &mut l, &mut c)
+        })?;
+        Ok((l, c))
     }
 
     /// Builds an owned snapshot of the diagnostic recorded at `diag_index`
@@ -902,25 +997,51 @@ impl Session {
     // Chains passed in must be detached orphans. Addresses are stable, so
     // edits never invalidate other handles.
 
+    /// The one generation an edit hands the core: the node's own, and for an
+    /// edit that takes a second node, the same one. The core compares a
+    /// single generation per call, so a chain from another parse is refused
+    /// here rather than forwarded under the first node's generation.
+    fn same_tree(node: NodeHandle, chain: NodeHandle) -> Result<u64, Error> {
+        if node.generation == chain.generation {
+            Ok(node.generation)
+        } else {
+            Err(Error::StaleTree)
+        }
+    }
+
     pub fn tree_append_children(&self, parent: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
-            fn galley_tree_append_children(s: *mut GalleySessionRaw, p: u64, f: u64) -> i64;
+            fn galley_tree_append_children(
+                s: *mut GalleySessionRaw,
+                g: u64,
+                p: u64,
+                f: u64,
+            ) -> i64;
         }
-        map_status(unsafe { galley_tree_append_children(self.inner, parent.0, chain.0) })
+        let generation = Self::same_tree(parent, chain)?;
+        map_status(unsafe {
+            galley_tree_append_children(self.inner, generation, parent.address, chain.address)
+        })
     }
 
     pub fn tree_insert_before(&self, target: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
-            fn galley_tree_insert_before(s: *mut GalleySessionRaw, t: u64, f: u64) -> i64;
+            fn galley_tree_insert_before(s: *mut GalleySessionRaw, g: u64, t: u64, f: u64) -> i64;
         }
-        map_status(unsafe { galley_tree_insert_before(self.inner, target.0, chain.0) })
+        let generation = Self::same_tree(target, chain)?;
+        map_status(unsafe {
+            galley_tree_insert_before(self.inner, generation, target.address, chain.address)
+        })
     }
 
     pub fn tree_insert_after(&self, target: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
-            fn galley_tree_insert_after(s: *mut GalleySessionRaw, t: u64, f: u64) -> i64;
+            fn galley_tree_insert_after(s: *mut GalleySessionRaw, g: u64, t: u64, f: u64) -> i64;
         }
-        map_status(unsafe { galley_tree_insert_after(self.inner, target.0, chain.0) })
+        let generation = Self::same_tree(target, chain)?;
+        map_status(unsafe {
+            galley_tree_insert_after(self.inner, generation, target.address, chain.address)
+        })
     }
 
     pub fn tree_remove_siblings(
@@ -931,32 +1052,49 @@ impl Session {
         unsafe extern "C" {
             fn galley_tree_remove_siblings(
                 s: *mut GalleySessionRaw,
+                g: u64,
                 n: u64,
                 c: usize,
                 h: *mut u64,
             ) -> i64;
         }
         let mut head = invalid_raw();
-        map_status(unsafe { galley_tree_remove_siblings(self.inner, node.0, count, &mut head) })?;
-        Ok(opt_handle(head))
+        map_status(unsafe {
+            galley_tree_remove_siblings(self.inner, node.generation, node.address, count, &mut head)
+        })?;
+        Ok(opt_handle(node.generation, head))
     }
 
     pub fn tree_remove_self(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
         unsafe extern "C" {
-            fn galley_tree_remove_self(s: *mut GalleySessionRaw, n: u64, h: *mut u64) -> i64;
+            fn galley_tree_remove_self(
+                s: *mut GalleySessionRaw,
+                g: u64,
+                n: u64,
+                h: *mut u64,
+            ) -> i64;
         }
         let mut head = invalid_raw();
-        map_status(unsafe { galley_tree_remove_self(self.inner, node.0, &mut head) })?;
-        Ok(opt_handle(head))
+        map_status(unsafe {
+            galley_tree_remove_self(self.inner, node.generation, node.address, &mut head)
+        })?;
+        Ok(opt_handle(node.generation, head))
     }
 
     pub fn tree_clean_children(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
         unsafe extern "C" {
-            fn galley_tree_clean_children(s: *mut GalleySessionRaw, n: u64, h: *mut u64) -> i64;
+            fn galley_tree_clean_children(
+                s: *mut GalleySessionRaw,
+                g: u64,
+                n: u64,
+                h: *mut u64,
+            ) -> i64;
         }
         let mut head = invalid_raw();
-        map_status(unsafe { galley_tree_clean_children(self.inner, node.0, &mut head) })?;
-        Ok(opt_handle(head))
+        map_status(unsafe {
+            galley_tree_clean_children(self.inner, node.generation, node.address, &mut head)
+        })?;
+        Ok(opt_handle(node.generation, head))
     }
 
     pub fn tree_insert_children_at(
@@ -968,12 +1106,16 @@ impl Session {
         unsafe extern "C" {
             fn galley_tree_insert_children_at(
                 s: *mut GalleySessionRaw,
+                g: u64,
                 p: u64,
                 i: usize,
                 f: u64,
             ) -> i64;
         }
-        map_status(unsafe { galley_tree_insert_children_at(self.inner, parent.0, index, chain.0) })
+        let generation = Self::same_tree(parent, chain)?;
+        map_status(unsafe {
+            galley_tree_insert_children_at(self.inner, generation, parent.address, index, chain.address)
+        })
     }
 
     pub fn tree_remove_children_at(
@@ -985,6 +1127,7 @@ impl Session {
         unsafe extern "C" {
             fn galley_tree_remove_children_at(
                 s: *mut GalleySessionRaw,
+                g: u64,
                 p: u64,
                 i: usize,
                 c: usize,
@@ -993,21 +1136,44 @@ impl Session {
         }
         let mut head = invalid_raw();
         map_status(unsafe {
-            galley_tree_remove_children_at(self.inner, parent.0, index, count, &mut head)
+            galley_tree_remove_children_at(
+                self.inner,
+                parent.generation,
+                parent.address,
+                index,
+                count,
+                &mut head,
+            )
         })?;
-        Ok(opt_handle(head))
+        Ok(opt_handle(parent.generation, head))
     }
 }
 
+/// `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every
+/// address, so a value-returning call can report a negative status.
+const INVALID_ADDRESS: u64 = i64::MAX as u64;
+
+/// `GALLEY_NO_VARIABLE`: the core's answer for a node without a variable.
+const NO_VARIABLE: u64 = i64::MAX as u64;
+
 fn invalid_raw() -> u64 {
-    u64::MAX
+    INVALID_ADDRESS
 }
 
-fn opt_handle(raw: u64) -> Option<NodeHandle> {
-    if raw == u64::MAX {
+/// A value-returning session-door call answers with its value, always
+/// non-negative, or a negative status.
+fn value(status: i64) -> Result<u64, Error> {
+    u64::try_from(status).map_err(|_| Error::from_status(status))
+}
+
+fn opt_handle(generation: u64, address: u64) -> Option<NodeHandle> {
+    if address == INVALID_ADDRESS {
         None
     } else {
-        Some(NodeHandle(raw))
+        Some(NodeHandle {
+            generation,
+            address,
+        })
     }
 }
 

@@ -655,7 +655,12 @@ jobs:
               }
               GalleySession *session = galley_session_create();
               long long parsed = galley_parse_sentinel(session, "alpha:12,beta:3");
-              if (parsed != 15 || galley_node_count(session) == 0) {
+              GalleyNodeAddress root = GALLEY_INVALID_NODE;
+              unsigned long long generation = 0;
+              long long nodes = 0;
+              if (parsed != 15 ||
+                  galley_root_node(session, &root, &generation) != galley_ok ||
+                  (nodes = galley_node_count(session, generation)) <= 0) {
                   fprintf(stderr, "lr parse failed (parsed=%lld)\n", parsed);
                   return 1;
               }
@@ -665,7 +670,7 @@ jobs:
                   fprintf(stderr, "expected a diagnostic for the broken sample\n");
                   return 1;
               }
-              printf("lr smoke ok: parsed %lld bytes, %llu nodes\n", parsed, galley_node_count(session));
+              printf("lr smoke ok: parsed %lld bytes, %lld nodes\n", parsed, nodes);
               galley_session_destroy(session);
               return 0;
           }

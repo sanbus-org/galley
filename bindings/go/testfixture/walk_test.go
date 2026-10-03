@@ -16,8 +16,8 @@ func walkSession(t *testing.T, input string) (*galley.Session, galley.Node) {
 	if _, err := session.Parse([]byte(input)); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	root, ok := session.RootNode()
-	if !ok {
+	root, ok, err := session.RootNode()
+	if err != nil || !ok {
 		t.Fatal("expected a root node")
 	}
 	return session, root
@@ -34,7 +34,11 @@ func TestWalkMatchesHandRolledRecursion(t *testing.T) {
 	var recurse func(node galley.Node, depth uint32)
 	recurse = func(node galley.Node, depth uint32) {
 		expected = append(expected, visit{node, depth})
-		for _, child := range session.Children(node) {
+		children, err := session.Children(node)
+		if err != nil {
+			t.Fatalf("children: %v", err)
+		}
+		for _, child := range children {
 			recurse(child, depth+1)
 		}
 	}
@@ -82,12 +86,24 @@ func TestWalkSkipChildrenPrunesSubtree(t *testing.T) {
 	if _, ok, err := walker.Next(); ok || err != nil {
 		t.Fatalf("expected the walk to end after pruning the root, ok=%v err=%v", ok, err)
 	}
-	// Nothing is refused at creation anymore: an invalid root hands back a
-	// walker and fails at its first step, with Go's dead-generation-class
-	// invalid-node error.
+	// Nothing is refused at creation: the sentinel belongs to no parse, so a
+	// walker over it fails at its first step with a stale tree.
 	invalid := session.Walk(galley.InvalidNode, false)
-	if _, ok, err := invalid.Next(); ok || err != galley.ErrInvalidNode {
-		t.Fatalf("expected ErrInvalidNode at the first step, ok=%v err=%v", ok, err)
+	if _, ok, err := invalid.Next(); ok || err != galley.ErrStaleTree {
+		t.Fatalf("expected ErrStaleTree at the first step, ok=%v err=%v", ok, err)
+	}
+}
+
+// A walker over a parse-1 root refuses at its first step once a second parse
+// has published.
+func TestWalkOfAStaleRootFailsAtTheFirstStep(t *testing.T) {
+	session, stale := walkSession(t, "alpha:12")
+	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
+		t.Fatalf("second parse: %v", err)
+	}
+	walker := session.Walk(stale, false)
+	if _, ok, err := walker.Next(); ok || err != galley.ErrStaleTree {
+		t.Fatalf("expected ErrStaleTree at the first step, ok=%v err=%v", ok, err)
 	}
 }
 
@@ -113,8 +129,8 @@ func TestWalkInsideHookEqualsPostParseWalk(t *testing.T) {
 	if hookWalkVisits[0].Depth != 0 {
 		t.Fatalf("the hook walk's root sat at depth %d, want 0", hookWalkVisits[0].Depth)
 	}
-	root, ok := session.RootNode()
-	if !ok {
+	root, ok, err := session.RootNode()
+	if err != nil || !ok {
 		t.Fatal("expected a root node")
 	}
 	walker := session.Walk(root, false)

@@ -93,13 +93,13 @@ no longer inside the walk's root (removed, or moved elsewhere) — and ends
 the iteration; steps otherwise follow the live links, so edits between
 steps are visible. `skip_children` prunes the last
 yielded node's children host-side; passing `true` prunes semantic-error
-subtrees. A failed parse counts as a later parse: `Session::snapshot` fails with
-`Error::InvalidNode` and node accessors fall back to their empty values
-until a successful parse, while `last_input()` keeps the last successful
-input:
+subtrees. A failed parse counts as a later parse: nothing is published, so
+`Session::snapshot`, `Session::node_count`, and every node accessor return
+`Err(Error::StaleTree)` until a successful parse, while `last_input()` keeps
+the last successful input:
 
 ```rust
-let root = session.root_node().expect("root");
+let root = session.root_node().expect("root read").expect("root");
 for step in session.walk(root, false) {
     let step = step.expect("walk step");
     println!("{:width$}{:?}", "", step.node, width = step.depth as usize * 2);
@@ -194,14 +194,13 @@ let mut session = Session::new().expect("session");
 let bytes = session.parse_sentinel(r#"{"key": "value"}"#).expect("parse");
 
 // Walk the AST.
-if let Some(root) = session.root_node() {
-    for child in session.children(root) {
-        if let Some(name) = session.symbol_name(child) {
-            println!("{}", String::from_utf8_lossy(name));
-        }
-        if let Some(text) = session.text(child) {
-            println!("  → {}", String::from_utf8_lossy(text));
-        }
+if let Some(root) = session.root_node().expect("root read") {
+    for child in session.children(root).expect("children") {
+        let child = child.expect("child");
+        let name = session.symbol_name(child).expect("symbol name");
+        println!("{}", String::from_utf8_lossy(name));
+        let text = session.text(child).expect("text");
+        println!("  → {}", String::from_utf8_lossy(text));
     }
 }
 
@@ -213,8 +212,20 @@ if session.parse_sentinel("bad input").is_err() {
 }
 ```
 
+A `NodeHandle` carries the core's parse generation and its address, and every
+read and edit hands that generation to the core, which refuses one it no
+longer holds with `Err(Error::StaleTree)`. `Session::root_node` is the one
+"is there a tree here" probe and stamps the generation it reports; links,
+walk steps, and `TreeSnapshot::node` carry their source's. It answers
+`Ok(Some(root))` for a published tree, `Ok(None)` when nothing is published,
+and `Err` when the core refuses (`Error::SessionInUse` while a parse runs),
+while `node_count` and the accessors report `Err(Error::StaleTree)`. Nothing is cached, and there is no validity probe: a
+real read is the answer, and it fails.
+
 Tree editing follows the same address-stable model as the C API:
-addresses never invalidate across edits or allocations.
+addresses never invalidate across edits or allocations, and every edit carries
+its nodes' generation (a chain of another parse is refused with `StaleTree`),
+so a retired tree is never edited by mistake.
 
 ```rust
 let head = session.tree_clean_children(root).unwrap();

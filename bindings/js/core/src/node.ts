@@ -1,4 +1,5 @@
 import type { Session, Walker } from "./session.ts";
+import type { Status } from "./constants.ts";
 import { decodeUtf8 } from "./text.ts";
 
 /**
@@ -10,42 +11,49 @@ import { decodeUtf8 } from "./text.ts";
  * @internal
  */
 export interface NodeDoor {
-  /** True for the hook door of a running parse. */
-  readonly isHook: boolean;
   /**
-   * The core generation a node must carry to cross this door: the running
-   * parse's on the hook door, the published tree's on the session door.
+   * The generation of the running parse on the hook door, which takes no
+   * generation of its own and so has the session check a node against it;
+   * null on the session door, where every crossing hands the core the
+   * node's own generation and the core owns the comparison.
    */
-  readonly generation: bigint;
-  nodeValid(address: bigint): boolean;
-  childCount(address: bigint): number;
-  firstChild(address: bigint): bigint;
-  lastChild(address: bigint): bigint;
-  nextSibling(address: bigint): bigint;
-  priorSibling(address: bigint): bigint;
-  parent(address: bigint): bigint;
-  text(address: bigint): Uint8Array | null;
-  symbolNameBytes(address: bigint): Uint8Array | null;
-  span(address: bigint): [bigint, bigint] | null;
-  lineColumn(address: bigint): [number, number] | null;
+  readonly parseGeneration: number | null;
+  /*
+   * Every crossing takes the generation of the tree its node belongs to,
+   * right before the address, as the core's session door does. The hook
+   * door ignores it: its node was already admitted against `parseGeneration`.
+   */
+  /** Direct child count, or a status when the core refuses. */
+  childCount(generation: number, address: bigint): number | Status;
+  /** One link, or {@link INVALID_NODE} when it does not exist. */
+  firstChild(generation: number, address: bigint): bigint;
+  lastChild(generation: number, address: bigint): bigint;
+  nextSibling(generation: number, address: bigint): bigint;
+  priorSibling(generation: number, address: bigint): bigint;
+  parent(generation: number, address: bigint): bigint;
+  text(generation: number, address: bigint): Uint8Array | null;
+  symbolNameBytes(generation: number, address: bigint): Uint8Array | null;
+  span(generation: number, address: bigint): [bigint, bigint] | null;
+  lineColumn(generation: number, address: bigint): [number, number] | null;
   /** The raw variable index, or null when the node has no variable. */
-  variableIndex(address: bigint): number | null;
+  variableIndex(generation: number, address: bigint): number | null;
   /**
-   * One step of a walk over the host-owned 40-byte cursor: 1 yields a
-   * node, 0 ends the walk (and keeps ending it), negative is a failure
-   * (stale tree, session in use, malformed cursor bytes).
+   * One step of a walk over the host-owned 40-byte cursor, which carries
+   * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
+   * it), negative is a failure (stale tree, session in use, malformed
+   * cursor bytes).
    */
   walkNext(cursor: ArrayBuffer): number;
   /** Head of the detached chain; `INVALID_NODE` when there were no children. */
-  cleanChildren(address: bigint): bigint;
-  appendChildren(parent: bigint, chain: bigint): void;
-  insertBefore(target: bigint, chain: bigint): void;
-  insertAfter(target: bigint, chain: bigint): void;
+  cleanChildren(generation: number, address: bigint): bigint;
+  appendChildren(generation: number, parent: bigint, chain: bigint): void;
+  insertBefore(generation: number, target: bigint, chain: bigint): void;
+  insertAfter(generation: number, target: bigint, chain: bigint): void;
   /** Head of the detached chain; `INVALID_NODE` when empty. */
-  removeSiblings(address: bigint, count: number): bigint;
-  removeSelf(address: bigint): bigint;
-  insertChildrenAt(parent: bigint, index: number, chain: bigint): void;
-  removeChildrenAt(parent: bigint, index: number, count: number): bigint;
+  removeSiblings(generation: number, address: bigint, count: number): bigint;
+  removeSelf(generation: number, address: bigint): bigint;
+  insertChildrenAt(generation: number, parent: bigint, index: number, chain: bigint): void;
+  removeChildrenAt(generation: number, parent: bigint, index: number, count: number): bigint;
 }
 
 /**
@@ -63,14 +71,20 @@ const NODE_CONSTRUCTION_TOKEN: symbol = Symbol("galley.Node.construction");
  * Every accessor is one delegation to the session, which chooses the door
  * when the call is made (the parse's hook door from inside a hook of its
  * running parse, the post-parse door everywhere else) and gates it: a
- * closed session or a generation that is gone throws. Nodes handed out by
- * the hooks of a parse that publishes its tree stay valid until the
- * session parses again; nodes of a failed parse are gone.
+ * closed session throws `SessionClosedError`, and a generation that is gone
+ * throws `StaleTreeError` — the core owns that check on the post-parse
+ * door, so this handle carries the generation every read hands back and the
+ * session keeps no cached copy of it. Nodes handed out by the hooks of a
+ * parse that publishes its tree stay valid until the session parses again;
+ * nodes of a failed parse are gone.
+ *
+ * There is no validity probe: whether this handle is usable is answered by
+ * a real read, which throws.
  *
  * The session interns one object per (generation, address) while that
- * generation is live, so identity (`===`) answers "the same node of the
- * same parse" everywhere a node is reached; once its generation is
- * superseded, reading it again answers with a fresh, uninterned handle.
+ * generation is the newest it has seen, so identity (`===`) answers "the
+ * same node of the same parse" everywhere a node is reached; an older
+ * generation is dead and answers with a fresh, uninterned handle each call.
  * The address is display-only: no public method accepts a bare
  * address where a `Node` is expected — {@link nodeAddress} refuses one.
  */
@@ -82,7 +96,7 @@ export class Node {
    * is the single creation gate: every node carries the generation it
    * belongs to, so no accessor can read storage from another parse.
    */
-  readonly #generation: bigint;
+  readonly #generation: number;
 
   /**
    * Internal: the session's intern table ({@link createNode}) is the
@@ -92,7 +106,7 @@ export class Node {
    * gate — a raw address carries no generation of its own, and without
    * the token the caller would be vouching for one that nothing verifies.
    */
-  private constructor(token: symbol, session: Session, address: bigint, generation: bigint) {
+  private constructor(token: symbol, session: Session, address: bigint, generation: number) {
     if (token !== NODE_CONSTRUCTION_TOKEN) {
       throw new TypeError("galley: Node cannot be constructed directly");
     }
@@ -106,7 +120,7 @@ export class Node {
    * module's {@link createNode}: it forwards the token it demands, and
    * any other token throws exactly like a direct construction would.
    */
-  static create(token: symbol, session: Session, address: bigint, generation: bigint): Node {
+  static create(token: symbol, session: Session, address: bigint, generation: number): Node {
     return new Node(token, session, address, generation);
   }
 
@@ -124,7 +138,7 @@ export class Node {
   }
 
   /** The core generation this node belongs to. Internal: the session's gate compares it. @internal */
-  get generation(): bigint {
+  get generation(): number {
     return this.#generation;
   }
 
@@ -186,7 +200,7 @@ export class Node {
    * included at depth 0. Pass true to prune subtrees rooted at
    * semantic-error nodes. The walker owns no native resource: abandoning
    * it is free, and parsing again with one open succeeds — its next step
-   * throws a `SessionClosedError` instead. Each step picks its door like
+   * throws a `StaleTreeError` instead. Each step picks its door like
    * any node call, so a walk created inside a hook of a running parse
    * walks that parse's in-flight tree. Steps follow the live links, so
    * edits between steps are visible; a step whose position is no longer
@@ -258,7 +272,7 @@ export function installWalkStart(start: (session: Session, root: Node, skipSeman
  * creation stays unreachable from the public surface while
  * `instanceof Node` keeps answering everywhere a node is reached.
  */
-export function createNode(session: Session, address: bigint, generation: bigint): Node {
+export function createNode(session: Session, address: bigint, generation: number): Node {
   return Node.create(NODE_CONSTRUCTION_TOKEN, session, address, generation);
 }
 

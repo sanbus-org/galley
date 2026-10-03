@@ -132,6 +132,7 @@ static int later_hook_shares_door = 0;
 static long long later_hook_child_count = -1;
 static unsigned long long hook_generation = 0;
 static long long hook_generation_status = galley_ok;
+static GalleyNodeAddress stashed_root = GALLEY_INVALID_NODE;
 static unsigned long long stashed_published_generation = 1;
 static long long stashed_published_status = galley_ok;
 
@@ -194,6 +195,7 @@ void fixture_stash_session(GalleySession *session) {
     hook_range_status[0] = hook_range_status[1] = hook_range_status[2] = galley_ok;
     hook_generation = 0;
     hook_generation_status = galley_ok;
+    stashed_root = GALLEY_INVALID_NODE;
     stashed_published_generation = 1;
     stashed_published_status = galley_ok;
     hook_walk_root = GALLEY_INVALID_NODE;
@@ -220,6 +222,8 @@ long long fixture_hook_generation_status(void) { return hook_generation_status; 
 unsigned long long fixture_stashed_published_generation(void) { return stashed_published_generation; }
 
 long long fixture_stashed_published_status(void) { return stashed_published_status; }
+
+GalleyNodeAddress fixture_stashed_root(void) { return stashed_root; }
 
 void reduction_Pair(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
@@ -277,7 +281,7 @@ void reduction_Document(void *args) {
         }
         stashed_kind_status = galley_diagnostic_kind(stashed_session);
         hook_generation_status = galley_hook_generation(door, &hook_generation);
-        stashed_published_status = galley_published_generation(stashed_session, &stashed_published_generation);
+        stashed_published_status = galley_root_node(stashed_session, &stashed_root, &stashed_published_generation);
         if (first_pair_door != NULL) {
             later_hook_shares_door = first_pair_door == door;
             later_hook_child_count = galley_hook_node_child_count(first_pair_door, first_pair_node);

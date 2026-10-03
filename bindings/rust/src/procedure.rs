@@ -13,14 +13,29 @@
 
 use std::ffi::{c_char, c_void};
 
-/// Stable handle to a node in the current parse's AST.
-#[repr(transparent)]
+/// `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every
+/// address.
+const INVALID_ADDRESS: u64 = i64::MAX as u64;
+
+/// `GALLEY_NO_VARIABLE`: the core's answer for a node without a variable.
+const NO_VARIABLE: i64 = i64::MAX;
+
+/// Handle to a node of the current parse's AST: the core's parse generation
+/// and the node's address. The generation comes from the node's source —
+/// `galley_hook_generation` for the current node, the parent node's for
+/// every link — and is what the session door later checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NodeHandle(pub u64);
+pub struct NodeHandle {
+    generation: u64,
+    address: u64,
+}
 
 impl NodeHandle {
     /// Sentinel meaning "no node here".
-    pub const INVALID: NodeHandle = NodeHandle(u64::MAX);
+    pub const INVALID: NodeHandle = NodeHandle {
+        generation: 0,
+        address: INVALID_ADDRESS,
+    };
 }
 
 /// Parse/lookup failure modes mirroring the C API status codes.
@@ -93,6 +108,7 @@ pub struct Rule {
 
 extern "C" {
     fn galley_procedure_door(arguments: *mut c_void) -> *mut c_void;
+    fn galley_hook_generation(door: *mut c_void, out_generation: *mut u64) -> i64;
     fn galley_procedure_current_node(arguments: *mut c_void) -> u64;
     fn galley_procedure_set_current_node(arguments: *mut c_void, node: u64);
     fn galley_procedure_rule_present(arguments: *mut c_void) -> i32;
@@ -154,11 +170,14 @@ extern "C" {
     ) -> i64;
 }
 
-fn opt_handle(value: u64) -> Option<NodeHandle> {
-    if value == NodeHandle::INVALID.0 {
+fn opt_handle(generation: u64, address: u64) -> Option<NodeHandle> {
+    if address == NodeHandle::INVALID.address {
         None
     } else {
-        Some(NodeHandle(value))
+        Some(NodeHandle {
+            generation,
+            address,
+        })
     }
 }
 
@@ -181,7 +200,11 @@ impl ProcedureArguments {
     }
 
     pub fn current_node(&self) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_procedure_current_node(self.as_ptr()) })
+        // The parse's generation, which the core reports for this door; 0
+        // (never live) if it cannot, so a handle made without it is stale.
+        let mut generation = 0u64;
+        unsafe { galley_hook_generation(galley_procedure_door(self.as_ptr()), &mut generation) };
+        opt_handle(generation, unsafe { galley_procedure_current_node(self.as_ptr()) })
     }
 
     /// Sets the current node, or clears it with `None`.
@@ -192,7 +215,7 @@ impl ProcedureArguments {
     /// index the allocator with it and do not bounds-check.
     pub unsafe fn set_current_node(&mut self, node: Option<NodeHandle>) {
         let handle = node.unwrap_or(NodeHandle::INVALID);
-        unsafe { galley_procedure_set_current_node(self.as_ptr(), handle.0) }
+        unsafe { galley_procedure_set_current_node(self.as_ptr(), handle.address) }
     }
 
     pub fn drop_self(&mut self) -> Result<(), Error> {
@@ -295,27 +318,27 @@ impl HookDoor {
     }
 
     pub fn child_count(&self, node: NodeHandle) -> u32 {
-        unsafe { galley_hook_node_child_count(self.as_ptr(), node.0) }
+        unsafe { galley_hook_node_child_count(self.as_ptr(), node.address) }
     }
 
     pub fn parent(&self, node: NodeHandle) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_hook_node_parent(self.as_ptr(), node.0) })
+        opt_handle(node.generation, unsafe { galley_hook_node_parent(self.as_ptr(), node.address) })
     }
 
     pub fn first_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_hook_node_first_child(self.as_ptr(), node.0) })
+        opt_handle(node.generation, unsafe { galley_hook_node_first_child(self.as_ptr(), node.address) })
     }
 
     pub fn last_child(&self, node: NodeHandle) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_hook_node_last_child(self.as_ptr(), node.0) })
+        opt_handle(node.generation, unsafe { galley_hook_node_last_child(self.as_ptr(), node.address) })
     }
 
     pub fn next_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_hook_node_next_sibling(self.as_ptr(), node.0) })
+        opt_handle(node.generation, unsafe { galley_hook_node_next_sibling(self.as_ptr(), node.address) })
     }
 
     pub fn prior_sibling(&self, node: NodeHandle) -> Option<NodeHandle> {
-        opt_handle(unsafe { galley_hook_node_prior_sibling(self.as_ptr(), node.0) })
+        opt_handle(node.generation, unsafe { galley_hook_node_prior_sibling(self.as_ptr(), node.address) })
     }
 
     pub fn children(&self, node: NodeHandle) -> impl Iterator<Item = NodeHandle> + '_ {
@@ -330,7 +353,7 @@ impl HookDoor {
     pub fn text(&self, node: NodeHandle) -> Option<&[u8]> {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
-        if unsafe { galley_hook_node_text(self.as_ptr(), node.0, &mut data, &mut len) } != 0 {
+        if unsafe { galley_hook_node_text(self.as_ptr(), node.address, &mut data, &mut len) } != 0 {
             return None;
         }
         Some(bytes(data, len))
@@ -339,7 +362,7 @@ impl HookDoor {
     pub fn symbol_name(&self, node: NodeHandle) -> Option<&[u8]> {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
-        if unsafe { galley_hook_node_symbol_name(self.as_ptr(), node.0, &mut data, &mut len) } != 0
+        if unsafe { galley_hook_node_symbol_name(self.as_ptr(), node.address, &mut data, &mut len) } != 0
         {
             return None;
         }
@@ -349,7 +372,7 @@ impl HookDoor {
     pub fn span(&self, node: NodeHandle) -> Option<(u64, u64)> {
         let mut start = 0u64;
         let mut len = 0u64;
-        if unsafe { galley_hook_node_span(self.as_ptr(), node.0, &mut start, &mut len) } != 0 {
+        if unsafe { galley_hook_node_span(self.as_ptr(), node.address, &mut start, &mut len) } != 0 {
             return None;
         }
         Some((start, len))
@@ -358,7 +381,7 @@ impl HookDoor {
     pub fn line_column(&self, node: NodeHandle) -> Option<(u32, u32)> {
         let mut line = 0u32;
         let mut column = 0u32;
-        if unsafe { galley_hook_node_line_column(self.as_ptr(), node.0, &mut line, &mut column) }
+        if unsafe { galley_hook_node_line_column(self.as_ptr(), node.address, &mut line, &mut column) }
             != 0
         {
             return None;
@@ -367,8 +390,8 @@ impl HookDoor {
     }
 
     pub fn variable_index(&self, node: NodeHandle) -> Option<u16> {
-        let value = unsafe { galley_hook_node_variable_index(self.as_ptr(), node.0) };
-        if value < 0 {
+        let value = unsafe { galley_hook_node_variable_index(self.as_ptr(), node.address) };
+        if value < 0 || value == NO_VARIABLE {
             None
         } else {
             u16::try_from(value).ok()

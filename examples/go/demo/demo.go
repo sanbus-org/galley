@@ -21,11 +21,11 @@ const (
 
 func printTree(session *galley.Session, node galley.Node, depth int) {
 	name := ""
-	if bytes, ok := session.SymbolName(node); ok {
+	if bytes, err := session.SymbolName(node); err == nil {
 		name = string(bytes)
 	}
 	textLength := 0
-	if text, ok := session.Text(node); ok {
+	if text, err := session.Text(node); err == nil {
 		textLength = len(text)
 	}
 	line, _, _ := session.LineColumn(node)
@@ -35,7 +35,12 @@ func printTree(session *galley.Session, node galley.Node, depth int) {
 	}
 	fmt.Printf("%s [line %d, %d bytes]\n", name, line, textLength)
 
-	for _, child := range session.Children(node) {
+	children, err := session.Children(node)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "children failed: %v\n", err)
+		os.Exit(1)
+	}
+	for _, child := range children {
 		printTree(session, child, depth+1)
 	}
 }
@@ -77,12 +82,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unexpected failure: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("parsed %d bytes, %d AST nodes\n", parsed, session.NodeCount())
+	nodeCount, err := session.NodeCount()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "node count failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("parsed %d bytes, %d AST nodes\n", parsed, nodeCount)
 	if !galley.HasAST() {
 		fmt.Println("AST construction disabled; skipping tree walk")
 	} else {
-		root, ok := session.RootNode()
-		if !ok {
+		root, ok, err := session.RootNode()
+		if err != nil || !ok {
 			fmt.Fprintf(os.Stderr, "expected a root node\n")
 			os.Exit(1)
 		}
@@ -145,17 +155,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "file parse failed: %v\n", err)
 		os.Exit(1)
 	}
-	info, _ := session.Info()
+	info, _, _ := session.Info()
 	fmt.Printf("file parse: %d bytes, ended at %d:%d\n", fileParsed, info.EndLine, info.EndColumn)
 
 	/* Tree editing: detach the root's children, then reattach them. */
 	if galley.HasAST() {
-		root, ok := session.RootNode()
-		if !ok {
+		root, ok, err := session.RootNode()
+		if err != nil || !ok {
 			fmt.Fprintf(os.Stderr, "expected a root node\n")
 			os.Exit(1)
 		}
-		childrenBefore := session.ChildCount(root)
+		childrenBefore, err := session.ChildCount(root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "child count failed: %v\n", err)
+			os.Exit(1)
+		}
 		head, headOk, err := session.TreeCleanChildren(root)
 		if err != nil || !headOk {
 			fmt.Fprintf(os.Stderr, "expected the root to have children\n")
@@ -165,6 +179,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "failed to reattach children: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("tree edit: %d children before, %d after reattach\n", childrenBefore, session.ChildCount(root))
+		childrenAfter, err := session.ChildCount(root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "child count failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("tree edit: %d children before, %d after reattach\n", childrenBefore, childrenAfter)
 	}
 }

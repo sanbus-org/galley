@@ -11,10 +11,15 @@ import java.util.Objects;
  * address. Every accessor is one delegation to the session, which chooses
  * the door when the call is made (the parse's hook door from inside a hook
  * of its running parse on the thread running that hook, the post-parse door
- * everywhere else) and gates it: a node throws once its session closes or
- * its generation is gone. Nodes handed out by the hooks of a parse that
- * publishes its tree stay valid until the session parses again; nodes of a
- * failed parse are gone.
+ * everywhere else) and gates it: a node throws once its session closes, or
+ * {@link StaleTreeException} once its generation is gone — the core owns that
+ * check on the post-parse door, so this handle carries the generation every
+ * read hands back. Nodes handed out by the hooks of a parse that publishes its
+ * tree stay valid until the session parses again; nodes of a failed parse are
+ * gone.
+ *
+ * <p>There is no validity probe: whether this handle is usable is answered by
+ * a real read, which throws.
  */
 public final class Node implements Iterable<Node> {
     private final Session session;
@@ -99,10 +104,6 @@ public final class Node implements Iterable<Node> {
         return session.childCount(this);
     }
 
-    public boolean isValid() {
-        return session.nodeValid(this);
-    }
-
     public List<Node> children() {
         return session.children(this);
     }
@@ -118,7 +119,12 @@ public final class Node implements Iterable<Node> {
      * are visible; a step whose position is no longer inside the walk's
      * root (removed, or moved elsewhere) throws {@code invalid node}.
      *
-     * @throws GenerationInvalidatedException if this node's generation is gone
+     * <p>A node whose tree is gone does not fail here but at the walker's
+     * first step, where the core refuses its generation; inside a hook, a
+     * node of another parse fails here, because the hook door is checked
+     * host-side.
+     *
+     * @throws StaleTreeException inside a hook, if this node is not of the running parse
      */
     public Walker walk(boolean skipSemanticErrors) {
         return session.startWalk(this, skipSemanticErrors);
@@ -134,7 +140,7 @@ public final class Node implements Iterable<Node> {
      * session's gate refuses one that is not.
      *
      * @throws IllegalArgumentException if {@code chain} belongs to another session
-     * @throws GenerationInvalidatedException if {@code chain}'s generation is gone
+     * @throws StaleTreeException if {@code chain}'s generation differs
      */
     public void appendChildren(Node chain) {
         session.appendChildren(this, chain);

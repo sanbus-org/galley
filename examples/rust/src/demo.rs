@@ -8,28 +8,23 @@ const VALID_SAMPLE: &str = "alpha:12,beta:3";
 const BROKEN_SAMPLE: &str = "alpha:";
 const MULTI_ERROR_SAMPLE: &str = "alpha:13x,beta:,gamma:q";
 
-fn print_tree(session: &Session, node: NodeHandle, depth: usize) {
-    let name = session
-        .symbol_name(node)
-        .map(String::from_utf8_lossy)
-        .unwrap_or_default();
-    let text = session
-        .text(node)
-        .map(String::from_utf8_lossy)
-        .unwrap_or_default();
-    let (line, _) = session.line_column(node).unwrap_or((0, 0));
+fn print_tree(session: &Session, node: NodeHandle, depth: usize) -> Result<(), galley::Error> {
+    let name = String::from_utf8_lossy(session.symbol_name(node)?).into_owned();
+    let text = String::from_utf8_lossy(session.text(node)?).into_owned();
+    let (line, _) = session.line_column(node)?;
 
     for _ in 0..depth {
         print!("  ");
     }
     println!("{name} [line {line}, {} bytes]", text.len());
 
-    for child in session.children(node) {
-        print_tree(session, child, depth + 1);
+    for child in session.children(node)? {
+        print_tree(session, child?, depth + 1)?;
     }
+    Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), galley::Error> {
     println!("galley version: {}", galley::version());
     let mut session = {
         let options = galley::SessionOptions {
@@ -62,7 +57,7 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        return;
+        return Ok(());
     }
 
     /* Successful parse: walk the tree. */
@@ -73,18 +68,18 @@ fn main() {
             std::process::exit(1);
         }
     };
-    println!("parsed {parsed} bytes, {} AST nodes", session.node_count());
+    println!("parsed {parsed} bytes, {} AST nodes", session.node_count()?);
     if !galley::has_ast() {
         println!("AST construction disabled; skipping tree walk");
     } else {
-        let root = match session.root_node() {
+        let root = match session.root_node()? {
             Some(root) => root,
             None => {
                 eprintln!("expected a root node");
                 std::process::exit(1);
             }
         };
-        print_tree(&session, root, 1);
+        print_tree(&session, root, 1)?;
     }
 
     /* Failed parse: inspect the diagnostic. */
@@ -150,20 +145,20 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let info = session.info().expect("parse info");
+    let info = session.info()?.expect("parse info");
     let (end_line, end_column) = info.end_position.unwrap_or((0, 0));
     println!("file parse: {parsed} bytes, ended at {end_line}:{end_column}");
 
     /* Tree editing: detach the root's children, then reattach them. */
     if galley::has_ast() {
-        let root = match session.root_node() {
+        let root = match session.root_node()? {
             Some(root) => root,
             None => {
                 eprintln!("expected a root node");
                 std::process::exit(1);
             }
         };
-        let children_before = session.child_count(root);
+        let children_before = session.child_count(root)?;
         let head = match session.tree_clean_children(root) {
             Ok(Some(head)) => head,
             Ok(None) => {
@@ -181,7 +176,8 @@ fn main() {
         }
         println!(
             "tree edit: {children_before} children before, {} after reattach",
-            session.child_count(root)
+            session.child_count(root)?
         );
     }
+    Ok(())
 }

@@ -28,6 +28,7 @@ export {
   GalleyError,
   MissingArtifactError,
   SessionClosedError,
+  StaleTreeError,
   ProcedureArguments,
   INVALID_NODE,
   Status,

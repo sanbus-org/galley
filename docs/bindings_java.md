@@ -88,7 +88,7 @@ The Panama FFI boundary is the only overhead over the C API:
 - `parse(byte[])` allocates a confined `Arena` per call (`arena.allocateFrom(ValueLayout.JAVA_BYTE, input)`) — no cached `Memory`; direct `ByteBuffer` is zero-copy via `MemorySegment.ofBuffer` (no allocation, no copy). Use `FileChannel` → `allocateDirect` → `flip()` → `rewind()` before each `parse` for benchmark-grade throughput. Heap `ByteBuffer` copies via `Arena` like `byte[]`.
 - `parse(String)` encodes to UTF-8 once per call (`String.getBytes(UTF_8)`). The session copies into its own storage so node text stays valid after return.
 
-Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods check that their session is still open and their parse generation still live, and throw after `session.close()` — a node reached from a hook stays valid until the next parse when its parse succeeds, and throws once a parse that failed has ended. A failed parse counts as a later parse: reading the previous tree throws (`GalleyClosedException` through existing handles, `GalleyException` with `ERROR_INVALID_NODE` from `snapshot()`) until a successful parse, while `lastInput()` keeps the last successful input.
+Node text, diagnostics, and expected-token data remain valid only until the next parse on the same session; every accessor copies before returning. `Node` methods throw `GalleyClosedException` after `session.close()`, and a node carries the core's parse generation, which the core checks on every call: a node reached from a hook stays valid until the next parse when its parse succeeds, and throws `StaleTreeException` once a later parse has run, or when its own parse failed. A failed parse counts as a later parse: reading the previous tree throws `StaleTreeException` (through existing handles, and from `nodeCount()` and `snapshot()`) until a successful parse, while `lastInput()` keeps the last successful input. A `null` node argument throws `NullPointerException`.
 
 ## Procedures
 
@@ -154,7 +154,7 @@ each with its own hooks; hooks run on the parsing thread.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
 of the same parse and, when the parse succeeds, for use after it until the
 session parses again. A node of a failed parse throws
-`GenerationInvalidatedException`. A node reads through the parse's hook door
+`StaleTreeException`. A node reads through the parse's hook door
 only inside a hook of that parse on the thread running it; from any other
 thread while the parse runs it throws a `GalleyException` with
 `ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
@@ -220,10 +220,11 @@ node's subtree, yielding one `Walker.WalkStep{node, depth,
 isSemanticError}` per step with the node itself at depth 0 — the shared
 runtime walker. `Walker` is `Iterable` and owns no native resource: it is never
 closed and takes no try-with-resources. The walker is bound to the parse
-generation that created it: stepping after the session parses again or
-closes throws `GalleyClosedException` instead of reading stale storage,
-so parsing with an abandoned walker still succeeds and the walker fails
-at its next step. `skipChildren()` prunes the last
+generation that created it: stepping after the session parses again throws
+`StaleTreeException` (after it closes, `GalleyClosedException`) instead of
+reading stale storage, so parsing with an abandoned walker still succeeds and
+the walker fails at its next step. `walk()` itself does not throw for a stale
+node; the first step does. `skipChildren()` prunes the last
 yielded node's children host-side, without a native call. Steps follow
 the live links, so edits between steps are visible, and a step whose
 position is no longer inside the walk's root (removed, or moved

@@ -4,7 +4,9 @@ package org.sanbus.galley;
  * Use after close: the named object is already closed. Thrown instead of a
  * generic {@link IllegalStateException} so catch sites can name the failure
  * instead of matching message text. Closes stay idempotent: closing twice
- * never throws.
+ * never throws. A handle whose tree is gone is a different failure and raises
+ * {@link StaleTreeException}: the session is still open, its tree is not the
+ * one the handle names.
  */
 public class GalleyClosedException extends IllegalStateException {
     private final String objectName;
@@ -21,16 +23,6 @@ public class GalleyClosedException extends IllegalStateException {
     protected GalleyClosedException(String objectName, String message) {
         super(message);
         this.objectName = objectName;
-    }
-
-    /**
-     * A handle bound to an older parse generation: unusable after its
-     * session parsed again, never a stale read. Prefer
-     * {@link GenerationInvalidatedException} at throw sites so callers can
-     * discriminate by type.
-     */
-    public static GalleyClosedException invalidated(String objectName) {
-        return new GenerationInvalidatedException(objectName);
     }
 
     /** The closed object named by this failure. */

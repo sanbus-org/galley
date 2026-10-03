@@ -11,10 +11,10 @@
  * its own session (the cross-thread refusal is covered by the Python and
  * Java suites).
  *
- * `newParser` resolves a parser of the keyvalue fixture; `SessionClosedError`
- * and `Status` come from the runtime's own entry so identity checks hold;
- * `collect` is that runtime's forced garbage collection, used by the
- * release scenario.
+ * `newParser` resolves a parser of the keyvalue fixture; `SessionClosedError`,
+ * `StaleTreeError` and `Status` come from the runtime's own entry so identity
+ * checks hold; `collect` is that runtime's forced garbage collection, used by
+ * the release scenario.
  */
 
 /**
@@ -36,7 +36,7 @@ function registerInternedNodes(snap, registry, limit) {
   return addresses;
 }
 
-export async function runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status, collect }) {
+export async function runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect }) {
   const decode = (bytes) => new TextDecoder().decode(bytes);
 
   await test("a refused parse leaves hook nodes and the published tree valid", async () => {
@@ -114,11 +114,11 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       });
       assert.throws(() => s.parse("alpha:12,beta:"), GalleyError);
       assert.ok(stashed.length >= 1);
-      assert.throws(() => stashed[0].text(), SessionClosedError);
-      assert.throws(() => s.text(stashed[0]), SessionClosedError);
+      assert.throws(() => stashed[0].text(), StaleTreeError);
+      assert.throws(() => s.text(stashed[0]), StaleTreeError);
       s.clearProcedures();
       s.parse("alpha:12,beta:3");
-      assert.throws(() => stashed[0].text(), SessionClosedError);
+      assert.throws(() => stashed[0].text(), StaleTreeError);
     } finally {
       s.close();
     }
@@ -135,7 +135,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       assert.equal(firstRoot.address, secondRoot.address);
       assert.ok(firstRoot !== secondRoot);
       assert.ok(secondRoot !== firstRoot);
-      assert.throws(() => firstRoot.text(), SessionClosedError);
+      assert.throws(() => firstRoot.text(), StaleTreeError);
       assert.equal(decode(secondRoot.text()), "alpha:12");
     } finally {
       s.close();
@@ -156,7 +156,6 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
         const node = args.currentNode();
         const count = s.childCount(node);
         trace.push(["count", count]);
-        trace.push(["valid", s.nodeValid(node)]);
         const kids = s.children(node);
         trace.push(["variableIndex", typeof s.variableIndex(node) === "number" || s.variableIndex(node) === null]);
         trace.push(["symbolName", s.symbolName(node)]);
@@ -319,11 +318,16 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     } catch (error) {
       expected = error;
     }
-    assert.ok(expected instanceof SessionClosedError);
-    assert.throws(
-      () => stale.walk(),
-      (error) => error instanceof SessionClosedError && error.message === expected.message,
-    );
+    assert.ok(expected instanceof StaleTreeError);
+    // A walk binds its cursor to the node's generation, so the refusal
+    // arrives at its first step, where the core checks — the same failure
+    // class, with the same message, every other node call raises.
+    const staleWalk = stale.walk();
+    assert.throws(() => staleWalk.next(), (error) => {
+      assert.ok(error instanceof StaleTreeError);
+      assert.match(error.message, /is stale/);
+      return true;
+    });
     const live = s.rootNode();
     s.close();
     expected = null;
@@ -333,10 +337,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       expected = error;
     }
     assert.ok(expected instanceof SessionClosedError);
-    assert.throws(
-      () => live.walk(),
-      (error) => error instanceof SessionClosedError && error.message === expected.message,
-    );
+    assert.throws(() => live.walk(), (error) => error instanceof SessionClosedError && error.message === expected.message);
   });
 
   await test("a walk step after removing the current node reports invalid node", async () => {
@@ -454,7 +455,7 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a failed parse drops the intern table", async () => {
+  await test("a failed parse leaves every handle of the wiped tree dead", async () => {
     const parser = await newParser();
     const s = await parser.openSession();
     try {
@@ -462,16 +463,15 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       const root = s.rootNode();
       const snap = s.snapshot();
       assert.ok(snap.node(root.address) === root);
-      // The failure publishes nothing: the pre-failure snapshot's node()
-      // never re-interns that generation — every call answers with a
-      // fresh, uninterned handle, and each reads as invalidated.
+      // The failure publishes nothing, so the core refuses the generation
+      // the snapshot's handles carry — identity aside, nothing reads.
       assert.throws(() => s.parse("gamma:"), (error) => error.code === Status.ErrorSyntax);
-      const first = snap.node(root.address);
-      const second = snap.node(root.address);
-      assert.ok(first !== root);
-      assert.ok(first !== second);
-      assert.throws(() => first.text(), SessionClosedError);
-      // The recovery parse interns its own generation afresh.
+      assert.throws(() => snap.node(root.address).text(), StaleTreeError);
+      assert.throws(() => s.childCount(root), StaleTreeError);
+      assert.throws(() => s.nodeCount(), StaleTreeError);
+      // The recovery parse stamps a newer generation, which takes the
+      // intern table over: its nodes are one object per address again,
+      // and the dead generation never comes back into it.
       s.parse("alpha:12,beta:3");
       const recovered = s.rootNode();
       assert.ok(recovered !== root);
@@ -513,57 +513,81 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     );
   });
 
-  await test("a failed published-generation read drops nothing and UNKNOWN never interns", async () => {
+  await test("nothing published refuses instead of answering", async () => {
+    // Before any parse there is no tree: rootNode is the one "nothing here"
+    // probe and answers null, and every other session-door read raises the
+    // stale-tree error rather than reporting a zero.
     const parser = await newParser();
     const s = await parser.openSession();
-    // The fixture's default procedures read nodes while a parse runs,
-    // which would re-adopt any table state this test sets up: only this
-    // test's own hook may cross the gate.
-    s.clearProcedures();
-    const port = s.port;
-    const realPublishedGeneration = port.publishedGeneration;
-    const failingRead = () => ({ status: Status.ErrorSessionInUse, generation: 0n });
-    let stashed = null;
-    // Reading inside the hook interns the parse's own generation, so the
-    // table holds a handle of exactly the parse whose published read fails.
-    s.installProcedure("reduction_Pair", (args) => {
-      if (stashed === null) stashed = args.currentNode();
-    });
     try {
-      s.parse("alpha:12,beta:3");
-      const root = s.rootNode();
-      const snap = s.snapshot();
-      assert.ok(snap.node(root.address) === root);
-      // A parse that succeeds while its published-generation read fails
-      // stamps UNKNOWN: dropping on that difference would discard the
-      // live table the hook just interned into.
-      stashed = null;
-      port.publishedGeneration = failingRead;
+      assert.equal(s.rootNode(), null);
+      assert.throws(() => s.nodeCount(), StaleTreeError);
+      assert.throws(() => s.snapshot(), StaleTreeError);
+      // A parse that publishes nothing leaves the same answer behind.
+      assert.throws(() => s.parse("alpha:"), GalleyError);
+      assert.equal(s.rootNode(), null);
+      assert.throws(() => s.nodeCount(), StaleTreeError);
+      assert.throws(() => s.snapshot(), StaleTreeError);
       s.parse("alpha:12");
-      port.publishedGeneration = realPublishedGeneration;
-      assert.ok(stashed !== null);
-      const parseTree = s.snapshot();
-      assert.ok(parseTree.node(stashed.address) === stashed);
-      // With the hook silent (stashed is set), a real read moves the
-      // published generation past the table and drops it — correctly:
-      // the tree underneath stays live.
-      s.parse("gamma:1");
-      // The failing read then stamps UNKNOWN over the empty table, and
-      // the snapshot's UNKNOWN node() must never make the table adopt
-      // it — repeated reads stay fresh handles.
-      port.publishedGeneration = failingRead;
-      s.parse("alpha:12");
-      const unknownSnap = s.snapshot();
-      assert.ok(unknownSnap.count > 0);
-      assert.ok(unknownSnap.node(0) !== unknownSnap.node(0));
-      // Restoring the read lets the next node adopt the live generation.
-      port.publishedGeneration = realPublishedGeneration;
-      const live = s.rootNode();
-      assert.ok(live !== null);
-      assert.ok(s.snapshot().node(live.address) === live);
+      assert.ok(s.nodeCount() > 0);
     } finally {
-      port.publishedGeneration = realPublishedGeneration;
       s.close();
     }
   });
+
+  await test("use after close is not a stale tree", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    s.parse("alpha:12,beta:3");
+    const root = s.rootNode();
+    s.close();
+    // The closed session has its own error: a tree being gone is a
+    // different failure, and neither stands in for the other.
+    for (const use of [() => root.text(), () => s.nodeCount(), () => s.rootNode(), () => s.snapshot()]) {
+      let raised = null;
+      try {
+        use();
+      } catch (error) {
+        raised = error;
+      }
+      assert.ok(raised instanceof SessionClosedError, `${raised} is not the closed-session error`);
+      assert.ok(!(raised instanceof StaleTreeError), `${raised} stands in for the stale-tree error`);
+    }
+  });
+
+  await test("a stale node cannot edit the tree that replaced it", async () => {
+    // The edit gate is the read gate: every edit carrying a parse-1 node
+    // refuses, whichever node the other argument is, so a dead tree is
+    // never edited by accident.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse("alpha:12");
+      const stale = s.rootNode();
+      const staleChild = stale.firstChild();
+      s.parse("alpha:12,beta:3");
+      const fresh = s.rootNode();
+      const freshChild = fresh.firstChild();
+      for (const edit of [
+        () => stale.cleanChildren(),
+        () => stale.appendChildren(freshChild),
+        () => fresh.appendChildren(staleChild),
+        () => s.removeSelf(stale),
+        () => s.removeSiblings(stale, 1),
+        () => s.insertBefore(stale, freshChild),
+        () => s.insertAfter(stale, freshChild),
+        () => s.insertAfter(freshChild, stale),
+        () => s.insertChildrenAt(stale, 0, freshChild),
+        () => s.insertChildrenAt(freshChild, 0, staleChild),
+        () => s.removeChildrenAt(stale, 0, 1),
+      ]) {
+        assert.throws(edit, StaleTreeError);
+      }
+      // The fresh tree is untouched by every refusal.
+      assert.ok(s.childCount(fresh) > 0);
+    } finally {
+      s.close();
+    }
+  });
+
 }

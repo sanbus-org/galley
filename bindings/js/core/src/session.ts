@@ -7,10 +7,10 @@
  * this constructor.
  */
 
-import { INVALID_NODE, Status } from "./constants.ts";
+import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
-import { GalleyError, SessionClosedError } from "./errors.ts";
+import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
 import type { FfiPort, Handle, SessionCOptions, SnapshotColumns } from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
@@ -65,86 +65,94 @@ export interface TreeSnapshot extends SnapshotColumns {
 }
 
 /**
- * The published-generation cache value that means "ask the core again": a
- * refresh that failed (a parse started in between) leaves the cache
- * unknown instead of writing 0n, which would read as "nothing published".
- * No real generation is negative, so no handle ever matches it.
+ * What a stale-tree failure says, whichever door or crossing found the tree
+ * gone: what happened and what to do next.
  */
-const UNKNOWN_GENERATION = -1n;
+const STALE_TREE_MESSAGE =
+  "this handle's tree is stale: the session parsed again since; read rootNode() for a current node";
 
 function isInvalid(addr: bigint): boolean {
   return addr === INVALID_NODE;
 }
 
 /**
- * The session door as an address-level crossing: the galley_node_* family
- * over the session handle, which the core refuses while a parse runs.
+ * The session door as an address-level crossing: the `galley_node_*` family
+ * over the session handle. Every call carries the generation it addresses,
+ * which the core compares against the published tree's, so this binding
+ * keeps no cached copy of that generation and no per-call state: the caller
+ * passes the node's own generation, or the one `rootNode()` stamped.
  */
 class SessionDoor implements NodeDoor {
-  readonly isHook = false;
+  readonly parseGeneration = null;
   readonly #port: FfiPort;
   readonly #handle: () => Handle;
-  readonly #generation: () => bigint;
-  readonly #check: (status: number) => void;
+  /** The session that owns this door, for the one refusal conversion. */
+  readonly #session: Session;
 
-  constructor(port: FfiPort, handle: () => Handle, generation: () => bigint, check: (status: number) => void) {
+  constructor(session: Session, port: FfiPort, handle: () => Handle) {
+    this.#session = session;
     this.#port = port;
     this.#handle = handle;
-    this.#generation = generation;
-    this.#check = check;
   }
 
-  get generation(): bigint {
-    return this.#generation();
+  /**
+   * Throws the core's refusal when `status` is negative. Every crossing
+   * goes through here, so a refusal is never a value a caller could
+   * mistake for an answer. A status is always a Number; a value that is a
+   * BigInt (an address) is never a status.
+   */
+  #check(status: number): void {
+    if (status < 0) throw this.#session.errorFromStatus(status);
   }
 
-  nodeValid(address: bigint): boolean {
-    return this.#port.nodeValid(this.#handle(), address);
+  #cross<T>(value: T | number): T {
+    if (typeof value === "number" && value < 0) throw this.#session.errorFromStatus(value);
+    return value as T;
   }
 
-  childCount(address: bigint): number {
-    return this.#port.childCount(this.#handle(), address);
+  childCount(generation: number, address: bigint): number {
+    return this.#cross(this.#port.childCount(this.#handle(), generation, address));
   }
 
-  firstChild(address: bigint): bigint {
-    return this.#port.firstChild(this.#handle(), address);
+  firstChild(generation: number, address: bigint): bigint {
+    return this.#cross<bigint>(this.#port.firstChild(this.#handle(), generation, address));
   }
 
-  lastChild(address: bigint): bigint {
-    return this.#port.lastChild(this.#handle(), address);
+  lastChild(generation: number, address: bigint): bigint {
+    return this.#cross<bigint>(this.#port.lastChild(this.#handle(), generation, address));
   }
 
-  nextSibling(address: bigint): bigint {
-    return this.#port.nextSibling(this.#handle(), address);
+  nextSibling(generation: number, address: bigint): bigint {
+    return this.#cross<bigint>(this.#port.nextSibling(this.#handle(), generation, address));
   }
 
-  priorSibling(address: bigint): bigint {
-    return this.#port.priorSibling(this.#handle(), address);
+  priorSibling(generation: number, address: bigint): bigint {
+    return this.#cross<bigint>(this.#port.priorSibling(this.#handle(), generation, address));
   }
 
-  parent(address: bigint): bigint {
-    return this.#port.parent(this.#handle(), address);
+  parent(generation: number, address: bigint): bigint {
+    return this.#cross<bigint>(this.#port.parent(this.#handle(), generation, address));
   }
 
-  text(address: bigint): Uint8Array | null {
-    return this.#port.nodeText(this.#handle(), address);
+  text(generation: number, address: bigint): Uint8Array {
+    return this.#cross(this.#port.nodeText(this.#handle(), generation, address));
   }
 
-  symbolNameBytes(address: bigint): Uint8Array | null {
-    return this.#port.nodeSymbolName(this.#handle(), address);
+  symbolNameBytes(generation: number, address: bigint): Uint8Array {
+    return this.#cross(this.#port.nodeSymbolName(this.#handle(), generation, address));
   }
 
-  span(address: bigint): [bigint, bigint] | null {
-    return this.#port.nodeSpan(this.#handle(), address);
+  span(generation: number, address: bigint): [bigint, bigint] {
+    return this.#cross(this.#port.nodeSpan(this.#handle(), generation, address));
   }
 
-  lineColumn(address: bigint): [number, number] | null {
-    return this.#port.nodeLineColumn(this.#handle(), address);
+  lineColumn(generation: number, address: bigint): [number, number] {
+    return this.#cross(this.#port.nodeLineColumn(this.#handle(), generation, address));
   }
 
-  variableIndex(address: bigint): number | null {
-    const index = this.#port.nodeVariableIndex(this.#handle(), address);
-    if (index === -1) return null;
+  variableIndex(generation: number, address: bigint): number | null {
+    const index = this.#port.nodeVariableIndex(this.#handle(), generation, address);
+    if (index === null) return null;
     this.#check(index);
     return index;
   }
@@ -153,42 +161,42 @@ class SessionDoor implements NodeDoor {
     return this.#port.walkNext(this.#handle(), cursor);
   }
 
-  cleanChildren(address: bigint): bigint {
-    const { status, head } = this.#port.treeCleanChildren(this.#handle(), address);
+  cleanChildren(generation: number, address: bigint): bigint {
+    const { status, head } = this.#port.treeCleanChildren(this.#handle(), generation, address);
     this.#check(status);
     return head;
   }
 
-  appendChildren(parent: bigint, chain: bigint): void {
-    this.#check(this.#port.treeAppendChildren(this.#handle(), parent, chain));
+  appendChildren(generation: number, parent: bigint, chain: bigint): void {
+    this.#check(this.#port.treeAppendChildren(this.#handle(), generation, parent, chain));
   }
 
-  insertBefore(target: bigint, chain: bigint): void {
-    this.#check(this.#port.treeInsertBefore(this.#handle(), target, chain));
+  insertBefore(generation: number, target: bigint, chain: bigint): void {
+    this.#check(this.#port.treeInsertBefore(this.#handle(), generation, target, chain));
   }
 
-  insertAfter(target: bigint, chain: bigint): void {
-    this.#check(this.#port.treeInsertAfter(this.#handle(), target, chain));
+  insertAfter(generation: number, target: bigint, chain: bigint): void {
+    this.#check(this.#port.treeInsertAfter(this.#handle(), generation, target, chain));
   }
 
-  removeSiblings(address: bigint, count: number): bigint {
-    const { status, head } = this.#port.treeRemoveSiblings(this.#handle(), address, count);
+  removeSiblings(generation: number, address: bigint, count: number): bigint {
+    const { status, head } = this.#port.treeRemoveSiblings(this.#handle(), generation, address, count);
     this.#check(status);
     return head;
   }
 
-  removeSelf(address: bigint): bigint {
-    const { status, head } = this.#port.treeRemoveSelf(this.#handle(), address);
+  removeSelf(generation: number, address: bigint): bigint {
+    const { status, head } = this.#port.treeRemoveSelf(this.#handle(), generation, address);
     this.#check(status);
     return head;
   }
 
-  insertChildrenAt(parent: bigint, index: number, chain: bigint): void {
-    this.#check(this.#port.treeInsertChildrenAt(this.#handle(), parent, index, chain));
+  insertChildrenAt(generation: number, parent: bigint, index: number, chain: bigint): void {
+    this.#check(this.#port.treeInsertChildrenAt(this.#handle(), generation, parent, index, chain));
   }
 
-  removeChildrenAt(parent: bigint, index: number, count: number): bigint {
-    const { status, head } = this.#port.treeRemoveChildrenAt(this.#handle(), parent, index, count);
+  removeChildrenAt(generation: number, parent: bigint, index: number, count: number): bigint {
+    const { status, head } = this.#port.treeRemoveChildrenAt(this.#handle(), generation, parent, index, count);
     this.#check(status);
     return head;
   }
@@ -258,28 +266,18 @@ export class Session implements HookOwner {
    */
   #dispatching = false;
   /**
-   * The core's generation of this session's published tree, as last read
-   * from the core: after every parse the core did not refuse, on close, and
-   * whenever a handle's generation disagrees with it; 0n when nothing is
-   * published, `UNKNOWN_GENERATION` when a read failed and the next use must
-   * ask again. Hosts never count generations, they cache what the core
-   * reports.
-   */
-  #publishedGeneration = 0n;
-  /**
-   * The live generation's interned node handles, indexed by address (the
+   * The newest generation's interned node handles, indexed by address (the
    * core's addresses are dense node indices), with the generation they
    * belong to; null when nothing is interned. One object per (session,
-   * generation, address) while that generation is live, so `===` is the
-   * sanctioned identity — "the same node of the same parse". Strong
-   * rather than weak: the table retains exactly the live tree (~82
-   * B/node) until the finish gate drops it or `close()` clears it, never
-   * a superseded parse's nodes.
+   * generation, address), so `===` is the sanctioned identity — "the same
+   * node of the same parse". Strong rather than weak (~82 B/node): the table
+   * is replaced when a node of a newer generation arrives and cleared by
+   * `close()`, so it holds one parse's nodes and never a superseded one's.
    */
-  #internGeneration: bigint | null = null;
+  #internGeneration: number | null = null;
   #internedNodes: (Node | undefined)[] = [];
   /** The session door, crossed by every call outside a hook dispatch. */
-  readonly #sessionDoor: NodeDoor;
+  readonly #sessionDoor: SessionDoor;
 
   /**
    * Takes a bound port: factories resolve the backend first, so a
@@ -299,12 +297,7 @@ export class Session implements HookOwner {
     );
     const merged = { ...defaultOptions(), ...options };
     this.#port = port;
-    this.#sessionDoor = new SessionDoor(
-      port,
-      () => this.#requireHandle(),
-      () => this.#publishedGeneration,
-      (status) => this.#checkStatus(status),
-    );
+    this.#sessionDoor = new SessionDoor(this, port, () => this.#requireHandle());
 
     const hasNonDefault =
       options.maxErrors !== undefined ||
@@ -354,69 +347,41 @@ export class Session implements HookOwner {
    * this session's running parse, that parse's hook door; everywhere else
    * the session door, which the core refuses while a parse runs. The only
    * place the choice is made.
+   *
    */
   #door(): NodeDoor {
     this.#requireHandle();
-    return this.#dispatching && this.#parseDoor !== null ? this.#parseDoor : this.#sessionDoor;
+    if (this.#dispatching && this.#parseDoor !== null) return this.#parseDoor;
+    return this.#sessionDoor;
   }
 
   /**
-   * Publishes a fresh published-generation reading. Stamping alone never
-   * touches the intern table: a newer generation takes it over lazily, at
-   * the first node it creates, and the finish gate drops it outright when
-   * the published generation differs from the table's (except UNKNOWN,
-   * which names no generation and drops nothing).
+   * The published tree's root and generation, read from the core in one
+   * crossing — the only source of that generation, and the one "is there a
+   * tree here" probe. Nothing published is `{ root: INVALID_NODE,
+   * generation: 0n }`; a refusal throws.
    */
-  #stampPublished(generation: bigint): void {
-    this.#publishedGeneration = generation;
-  }
-
-  /**
-   * Re-reads the published generation from the core into the cache. A
-   * parse in flight makes the core refuse with `ErrorSessionInUse`, which
-   * throws and leaves the cache as it was.
-   */
-  #refreshPublishedGeneration(): void {
-    const { status, generation } = this.#port.publishedGeneration(this.#requireHandle());
-    this.#checkStatus(status);
-    this.#stampPublished(generation);
-  }
-
-  /**
-   * Re-reads the published generation without throwing: a refusal (a
-   * parse in flight) leaves the cache exactly as it was, which is still
-   * the parse a snapshot's columns come from.
-   */
-  #refreshPublishedGenerationQuietly(): void {
-    const { status, generation } = this.#port.publishedGeneration(this.#requireHandle());
-    if (status >= 0) this.#stampPublished(generation);
-  }
-
-  /**
-   * The single session-door generation gate: passes only the generation of
-   * the tree the core published. A mismatch first asks the core again,
-   * because the cache can lag it and a parse in flight must report
-   * `ErrorSessionInUse` rather than a stale handle.
-   * @internal
-   */
-  requireSessionGeneration(generation: bigint, what: string): void {
-    if (generation !== 0n && generation === this.#publishedGeneration) return;
-    this.#refreshPublishedGeneration();
-    if (generation !== 0n && generation === this.#publishedGeneration) return;
-    throw new SessionClosedError(`${what} is invalidated`);
+  #published(): { root: bigint; generation: number } {
+    const { status, root, generation } = this.#port.rootNode(this.#requireHandle());
+    if (status < 0) throw this.errorFromStatus(status);
+    return { root, generation };
   }
 
   /**
    * The single gate for a node argument crossing `door`: a `Node` must
-   * belong to this session and carry the generation the door accepts,
-   * because the crossing sends a bare address and native storage only
-   * bounds-checks it, so a node of another session or generation would
-   * alias whichever node holds that index here. A bare address never
-   * reaches the crossing: {@link nodeAddress} refuses it at entry, because
-   * it carries no session and no generation to vouch for it.
+   * belong to this session, and on the hook door carry the running parse's
+   * generation, because the crossing sends a bare address and native storage
+   * only bounds-checks it, so a node of another session or generation would
+   * alias whichever node holds that index here. The session door takes the
+   * node's own generation as an argument and the core owns that comparison.
+   * A bare address never reaches the crossing: {@link nodeAddress} refuses
+   * it at entry, because it carries no session and no generation to vouch
+   * for it. Callers pass `node.generation` to the crossing: on the hook door
+   * this gate has just proved it is the parse's.
    *
    * @throws TypeError when `node` is not a `Node` or belongs to a
    *         different session.
+   * @throws StaleTreeError on the hook door when `node` is of another parse.
    * @internal
    */
   admit(node: Node, door: NodeDoor): bigint {
@@ -425,13 +390,21 @@ export class Session implements HookOwner {
     if (node.session !== this) {
       throw new TypeError("node belongs to a different session than this operation");
     }
-    if (door.isHook) {
-      if (node.generation === 0n || node.generation !== door.generation) {
-        throw new SessionClosedError("node is invalidated");
-      }
-    } else {
-      this.requireSessionGeneration(node.generation, "node");
+    if (door.parseGeneration !== null && node.generation !== door.parseGeneration) {
+      throw this.errorFromStatus(Status.ErrorStaleTree);
     }
+    return address;
+  }
+
+  /**
+   * The address of `chain`, the second node of an operation on `node`. A
+   * call hands the core one generation, so both nodes must carry it: an
+   * operation mixing two trees is refused here instead of acting on a chain
+   * from another parse.
+   */
+  #admitChain(node: Node, chain: Node, door: NodeDoor): bigint {
+    const address = this.admit(chain, door);
+    if (chain.generation !== node.generation) throw this.errorFromStatus(Status.ErrorStaleTree);
     return address;
   }
 
@@ -451,27 +424,16 @@ export class Session implements HookOwner {
    * `Node` constructor it calls demands a token this module never
    * exports.
    */
-  #nodeForGeneration(generation: bigint, address: bigint): Node {
-    // UNKNOWN names no parse at all: it never interns, so each read
-    // answers a fresh, uninterned handle. There is no closed-session
-    // branch: every post-close read throws SessionClosedError before
-    // reaching this gate, and a close inside a hook aborts in the core.
-    if (generation === UNKNOWN_GENERATION) {
-      return createNode(this, address, generation);
-    }
+  #nodeForGeneration(generation: number, address: bigint): Node {
+    // There is no closed-session branch: every post-close read throws
+    // SessionClosedError before reaching this gate, and a close inside a
+    // hook aborts in the core.
     if (generation !== this.#internGeneration) {
       const tableGeneration = this.#internGeneration;
-      if (tableGeneration !== null) {
+      if (tableGeneration !== null && generation < tableGeneration) {
         // Only a newer generation takes the table over; an older one is
-        // dead and never re-interned.
-        if (generation < tableGeneration) return createNode(this, address, generation);
-      } else if (
-        // An empty table adopts only what is live now: the published
-        // generation, or the running parse's own (its hooks build the
-        // tree it may publish).
-        generation !== this.#publishedGeneration &&
-        (this.#parseDoor === null || generation !== this.#parseDoor.generation)
-      ) {
+        // dead and never re-interned. Which generation is live is the
+        // core's business — every read of this handle asks it.
         return createNode(this, address, generation);
       }
       this.#internGeneration = generation;
@@ -485,19 +447,9 @@ export class Session implements HookOwner {
     return node;
   }
 
-  /**
-   * Drops the intern table: its generation is dead (the published one
-   * moved on or is gone) or the session closed, so the handles it
-   * retained strongly must be released rather than carried.
-   */
-  #dropInternedNodes(): void {
-    this.#internGeneration = null;
-    this.#internedNodes = [];
-  }
-
-  /** Wraps an address read through `door`; invalid becomes null. */
-  #wrap(door: NodeDoor, address: bigint): Node | null {
-    return isInvalid(address) ? null : this.#nodeForGeneration(door.generation, address);
+  /** Wraps an address read at `generation`; invalid becomes null. */
+  #wrap(generation: number, address: bigint): Node | null {
+    return isInvalid(address) ? null : this.#nodeForGeneration(generation, address);
   }
 
   #requirePort(): FfiPort {
@@ -525,7 +477,18 @@ export class Session implements HookOwner {
     return s ?? "unknown galley error";
   }
 
-  #errorFromStatus(status: number, fallback?: string): GalleyError {
+  /**
+   * The one status-to-failure conversion, shared with {@link SessionDoor}
+   * so no crossing spells one out. A stale tree is one failure however it
+   * arrived — the core's own stale status, or a walk step — so it is always
+   * the `StaleTreeError` subclass, and `instanceof GalleyError` still
+   * catches it.
+   * @internal
+   */
+  errorFromStatus(status: number, fallback?: string): GalleyError {
+    if (status === Status.ErrorStaleTree) {
+      return new StaleTreeError(STALE_TREE_MESSAGE);
+    }
     let diag: Diagnostic | null = null;
     try {
       if (this.#handle !== null && this.#port.hasDiagnostic(this.#handle)) {
@@ -540,7 +503,7 @@ export class Session implements HookOwner {
   }
 
   #checkStatus(status: number, fallback?: string): void {
-    if (status < 0) throw this.#errorFromStatus(status, fallback);
+    if (status < 0) throw this.errorFromStatus(status, fallback);
   }
 
   // -- procedures (this session's own hooks) --
@@ -660,11 +623,11 @@ export class Session implements HookOwner {
     // here on, and the empty table can never adopt a lingering parse
     // door's generation.
     this.#parseDoor = null;
-    this.#stampPublished(0n);
     // Nothing is live on a closed session: the table must not retain the
     // handles it holds strongly, or the session would keep its whole tree
     // reachable after close.
-    this.#dropInternedNodes();
+    this.#internGeneration = null;
+    this.#internedNodes = [];
   }
 
   /** For `using session = ...` (Explicit Resource Management). */
@@ -695,18 +658,14 @@ export class Session implements HookOwner {
 
   /**
    * Single gate for every parse leg: runs the native call, then drops the
-   * parse's door and reads the core's published generation, so handles of
-   * earlier parses fail instead of reading reallocated storage (a failed
-   * parse publishes nothing: 0n; a failed read leaves the cache unknown).
-   * The intern table is dropped here when the published generation differs
-   * from the table's — never on a failed read (UNKNOWN differs from
-   * everything but names nothing) — for that parse's nodes are dead weight
-   * now, and the next node created re-adopts whatever generation is live. A parse the
-   * core refused with `ErrorSessionInUse` changed nothing, so it reads
-   * nothing and leaves every handle, the running parse's door, and its
-   * intern table alone. Parsing itself never throws merely because a
-   * walker is open. The hooks were fixed by the last commit, so nothing
-   * is synchronized here.
+   * parse's door. Nothing else is recorded: the core owns which generation
+   * is live, and every read of a handle asks it, so this binding keeps no
+   * copy of it to fall behind. The intern table needs no drop here either —
+   * the next node created at a newer generation takes it over. A parse the
+   * core refused with `ErrorSessionInUse` changed nothing, so it leaves the
+   * running parse's door and its intern table alone. Parsing itself never
+   * throws merely because a walker is open. The hooks were fixed by the
+   * last commit, so nothing is synchronized here.
    */
   #finishParse(nativeParse: () => number): number {
     let status: number;
@@ -720,29 +679,26 @@ export class Session implements HookOwner {
       // The parse is over: its door dies with it. A refused parse started
       // nothing, so it leaves the running parse's door alone.
       this.#parseDoor = null;
-      const published = this.#port.publishedGeneration(this.#requireHandle());
-      this.#stampPublished(published.status < 0 ? UNKNOWN_GENERATION : published.generation);
-      if (
-        this.#internGeneration !== null &&
-        // A failed read names no generation: UNKNOWN differs from every
-        // table's, and dropping on that difference would discard a table
-        // that may still be the live one.
-        this.#publishedGeneration !== UNKNOWN_GENERATION &&
-        this.#internGeneration !== this.#publishedGeneration
-      ) {
-        this.#dropInternedNodes();
-      }
     }
     if (status < 0) {
-      throw this.#errorFromStatus(status);
+      throw this.errorFromStatus(status);
     }
     return status;
   }
 
   // -- arena -----------------------------------------------------------
 
+  /**
+   * Node count of the published tree. Nothing published is the core's
+   * stale-tree refusal (generation 0 is never live), never a zero.
+   */
   nodeCount(): number {
-    return this.port.nodeCount(this.#requireHandle());
+    const generation = this.#published().generation;
+    const count = this.port.nodeCount(this.#requireHandle(), generation);
+    if (typeof count !== "number" || count < 0) {
+      throw this.errorFromStatus(count as number);
+    }
+    return count;
   }
 
   reserveNodes(capacity: number | bigint): void {
@@ -757,26 +713,20 @@ export class Session implements HookOwner {
 
   // -- navigation ------------------------------------------------------
 
+  /**
+   * Root of the published tree, or null when nothing is published — the one
+   * "is there a tree here" probe. The returned node carries the generation
+   * the core reported, which every later read hands back to the core.
+   */
   rootNode(): Node | null {
-    const h = this.#requireHandle();
-    // Stamp from a fresh read of the core, never the cache: a refusal (a
-    // parse is in flight) answers like the native refusal does.
-    const fresh = this.port.publishedGeneration(h);
-    if (fresh.status < 0) return null;
-    const address = this.port.rootNode(h);
-    if (isInvalid(address)) return null;
-    this.#stampPublished(fresh.generation);
-    return this.#nodeForGeneration(fresh.generation, address);
-  }
-
-  nodeValid(node: Node): boolean {
-    const door = this.#door();
-    return door.nodeValid(this.admit(node, door));
+    const { root, generation } = this.#published();
+    if (isInvalid(root)) return null;
+    return this.#nodeForGeneration(generation, root);
   }
 
   childCount(node: Node): number {
     const door = this.#door();
-    return door.childCount(this.admit(node, door));
+    return door.childCount(node.generation, this.admit(node, door));
   }
 
   /**
@@ -787,59 +737,66 @@ export class Session implements HookOwner {
   children(node: Node): Node[] {
     const door = this.#door();
     const address = this.admit(node, door);
-    const count = door.childCount(address);
+    const generation = node.generation;
+    const count = door.childCount(generation, address);
     const out: Node[] = [];
-    let child = door.firstChild(address);
+    let child = door.firstChild(generation, address);
     for (let i = 0; i < count; i++) {
-      const wrapped = this.#wrap(door, child);
+      const wrapped = this.#wrap(generation, child);
       if (wrapped === null) throw new Error("child count changed during iteration");
       out.push(wrapped);
-      child = door.nextSibling(child);
+      child = door.nextSibling(generation, child);
     }
     return out;
   }
 
   firstChild(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.firstChild(this.admit(node, door)));
+    return this.#wrap(node.generation, door.firstChild(node.generation, this.admit(node, door)));
   }
 
   lastChild(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.lastChild(this.admit(node, door)));
+    return this.#wrap(node.generation, door.lastChild(node.generation, this.admit(node, door)));
   }
 
   nextSibling(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.nextSibling(this.admit(node, door)));
+    return this.#wrap(node.generation, door.nextSibling(node.generation, this.admit(node, door)));
   }
 
   priorSibling(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.priorSibling(this.admit(node, door)));
+    return this.#wrap(node.generation, door.priorSibling(node.generation, this.admit(node, door)));
   }
 
   parent(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.parent(this.admit(node, door)));
+    return this.#wrap(node.generation, door.parent(node.generation, this.admit(node, door)));
   }
 
   /**
-   * Flat bulk read of the most recent successful parse in a single FFI
-   * crossing: one array slot per node address, plus `node(address)` — the
-   * one conversion from a stored address back to a node of the parse the
-   * columns describe. Walk `parent`/`firstChild`/`next` directly instead
-   * of one call per node.
+   * Flat bulk read of the published tree in a single FFI crossing: one
+   * array slot per node address, plus `node(address)` — the one conversion
+   * from a stored address back to a node of the parse the columns describe.
+   * Walk `parent`/`firstChild`/`next` directly instead of one call per
+   * node.
+   *
+   * Every leg carries one generation, so a parse that runs in between
+   * throws instead of returning columns that mix two trees.
    */
   snapshot(): TreeSnapshot {
     const handle = this.#requireHandle();
-    // Stamp from the published-generation cache: the columns describe the
-    // published tree, so node() must return nodes of exactly that parse. A
-    // refusal (a parse is in flight) leaves the cache as it was, which is
-    // still the parse the columns come from.
-    this.#refreshPublishedGenerationQuietly();
-    const generation = this.#publishedGeneration;
-    const columns = this.port.treeSnapshot(handle);
+    const generation = this.#published().generation;
+    const read = this.port.treeSnapshot(handle, generation);
+    if (typeof read !== "object") throw this.errorFromStatus(read as number);
+    const columns = read;
+    // The core marks a node without a variable with its non-negative
+    // `GALLEY_NO_VARIABLE`; this API's column spells it -1.
+    const variable = columns.variable;
+    for (let i = 0; i < variable.length; i++) {
+      if (variable[i] === NO_VARIABLE) variable[i] = -1n;
+    }
     const count = columns.count;
     const limit = BigInt(count);
     return {
@@ -874,14 +831,13 @@ export class Session implements HookOwner {
    * One step of a walk: crosses the door of the calling context — the
    * hook door inside a hook dispatch of this session's running parse, the
    * session door everywhere else — and maps the status onto the walker's
-   * contract: null at the end of the walk, a `SessionClosedError` when
-   * the walker's generation is not the tree's anymore, the session's own
-   * error for everything else.
+   * contract: null at the end of the walk, the session's own error (a
+   * `StaleTreeError` when the walker's generation is not the tree's anymore)
+   * for a refusal.
    * @internal
    */
   walkStep(cursor: ArrayBuffer): { node: bigint; depth: number; isSemanticError: boolean } | null {
     const status = this.#door().walkNext(cursor);
-    if (status === Status.ErrorStaleTree) throw new SessionClosedError("walker is invalidated");
     this.#checkStatus(status);
     if (status === 0) return null;
     const view = new DataView(cursor);
@@ -895,7 +851,7 @@ export class Session implements HookOwner {
 
   symbolNameBytes(node: Node): Uint8Array | null {
     const door = this.#door();
-    return door.symbolNameBytes(this.admit(node, door));
+    return door.symbolNameBytes(node.generation, this.admit(node, door));
   }
 
   symbolName(node: Node): string | null {
@@ -906,22 +862,22 @@ export class Session implements HookOwner {
 
   text(node: Node): Uint8Array | null {
     const door = this.#door();
-    return door.text(this.admit(node, door));
+    return door.text(node.generation, this.admit(node, door));
   }
 
   span(node: Node): [bigint, bigint] | null {
     const door = this.#door();
-    return door.span(this.admit(node, door));
+    return door.span(node.generation, this.admit(node, door));
   }
 
   lineColumn(node: Node): [number, number] | null {
     const door = this.#door();
-    return door.lineColumn(this.admit(node, door));
+    return door.lineColumn(node.generation, this.admit(node, door));
   }
 
   variableIndex(node: Node): number | null {
     const door = this.#door();
-    return door.variableIndex(this.admit(node, door));
+    return door.variableIndex(node.generation, this.admit(node, door));
   }
 
   lastPosition(): [number, number] | null {
@@ -1156,42 +1112,42 @@ export class Session implements HookOwner {
 
   appendChildren(parent: Node, chain: Node): void {
     const door = this.#door();
-    door.appendChildren(this.admit(parent, door), this.admit(chain, door));
+    door.appendChildren(parent.generation, this.admit(parent, door), this.#admitChain(parent, chain, door));
   }
 
   insertBefore(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertBefore(this.admit(target, door), this.admit(chain, door));
+    door.insertBefore(target.generation, this.admit(target, door), this.#admitChain(target, chain, door));
   }
 
   insertAfter(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertAfter(this.admit(target, door), this.admit(chain, door));
+    door.insertAfter(target.generation, this.admit(target, door), this.#admitChain(target, chain, door));
   }
 
   removeSiblings(node: Node, count: number): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.removeSiblings(this.admit(node, door), count));
+    return this.#wrap(node.generation, door.removeSiblings(node.generation, this.admit(node, door), count));
   }
 
   removeSelf(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.removeSelf(this.admit(node, door)));
+    return this.#wrap(node.generation, door.removeSelf(node.generation, this.admit(node, door)));
   }
 
   cleanChildren(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.cleanChildren(this.admit(node, door)));
+    return this.#wrap(node.generation, door.cleanChildren(node.generation, this.admit(node, door)));
   }
 
   insertChildrenAt(parent: Node, index: number, chain: Node): void {
     const door = this.#door();
-    door.insertChildrenAt(this.admit(parent, door), index, this.admit(chain, door));
+    door.insertChildrenAt(parent.generation, this.admit(parent, door), index, this.#admitChain(parent, chain, door));
   }
 
   removeChildrenAt(parent: Node, index: number, count: number): Node | null {
     const door = this.#door();
-    return this.#wrap(door, door.removeChildrenAt(this.admit(parent, door), index, count));
+    return this.#wrap(parent.generation, door.removeChildrenAt(parent.generation, this.admit(parent, door), index, count));
   }
 
   // -- symbol table ----------------------------------------------------
@@ -1227,6 +1183,18 @@ export interface WalkStep {
 // zeroed ArrayBuffer supplies it).
 const WALK_CURSOR_BYTES = 40;
 const WALK_OFFSET_GENERATION = 0;
+
+/**
+ * Writes a non-negative safe integer into the 8 cursor bytes at `offset` as
+ * two 32-bit halves, so the generation, a plain number everywhere else,
+ * never becomes a BigInt on its way into the cursor.
+ */
+function setUint64FromNumber(view: DataView, offset: number, value: number, littleEndian: boolean): void {
+  const low = value % 0x100000000;
+  const high = (value - low) / 0x100000000;
+  view.setUint32(offset + (littleEndian ? 0 : 4), low, littleEndian);
+  view.setUint32(offset + (littleEndian ? 4 : 0), high, littleEndian);
+}
 const WALK_OFFSET_ROOT = 8;
 const WALK_OFFSET_CURRENT = 16;
 const WALK_OFFSET_DEPTH = 24;
@@ -1256,8 +1224,8 @@ const WALK_OPTION_SKIP_SEMANTIC_ERRORS = 1;
  * Single-pass: iteration resumes, never restarts — a second loop
  * continues where the first left off. Bound to the core's parse
  * generation of the tree it was created over: stepping after the session
- * parses again or closes throws a `SessionClosedError` instead of
- * reading stale storage.
+ * parses again throws a `StaleTreeError` instead of reading stale storage,
+ * and stepping after it closes throws a `SessionClosedError`.
  */
 export class Walker implements IterableIterator<WalkStep> {
   #session: Session;
@@ -1277,7 +1245,7 @@ export class Walker implements IterableIterator<WalkStep> {
     token: symbol,
     session: Session,
     root: bigint,
-    generation: bigint,
+    generation: number,
     skipSemanticErrors: boolean,
     littleEndian: boolean,
     intern: (address: bigint) => Node,
@@ -1290,7 +1258,7 @@ export class Walker implements IterableIterator<WalkStep> {
     this.#intern = intern;
     this.#cursor = new ArrayBuffer(WALK_CURSOR_BYTES);
     const view = new DataView(this.#cursor);
-    view.setBigUint64(WALK_OFFSET_GENERATION, generation, littleEndian);
+    setUint64FromNumber(view, WALK_OFFSET_GENERATION, generation, littleEndian);
     view.setBigUint64(WALK_OFFSET_ROOT, root, littleEndian);
     view.setBigUint64(WALK_OFFSET_CURRENT, 0n, littleEndian);
     view.setUint32(WALK_OFFSET_DEPTH, 0, littleEndian);
@@ -1308,7 +1276,7 @@ export class Walker implements IterableIterator<WalkStep> {
     token: symbol,
     session: Session,
     root: bigint,
-    generation: bigint,
+    generation: number,
     skipSemanticErrors: boolean,
     littleEndian: boolean,
     intern: (address: bigint) => Node,

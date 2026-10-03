@@ -46,17 +46,23 @@
 
 /* Tolerant integer readers: BigInt when exact, Number otherwise (koffi
  * accepted both spellings, and the TypeScript side mixes them). Anything
- * else is a TypeError. */
+ * else is a TypeError. The BigInt read comes first: it is the common case
+ * (addresses) and answers napi_bigint_expected for anything else, so the
+ * type probe is paid only on the rarer Number path. */
 static bool get_u64(napi_env env, napi_value value, uint64_t *out) {
-  napi_valuetype type;
-  if (napi_typeof(env, value, &type) != napi_ok) return false;
-  if (type == napi_bigint) {
-    bool lossless = false;
-    if (napi_get_value_bigint_uint64(env, value, out, &lossless) != napi_ok || !lossless) {
+  bool lossless = false;
+  napi_status read = napi_get_value_bigint_uint64(env, value, out, &lossless);
+  if (read == napi_ok) {
+    if (!lossless) {
       napi_throw_type_error(env, NULL, "expected uint64");
       return false;
     }
     return true;
+  }
+  napi_valuetype type;
+  if (read != napi_bigint_expected || napi_typeof(env, value, &type) != napi_ok) {
+    napi_throw_type_error(env, NULL, "expected integer");
+    return false;
   }
   if (type == napi_number) {
     double number = 0;
@@ -93,6 +99,18 @@ static bool get_i64(napi_env env, napi_value value, int64_t *out) {
   }
   napi_throw_type_error(env, NULL, "expected integer");
   return false;
+}
+
+/* A parse generation: a plain JS Number (a counter, exact far below 2^53), so
+ * it crosses without a BigInt on either side. */
+static bool get_generation(napi_env env, napi_value value, uint64_t *out) {
+  int64_t generation = 0;
+  if (napi_get_value_int64(env, value, &generation) != napi_ok) {
+    napi_throw_type_error(env, NULL, "expected generation");
+    return false;
+  }
+  *out = (uint64_t)generation;
+  return true;
 }
 
 static bool get_i32(napi_env env, napi_value value, int32_t *out) {
@@ -140,6 +158,14 @@ static napi_value make_u64(napi_env env, uint64_t value) {
 static napi_value make_i64(napi_env env, int64_t value) {
   napi_value out;
   if (napi_create_bigint_int64(env, value, &out) != napi_ok) return NULL;
+  return out;
+}
+
+/* A status, count or generation as a JS Number: cheaper than a BigInt in both
+ * directions, and none of them nears 2^53. */
+static napi_value make_number(napi_env env, int64_t value) {
+  napi_value out;
+  if (napi_create_int64(env, value, &out) != napi_ok) return NULL;
   return out;
 }
 
@@ -216,19 +242,18 @@ typedef int (*fn_galley_has_procedures_t)(void);
 typedef long long (*fn_galley_last_input_t)(GalleySession *session, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_last_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
 typedef unsigned long long (*fn_galley_node_capacity_t)(GalleySession *session);
-typedef unsigned int (*fn_galley_node_child_count_t)(GalleySession *session, GalleyNodeAddress node);
-typedef unsigned long long (*fn_galley_node_count_t)(GalleySession *session);
-typedef GalleyNodeAddress (*fn_galley_node_first_child_t)(GalleySession *session, GalleyNodeAddress node);
-typedef int (*fn_galley_node_is_valid_t)(GalleySession *session, GalleyNodeAddress node);
-typedef GalleyNodeAddress (*fn_galley_node_last_child_t)(GalleySession *session, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_line_column_t)(GalleySession *session, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
-typedef GalleyNodeAddress (*fn_galley_node_next_sibling_t)(GalleySession *session, GalleyNodeAddress node);
-typedef GalleyNodeAddress (*fn_galley_node_parent_t)(GalleySession *session, GalleyNodeAddress node);
-typedef GalleyNodeAddress (*fn_galley_node_prior_sibling_t)(GalleySession *session, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_span_t)(GalleySession *session, GalleyNodeAddress node, unsigned long long *out_start, unsigned long long *out_len);
-typedef long long (*fn_galley_node_symbol_name_t)(GalleySession *session, GalleyNodeAddress node, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_node_text_t)(GalleySession *session, GalleyNodeAddress node, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_node_variable_index_t)(GalleySession *session, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_child_count_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_count_t)(GalleySession *session, unsigned long long generation);
+typedef long long (*fn_galley_node_first_child_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_last_child_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_line_column_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_node_next_sibling_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_parent_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_prior_sibling_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
+typedef long long (*fn_galley_node_span_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, unsigned long long *out_start, unsigned long long *out_len);
+typedef long long (*fn_galley_node_symbol_name_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_node_text_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, const char **out_data, size_t *out_len);
+typedef long long (*fn_galley_node_variable_index_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node);
 typedef long long (*fn_galley_parse_t)(GalleySession *session, const char *data, size_t len);
 typedef long long (*fn_galley_parse_file_t)(GalleySession *session, const char *path);
 typedef long long (*fn_galley_parser_type_t)(void);
@@ -256,7 +281,6 @@ typedef long long (*fn_galley_hook_node_span_t)(void *door, GalleyNodeAddress no
 typedef long long (*fn_galley_hook_node_line_column_t)(void *door, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
 typedef long long (*fn_galley_hook_tree_append_children_t)(void *door, GalleyNodeAddress parent, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_hook_tree_clean_children_t)(void *door, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef int (*fn_galley_hook_node_is_valid_t)(void *door, GalleyNodeAddress node);
 typedef long long (*fn_galley_hook_node_variable_index_t)(void *door, GalleyNodeAddress node);
 typedef long long (*fn_galley_hook_tree_insert_before_t)(void *door, GalleyNodeAddress target, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_hook_tree_insert_after_t)(void *door, GalleyNodeAddress target, GalleyNodeAddress first_node);
@@ -265,7 +289,6 @@ typedef long long (*fn_galley_hook_tree_remove_self_t)(void *door, GalleyNodeAdd
 typedef long long (*fn_galley_hook_tree_insert_children_at_t)(void *door, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
 typedef long long (*fn_galley_hook_tree_remove_children_at_t)(void *door, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_hook_generation_t)(void *door, unsigned long long *out_generation);
-typedef long long (*fn_galley_published_generation_t)(GalleySession *session, unsigned long long *out_generation);
 typedef long long (*fn_galley_recorded_context_count_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, unsigned long long diag_index, unsigned long long context_index, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
@@ -284,7 +307,7 @@ typedef long long (*fn_galley_recorded_recovery_terminal_t)(GalleySession *sessi
 typedef long long (*fn_galley_recorded_semantic_t)(GalleySession *session, unsigned long long diag_index, const char **out_variable, size_t *out_variable_len, const char **out_message, size_t *out_message_len);
 typedef long long (*fn_galley_recorded_unexpected_token_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_reserve_nodes_t)(GalleySession *session, unsigned long long capacity);
-typedef GalleyNodeAddress (*fn_galley_root_node_t)(GalleySession *session);
+typedef long long (*fn_galley_root_node_t)(GalleySession *session, GalleyNodeAddress *out_root, unsigned long long *out_generation);
 typedef long long (*fn_galley_semantic_error_count_t)(GalleySession *session);
 typedef GalleySession * (*fn_galley_session_create_t)(void);
 typedef GalleySession * (*fn_galley_session_create_ex_t)(const GalleyCOptions *options);
@@ -301,15 +324,15 @@ typedef unsigned long long (*fn_galley_symbol_count_t)(void);
 typedef int (*fn_galley_symbol_is_terminal_t)(GalleySession *session, unsigned long long index);
 typedef long long (*fn_galley_symbol_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_syntax_error_count_t)(GalleySession *session);
-typedef long long (*fn_galley_tree_append_children_t)(GalleySession *session, GalleyNodeAddress parent, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_clean_children_t)(GalleySession *session, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_insert_after_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_insert_before_t)(GalleySession *session, GalleyNodeAddress target, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_insert_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_remove_children_at_t)(GalleySession *session, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_remove_self_t)(GalleySession *session, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_remove_siblings_t)(GalleySession *session, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, unsigned long long capacity);
+typedef long long (*fn_galley_tree_append_children_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress parent, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_clean_children_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_insert_after_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress target, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_insert_before_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress target, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_insert_children_at_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
+typedef long long (*fn_galley_tree_remove_children_at_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_remove_self_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_remove_siblings_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
+typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, unsigned long long capacity);
 typedef int (*fn_galley_uses_verbatim_t)(void);
 typedef unsigned long long (*fn_galley_variable_count_t)(void);
 typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
@@ -365,7 +388,6 @@ typedef long long (*fn_galley_hook_walk_next_t)(void *door, GalleyWalkCursor *cu
   X(galley_hook_node_text) \
   X(galley_hook_tree_append_children) \
   X(galley_hook_tree_clean_children) \
-  X(galley_hook_node_is_valid) \
   X(galley_hook_node_variable_index) \
   X(galley_hook_tree_insert_before) \
   X(galley_hook_tree_insert_after) \
@@ -375,14 +397,12 @@ typedef long long (*fn_galley_hook_walk_next_t)(void *door, GalleyWalkCursor *cu
   X(galley_hook_tree_remove_children_at) \
   X(galley_hook_generation) \
   X(galley_hook_walk_next) \
-  X(galley_published_generation) \
   X(galley_last_input) \
   X(galley_last_position) \
   X(galley_node_capacity) \
   X(galley_node_child_count) \
   X(galley_node_count) \
   X(galley_node_first_child) \
-  X(galley_node_is_valid) \
   X(galley_node_last_child) \
   X(galley_node_line_column) \
   X(galley_node_next_sibling) \
@@ -672,6 +692,15 @@ static napi_value make_null(napi_env env) {
   return null_value;
 }
 
+/* The status a session-door refusal travels as: a negative Number, the one
+ * shape every session-door crossing in this addon uses, so the binding can
+ * raise the core's own failure instead of reading a null. The hook twins
+ * keep answering null, since their door exists only while its parse runs. */
+static napi_value status_or_value(napi_env env, long long status, napi_value value) {
+  if (status < 0) return make_number(env, status);
+  return value;
+}
+
 /* (data, len) out-pair with a status gate: negative fails, NULL data fails. */
 static napi_value out_bytes(napi_env env, long long status, const char *data, size_t len) {
   if (status < 0) return make_null(env);
@@ -754,6 +783,33 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])());                                                  \
   }
 
+/* The (session, generation, node) every session-door node crossing takes:
+ * the generation is the one the core compares against the published tree's.
+ * One parser for all of them, so none spells the argument checks itself. */
+static bool session_node_args(napi_env env, size_t argc, napi_value *argv,
+                              GalleySession **session, unsigned long long *generation,
+                              GalleyNodeAddress *node) {
+  if (!session_arg(env, argc, argv, session)) return false;
+  if (argc < 3) {
+    napi_throw_type_error(env, NULL, "expected generation and node");
+    return false;
+  }
+  uint64_t address = 0;
+  if (!get_generation(env, argv[1], generation) || !get_u64(env, argv[2], &address)) return false;
+  *node = (GalleyNodeAddress)address;
+  return true;
+}
+
+/* The generation alone, for the crossings that name no node (snapshot). */
+static bool generation_arg(napi_env env, size_t argc, napi_value *argv,
+                           unsigned long long *out) {
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected generation");
+    return false;
+  }
+  return get_generation(env, argv[1], out);
+}
+
 #define SESS_U64(cfn)                                                                      \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     GalleySession *session = NULL;                                                         \
@@ -775,30 +831,37 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                           \
   }
 
-#define SESS_NODE_U64(cfn)                                                                 \
-  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    GalleySession *session = NULL;                                                         \
-    if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    if (argc < 2) {                                                                        \
-      napi_throw_type_error(env, NULL, "expected node");                                   \
-      return NULL;                                                                         \
-    }                                                                                      \
-    uint64_t node = 0;                                                                     \
-    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_u64(env, (uint64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                 \
-  }
+/* A link's answer: the address as a BigInt (GALLEY_INVALID_NODE when the link
+ * does not exist), or the core's refusal as a negative Number, so no caller
+ * can mistake it for the link. */
+static napi_value link_result(napi_env env, long long address) {
+  if (address < 0) return make_number(env, address);
+  return make_u64(env, (uint64_t)address);
+}
 
-#define SESS_NODE_I64(cfn)                                                                 \
+/* The variable index as a Number, null for GALLEY_NO_VARIABLE, or the core's
+ * refusal as a negative Number: a node without a variable is a real answer,
+ * and the core never confuses it with a status. */
+static napi_value variable_index_result(napi_env env, long long index) {
+  if (index == GALLEY_NO_VARIABLE) return make_null(env);
+  return make_number(env, index);
+}
+
+/* A count as a Number; a count is never negative, so a negative answer is
+ * always the core's refusal. */
+static napi_value count_result(napi_env env, long long count) {
+  return make_number(env, count);
+}
+
+/* Session-door single-value crossings: (session, generation, node) -> one
+ * value, converted by `convert` (link, variable index, or count). */
+#define SESS_GEN_VALUE(cfn, convert)                                                       \
   static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
     GalleySession *session = NULL;                                                         \
-    if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    if (argc < 2) {                                                                        \
-      napi_throw_type_error(env, NULL, "expected node");                                   \
-      return NULL;                                                                         \
-    }                                                                                      \
-    uint64_t node = 0;                                                                     \
-    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                  \
+    unsigned long long generation = 0;                                                     \
+    GalleyNodeAddress node = 0;                                                            \
+    if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;    \
+    return convert(env, ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, generation, node));   \
   }
 
 #define SESS_NODE_INT(cfn)                                                                 \
@@ -812,19 +875,6 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
     return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                  \
-  }
-
-#define SESS_NODE_U32(cfn)                                                                 \
-  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    GalleySession *session = NULL;                                                         \
-    if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    if (argc < 2) {                                                                        \
-      napi_throw_type_error(env, NULL, "expected node");                                   \
-      return NULL;                                                                         \
-    }                                                                                      \
-    uint64_t node = 0;                                                                     \
-    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_u32(env, (uint32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                 \
   }
 
 #define SESS_INDEX_I64(cfn)                                                                \
@@ -917,7 +967,7 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
     }                                                                                      \
     uint64_t node = 0;                                                                     \
     if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(door, (GalleyNodeAddress)node)); \
+    return variable_index_result(env, ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(door, (GalleyNodeAddress)node)); \
   }
 
 NO_ARG_I64(galley_parser_type)
@@ -933,18 +983,45 @@ NO_ARG_INT(galley_stack_overflow_recovery_available)
 NO_ARG_U64(galley_symbol_count)
 NO_ARG_U64(galley_variable_count)
 
-SESS_U64(galley_node_count)
 SESS_U64(galley_node_capacity)
-SESS_U64(galley_root_node)
-SESS_NODE_U64(galley_node_first_child)
-SESS_NODE_U64(galley_node_last_child)
-SESS_NODE_U64(galley_node_next_sibling)
-SESS_NODE_U64(galley_node_prior_sibling)
-SESS_NODE_U64(galley_node_parent)
-SESS_NODE_INT(galley_node_is_valid)
+/* Node count of the tree `generation` names, as a Number; a negative answer
+ * is the core's refusal, which is what a count is never. */
+static napi_value method_galley_node_count(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
+  return make_number(env, ((fn_galley_node_count_t)lib->fn[SLOT_galley_node_count])(session, generation));
+}
+
+/* [root, generation] of the published tree: the one source of that
+ * generation and the one "is there a tree here" probe. A negative status
+ * heads the pair, and GALLEY_INVALID_NODE with 0 means nothing published. */
+static napi_value method_galley_root_node(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  GalleyNodeAddress root = GALLEY_INVALID_NODE;
+  unsigned long long generation = 0;
+  long long status = ((fn_galley_root_node_t)lib->fn[SLOT_galley_root_node])(session, &root, &generation);
+  napi_value result;
+  if (napi_create_object(env, &result) != napi_ok) return NULL;
+  napi_value status_value = make_number(env, status);
+  napi_value root_value = make_u64(env, (uint64_t)root);
+  napi_value generation_value = make_number(env, (int64_t)generation);
+  if (status_value == NULL || root_value == NULL || generation_value == NULL) return NULL;
+  if (napi_set_named_property(env, result, "status", status_value) != napi_ok) return NULL;
+  if (napi_set_named_property(env, result, "root", root_value) != napi_ok) return NULL;
+  if (napi_set_named_property(env, result, "generation", generation_value) != napi_ok) return NULL;
+  return result;
+}
+SESS_GEN_VALUE(galley_node_first_child, link_result)
+SESS_GEN_VALUE(galley_node_last_child, link_result)
+SESS_GEN_VALUE(galley_node_next_sibling, link_result)
+SESS_GEN_VALUE(galley_node_prior_sibling, link_result)
+SESS_GEN_VALUE(galley_node_parent, link_result)
 SESS_NODE_INT(galley_symbol_is_terminal)
-SESS_NODE_U32(galley_node_child_count)
-SESS_NODE_I64(galley_node_variable_index)
+SESS_GEN_VALUE(galley_node_child_count, count_result)
+SESS_GEN_VALUE(galley_node_variable_index, variable_index_result)
 SESS_I64(galley_diagnostic_kind)
 SESS_I64(galley_diagnostic_expected_count)
 SESS_I64(galley_diagnostic_context_count)
@@ -959,7 +1036,6 @@ SESS_INDEX_I64(galley_recorded_context_count)
 SESS_INDEX_I64(galley_recorded_diagnostic_recovery_kind)
 
 DOOR_NODE_U32(galley_hook_node_child_count)
-DOOR_NODE_INT(galley_hook_node_is_valid)
 DOOR_NODE_I64(galley_hook_node_variable_index)
 DOOR_NODE_U64(galley_hook_node_first_child)
 DOOR_NODE_U64(galley_hook_node_last_child)
@@ -1200,33 +1276,25 @@ static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t arg
 
 static napi_value method_galley_node_span(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   unsigned long long start = 0;
   unsigned long long len = 0;
-  long long status = ((fn_galley_node_span_t)lib->fn[SLOT_galley_node_span])(session, (GalleyNodeAddress)node, &start, &len);
-  return pair_u64_or_null(env, status, (uint64_t)start, (uint64_t)len);
+  long long status = ((fn_galley_node_span_t)lib->fn[SLOT_galley_node_span])(session, generation, node, &start, &len);
+  return status_or_value(env, status, pair_u64_or_null(env, status, (uint64_t)start, (uint64_t)len));
 }
 
 static napi_value method_galley_node_symbol_name(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = ((fn_galley_node_symbol_name_t)lib->fn[SLOT_galley_node_symbol_name])(session, (GalleyNodeAddress)node, &data, &len);
-  return out_bytes(env, status, data, len);
+  long long status = ((fn_galley_node_symbol_name_t)lib->fn[SLOT_galley_node_symbol_name])(session, generation, node, &data, &len);
+  return status_or_value(env, status, make_buffer_or_null(env, data, len));
 }
 
 /* Hook door: door-first twins of the node/tree accessors above. */
@@ -1311,33 +1379,25 @@ static napi_value method_galley_hook_tree_append_children(napi_env env, Lib *lib
 
 static napi_value method_galley_node_text(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   const char *data = NULL;
   size_t len = 0;
-  long long status = ((fn_galley_node_text_t)lib->fn[SLOT_galley_node_text])(session, (GalleyNodeAddress)node, &data, &len);
-  return out_bytes(env, status, data, len);
+  long long status = ((fn_galley_node_text_t)lib->fn[SLOT_galley_node_text])(session, generation, node, &data, &len);
+  return status_or_value(env, status, make_buffer_or_null(env, data, len));
 }
 
 static napi_value method_galley_node_line_column(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = ((fn_galley_node_line_column_t)lib->fn[SLOT_galley_node_line_column])(session, (GalleyNodeAddress)node, &line, &column);
-  return pair_u32_or_null(env, status, line, column);
+  long long status = ((fn_galley_node_line_column_t)lib->fn[SLOT_galley_node_line_column])(session, generation, node, &line, &column);
+  return status_or_value(env, status, pair_u32_or_null(env, status, line, column));
 }
 
 static bool typed_column(napi_env env, napi_value array, napi_typedarray_type want, void **data) {
@@ -1360,10 +1420,12 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
                                                  napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 10) {
-    napi_throw_type_error(env, NULL, "expected snapshot columns and capacity");
+  if (argc < 11) {
+    napi_throw_type_error(env, NULL, "expected generation, snapshot columns and capacity");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   void *parent = NULL;
   void *first_child = NULL;
   void *next = NULL;
@@ -1372,22 +1434,22 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
   void *span_start = NULL;
   void *span_len = NULL;
   void *is_semantic_error = NULL;
-  if (!typed_column(env, argv[1], napi_biguint64_array, &parent)) return NULL;
-  if (!typed_column(env, argv[2], napi_biguint64_array, &first_child)) return NULL;
-  if (!typed_column(env, argv[3], napi_biguint64_array, &next)) return NULL;
-  if (!typed_column(env, argv[4], napi_uint32_array, &child_count)) return NULL;
-  if (!typed_column(env, argv[5], napi_bigint64_array, &variable)) return NULL;
-  if (!typed_column(env, argv[6], napi_biguint64_array, &span_start)) return NULL;
-  if (!typed_column(env, argv[7], napi_biguint64_array, &span_len)) return NULL;
-  if (!typed_column(env, argv[8], napi_int32_array, &is_semantic_error)) return NULL;
+  if (!typed_column(env, argv[2], napi_biguint64_array, &parent)) return NULL;
+  if (!typed_column(env, argv[3], napi_biguint64_array, &first_child)) return NULL;
+  if (!typed_column(env, argv[4], napi_biguint64_array, &next)) return NULL;
+  if (!typed_column(env, argv[5], napi_uint32_array, &child_count)) return NULL;
+  if (!typed_column(env, argv[6], napi_bigint64_array, &variable)) return NULL;
+  if (!typed_column(env, argv[7], napi_biguint64_array, &span_start)) return NULL;
+  if (!typed_column(env, argv[8], napi_biguint64_array, &span_len)) return NULL;
+  if (!typed_column(env, argv[9], napi_int32_array, &is_semantic_error)) return NULL;
   uint64_t capacity = 0;
-  if (!get_u64(env, argv[9], &capacity)) return NULL;
+  if (!get_u64(env, argv[10], &capacity)) return NULL;
   long long status = ((fn_galley_tree_snapshot_t)lib->fn[SLOT_galley_tree_snapshot])(
-      session, (GalleyNodeAddress *)parent, (GalleyNodeAddress *)first_child,
+      session, generation, (GalleyNodeAddress *)parent, (GalleyNodeAddress *)first_child,
       (GalleyNodeAddress *)next, (unsigned int *)child_count, (long long *)variable,
       (unsigned long long *)span_start, (unsigned long long *)span_len,
       (int *)is_semantic_error, (unsigned long long)capacity);
-  return make_i64(env, status);
+  return make_number(env, status);
 }
 
 /* The host-owned walk cursor arrives as an ArrayBuffer; its bytes
@@ -1807,15 +1869,17 @@ static napi_value method_galley_tree_append_children(napi_env env, Lib *lib, siz
                                                     napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 3) {
-    napi_throw_type_error(env, NULL, "expected parent and first");
+  if (argc < 4) {
+    napi_throw_type_error(env, NULL, "expected generation and parent and first");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t parent = 0;
   uint64_t first = 0;
-  if (!get_u64(env, argv[1], &parent)) return NULL;
-  if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, ((fn_galley_tree_append_children_t)lib->fn[SLOT_galley_tree_append_children])(session, (GalleyNodeAddress)parent,
+  if (!get_u64(env, argv[2], &parent)) return NULL;
+  if (!get_u64(env, argv[3], &first)) return NULL;
+  return make_number(env, ((fn_galley_tree_append_children_t)lib->fn[SLOT_galley_tree_append_children])(session, generation, (GalleyNodeAddress)parent,
                                                    (GalleyNodeAddress)first));
 }
 
@@ -1823,15 +1887,17 @@ static napi_value method_galley_tree_insert_before(napi_env env, Lib *lib, size_
                                                   napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 3) {
-    napi_throw_type_error(env, NULL, "expected target and first");
+  if (argc < 4) {
+    napi_throw_type_error(env, NULL, "expected generation and target and first");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t target = 0;
   uint64_t first = 0;
-  if (!get_u64(env, argv[1], &target)) return NULL;
-  if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, ((fn_galley_tree_insert_before_t)lib->fn[SLOT_galley_tree_insert_before])(session, (GalleyNodeAddress)target,
+  if (!get_u64(env, argv[2], &target)) return NULL;
+  if (!get_u64(env, argv[3], &first)) return NULL;
+  return make_number(env, ((fn_galley_tree_insert_before_t)lib->fn[SLOT_galley_tree_insert_before])(session, generation, (GalleyNodeAddress)target,
                                                  (GalleyNodeAddress)first));
 }
 
@@ -1839,21 +1905,23 @@ static napi_value method_galley_tree_insert_after(napi_env env, Lib *lib, size_t
                                                  napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 3) {
-    napi_throw_type_error(env, NULL, "expected target and first");
+  if (argc < 4) {
+    napi_throw_type_error(env, NULL, "expected generation and target and first");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t target = 0;
   uint64_t first = 0;
-  if (!get_u64(env, argv[1], &target)) return NULL;
-  if (!get_u64(env, argv[2], &first)) return NULL;
-  return make_i64(env, ((fn_galley_tree_insert_after_t)lib->fn[SLOT_galley_tree_insert_after])(session, (GalleyNodeAddress)target,
+  if (!get_u64(env, argv[2], &target)) return NULL;
+  if (!get_u64(env, argv[3], &first)) return NULL;
+  return make_number(env, ((fn_galley_tree_insert_after_t)lib->fn[SLOT_galley_tree_insert_after])(session, generation, (GalleyNodeAddress)target,
                                                 (GalleyNodeAddress)first));
 }
 
 static napi_value head_pair(napi_env env, long long status, GalleyNodeAddress head) {
   napi_value pair;
-  napi_value status_value = make_i64(env, status);
+  napi_value status_value = make_number(env, status);
   napi_value head_value = make_u64(env, (uint64_t)head);
   if (status_value == NULL || head_value == NULL) return NULL;
   if (napi_create_array_with_length(env, 2, &pair) != napi_ok) return NULL;
@@ -1866,32 +1934,30 @@ static napi_value method_galley_tree_remove_siblings(napi_env env, Lib *lib, siz
                                                     napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 3) {
-    napi_throw_type_error(env, NULL, "expected node and count");
+  if (argc < 4) {
+    napi_throw_type_error(env, NULL, "expected generation and node and count");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t node = 0;
   uint64_t count = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
-  if (!get_u64(env, argv[2], &count)) return NULL;
+  if (!get_u64(env, argv[2], &node)) return NULL;
+  if (!get_u64(env, argv[3], &count)) return NULL;
   GalleyNodeAddress head = 0;
   long long status =
-      ((fn_galley_tree_remove_siblings_t)lib->fn[SLOT_galley_tree_remove_siblings])(session, (GalleyNodeAddress)node, (size_t)count, &head);
+      ((fn_galley_tree_remove_siblings_t)lib->fn[SLOT_galley_tree_remove_siblings])(session, generation, (GalleyNodeAddress)node, (size_t)count, &head);
   return head_pair(env, status, head);
 }
 
 static napi_value method_galley_tree_remove_self(napi_env env, Lib *lib, size_t argc,
                                                 napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = ((fn_galley_tree_remove_self_t)lib->fn[SLOT_galley_tree_remove_self])(session, (GalleyNodeAddress)node, &head);
+  long long status = ((fn_galley_tree_remove_self_t)lib->fn[SLOT_galley_tree_remove_self])(session, generation, node, &head);
   return head_pair(env, status, head);
 }
 
@@ -2009,30 +2075,25 @@ static napi_value method_galley_hook_generation(napi_env env, Lib *lib, size_t a
   if (!native_handle_arg(env, argc, argv, &door)) return NULL;
   unsigned long long generation = 0;
   long long status = ((fn_galley_hook_generation_t)lib->fn[SLOT_galley_hook_generation])(door, &generation);
-  return head_pair(env, status, (GalleyNodeAddress)generation);
-}
-
-/* [status, generation] of the session's published tree (0 when none or stale). */
-static napi_value method_galley_published_generation(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  unsigned long long generation = 0;
-  long long status = ((fn_galley_published_generation_t)lib->fn[SLOT_galley_published_generation])(session, &generation);
-  return head_pair(env, status, (GalleyNodeAddress)generation);
+  /* The generation is a Number, like every other crossing of it. */
+  napi_value pair;
+  napi_value status_value = make_number(env, status);
+  napi_value generation_value = make_number(env, (int64_t)generation);
+  if (status_value == NULL || generation_value == NULL) return NULL;
+  if (napi_create_array_with_length(env, 2, &pair) != napi_ok) return NULL;
+  if (napi_set_element(env, pair, 0, status_value) != napi_ok) return NULL;
+  if (napi_set_element(env, pair, 1, generation_value) != napi_ok) return NULL;
+  return pair;
 }
 
 static napi_value method_galley_tree_clean_children(napi_env env, Lib *lib, size_t argc,
                                                    napi_value *argv) {
   GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected node");
-    return NULL;
-  }
-  uint64_t node = 0;
-  if (!get_u64(env, argv[1], &node)) return NULL;
+  unsigned long long generation = 0;
+  GalleyNodeAddress node = 0;
+  if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = ((fn_galley_tree_clean_children_t)lib->fn[SLOT_galley_tree_clean_children])(session, (GalleyNodeAddress)node, &head);
+  long long status = ((fn_galley_tree_clean_children_t)lib->fn[SLOT_galley_tree_clean_children])(session, generation, node, &head);
   return head_pair(env, status, head);
 }
 
@@ -2040,17 +2101,19 @@ static napi_value method_galley_tree_insert_children_at(napi_env env, Lib *lib, 
                                                        napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 4) {
-    napi_throw_type_error(env, NULL, "expected parent, index, and first");
+  if (argc < 5) {
+    napi_throw_type_error(env, NULL, "expected generation and parent, index, and first");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t parent = 0;
   uint64_t index = 0;
   uint64_t first = 0;
-  if (!get_u64(env, argv[1], &parent)) return NULL;
-  if (!get_u64(env, argv[2], &index)) return NULL;
-  if (!get_u64(env, argv[3], &first)) return NULL;
-  return make_i64(env, ((fn_galley_tree_insert_children_at_t)lib->fn[SLOT_galley_tree_insert_children_at])(session, (GalleyNodeAddress)parent,
+  if (!get_u64(env, argv[2], &parent)) return NULL;
+  if (!get_u64(env, argv[3], &index)) return NULL;
+  if (!get_u64(env, argv[4], &first)) return NULL;
+  return make_number(env, ((fn_galley_tree_insert_children_at_t)lib->fn[SLOT_galley_tree_insert_children_at])(session, generation, (GalleyNodeAddress)parent,
                                                       (size_t)index, (GalleyNodeAddress)first));
 }
 
@@ -2058,18 +2121,20 @@ static napi_value method_galley_tree_remove_children_at(napi_env env, Lib *lib, 
                                                        napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 4) {
-    napi_throw_type_error(env, NULL, "expected parent, index, and count");
+  if (argc < 5) {
+    napi_throw_type_error(env, NULL, "expected generation and parent, index, and count");
     return NULL;
   }
+  unsigned long long generation = 0;
+  if (!generation_arg(env, argc, argv, &generation)) return NULL;
   uint64_t parent = 0;
   uint64_t index = 0;
   uint64_t count = 0;
-  if (!get_u64(env, argv[1], &parent)) return NULL;
-  if (!get_u64(env, argv[2], &index)) return NULL;
-  if (!get_u64(env, argv[3], &count)) return NULL;
+  if (!get_u64(env, argv[2], &parent)) return NULL;
+  if (!get_u64(env, argv[3], &index)) return NULL;
+  if (!get_u64(env, argv[4], &count)) return NULL;
   GalleyNodeAddress head = 0;
-  long long status = ((fn_galley_tree_remove_children_at_t)lib->fn[SLOT_galley_tree_remove_children_at])(session, (GalleyNodeAddress)parent,
+  long long status = ((fn_galley_tree_remove_children_at_t)lib->fn[SLOT_galley_tree_remove_children_at])(session, generation, (GalleyNodeAddress)parent,
                                                     (size_t)index, (size_t)count, &head);
   return head_pair(env, status, head);
 }
@@ -2271,7 +2336,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_node_count);
   BIND_OR_THROW(api, lib, galley_node_capacity);
   BIND_OR_THROW(api, lib, galley_root_node);
-  BIND_OR_THROW(api, lib, galley_node_is_valid);
   BIND_OR_THROW(api, lib, galley_node_child_count);
   BIND_OR_THROW(api, lib, galley_node_first_child);
   BIND_OR_THROW(api, lib, galley_node_last_child);
@@ -2297,7 +2361,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_hook_node_line_column);
   BIND_OR_THROW(api, lib, galley_hook_tree_append_children);
   BIND_OR_THROW(api, lib, galley_hook_tree_clean_children);
-  BIND_OR_THROW(api, lib, galley_hook_node_is_valid);
   BIND_OR_THROW(api, lib, galley_hook_node_variable_index);
   BIND_OR_THROW(api, lib, galley_hook_tree_insert_before);
   BIND_OR_THROW(api, lib, galley_hook_tree_insert_after);
@@ -2306,7 +2369,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_hook_tree_insert_children_at);
   BIND_OR_THROW(api, lib, galley_hook_tree_remove_children_at);
   BIND_OR_THROW(api, lib, galley_hook_generation);
-  BIND_OR_THROW(api, lib, galley_published_generation);
   BIND_OR_THROW(api, lib, galley_tree_snapshot);
   BIND_OR_THROW(api, lib, galley_has_diagnostic);
   BIND_OR_THROW(api, lib, galley_diagnostic_kind);

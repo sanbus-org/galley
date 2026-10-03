@@ -434,7 +434,8 @@ public class GalleyTest {
         void rootAndNavigationLinks() {
             Node root = session.rootNode();
             assertNotNull(root);
-            assertTrue(session.nodeValid(root));
+            // No validity probe: a real read is the answer, and it reads.
+            assertTrue(session.childCount(root) > 0);
             assertNull(session.parent(root));
             Node first = session.firstChild(root);
             Node last = session.lastChild(root);
@@ -593,13 +594,21 @@ public class GalleyTest {
         }
 
         @Test
-        void nullNodeAccessorsReturnEmpty() {
-            assertNull(session.symbolName(null));
-            assertNull(session.text(null));
-            assertNull(session.span(null));
-            assertNull(session.lineColumn(null));
-            assertNull(session.variableIndex(null));
-            assertEquals(0, session.childCount(null));
+        void nullNodeAccessorsRejectTheMissingArgument() {
+            // A null handle is a missing argument, not an empty answer: an
+            // empty read here would be indistinguishable from "no children".
+            for (Executable read : new Executable[]{
+                    () -> session.symbolName(null),
+                    () -> session.text(null),
+                    () -> session.span(null),
+                    () -> session.lineColumn(null),
+                    () -> session.variableIndex(null),
+                    () -> session.childCount(null),
+                    () -> session.parent(null),
+                    () -> session.children(null),
+            }) {
+                assertThrows(NullPointerException.class, read);
+            }
         }
 
         @Test
@@ -680,11 +689,11 @@ public class GalleyTest {
                 Node at = snap.node(address);
                 assertNotNull(at);
                 Node parent = session.parent(at);
-                assertEquals(parent == null ? -1L : parent.getAddress(), snap.parent()[slot]);
+                assertEquals(parent == null ? Galley.INVALID_NODE : parent.getAddress(), snap.parent()[slot]);
                 Node first = session.firstChild(at);
-                assertEquals(first == null ? -1L : first.getAddress(), snap.firstChild()[slot]);
+                assertEquals(first == null ? Galley.INVALID_NODE : first.getAddress(), snap.firstChild()[slot]);
                 Node next = session.nextSibling(at);
-                assertEquals(next == null ? -1L : next.getAddress(), snap.next()[slot]);
+                assertEquals(next == null ? Galley.INVALID_NODE : next.getAddress(), snap.next()[slot]);
                 assertEquals(session.childCount(at), snap.childCount()[slot]);
                 Integer variable = session.variableIndex(at);
                 assertEquals(variable == null ? -1L : variable.longValue(), snap.variable()[slot]);
@@ -704,7 +713,7 @@ public class GalleyTest {
                 preorder.add(node);
                 long child = snap.firstChild()[(int) node];
                 List<Long> chain = new ArrayList<>();
-                while (child != -1L) {
+                while (child != Galley.INVALID_NODE) {
                     chain.add(child);
                     child = snap.next()[(int) child];
                 }
@@ -751,12 +760,12 @@ public class GalleyTest {
             assertTrue(walker.hasNext());
             walker.next();
             assertEquals(15, session.parse("alpha:12,beta:3"));
-            GenerationInvalidatedException invalidated = assertThrows(GenerationInvalidatedException.class, walker::next);
-            assertEquals("walker", invalidated.getObjectName());
+            StaleTreeException stale = assertThrows(StaleTreeException.class, walker::next);
+            assertEquals(StatusCode.ERROR_STALE_TREE, stale.getCode());
             // skipChildren is a pure host-side state write: staleness is the
             // next step's answer, not this one's.
             walker.skipChildren();
-            assertThrows(GenerationInvalidatedException.class, walker::next);
+            assertThrows(StaleTreeException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
             Walker rewound = fresh.walk(false);
@@ -787,7 +796,7 @@ public class GalleyTest {
             // Parsing never throws merely because a walker is open; the
             // abandoned walker fails at its next step instead.
             assertEquals(15, session.parse("alpha:12,beta:3"));
-            assertThrows(GalleyClosedException.class, walker::next);
+            assertThrows(StaleTreeException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
             Walker rewound = fresh.walk(false);
@@ -809,7 +818,7 @@ public class GalleyTest {
             assertTrue(walker.hasNext());
             walker.next();
             assertThrows(GalleyException.class, () -> session.parse("alpha:"));
-            assertThrows(GalleyClosedException.class, walker::next);
+            assertThrows(StaleTreeException.class, walker::next);
         }
 
         @Test
@@ -964,8 +973,8 @@ public class GalleyTest {
             parser.clearProcedures();
         }
 
-        private static void assertInvalidated(Executable read) {
-            assertThrows(GenerationInvalidatedException.class, read);
+        private static void assertStale(Executable read) {
+            assertThrows(StaleTreeException.class, read);
         }
 
         @Test
@@ -976,35 +985,54 @@ public class GalleyTest {
             assertNotNull(staleChild);
             assertEquals(7, session.parse("alpha:1"));
             // Every Node accessor family throws instead of reading stale storage.
-            assertInvalidated(stale::text);
-            assertInvalidated(stale::symbolName);
-            assertInvalidated(stale::symbolNameBytes);
-            assertInvalidated(stale::span);
-            assertInvalidated(stale::lineColumn);
-            assertInvalidated(stale::parent);
-            assertInvalidated(stale::firstChild);
-            assertInvalidated(stale::children);
-            assertInvalidated(stale::childCount);
-            assertInvalidated(stale::variableIndex);
-            assertInvalidated(stale::isValid);
-            assertInvalidated(() -> stale.at(0));
-            assertInvalidated(stale::iterator);
-            assertInvalidated(stale::cleanChildren);
-            assertInvalidated(() -> stale.appendChildren(staleChild));
-            assertInvalidated(() -> stale.walk(false));
+            assertStale(stale::text);
+            assertStale(stale::symbolName);
+            assertStale(stale::symbolNameBytes);
+            assertStale(stale::span);
+            assertStale(stale::lineColumn);
+            assertStale(stale::parent);
+            assertStale(stale::firstChild);
+            assertStale(stale::children);
+            assertStale(stale::childCount);
+            assertStale(stale::variableIndex);
+            assertStale(() -> stale.at(0));
+            assertStale(stale::iterator);
+            assertStale(stale::cleanChildren);
+            assertStale(() -> stale.appendChildren(staleChild));
+            // A walk binds its cursor to this node's generation; the refusal
+            // arrives at its first step, which is where the core checks.
+            assertStale(() -> stale.walk(false).next());
             // Session crossings that take the handle throw too.
-            assertInvalidated(() -> session.text(stale));
-            assertInvalidated(() -> session.symbolName(stale));
-            assertInvalidated(() -> session.span(stale));
-            assertInvalidated(() -> session.childCount(stale));
-            assertInvalidated(() -> session.children(stale));
-            assertInvalidated(() -> session.parent(stale));
-            assertInvalidated(() -> session.nodeValid(stale));
-            assertInvalidated(() -> session.cleanChildren(stale));
+            assertStale(() -> session.text(stale));
+            assertStale(() -> session.symbolName(stale));
+            assertStale(() -> session.span(stale));
+            assertStale(() -> session.childCount(stale));
+            assertStale(() -> session.children(stale));
+            assertStale(() -> session.parent(stale));
+            assertStale(() -> session.cleanChildren(stale));
+            assertStale(() -> session.appendChildren(stale, staleChild));
+            assertStale(() -> session.insertBefore(stale, staleChild));
+            assertStale(() -> session.insertChildrenAt(stale, 0, staleChild));
+            assertStale(() -> session.removeChildrenAt(stale, 0, 1));
+            assertStale(() -> session.removeSiblings(stale, 1));
+            assertStale(() -> session.removeSelf(stale));
             // Fresh handles from the new generation read fine.
             Node fresh = session.rootNode();
             assertNotNull(fresh);
             assertNotNull(fresh.text());
+        }
+
+        @Test
+        void editMixingTwoGenerationsThrows() {
+            Node oldChild = session.rootNode().firstChild();
+            assertEquals(7, session.parse("alpha:1"));
+            Node freshRoot = session.rootNode();
+            // The core compares one generation per call, so the host refuses a
+            // second node of another parse instead of forwarding its address.
+            assertStale(() -> session.appendChildren(freshRoot, oldChild));
+            assertStale(() -> session.insertBefore(freshRoot, oldChild));
+            assertStale(() -> session.insertAfter(freshRoot, oldChild));
+            assertStale(() -> session.insertChildrenAt(freshRoot, 0, oldChild));
         }
 
         @Test
@@ -1021,11 +1049,14 @@ public class GalleyTest {
             assertEquals(first, snap.node(firstAddress));
             // An absent node link answers null, never a node.
             assertNull(snap.node(Galley.INVALID_NODE));
+            // Every address and the sentinel are non-negative: only statuses are negative.
+            assertEquals(Long.MAX_VALUE, Galley.INVALID_NODE);
+            assertEquals(Long.MAX_VALUE, Galley.NO_VARIABLE);
             // The columns never follow a later parse: node() keeps answering
-            // for its own parse, and that node reads as invalidated.
+            // for its own parse, and that node reads as stale.
             assertEquals(7, session.parse("alpha:1"));
             assertEquals(node, snap.node(root.getAddress()));
-            assertInvalidated(node::text);
+            assertStale(node::text);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
             assertNotEquals(node, fresh);
@@ -1045,8 +1076,8 @@ public class GalleyTest {
             Node stale = session.rootNode();
             assertNotNull(stale);
             assertThrows(GalleyException.class, () -> session.parse("alpha:"));
-            assertInvalidated(stale::text);
-            assertInvalidated(() -> session.text(stale));
+            assertStale(stale::text);
+            assertStale(() -> session.text(stale));
             // The session stays usable: the next parse yields live nodes.
             assertEquals(7, session.parse("alpha:1"));
             assertNotNull(session.rootNode().text());
@@ -1079,7 +1110,7 @@ public class GalleyTest {
             session.clearProcedures();
             session.installProcedure("reduction_Pair", useFresh);
             session.parse("alpha:12,beta:3");
-            assertTrue(seen.get() instanceof GenerationInvalidatedException);
+            assertTrue(seen.get() instanceof StaleTreeException);
             // A handle of another session is refused as such, whichever
             // generation the other session is in.
             seen.set(null);
@@ -1088,6 +1119,58 @@ public class GalleyTest {
                 other.parse("alpha:12,beta:3");
             }
             assertTrue(seen.get() instanceof IllegalArgumentException);
+        }
+    }
+
+    @Nested
+    class NothingPublishedTests {
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession();
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        @Test
+        void rootIsTheProbeAndEverythingElseRefuses() {
+            // Before any parse there is no tree: root answers null, the one
+            // "nothing here" answer, and every other session-door read
+            // refuses rather than reporting a zero.
+            assertNull(session.rootNode());
+            assertThrows(StaleTreeException.class, session::nodeCount);
+            assertThrows(StaleTreeException.class, session::snapshot);
+        }
+
+        @Test
+        void aFailedParsePublishesNothing() {
+            assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            assertNull(session.rootNode());
+            assertThrows(StaleTreeException.class, session::nodeCount);
+            assertThrows(StaleTreeException.class, session::snapshot);
+        }
+
+        @Test
+        void useAfterCloseIsNotAStaleTree() {
+            session.parse("alpha:12,beta:3");
+            Node root = session.rootNode();
+            assertNotNull(root);
+            session.close();
+            // The closed session has its own error: the tree being gone is a
+            // different failure, and neither stands in for the other.
+            for (Executable read : new Executable[]{
+                    root::text, session::nodeCount, session::rootNode, session::snapshot}) {
+                RuntimeException closed = assertThrows(RuntimeException.class, read);
+                assertFalse(closed instanceof StaleTreeException,
+                        () -> "expected the closed-session error, got " + closed);
+            }
         }
     }
 
@@ -1211,11 +1294,11 @@ public class GalleyTest {
             session.installProcedure("reduction_Number", args -> stashed.add(args.currentNode()));
             assertThrows(GalleyException.class, () -> session.parse("alpha:12,beta:"));
             assertFalse(stashed.isEmpty());
-            assertThrows(GenerationInvalidatedException.class, () -> stashed.get(0).text());
-            assertThrows(GenerationInvalidatedException.class, () -> session.text(stashed.get(0)));
+            assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
+            assertThrows(StaleTreeException.class, () -> session.text(stashed.get(0)));
             session.clearProcedures();
             session.parse("alpha:12,beta:3");
-            assertThrows(GenerationInvalidatedException.class, () -> stashed.get(0).text());
+            assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
         }
 
         @Test
@@ -1268,7 +1351,7 @@ public class GalleyTest {
             assertEquals(firstRoot.getAddress(), secondRoot.getAddress());
             assertNotEquals(firstRoot, secondRoot);
             assertEquals(2, java.util.Set.of(firstRoot, secondRoot).size());
-            assertThrows(GenerationInvalidatedException.class, firstRoot::text);
+            assertThrows(StaleTreeException.class, firstRoot::text);
             assertEquals("alpha:12", new String(secondRoot.text(), StandardCharsets.UTF_8));
         }
 
@@ -1436,12 +1519,12 @@ public class GalleyTest {
                 assertNotNull(hookNode);
                 try {
                     root.appendChildren(hookNode);
-                } catch (GenerationInvalidatedException expected) {
+                } catch (StaleTreeException expected) {
                     refusals.incrementAndGet();
                 }
                 try {
                     hookNode.appendChildren(root);
-                } catch (GenerationInvalidatedException expected) {
+                } catch (StaleTreeException expected) {
                     refusals.incrementAndGet();
                 }
             });
@@ -1504,7 +1587,7 @@ public class GalleyTest {
             assertEquals(List.of("alpha:12"), seen);
             assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
             session.parse("gamma:7");
-            assertThrows(GenerationInvalidatedException.class, () -> stashed.get().text());
+            assertThrows(StaleTreeException.class, () -> stashed.get().text());
         }
 
         @Test
@@ -1535,7 +1618,10 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             assertEquals(3, outcomes.size());
-            assertTrue(outcomes.stream().allMatch(GenerationInvalidatedException.class::equals));
+            // "Procedure arguments are invalidated" names that lifetime, not a
+            // stale tree: the arguments are gone, whatever the tree is now.
+            assertTrue(outcomes.stream().allMatch(GalleyClosedException.class::equals));
+            assertTrue(outcomes.stream().noneMatch(StaleTreeException.class::equals));
         }
 
         @Test

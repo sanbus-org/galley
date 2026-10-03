@@ -17,6 +17,7 @@ export {
   SHARED_NATIVE_LIBRARY_BASE,
 } from "./artifact.ts";
 export { displayTokenName } from "./diagnostic.ts";
+export { linkOrStatus, GenerationBigInt } from "./crossing.ts";
 export { isProcedureName, loadProceduresModule, registryFor, __resetSharedRegistries } from "./procedures.ts";
 export {
   checkLanguagePath,

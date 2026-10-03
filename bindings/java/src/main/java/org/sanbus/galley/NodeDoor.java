@@ -1,6 +1,5 @@
 package org.sanbus.galley;
 
-import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import org.sanbus.galley.internal.GalleyLibrary;
@@ -21,8 +20,6 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * marshals both.
  */
 final class NodeDoor {
-    static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
-
     private final GalleyLibrary lib;
     private final Session session;
     /** The running parse's native door, or null for the session door. */
@@ -50,119 +47,118 @@ final class NodeDoor {
     boolean isHook() { return hookDoor != null; }
 
     /**
-     * The core generation a node must carry to cross this door: the running
-     * parse's on the hook door, the published tree's (as last read from the
-     * core) on the session door.
+     * The generation a node must carry to cross the hook door: the running
+     * parse's. The session door has none — every crossing there passes the
+     * node's own generation to the core, which owns the comparison.
      */
     long generation() {
-        return hookDoor != null ? hookGeneration : session.publishedGeneration();
+        return hookGeneration;
     }
 
     /**
      * The host failure for a negative native status: the session door's
      * carries the session's diagnostic snapshot, the hook door's only the
-     * status text. One place for the conversion, so no crossing spells it
-     * out itself.
+     * status text. Both go through {@link Session#statusFailure}, the one
+     * mapper, so a stale tree is the same exception whichever door found it.
      */
     GalleyException failure(long status) {
-        return hookDoor != null ? hookFailure(lib, status) : session.errorFromStatus(status);
+        return hookDoor != null ? Session.statusFailure(lib, status, null) : session.errorFromStatus(status);
     }
 
-    /** The host failure for a negative status from a hook door or per-hook crossing. */
-    static GalleyException hookFailure(GalleyLibrary lib, long status) {
-        String message = lib.galley_status_string(status);
-        return new GalleyException(message != null ? message : "procedure error", (int) status);
-    }
-
-    private void check(long status) {
+    /** Throws on a negative status; otherwise returns it, which for a value-returning call is the value. */
+    private long check(long status) {
         if (status < 0) throw failure(status);
+        return status;
     }
 
     // -- reads --
+    //
+    // Every session-door crossing takes the generation of the tree it
+    // addresses, which the core compares against the published one: a
+    // mismatch is a stale tree, never a read. The hook twins take none —
+    // their door exists only while its parse runs, and every node it can
+    // address belongs to that parse.
+    //
+    // Calls with one result (count, links, variable index) return it directly:
+    // non-negative is the answer, negative the status. Calls with several
+    // results write them through the calling thread's {@link Scratch}: reads
+    // run on several threads at once, so nothing here allocates per call or
+    // shares a segment between threads.
 
-    boolean nodeValid(long address) {
-        return (hookDoor != null ? lib.galley_hook_node_is_valid(hookDoor, address)
-                                 : lib.galley_node_is_valid(session.handle(), address)) != 0;
+    int childCount(long generation, long address) {
+        if (hookDoor != null) return lib.galley_hook_node_child_count(hookDoor, address);
+        return (int) check(lib.galley_node_child_count(session.handle(), generation, address));
     }
 
-    int childCount(long address) {
-        return hookDoor != null ? lib.galley_hook_node_child_count(hookDoor, address)
-                                : lib.galley_node_child_count(session.handle(), address);
-    }
+    /** The five tree links; one crossing, one switch per door. */
+    enum Link { FIRST_CHILD, LAST_CHILD, NEXT_SIBLING, PRIOR_SIBLING, PARENT }
 
-    long firstChild(long address) {
-        return hookDoor != null ? lib.galley_hook_node_first_child(hookDoor, address)
-                                : lib.galley_node_first_child(session.handle(), address);
-    }
-
-    long lastChild(long address) {
-        return hookDoor != null ? lib.galley_hook_node_last_child(hookDoor, address)
-                                : lib.galley_node_last_child(session.handle(), address);
-    }
-
-    long nextSibling(long address) {
-        return hookDoor != null ? lib.galley_hook_node_next_sibling(hookDoor, address)
-                                : lib.galley_node_next_sibling(session.handle(), address);
-    }
-
-    long priorSibling(long address) {
-        return hookDoor != null ? lib.galley_hook_node_prior_sibling(hookDoor, address)
-                                : lib.galley_node_prior_sibling(session.handle(), address);
-    }
-
-    long parent(long address) {
-        return hookDoor != null ? lib.galley_hook_node_parent(hookDoor, address)
-                                : lib.galley_node_parent(session.handle(), address);
-    }
-
-    byte[] text(long address) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outLength = arena.allocate(ValueLayout.JAVA_LONG);
-            long status = hookDoor != null ? lib.galley_hook_node_text(hookDoor, address, outData, outLength)
-                                           : lib.galley_node_text(session.handle(), address, outData, outLength);
-            return outBytes(status, outData, outLength);
+    /** One link through this door; {@link Galley#INVALID_NODE} when it does not exist. */
+    long link(Link which, long generation, long address) {
+        if (hookDoor != null) {
+            return switch (which) {
+                case FIRST_CHILD -> lib.galley_hook_node_first_child(hookDoor, address);
+                case LAST_CHILD -> lib.galley_hook_node_last_child(hookDoor, address);
+                case NEXT_SIBLING -> lib.galley_hook_node_next_sibling(hookDoor, address);
+                case PRIOR_SIBLING -> lib.galley_hook_node_prior_sibling(hookDoor, address);
+                case PARENT -> lib.galley_hook_node_parent(hookDoor, address);
+            };
         }
+        MemorySegment handle = session.handle();
+        return check(switch (which) {
+            case FIRST_CHILD -> lib.galley_node_first_child(handle, generation, address);
+            case LAST_CHILD -> lib.galley_node_last_child(handle, generation, address);
+            case NEXT_SIBLING -> lib.galley_node_next_sibling(handle, generation, address);
+            case PRIOR_SIBLING -> lib.galley_node_prior_sibling(handle, generation, address);
+            case PARENT -> lib.galley_node_parent(handle, generation, address);
+        });
     }
 
-    byte[] symbolNameBytes(long address) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outLength = arena.allocate(ValueLayout.JAVA_LONG);
-            long status = hookDoor != null ? lib.galley_hook_node_symbol_name(hookDoor, address, outData, outLength)
-                                           : lib.galley_node_symbol_name(session.handle(), address, outData, outLength);
-            return outBytes(status, outData, outLength);
+    byte[] text(long generation, long address) {
+        Scratch scratch = Scratch.local();
+        if (hookDoor != null) {
+            if (lib.galley_hook_node_text(hookDoor, address, scratch.first, scratch.second) < 0) return null;
+        } else {
+            check(lib.galley_node_text(session.handle(), generation, address, scratch.first, scratch.second));
         }
+        return copyBytes(scratch);
     }
 
-    long[] span(long address) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outStart = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment outLength = arena.allocate(ValueLayout.JAVA_LONG);
-            long status = hookDoor != null ? lib.galley_hook_node_span(hookDoor, address, outStart, outLength)
-                                           : lib.galley_node_span(session.handle(), address, outStart, outLength);
-            if (status < 0) return null;
-            return new long[]{outStart.get(ValueLayout.JAVA_LONG, 0), outLength.get(ValueLayout.JAVA_LONG, 0)};
+    byte[] symbolNameBytes(long generation, long address) {
+        Scratch scratch = Scratch.local();
+        if (hookDoor != null) {
+            if (lib.galley_hook_node_symbol_name(hookDoor, address, scratch.first, scratch.second) < 0) return null;
+        } else {
+            check(lib.galley_node_symbol_name(session.handle(), generation, address, scratch.first, scratch.second));
         }
+        return copyBytes(scratch);
     }
 
-    int[] lineColumn(long address) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outColumn = arena.allocate(ValueLayout.JAVA_INT);
-            long status = hookDoor != null ? lib.galley_hook_node_line_column(hookDoor, address, outLine, outColumn)
-                                           : lib.galley_node_line_column(session.handle(), address, outLine, outColumn);
-            if (status < 0) return null;
-            return new int[]{outLine.get(ValueLayout.JAVA_INT, 0), outColumn.get(ValueLayout.JAVA_INT, 0)};
+    long[] span(long generation, long address) {
+        Scratch scratch = Scratch.local();
+        if (hookDoor != null) {
+            if (lib.galley_hook_node_span(hookDoor, address, scratch.first, scratch.second) < 0) return null;
+        } else {
+            check(lib.galley_node_span(session.handle(), generation, address, scratch.first, scratch.second));
         }
+        return new long[]{scratch.firstLong(), scratch.secondLong()};
     }
 
-    Integer variableIndex(long address) {
-        long index = hookDoor != null ? lib.galley_hook_node_variable_index(hookDoor, address)
-                                      : lib.galley_node_variable_index(session.handle(), address);
-        if (index == -1) return null;
-        if (index < 0) throw failure(index);
-        return (int) index;
+    int[] lineColumn(long generation, long address) {
+        Scratch scratch = Scratch.local();
+        if (hookDoor != null) {
+            if (lib.galley_hook_node_line_column(hookDoor, address, scratch.first, scratch.second) < 0) return null;
+        } else {
+            check(lib.galley_node_line_column(session.handle(), generation, address, scratch.first, scratch.second));
+        }
+        return new int[]{scratch.firstInt(), scratch.secondInt()};
+    }
+
+    Integer variableIndex(long generation, long address) {
+        long index = hookDoor != null
+                ? lib.galley_hook_node_variable_index(hookDoor, address)
+                : check(lib.galley_node_variable_index(session.handle(), generation, address));
+        return index < 0 || index == Galley.NO_VARIABLE ? null : (int) index;
     }
 
     // -- walking --
@@ -179,74 +175,70 @@ final class NodeDoor {
 
     // -- tree edits --
 
-    void appendChildren(long parent, long chain) {
+    void appendChildren(long generation, long parent, long chain) {
         check(hookDoor != null ? lib.galley_hook_tree_append_children(hookDoor, parent, chain)
-                               : lib.galley_tree_append_children(session.handle(), parent, chain));
+                               : lib.galley_tree_append_children(session.handle(), generation, parent, chain));
     }
 
-    void insertBefore(long target, long chain) {
+    void insertBefore(long generation, long target, long chain) {
         check(hookDoor != null ? lib.galley_hook_tree_insert_before(hookDoor, target, chain)
-                               : lib.galley_tree_insert_before(session.handle(), target, chain));
+                               : lib.galley_tree_insert_before(session.handle(), generation, target, chain));
     }
 
-    void insertAfter(long target, long chain) {
+    void insertAfter(long generation, long target, long chain) {
         check(hookDoor != null ? lib.galley_hook_tree_insert_after(hookDoor, target, chain)
-                               : lib.galley_tree_insert_after(session.handle(), target, chain));
+                               : lib.galley_tree_insert_after(session.handle(), generation, target, chain));
     }
 
-    /** A tree edit that detaches a chain: runs {@code call} with an out-head and returns the head, {@link #INVALID_NODE} when empty. */
+    /** A tree edit that detaches a chain: runs {@code call} with an out-head and returns the head, {@link Galley#INVALID_NODE} when empty. */
     private interface HeadCall {
         long run(MemorySegment outHead);
     }
 
     private long detachedHead(HeadCall call) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outHead = arena.allocate(ValueLayout.JAVA_LONG);
-            outHead.set(ValueLayout.JAVA_LONG, 0, INVALID_NODE);
-            check(call.run(outHead));
-            return outHead.get(ValueLayout.JAVA_LONG, 0);
-        }
+        Scratch scratch = Scratch.local();
+        scratch.first.set(ValueLayout.JAVA_LONG, 0, Galley.INVALID_NODE);
+        check(call.run(scratch.first));
+        return scratch.firstLong();
     }
 
-    long removeSiblings(long address, int count) {
+    long removeSiblings(long generation, long address, int count) {
         return detachedHead(outHead -> hookDoor != null
                 ? lib.galley_hook_tree_remove_siblings(hookDoor, address, count, outHead)
-                : lib.galley_tree_remove_siblings(session.handle(), address, count, outHead));
+                : lib.galley_tree_remove_siblings(session.handle(), generation, address, count, outHead));
     }
 
-    long removeSelf(long address) {
+    long removeSelf(long generation, long address) {
         return detachedHead(outHead -> hookDoor != null
                 ? lib.galley_hook_tree_remove_self(hookDoor, address, outHead)
-                : lib.galley_tree_remove_self(session.handle(), address, outHead));
+                : lib.galley_tree_remove_self(session.handle(), generation, address, outHead));
     }
 
-    long cleanChildren(long address) {
+    long cleanChildren(long generation, long address) {
         return detachedHead(outHead -> hookDoor != null
                 ? lib.galley_hook_tree_clean_children(hookDoor, address, outHead)
-                : lib.galley_tree_clean_children(session.handle(), address, outHead));
+                : lib.galley_tree_clean_children(session.handle(), generation, address, outHead));
     }
 
-    void insertChildrenAt(long parent, int index, long chain) {
+    void insertChildrenAt(long generation, long parent, int index, long chain) {
         check(hookDoor != null ? lib.galley_hook_tree_insert_children_at(hookDoor, parent, index, chain)
-                               : lib.galley_tree_insert_children_at(session.handle(), parent, index, chain));
+                               : lib.galley_tree_insert_children_at(session.handle(), generation, parent, index, chain));
     }
 
-    long removeChildrenAt(long parent, int index, int count) {
+    long removeChildrenAt(long generation, long parent, int index, int count) {
         return detachedHead(outHead -> hookDoor != null
                 ? lib.galley_hook_tree_remove_children_at(hookDoor, parent, index, count, outHead)
-                : lib.galley_tree_remove_children_at(session.handle(), parent, index, count, outHead));
+                : lib.galley_tree_remove_children_at(session.handle(), generation, parent, index, count, outHead));
     }
 
     /**
-     * Decodes an out-pointer/out-length result pair written by a native
-     * call: null for a negative status, an empty array for a null pointer
-     * or zero length, otherwise a copy of the bytes.
+     * Copies the out-pointer/out-length pair a successful call wrote: an
+     * empty array for a null pointer or zero length, otherwise the bytes.
      */
-    static byte[] outBytes(long status, MemorySegment outData, MemorySegment outLen) {
-        if (status < 0) return null;
-        MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-        long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-        if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
-        return ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+    private static byte[] copyBytes(Scratch scratch) {
+        MemorySegment pointer = scratch.first.get(ValueLayout.ADDRESS, 0);
+        long length = scratch.secondLong();
+        if (pointer.equals(MemorySegment.NULL) || length == 0) return new byte[0];
+        return pointer.reinterpret(length).toArray(ValueLayout.JAVA_BYTE);
     }
 }

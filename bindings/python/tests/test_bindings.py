@@ -172,6 +172,36 @@ class SessionTests(unittest.TestCase):
         self.session.close()
         _restore_procedures(self.saved_procedures)
 
+    def test_nothing_published_refuses_instead_of_answering(self) -> None:
+        # Before any parse there is no tree: root is the one "nothing here"
+        # probe and answers None, and every other session-door read refuses.
+        # No call answers 0 or None for a refusal.
+        self.assertIsNone(self.session.root_node())
+        with self.assertRaises(grammar.StaleTreeError):
+            self.session.node_count()
+        with self.assertRaises(grammar.StaleTreeError):
+            self.session.snapshot()
+        # And after a failed parse, which publishes nothing.
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:")
+        self.assertIsNone(self.session.root_node())
+        with self.assertRaises(grammar.StaleTreeError):
+            self.session.node_count()
+        with self.assertRaises(grammar.StaleTreeError):
+            self.session.snapshot()
+
+    def test_use_after_close_is_not_a_stale_tree(self) -> None:
+        # A closed session has its own error: the stale-tree error means the
+        # tree is gone, not that the session is.
+        self.session.parse("alpha:12,beta:3")
+        root = self.session.root_node()
+        assert root is not None
+        self.session.close()
+        for probe in (root.text, self.session.node_count, self.session.root_node):
+            with self.assertRaises(ValueError) as closed:
+                probe()
+            self.assertNotIsInstance(closed.exception, grammar.StaleTreeError)
+
     def test_procedure_hook_can_read_node_text(self) -> None:
         seen: list[bytes] = []
 
@@ -218,7 +248,7 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(seen, [b"alpha:12"])
         self.assertEqual(stashed[0].text(), b"alpha:12")
         self.session.parse("gamma:7")
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             stashed[0].text()
 
     def test_procedure_arguments_die_with_their_hook(self) -> None:
@@ -618,10 +648,11 @@ class WalkTests(unittest.TestCase):
         root = self.session.root_node()
         self.assertIsNotNone(root)
         assert root is not None
-        self.assertTrue(self.session.node_valid(root))
+        # No validity probe: a real read is the answer, and it reads.
+        self.assertGreater(self.session.child_count(root), 0)
         self.assertIsNone(self.session.parent(root))
         with self.assertRaisesRegex(TypeError, "expected a Node"):
-            self.session.node_valid(grammar.INVALID_NODE)
+            self.session.parent(grammar.INVALID_NODE)
 
         first = self.session.first_child(root)
         last = self.session.last_child(root)
@@ -873,6 +904,13 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(snap.node(first.address), first)
         # An absent node link answers None, never a node.
         self.assertIsNone(snap.node(grammar.INVALID_NODE))
+        # Every address and the sentinel are non-negative: only statuses are
+        # negative in the ABI, so the sentinel is the largest signed 64-bit value.
+        self.assertEqual(grammar.INVALID_NODE, 2**63 - 1)
+        # A node without a variable reads None in the column and the accessor.
+        self.assertIn(None, snap.variable)
+        for address, variable in enumerate(snap.variable):
+            self.assertEqual(variable, self.session.variable_index(snap.node(address)))
 
     def test_snapshot_node_out_of_range_raises(self) -> None:
         snap = self.session.snapshot()
@@ -902,12 +940,22 @@ class WalkTests(unittest.TestCase):
         self.assertIsNotNone(fresh)
         assert fresh is not None
         # The columns never follow a later parse: node() keeps answering
-        # for its own parse, and that node reads as invalidated.
+        # for its own parse, and that node reads as a stale tree.
         self.assertEqual(snap.node(root.address), stale)
         self.assertNotEqual(stale, fresh)
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             stale.text()
         self.assertEqual(fresh.text(), b"alpha:12")
+
+    def test_a_stale_snapshot_node_is_stale_after_a_failed_parse_too(self) -> None:
+        root = self.session.root_node()
+        assert root is not None
+        stale = self.session.snapshot().node(root.address)
+        assert stale is not None
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:")
+        with self.assertRaises(grammar.StaleTreeError):
+            stale.text()
 
     def test_walk_skip_children_prunes_subtree(self) -> None:
         if not grammar.has_ast():
@@ -921,14 +969,15 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(list(walker), [])
 
     def test_walk_stale_root_raises(self) -> None:
-        # A Node root from a previous parse generation is stale: the
-        # walk refuses it loudly instead of reading reallocated storage.
-        # (A raw address never reaches the walk at all.)
+        # A Node root from a previous parse generation is stale: the walk is
+        # bound to that parse, so its first step refuses loudly instead of
+        # reading reallocated storage. (A raw address never reaches the walk
+        # at all.)
         root = self.session.root_node()
         assert root is not None
         self.session.parse("alpha:12,beta:3")
-        with self.assertRaises(ValueError):
-            root.walk()
+        with self.assertRaises(grammar.StaleTreeError):
+            next(root.walk())
 
     def test_walker_step_after_reparse_raises(self) -> None:
         if not grammar.has_ast():
@@ -938,7 +987,7 @@ class WalkTests(unittest.TestCase):
         walker = root.walk()
         self.assertIsNotNone(next(walker))
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             next(walker)
 
     def test_skipping_children_on_a_stale_walker_waits_for_the_next_step(self) -> None:
@@ -952,7 +1001,7 @@ class WalkTests(unittest.TestCase):
         # skip_children is a pure host-side state write: staleness is the
         # next step's answer, not this one's.
         walker.skip_children()
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             next(walker)
 
     def test_parse_with_abandoned_walker_succeeds(self) -> None:
@@ -964,7 +1013,7 @@ class WalkTests(unittest.TestCase):
         # Parsing never raises merely because a walker is open; the
         # abandoned walker fails at its next step instead.
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             next(walker)
         fresh = self.session.root_node()
         assert fresh is not None
@@ -979,7 +1028,7 @@ class WalkTests(unittest.TestCase):
         self.assertIsNotNone(next(walker))
         with self.assertRaises(grammar.GalleyError):
             self.session.parse("alpha:")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             next(walker)
 
     def test_walker_step_during_a_parse_reports_in_use(self) -> None:
@@ -1099,9 +1148,9 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         self.assertGreater(self.session.child_count(root), 0)
         self.session.parse("alpha:12,beta:3")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             self.session.child_count(root)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(grammar.StaleTreeError):
             root.text()
         fresh = self.session.root_node()
         assert fresh is not None
@@ -1332,6 +1381,32 @@ class EditTests(unittest.TestCase):
         finally:
             other.close()
 
+    def test_a_stale_node_cannot_edit_the_tree_that_replaced_it(self) -> None:
+        # The edit gate is the read gate on the exclusive door: every edit
+        # carrying a parse-1 node refuses, whichever node the other argument
+        # is, so a dead tree is never edited by mistake.
+        stale = self.root
+        self.session.parse("alpha:12,beta:3")
+        fresh = self.session.root_node()
+        assert fresh is not None
+        for edit in (
+            lambda: stale.clean_children(),
+            lambda: stale.append_children(fresh),
+            lambda: fresh.append_children(stale),
+            lambda: self.session.remove_self(stale),
+            lambda: self.session.remove_siblings(stale, 1),
+            lambda: self.session.insert_before(stale, fresh),
+            lambda: self.session.insert_after(stale, fresh),
+            lambda: self.session.insert_after(fresh, stale),
+            lambda: self.session.insert_children_at(stale, 0, fresh),
+            lambda: self.session.insert_children_at(fresh, 0, stale),
+            lambda: self.session.remove_children_at(stale, 0, 1),
+        ):
+            with self.assertRaises(grammar.StaleTreeError):
+                edit()
+        # The fresh tree is untouched by every refusal.
+        self.assertGreater(self.session.child_count(fresh), 0)
+
     def test_hook_refuses_nodes_of_an_earlier_parse(self) -> None:
         # A node of the previous parse against a node of the running parse,
         # both directions; the refusal must fire inside the hook.
@@ -1347,15 +1422,15 @@ class EditTests(unittest.TestCase):
             ):
                 try:
                     append()
-                except ValueError as error:
-                    refusals.append(str(error))
+                except grammar.StaleTreeError as error:
+                    refusals.append(error.code)
 
         self.session.install_procedure("reduction_Pair", reduction_Pair)
         try:
             self.session.parse("alpha:12,beta:3")
         finally:
             _restore_procedures(saved_procedures)
-        self.assertEqual(len(refusals), 4)
+        self.assertEqual(refusals, [grammar.Status.ERROR_STALE_TREE] * 4)
 
     def test_chain_detached_in_one_hook_attaches_in_a_later_hook(self) -> None:
         # A chain detached in one hook can be attached in a later hook of
@@ -1570,13 +1645,13 @@ class GenerationTests(unittest.TestCase):
         with self.assertRaises(grammar.GalleyError):
             self.session.parse("alpha:12,beta:")
         self.assertGreaterEqual(len(stashed), 1)
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             stashed[0].text()
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             self.session.text(stashed[0])
         self.session.clear_procedures()
         self.session.parse("alpha:12,beta:3")
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             stashed[0].text()
 
     def test_hook_node_used_from_another_thread_is_refused_by_the_session_door(
@@ -1628,7 +1703,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(first_root.address, second_root.address)
         self.assertNotEqual(first_root, second_root)
         self.assertEqual(len({first_root, second_root}), 2)
-        with self.assertRaisesRegex(ValueError, "invalidated"):
+        with self.assertRaises(grammar.StaleTreeError):
             first_root.text()
         self.assertEqual(second_root.text(), b"alpha:12")
 

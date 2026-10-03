@@ -13,6 +13,14 @@
  * coordinate sharing themselves; independent sessions on independent
  * threads still need no shared state.
  *
+ * A node on the session door is identified by the parse generation it
+ * belongs to as well as its address, and every call that reads or edits one
+ * takes that generation and returns a status: the core refuses a generation
+ * that is not the published tree's (galley_error_stale_tree), so a node of a
+ * dead parse is never read, whatever the caller believes about the session.
+ * Read the generation once with galley_root_node and keep passing each
+ * node's own. The check is one integer comparison and runs in every build.
+ *
  * Node addresses, text pointers, and diagnostic strings remain valid until
  * the next parse on the same session or session destruction.
  *
@@ -39,8 +47,15 @@ typedef struct GalleyHookDoor GalleyHookDoor;
 /* Stable node index into a session's AST storage. */
 typedef unsigned long long GalleyNodeAddress;
 
-/* Returned by tree queries when no node exists at that position. */
-#define GALLEY_INVALID_NODE 0xFFFFFFFFFFFFFFFFULL
+/* Returned by tree queries when no node exists at that position. Every node
+ * address and this sentinel are non-negative (INT64_MAX), so a call that
+ * returns an address can report a negative status in the same long long. */
+#define GALLEY_INVALID_NODE 0x7FFFFFFFFFFFFFFFULL
+
+/* Returned by galley_node_variable_index and written to the snapshot's
+ * variable column for a node that has no variable. Non-negative like
+ * GALLEY_INVALID_NODE: only statuses are negative. */
+#define GALLEY_NO_VARIABLE 0x7FFFFFFFFFFFFFFFLL
 
 /* Status codes returned by galley_parse_sentinel, galley_parse, and the
  * accessor functions. Non-negative values are success and (for parse)
@@ -63,9 +78,13 @@ enum {
      * queued. Post-parse node/tree/diagnostic accessors return this while a
      * parse is in flight (hook code must use the galley_hook_* door). */
     galley_error_session_in_use           = -13,
-    /* A walk cursor addresses a tree that no longer exists: the session was
-     * parsed again since the cursor's generation (or never published it), or
-     * in a hook the cursor belongs to another parse. Recreate the walk. */
+    /* A node, tree edit, snapshot, or walk cursor carries a generation that
+     * is not the session's live tree's: the session parsed again, the last
+     * parse failed and published nothing, or nothing was ever published.
+     * Session-door calls pass the generation they address; every such
+     * generation check runs in every build, because it is a lifetime
+     * contract, not a misuse check. Re-read the tree with galley_root_node
+     * and use its nodes. */
     galley_error_stale_tree               = -14,
 };
 
@@ -198,18 +217,38 @@ long long galley_parse_file(GalleySession *session, const char *path);
 
 /* Writes the end position (1-based line and column) of the most recent
  * successful parse; writes zeros when the parser was built without
- * position tracking. */
-/* Post-parse node access. Each call takes the session's read lock: while a
- * parse is in flight they refuse (0 / GALLEY_INVALID_NODE /
- * galley_error_session_in_use), and after a failed parse they refuse with
- * galley_error_invalid_node — last_result went stale. Hooks use the
- * galley_hook_* twins instead. */
+ * position tracking. This one and galley_last_input take no generation: they
+ * answer about the parse the session last ran, not about a node. */
 long long galley_last_position(GalleySession *session,
                                unsigned int *out_line, unsigned int *out_column);
 
-/* Returns the number of AST nodes allocated by the most recent successful
- * parse. Always 0 when the parser was built without AST construction. */
-unsigned long long galley_node_count(GalleySession *session);
+/* Post-parse node access. Every call below that reads or edits nodes takes
+ * the generation of the tree it addresses and returns a status, so a refusal
+ * is never mistaken for an answer:
+ *
+ *   galley_error_session_in_use  a parse holds the session (hooks use the
+ *                                galley_hook_* twins instead)
+ *   galley_error_stale_tree      `generation` is not the published tree's:
+ *                                reparsed, the last parse failed, or nothing
+ *                                was ever published (generation 0 is never
+ *                                live)
+ *   galley_error_invalid_node    `node` is outside the live tree's storage
+ *   galley_error_null_argument   a null session or output
+ *
+ * The generation check runs in every build: it is the lifetime contract
+ * memory-safe hosts depend on, not a misuse check, and it costs one integer
+ * comparison per call. Read it from galley_root_node (after a parse) or
+ * galley_hook_generation (inside a hook) and pass the node's own thereafter.
+ *
+ * Calls that answer with one value (galley_node_count, galley_node_child_count,
+ * the five links, galley_node_variable_index) return it directly: a value >= 0
+ * is the answer and a negative value is the status. A missing link is
+ * GALLEY_INVALID_NODE and a node without a variable is GALLEY_NO_VARIABLE,
+ * both real answers. Calls with several results keep out-parameters. */
+
+/* Returns the number of AST nodes of the published tree (0 for a parser built
+ * without AST construction), or a negative status. */
+long long galley_node_count(GalleySession *session, unsigned long long generation);
 
 /* Preallocates node storage for at least capacity nodes, avoiding growth
  * during subsequent parses. Returns galley_error_ast_capacity_exceeded when
@@ -219,44 +258,58 @@ long long galley_reserve_nodes(GalleySession *session, unsigned long long capaci
 /* Returns the current node storage capacity in nodes. */
 unsigned long long galley_node_capacity(GalleySession *session);
 
-/* Returns the root node address of the most recent successful parse, or
- * GALLEY_INVALID_NODE when there is none. */
-GalleyNodeAddress galley_root_node(GalleySession *session);
+/* Writes the root node of the most recent successful parse to *out_root and
+ * the parse generation every node of that tree carries to *out_generation,
+ * under one guard, so a caller never pairs a root with another parse's
+ * generation. This is the only source of the published generation and the
+ * one "is there a tree here" probe:
+ *
+ *   - nothing published (no parse has succeeded, a later parse has begun,
+ *     or the parser was built without AST construction): galley_ok with
+ *     GALLEY_INVALID_NODE and 0 written. Real generations start at 1, so 0
+ *     never matches a live tree.
+ *   - a parse in flight: galley_error_session_in_use, nothing meaningful
+ *     written.
+ *   - a null session or output: galley_error_null_argument.
+ *
+ * The generation reported here is the one every galley_node_* / galley_tree_*
+ * call below accepts. */
+long long galley_root_node(GalleySession *session,
+                           GalleyNodeAddress *out_root,
+                           unsigned long long *out_generation);
 
-/* Writes the parse generation of the session's published tree to
- * out_generation: the generation every node of that tree carries, equal to
- * what galley_hook_generation reported while that parse ran. Writes 0 when
- * nothing is published (no parse has succeeded) or the tree is stale (a
- * later parse began); real generations start at 1. Returns
- * galley_error_session_in_use, with 0 written, while a parse is in flight.
- * A node is live on this door exactly when its generation equals this
- * value. */
-long long galley_published_generation(GalleySession *session,
-                                      unsigned long long *out_generation);
+/* Returns the number of direct children of a node (0 for a leaf), or a
+ * negative status. */
+long long galley_node_child_count(GalleySession *session,
+                                  unsigned long long generation,
+                                  GalleyNodeAddress node);
 
-/* Returns nonzero when address refers to a live node of the most recent
- * parse. */
-int galley_node_is_valid(GalleySession *session, GalleyNodeAddress node);
-
-/* Returns the number of direct children of a node, or 0 for invalid
- * nodes. */
-unsigned int galley_node_child_count(GalleySession *session, GalleyNodeAddress node);
-
-/* Tree navigation: return GALLEY_INVALID_NODE when the link does not exist
- * (including the root's parent). */
-GalleyNodeAddress galley_node_first_child(GalleySession *session, GalleyNodeAddress node);
-GalleyNodeAddress galley_node_last_child(GalleySession *session, GalleyNodeAddress node);
-GalleyNodeAddress galley_node_next_sibling(GalleySession *session, GalleyNodeAddress node);
-GalleyNodeAddress galley_node_prior_sibling(GalleySession *session, GalleyNodeAddress node);
-GalleyNodeAddress galley_node_parent(GalleySession *session, GalleyNodeAddress node);
+/* Tree navigation: return the linked node's address, or GALLEY_INVALID_NODE
+ * when the link does not exist (including the root's parent) — absence is a
+ * non-negative, real answer — or a negative status for a refusal. */
+long long galley_node_first_child(GalleySession *session,
+                                  unsigned long long generation,
+                                  GalleyNodeAddress node);
+long long galley_node_last_child(GalleySession *session,
+                                 unsigned long long generation,
+                                 GalleyNodeAddress node);
+long long galley_node_next_sibling(GalleySession *session,
+                                   unsigned long long generation,
+                                   GalleyNodeAddress node);
+long long galley_node_prior_sibling(GalleySession *session,
+                                    unsigned long long generation,
+                                    GalleyNodeAddress node);
+long long galley_node_parent(GalleySession *session,
+                             unsigned long long generation,
+                             GalleyNodeAddress node);
 
 /* The host-owned walk cursor: 40 bytes, no padding, the same layout on
  * every platform. Zero it before the first step (state
- * GALLEY_WALK_STATE_NOT_STARTED), set root (galley_root_node or any node),
- * generation (galley_published_generation; galley_hook_generation inside a
- * hook) and options, then step with galley_walk_next. The cursor holds the
- * whole walk: no native resource is allocated, and there is nothing to
- * destroy. */
+ * GALLEY_WALK_STATE_NOT_STARTED), set root (the address from
+ * galley_root_node or any node), generation (the one galley_root_node
+ * reported; galley_hook_generation inside a hook) and options, then step with
+ * galley_walk_next. The cursor holds the whole walk: no native resource is
+ * allocated, and there is nothing to destroy. */
 typedef struct GalleyWalkCursor {
     unsigned long long generation;   /* parse generation the walk is bound to */
     unsigned long long root;         /* subtree root: steps never leave it */
@@ -317,40 +370,45 @@ long long galley_walk_next(GalleySession *session, GalleyWalkCursor *cursor);
 long long galley_hook_walk_next(GalleyHookDoor *door, GalleyWalkCursor *cursor);
 
 /* Writes the byte offset and length of a node's matched source span into
- * *out_start / *out_len. Offsets index the input of the most recent
- * parse. */
-long long galley_node_span(GalleySession *session, GalleyNodeAddress node,
+ * *out_start / *out_len. Offsets index the input of the published parse. */
+long long galley_node_span(GalleySession *session, unsigned long long generation,
+                           GalleyNodeAddress node,
                            unsigned long long *out_start, unsigned long long *out_len);
 
 /* Writes the grammar symbol name of a node (for example "ObjectMembers")
  * into *out_data / *out_len. The pointer references static storage valid
- * for the lifetime of the process. Terminal-only nodes report length 0.
- * Returns galley_ok or galley_error_invalid_node. */
-long long galley_node_symbol_name(GalleySession *session, GalleyNodeAddress node,
+ * for the lifetime of the process. Terminal-only nodes report length 0. */
+long long galley_node_symbol_name(GalleySession *session, unsigned long long generation,
+                                  GalleyNodeAddress node,
                                   const char **out_data, size_t *out_len);
 
 /* Returns the raw variable index of a node into the variable list (see
- * galley_variable_name), or -1 when the node has no variable. */
-long long galley_node_variable_index(GalleySession *session, GalleyNodeAddress node);
+ * galley_variable_name), GALLEY_NO_VARIABLE when the node has none, or a
+ * negative status. */
+long long galley_node_variable_index(GalleySession *session, unsigned long long generation,
+                                     GalleyNodeAddress node);
 
-/* Bulk read of the most recent successful parse in a single crossing.
+/* Bulk read of the published tree in a single crossing.
  * Writes up to capacity entries of each non-null out array, one entry per
  * node address (address i fills slot i), and returns the total node count
- * (the same value galley_node_count reports; 0 without AST construction).
+ * (the same value galley_node_count reports for `generation`; 0 without AST
+ * construction).
  * A null array skips that column. When capacity is smaller than the count,
  * only the address prefix [0, capacity) is written; call again with larger
  * buffers to get the whole tree. Returns galley_error_null_argument for a
- * null session.
+ * null session, and galley_error_stale_tree when a parse ran since the
+ * generation was read, so a snapshot never mixes two trees.
  *
  * Columns mirror the per-node accessors: out_parent holds the parent
  * address (GALLEY_INVALID_NODE for the root), out_first_child the first
  * child, out_next the next sibling, out_child_count the direct child
- * count, out_variable the variable index (-1 when the node has none),
+ * count, out_variable the variable index (GALLEY_NO_VARIABLE when the node has none),
  * out_span_start/out_span_len the source span, out_is_semantic_error 1
  * where the node carries a semantic error (the flag galley_walk_next
  * records in the cursor), else 0. Together parent, first_child, and next
  * describe the whole tree without further calls. */
 long long galley_tree_snapshot(GalleySession *session,
+                               unsigned long long generation,
                                GalleyNodeAddress *out_parent,
                                GalleyNodeAddress *out_first_child,
                                GalleyNodeAddress *out_next,
@@ -366,7 +424,8 @@ long long galley_tree_snapshot(GalleySession *session,
  * alive until the next parse (galley_parse_sentinel) or rely on the session,
  * which copies it (galley_parse). During an in-progress parse (procedure
  * hooks) the pointer references the live input of that parse. */
-long long galley_node_text(GalleySession *session, GalleyNodeAddress node,
+long long galley_node_text(GalleySession *session, unsigned long long generation,
+                           GalleyNodeAddress node,
                            const char **out_data, size_t *out_len);
 
 /* Writes the retained input of the most recent parse into *out_data /
@@ -416,7 +475,8 @@ long long galley_diagnostic_context_at(GalleySession *session, unsigned long lon
 /* Writes the 1-based line and column of a node's first byte into
  * *out_line / *out_column. Scans the retained input, so cost is linear in
  * the offset. */
-long long galley_node_line_column(GalleySession *session, GalleyNodeAddress node,
+long long galley_node_line_column(GalleySession *session, unsigned long long generation,
+                                  GalleyNodeAddress node,
                                   unsigned int *out_line, unsigned int *out_column);
 
 /* Writes the rendered diagnostic message with ANSI color escapes into *out.
@@ -426,23 +486,30 @@ long long galley_diagnostic_message_ansi(GalleySession *session, const char **ou
 /* Tree editing. Chains passed to these functions must be detached orphans
  * (no parent, no prior). Node addresses are stable, so edits never
  * invalidate other addresses. Removed or detached chains remain allocated
- * and readable but are orphaned. Post-parse edits take the exclusive lock:
- * galley_error_session_in_use while a parse is in flight,
- * galley_error_invalid_node for an address from a dead parse; hook-time
- * edits use the galley_hook_tree_* twins. Misuse other than an out-of-range
- * index or count (see the calls below) is undefined behavior in release
- * builds; Debug builds check it and abort the process on failure, for every
- * tree edit including insert_before, insert_after and append_children. */
+ * and readable but are orphaned. Post-parse edits take the exclusive lock and
+ * the same generation gate as every other session-door call:
+ * galley_error_session_in_use while a parse is in flight, and
+ * galley_error_stale_tree for a generation that is not the published tree's
+ * (an address from a dead parse, or a parse-2 address paired with a parse-1
+ * generation); hook-time edits use the galley_hook_tree_* twins. Misuse other
+ * than an out-of-range index or count (see the calls below) is undefined
+ * behavior in release builds; Debug builds check it and abort the process on
+ * failure, for every tree edit including insert_before, insert_after and
+ * append_children. */
 
-/* Appends first_node (and its next-chain) as the last children of parent. */
+/* Appends first_node (and its next-chain) as the last children of parent.
+ * Both addresses must belong to `generation`. */
 long long galley_tree_append_children(GalleySession *session,
+                                      unsigned long long generation,
                                       GalleyNodeAddress parent, GalleyNodeAddress first_node);
 
 /* Inserts first_node (and its chain) immediately before/after target among
- * its siblings. */
+ * its siblings. Both addresses must belong to `generation`. */
 long long galley_tree_insert_before(GalleySession *session,
+                                    unsigned long long generation,
                                     GalleyNodeAddress target, GalleyNodeAddress first_node);
 long long galley_tree_insert_after(GalleySession *session,
+                                   unsigned long long generation,
                                    GalleyNodeAddress target, GalleyNodeAddress first_node);
 
 /* Removes count consecutive siblings starting at node (galley_tree_remove),
@@ -453,14 +520,20 @@ long long galley_tree_insert_after(GalleySession *session,
  * galley_error_invalid_node in every build. Other misuse is undefined
  * behavior in release builds; Debug builds check it and abort the process
  * on failure. */
-long long galley_tree_remove_siblings(GalleySession *session, GalleyNodeAddress node,
+long long galley_tree_remove_siblings(GalleySession *session,
+                                      unsigned long long generation,
+                                      GalleyNodeAddress node,
                                       size_t count, GalleyNodeAddress *out_head);
-long long galley_tree_remove_self(GalleySession *session, GalleyNodeAddress node,
+long long galley_tree_remove_self(GalleySession *session,
+                                  unsigned long long generation,
+                                  GalleyNodeAddress node,
                                   GalleyNodeAddress *out_head);
 
 /* Detaches all children of node, writing the detached chain head to
  * out_head (GALLEY_INVALID_NODE when there are none). */
-long long galley_tree_clean_children(GalleySession *session, GalleyNodeAddress node,
+long long galley_tree_clean_children(GalleySession *session,
+                                     unsigned long long generation,
+                                     GalleyNodeAddress node,
                                      GalleyNodeAddress *out_head);
 
 /* Inserts first_node (and its chain) into the children of parent at index.
@@ -469,7 +542,9 @@ long long galley_tree_clean_children(GalleySession *session, GalleyNodeAddress n
  * still attached, or that contains parent or one of its ancestors) is
  * undefined behavior in release builds; Debug builds check it and abort the
  * process on failure. */
-long long galley_tree_insert_children_at(GalleySession *session, GalleyNodeAddress parent,
+long long galley_tree_insert_children_at(GalleySession *session,
+                                         unsigned long long generation,
+                                         GalleyNodeAddress parent,
                                          size_t index, GalleyNodeAddress first_node);
 
 /* Removes count consecutive children of parent starting at child index,
@@ -477,7 +552,9 @@ long long galley_tree_insert_children_at(GalleySession *session, GalleyNodeAddre
  * returns galley_ok with an invalid head, whatever the index; an index and
  * count that reach past the last child return galley_error_invalid_node in
  * every build. */
-long long galley_tree_remove_children_at(GalleySession *session, GalleyNodeAddress parent,
+long long galley_tree_remove_children_at(GalleySession *session,
+                                         unsigned long long generation,
+                                         GalleyNodeAddress parent,
                                          size_t index, size_t count,
                                          GalleyNodeAddress *out_head);
 
@@ -624,7 +701,7 @@ GalleyHookDoor *galley_procedure_door(void *args);
 
 /* Writes the parse generation of the parse that owns door to out_generation:
  * the generation of every node its hooks see, and of the tree it publishes
- * if it succeeds (galley_published_generation reports it afterwards).
+ * if it succeeds (galley_root_node reports it afterwards).
  * Constant for the whole parse; takes no lock. Returns
  * galley_error_null_argument for a NULL door or output. */
 long long galley_hook_generation(GalleyHookDoor *door, unsigned long long *out_generation);
@@ -658,8 +735,9 @@ long long galley_procedure_report_semantic_error(void *args, const char *message
  * with galley_error_session_in_use.
  * ------------------------------------------------------------------------- */
 
-/* Node reads. */
-int galley_hook_node_is_valid(GalleyHookDoor *door, GalleyNodeAddress node);
+/* Node reads. Unshared by construction, so these take no generation: the
+ * door exists only while its parse runs, and every node it can address is
+ * that parse's. */
 unsigned int galley_hook_node_child_count(GalleyHookDoor *door, GalleyNodeAddress node);
 GalleyNodeAddress galley_hook_node_first_child(GalleyHookDoor *door, GalleyNodeAddress node);
 GalleyNodeAddress galley_hook_node_last_child(GalleyHookDoor *door, GalleyNodeAddress node);
@@ -674,6 +752,8 @@ long long galley_hook_node_span(GalleyHookDoor *door, GalleyNodeAddress node,
                                 unsigned long long *out_start, unsigned long long *out_len);
 long long galley_hook_node_line_column(GalleyHookDoor *door, GalleyNodeAddress node,
                                        unsigned int *out_line, unsigned int *out_column);
+/* The raw variable index, GALLEY_NO_VARIABLE when the node has none, or a
+ * negative status for an address outside the parse's storage. */
 long long galley_hook_node_variable_index(GalleyHookDoor *door, GalleyNodeAddress node);
 long long galley_hook_last_input(GalleyHookDoor *door, const char **out_data, size_t *out_len);
 

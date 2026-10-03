@@ -64,10 +64,16 @@ door — `galley_node_*`,
 `galley_tree_*`, diagnostics — refuses with `galley_error_session_in_use`
 until the parse finishes, so a session stashed from a hook gains no
 privilege. The core numbers parses: `galley_hook_generation(door, &g)` reports
-the generation of the running parse, and `galley_published_generation(session,
-&g)` the generation of the tree the last successful parse published (`0` when
-none, or stale after a later parse), so a host can tell which nodes are live
-without counting parses itself. Drop/replace the current node with
+the generation of the running parse, and `galley_root_node(session, &root,
+&g)` the root and the generation of the published tree in one crossing (`0`
+when nothing is published). **The core owns the check**: every session-door
+node and tree call takes the generation of the tree it addresses and returns
+a status, refusing anything but the published one with
+`galley_error_stale_tree`. No host caches that generation, so no host-side
+reading can disagree with the core about which tree is live; the hook twins
+take none, because their door exists only while its parse runs. There is no
+validity probe: a real read is the answer, and it refuses. The check runs in
+every build — a lifetime contract, one integer compare per call. Drop/replace the current node with
 `galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
 talk to the parser through `args.node_address` and are not the same as
 `galley_tree_remove_self`.
@@ -260,9 +266,11 @@ step once per node:
 ```c
 GalleyWalkCursor cursor = {0};
 unsigned long long generation = 0;
-galley_published_generation(session, &generation);
+GalleyNodeAddress root = GALLEY_INVALID_NODE;
+long long published = galley_root_node(session, &root, &generation);
+if (published < 0) { /* a parse holds the session */ }
 cursor.generation = generation;
-cursor.root = galley_root_node(session);
+cursor.root = root;
 long long status;
 while ((status = galley_walk_next(session, &cursor)) > 0) {
     GalleyNodeAddress n = cursor.current;
@@ -270,9 +278,9 @@ while ((status = galley_walk_next(session, &cursor)) > 0) {
     const char *name_data; size_t name_len;
     const char *text_data; size_t text_len;
     unsigned int line = 0, column = 0;
-    galley_node_symbol_name(session, n, &name_data, &name_len);
-    galley_node_text(session, n, &text_data, &text_len);
-    galley_node_line_column(session, n, &line, &column);
+    galley_node_symbol_name(session, generation, n, &name_data, &name_len);
+    galley_node_text(session, generation, n, &text_data, &text_len);
+    galley_node_line_column(session, generation, n, &line, &column);
 }
 ```
 
@@ -302,12 +310,21 @@ and writes up to `capacity` entries, so size with `galley_node_count`
 first and pass null for columns you do not need. Spans index the retained
 input, readable in one call with `galley_last_input`.
 
-Node reads belong to the last successful parse: once a later parse —
-successful or failed — has reset node storage, status-returning reads such
-as `galley_tree_snapshot` answer `galley_error_invalid_node` and the
-value-returning forms fall back to their defaults (`GALLEY_INVALID_NODE`,
-`0`) until a successful parse reopens the tree. `galley_last_input` is
-unaffected: it keeps the last successful input throughout.
+Node reads belong to the last successful parse. Every session-door node
+and tree call takes the generation of the tree it addresses right after the
+session, which `galley_root_node` reports together with the root (`0` when
+nothing is published), and returns a `long long`. Calls with one result
+(`galley_node_count`, `galley_node_child_count`, the five links,
+`galley_node_variable_index`) return it directly: a value `>= 0` is the
+answer and a negative value is the status; calls with several results keep
+out-parameters. Once a later parse — successful or failed — has retired that
+generation, every such call answers `galley_error_stale_tree`, and a parse in
+flight answers `galley_error_session_in_use`. A missing link is the
+non-negative `GALLEY_INVALID_NODE` (`INT64_MAX`) and a node without a
+variable is `GALLEY_NO_VARIABLE` (also `INT64_MAX`, in `galley_node_variable_index`
+and the snapshot's variable column): every address and both sentinels are
+non-negative, so only statuses are negative. `galley_last_input` is unaffected: it keeps
+the last successful input throughout.
 
 ### Editing the Tree
 
@@ -320,14 +337,14 @@ passing an attached chain corrupts the tree.
 
 ```c
 GalleyNodeAddress head;
-galley_tree_clean_children(session, parent, &head);
-galley_tree_append_children(session, parent, head);
-galley_tree_insert_before(session, target, chain);
-galley_tree_insert_after(session, target, chain);
-galley_tree_insert_children_at(session, parent, index, chain);
-galley_tree_remove_siblings(session, node, count, &head);
-galley_tree_remove_self(session, node, &head);
-galley_tree_remove_children_at(session, parent, index, count, &head);
+galley_tree_clean_children(session, generation, parent, &head);
+galley_tree_append_children(session, generation, parent, head);
+galley_tree_insert_before(session, generation, target, chain);
+galley_tree_insert_after(session, generation, target, chain);
+galley_tree_insert_children_at(session, generation, parent, index, chain);
+galley_tree_remove_siblings(session, generation, node, count, &head);
+galley_tree_remove_self(session, generation, node, &head);
+galley_tree_remove_children_at(session, generation, parent, index, count, &head);
 ```
 
 ### Diagnostics

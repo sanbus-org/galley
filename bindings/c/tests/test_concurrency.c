@@ -45,8 +45,7 @@ typedef struct Library {
     GalleySession *(*session_create)(void);
     void (*session_destroy)(GalleySession *);
     long long (*parse)(GalleySession *, const char *, size_t);
-    GalleyNodeAddress (*root_node)(GalleySession *);
-    int (*node_is_valid)(GalleySession *, GalleyNodeAddress);
+    long long (*root_node)(GalleySession *, GalleyNodeAddress *, unsigned long long *);
     long long (*set_hooks)(GalleySession *, GalleyHookDispatch, void *, const unsigned char *, size_t);
     size_t (*hooks_count)(void);
     const char *(*hook_name_data)(size_t);
@@ -70,13 +69,12 @@ static int load_library(Library *library, const char *path) {
     *(void **)&library->session_destroy = load_symbol(library->image, "galley_session_destroy");
     *(void **)&library->parse = load_symbol(library->image, "galley_parse");
     *(void **)&library->root_node = load_symbol(library->image, "galley_root_node");
-    *(void **)&library->node_is_valid = load_symbol(library->image, "galley_node_is_valid");
     *(void **)&library->set_hooks = load_symbol(library->image, "galley_session_set_hooks");
     *(void **)&library->hooks_count = load_symbol(library->image, "galley_hooks_count");
     *(void **)&library->hook_name_data = load_symbol(library->image, "galley_hooks_name_data");
     *(void **)&library->hook_name_length = load_symbol(library->image, "galley_hooks_name_length");
     if (library->session_create == NULL || library->session_destroy == NULL || library->parse == NULL ||
-        library->root_node == NULL || library->node_is_valid == NULL || library->set_hooks == NULL || library->hooks_count == NULL || library->hook_name_data == NULL ||
+        library->root_node == NULL || library->set_hooks == NULL || library->hooks_count == NULL || library->hook_name_data == NULL ||
         library->hook_name_length == NULL) {
         return 0;
     }
@@ -296,11 +294,15 @@ int main(int argc, char **argv) {
         static const unsigned silent[MAX_HOOKS];
         Worker *idle = &workers[1];
         const Library *library = idle->library;
-        GalleyNodeAddress root = library->root_node(idle->session);
+        GalleyNodeAddress root = GALLEY_INVALID_NODE;
+        unsigned long long generation = 0;
+        CHECK(library->root_node(idle->session, &root, &generation) == galley_ok);
         CHECK(root != GALLEY_INVALID_NODE);
         CHECK(library->set_hooks(idle->session, dispatch, idle, idle->enabled, library->count) == galley_ok);
-        CHECK(library->root_node(idle->session) == root);
-        CHECK(library->node_is_valid(idle->session, root));
+        GalleyNodeAddress same_root = GALLEY_INVALID_NODE;
+        unsigned long long same_generation = 0;
+        CHECK(library->root_node(idle->session, &same_root, &same_generation) == galley_ok);
+        CHECK(same_root == root && same_generation == generation);
         CHECK(library->set_hooks(NULL, dispatch, idle, idle->enabled, library->count) == galley_error_null_argument);
         CHECK(library->set_hooks(idle->session, dispatch, idle, idle->enabled, library->count - 1) == galley_error_null_argument);
         CHECK(library->set_hooks(idle->session, dispatch, idle, NULL, library->count) == galley_error_null_argument);

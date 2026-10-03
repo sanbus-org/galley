@@ -15,16 +15,16 @@ import (
 import "C"
 
 func textOf(door galley.NodeDoor, node galley.Node) []byte {
-	text, ok := door.Text(node)
-	if !ok {
+	text, err := door.Text(node)
+	if err != nil {
 		return nil
 	}
 	return text
 }
 
 func nameOf(door galley.NodeDoor, node galley.Node) string {
-	bytes, ok := door.SymbolName(node)
-	if !ok {
+	bytes, err := door.SymbolName(node)
+	if err != nil {
 		return ""
 	}
 	return string(bytes)
@@ -33,6 +33,11 @@ func nameOf(door galley.NodeDoor, node galley.Node) string {
 func posOf(door galley.NodeDoor, node galley.Node) (uint32, uint32) {
 	line, column, _ := door.LineColumn(node)
 	return line, column
+}
+
+func childCountOf(door galley.NodeDoor, node galley.Node) uint32 {
+	count, _ := door.ChildCount(node)
+	return count
 }
 
 func parseU(bytes []byte) uint {
@@ -58,7 +63,8 @@ func countPairs(door galley.NodeDoor, node galley.Node) (uint, uint) {
 		return 1, parseU(number)
 	}
 	var count, total uint
-	for _, child := range door.Children(node) {
+	children, _ := door.Children(node)
+	for _, child := range children {
 		childCount, childSum := countPairs(door, child)
 		count += childCount
 		total += childSum
@@ -140,6 +146,10 @@ var (
 	laterHookChildCount uint32
 	hookWalkVisits      []galley.WalkStep
 	hookWalkErr         error
+	// sessionProbe is the session under test; reduction_Document reads its
+	// root through the session door mid-parse, which the core refuses.
+	sessionProbe *galley.Session
+	hookRootErr  error
 )
 
 func resetDoorRecording() {
@@ -148,6 +158,8 @@ func resetDoorRecording() {
 	laterHookChildCount = 0
 	hookWalkVisits = nil
 	hookWalkErr = nil
+	sessionProbe = nil
+	hookRootErr = nil
 }
 
 //export reduction_Pair
@@ -168,7 +180,7 @@ func reduction_Pair(ptr unsafe.Pointer) {
 			break
 		}
 	}
-	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, door.ChildCount(node), line, column))
+	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, childCountOf(door, node), line, column))
 	if !firstPairSeen {
 		firstPairSeen = true
 		firstPairDoor = door
@@ -184,11 +196,14 @@ func reduction_Document(ptr unsafe.Pointer) {
 	if !ok {
 		return
 	}
+	if sessionProbe != nil {
+		_, _, hookRootErr = sessionProbe.RootNode()
+	}
 	count, total := countPairs(door, node)
 	emit(fmt.Sprintf("Document %d pairs, sum=%d\n", count, total))
 	if firstPairSeen {
 		laterHookSharesDoor = firstPairDoor == door
-		laterHookChildCount = firstPairDoor.ChildCount(firstPairNode)
+		laterHookChildCount = childCountOf(firstPairDoor, firstPairNode)
 	}
 	// walk_test.go's hook walk: over this parse's in-flight tree, stepped
 	// through the parse's own door.

@@ -51,6 +51,7 @@ const {
   Status,
   INVALID_NODE,
   SessionClosedError,
+  StaleTreeError,
   GalleyError,
 } = await import("../src/index.ts");
 
@@ -312,10 +313,9 @@ await test("root and navigation links", async () => {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
     assert.ok(root !== null);
-    assert.equal(s.nodeValid(root), true);
     assert.equal(s.parent(root), null);
     // A raw address is refused at entry: it carries no session or generation.
-    assert.throws(() => s.nodeValid(INVALID_NODE), TypeError);
+    assert.throws(() => s.childCount(INVALID_NODE), TypeError);
     const first = s.firstChild(root);
     const last = s.lastChild(root);
     assert.ok(first !== null);
@@ -429,6 +429,10 @@ await test("snapshot node round-trips columns and accessors", async () => {
     assert.ok(snap.node(first.address) === first);
     // An absent node link answers null, never a node.
     assert.equal(snap.node(INVALID_NODE), null);
+    // Every address and the sentinel are non-negative, and a generation is a
+    // plain Number: only statuses are negative, and no BigInt copy rides along.
+    assert.equal(INVALID_NODE, 2n ** 63n - 1n);
+    assert.equal(typeof s.rootNode().generation, "number");
   } finally {
     s.close();
   }
@@ -491,12 +495,12 @@ await test("snapshot node is stale after a re-parse", async () => {
     // The columns never follow a later parse, and the re-parse's
     // generation owns the intern table now: the stale snapshot answers
     // with a fresh, uninterned handle on every call, and each handle
-    // reads as invalidated.
+    // reads as stale.
     assert.ok(snap.node(root.address) !== stale);
     assert.ok(snap.node(root.address) !== fresh);
     assert.ok(snap.node(root.address) !== snap.node(root.address));
-    assert.throws(() => stale.text(), SessionClosedError);
-    assert.throws(() => snap.node(root.address).text(), SessionClosedError);
+    assert.throws(() => stale.text(), StaleTreeError);
+    assert.throws(() => snap.node(root.address).text(), StaleTreeError);
     assert.equal(Buffer.from(fresh.text()).toString(), "alpha:12");
   } finally {
     s.close();
@@ -594,9 +598,9 @@ await test("failed parse keeps the input of the last successful parse", async ()
     // reads and snapshots refuse until the next successful parse.
     assert.throws(() => s.parse("gamma:"), (err) => err.code === Status.ErrorSyntax);
     assert.deepEqual(Buffer.from(s.lastInput()), retained);
-    assert.throws(() => s.snapshot(), (err) => err.code === Status.ErrorInvalidNode);
-    assert.throws(() => s.text(root), SessionClosedError);
-    assert.throws(() => root.text(), SessionClosedError);
+    assert.throws(() => s.snapshot(), StaleTreeError);
+    assert.throws(() => s.text(root), StaleTreeError);
+    assert.throws(() => root.text(), StaleTreeError);
 
     // The door reopens on the next successful parse over the same input.
     s.parse("alpha:12,beta:3");
@@ -744,11 +748,11 @@ await test("walker step after re-parse throws", async () => {
     assert.ok(walker !== null);
     assert.equal(walker.next().done, false);
     assert.equal(s.parse("alpha:12,beta:3"), 15);
-    assert.throws(() => walker.next(), SessionClosedError);
+    assert.throws(() => walker.next(), StaleTreeError);
     // skipChildren is a pure host-side state write: staleness is the
     // next step's answer, not this one's.
     walker.skipChildren();
-    assert.throws(() => walker.next(), SessionClosedError);
+    assert.throws(() => walker.next(), StaleTreeError);
     const fresh = s.rootNode();
     assert.ok(fresh !== null);
     const rewound = fresh.walk();
@@ -767,8 +771,8 @@ await test("node read after re-parse throws", async () => {
     assert.ok(root !== null);
     assert.ok(s.childCount(root) > 0);
     s.parse("alpha:12,beta:3");
-    assert.throws(() => s.childCount(root), SessionClosedError);
-    assert.throws(() => root.text(), SessionClosedError);
+    assert.throws(() => s.childCount(root), StaleTreeError);
+    assert.throws(() => root.text(), StaleTreeError);
     const fresh = s.rootNode();
     assert.ok(fresh !== null);
     assert.ok(s.childCount(fresh) > 0);
@@ -787,7 +791,7 @@ await test("parse with abandoned walker succeeds", async () => {
     // Parsing never throws merely because a walker is open; the
     // abandoned walker fails at its next step instead.
     assert.equal(s.parse("alpha:12,beta:3"), 15);
-    assert.throws(() => walker.next(), SessionClosedError);
+    assert.throws(() => walker.next(), StaleTreeError);
   } finally {
     s.close();
   }
@@ -913,7 +917,7 @@ await test("a hook refuses nodes of an earlier parse", async () => {
       s.clearProcedures();
     }
     assert.equal(refusals.length, 4);
-    assert.ok(refusals.every((error) => error instanceof SessionClosedError));
+    assert.ok(refusals.every((error) => error instanceof StaleTreeError));
   } finally {
     s.close();
   }
@@ -1176,7 +1180,7 @@ await test("hook nodes outlive their hook and their parse", async () => {
     assert.deepEqual(seen, ["alpha:12"]);
     assert.equal(new TextDecoder().decode(stashed[0].text()), "alpha:12");
     s.parse("gamma:7");
-    assert.throws(() => stashed[0].text(), SessionClosedError);
+    assert.throws(() => stashed[0].text(), StaleTreeError);
   } finally {
     s.close();
   }
@@ -1509,7 +1513,7 @@ await test("two language directories parse independently", async () => {
   }
 });
 
-await runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status, collect });
+await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({

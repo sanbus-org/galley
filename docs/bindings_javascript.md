@@ -176,11 +176,17 @@ The FFI boundary is the only overhead over the C API:
 
 Node text, diagnostics, and expected-token data remain valid only until the
 next parse on the same session; every accessor copies before returning.
-`Node` methods check that their session is still open on the node's parse
-generation and throw `SessionClosedError` after `close()`, exiting a `using`
-block, or a re-parse. A failed parse counts: node reads throw
-`SessionClosedError` and `snapshot()` throws `ErrorInvalidNode` until a
-successful parse, while `lastInput()` keeps the last successful input.
+`Node` methods hand the node's parse generation to the core with every read,
+and the core refuses one that is not the published tree's: a re-parse makes
+them throw `StaleTreeError` (`GalleyError`, code `Status.ErrorStaleTree`)
+rather than read stale storage. After `close()` or on exiting a `using` block
+they throw `SessionClosedError` instead — a different failure, which never
+stands in for the other. A failed parse counts: nothing is published, so
+every session-door read, `nodeCount()`, and `snapshot()` throw
+`StaleTreeError` until a successful parse, while `lastInput()` keeps the last
+successful input. `rootNode()` is the one "is there a tree here" probe: it
+returns `null` when nothing is published. There is no validity probe — a real
+read is the answer, and it raises.
 
 ## Procedures
 
@@ -313,8 +319,8 @@ snapshot carries `kind === Kind.Semantic` and a `semantic` pair of
 yielding one `{ node, depth, isSemanticError }` per step with the node
 itself at depth 0 — the shared runtime walker. The walker is iterable and
 owns no native resource: no `close` and no `using`; a step after the
-session reparses or closes raises the session's dead-generation
-`SessionClosedError` instead of reading stale storage. `skipChildren()`
+session reparses raises `StaleTreeError` and one after it closes raises
+`SessionClosedError`, instead of either reading stale storage. `skipChildren()`
 prunes the last yielded node's children host-side, without a native call.
 Pass `true` to `walk` to prune semantic-error subtrees. Steps follow the live
 links, so edits between steps are visible, and a step whose position is

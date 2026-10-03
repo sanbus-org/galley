@@ -84,7 +84,7 @@ class Status(enum.IntEnum):
     ERROR_STALE_TREE = -14
 
 INVALID_NODE: Final[int]
-"""All-ones address marking an absent node link."""
+"""``2**63 - 1``, the address marking an absent node link."""
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -103,6 +103,17 @@ class GalleyError(Exception):
 
     code: int
     diagnostic: Diagnostic | None
+
+class StaleTreeError(GalleyError):
+    """The tree a handle belongs to is gone.
+
+    Raised by every session-door read of a node, walk, or snapshot whose
+    parse generation the core no longer holds live: the session parsed again
+    since, the last parse published nothing, or nothing was ever published.
+    A subclass of :class:`GalleyError` with code ``ERROR_STALE_TREE``, so
+    ``except GalleyError`` still catches it. Distinct from use after
+    ``close()``, which raises ``ValueError``.
+    """
 
 # ---------------------------------------------------------------------------
 # Diagnostic snapshot — read-only, frozen at parse failure
@@ -181,20 +192,24 @@ class Node:
         """Tuple of direct children, from first to last (empty when leaf)."""
         ...
 
-    def text(self) -> bytes | None:
-        """Text bytes of this node, or ``None`` for an invalid node."""
+    def text(self) -> bytes:
+        """Text bytes of this node.
+
+        Raises ``StaleTreeError`` once the tree this node belongs to is
+        gone; there is no "invalid node" answer any more.
+        """
         ...
 
-    def symbol_name(self) -> bytes | None:
-        """Symbol name bytes, or ``None`` for an invalid node."""
+    def symbol_name(self) -> bytes:
+        """Symbol name bytes (``b""`` for a terminal-only node)."""
         ...
 
-    def span(self) -> tuple[int, int] | None:
-        """``(start, length)`` byte span, or ``None`` for an invalid node."""
+    def span(self) -> tuple[int, int]:
+        """``(start, length)`` byte span of this node."""
         ...
 
-    def line_column(self) -> tuple[int, int] | None:
-        """1-based ``(line, column)`` of the first byte, or ``None``."""
+    def line_column(self) -> tuple[int, int]:
+        """1-based ``(line, column)`` of this node's first byte."""
         ...
 
     def parent(self) -> Node | None:
@@ -222,8 +237,9 @@ class Node:
         depth 0.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
-        semantic-error nodes. A stale node — its session parsed again or
-        closed — raises ``ValueError``.
+        semantic-error nodes. ``walk()`` itself only refuses a closed
+        session (``ValueError``); a node whose tree is gone is refused by the
+        core at the walker's first step, which raises ``StaleTreeError``.
         """
         ...
 
@@ -261,7 +277,7 @@ class Snapshot:
 
     Returned by ``Session.snapshot``. ``node(index)`` is the one conversion
     from a stored address back to a node, stamped with the parse generation
-    these columns describe, so it reads as invalidated once the session
+    these columns describe, so it reads as a stale tree once the session
     parses again.
     """
 
@@ -326,21 +342,22 @@ class Walker(Iterator[WalkStep]):
 
     Returned by ``Node.walk``; that node yields at depth 0. The walker
     owns no native resource: abandoning it is free, and parsing again with
-    a walker alive succeeds — its next step raises ``ValueError`` instead.
-    Each step picks its door like any node call, so a walk created inside a
-    hook of a running parse walks that parse's in-flight tree.
+    a walker alive succeeds — its next step raises ``StaleTreeError``
+    instead. Each step picks its door like any node call, so a walk created
+    inside a hook of a running parse walks that parse's in-flight tree.
     """
 
     def __next__(self) -> WalkStep:
         """Next ``WalkStep`` in pre-order.
 
-        Raises ``ValueError`` when the session has closed or parsed again
-        since the walker was created; raises ``GalleyError`` while a parse
-        holds the session (``ERROR_SESSION_IN_USE``) or when a step's
-        position is no longer inside the walk's root — removed, or moved
-        elsewhere (``ERROR_INVALID_NODE``). Raises ``StopIteration`` at the
-        end of the walk, including after a later parse: a finished walker
-        stays finished.
+        Raises ``ValueError`` when the session has closed, and
+        ``StaleTreeError`` when it parsed again since the walker was
+        created; raises ``GalleyError`` while a parse holds the session
+        (``ERROR_SESSION_IN_USE``) or when a step's position is no longer
+        inside the walk's root — removed, or moved elsewhere
+        (``ERROR_INVALID_NODE``). Raises ``StopIteration`` at the end of the
+        walk, including after a later parse: a finished walker stays
+        finished.
         """
         ...
 
@@ -475,11 +492,15 @@ class Session:
     # -- arena --
 
     def snapshot(self) -> Snapshot:
-        """Flat bulk read of the most recent successful parse: a ``Snapshot``
-        with ``count`` and one tuple per node address for ``parent``,
-        ``first_child``, ``next``, ``child_count``, ``variable``,
-        ``span_start``, ``span_len`` and ``is_semantic_error`` (booleans, the
-        flag a walk step carries). Missing links and variables are ``None``."""
+        """Flat bulk read of the published tree: a ``Snapshot`` with ``count``
+        and one tuple per node address for ``parent``, ``first_child``,
+        ``next``, ``child_count``, ``variable``, ``span_start``,
+        ``span_len`` and ``is_semantic_error`` (booleans, the flag a walk
+        step carries). Missing links and variables are ``None``.
+
+        Raises ``StaleTreeError`` when nothing is published, and
+        ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse runs.
+        """
         ...
 
     def last_input(self) -> bytes:
@@ -487,7 +508,10 @@ class Session:
         ...
 
     def node_count(self) -> int:
-        """Number of AST nodes allocated by the last successful parse (0 when ``has_ast`` is false)."""
+        """Number of AST nodes of the published tree (0 when ``has_ast`` is false).
+
+        Raises ``StaleTreeError`` when nothing is published.
+        """
         ...
 
     def reserve_nodes(self, capacity: int) -> None:
@@ -501,15 +525,18 @@ class Session:
     # -- navigation (``Node`` arguments, ``Node`` results) --
 
     def root_node(self) -> Node | None:
-        """Root of the last successful parse, or ``None``."""
-        ...
+        """Root of the published tree, or ``None`` when nothing is published.
 
-    def node_valid(self, node: Node) -> bool:
-        """Whether ``node`` refers to a live node of the last parse."""
+        Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse runs.
+        """
         ...
 
     def child_count(self, node: Node) -> int:
-        """Direct child count (0 for invalid nodes)."""
+        """Direct child count (0 for a leaf).
+
+        Raises ``StaleTreeError`` if ``node`` belongs to a tree the core no
+        longer holds live.
+        """
         ...
 
     def children(self, node: Node) -> tuple[Node, ...]:
@@ -521,24 +548,24 @@ class Session:
     def next_sibling(self, node: Node) -> Node | None: ...
     def prior_sibling(self, node: Node) -> Node | None: ...
     def parent(self, node: Node) -> Node | None: ...
-    def symbol_name(self, node: Node) -> bytes | None:
-        """Symbol name bytes, or ``None`` for an invalid node."""
+    def symbol_name(self, node: Node) -> bytes:
+        """Symbol name bytes (``b""`` for a terminal-only node)."""
         ...
 
-    def text(self, node: Node) -> bytes | None:
-        """Text bytes, or ``None`` for an invalid node."""
+    def text(self, node: Node) -> bytes:
+        """Text bytes matched by ``node``."""
         ...
 
-    def span(self, node: Node) -> tuple[int, int] | None:
-        """``(start, length)`` byte span, or ``None`` for an invalid node."""
+    def span(self, node: Node) -> tuple[int, int]:
+        """``(start, length)`` byte span of ``node``."""
         ...
 
-    def line_column(self, node: Node) -> tuple[int, int] | None:
-        """1-based ``(line, column)`` of the first byte, or ``None``."""
+    def line_column(self, node: Node) -> tuple[int, int]:
+        """1-based ``(line, column)`` of ``node``'s first byte."""
         ...
 
     def variable_index(self, node: Node) -> int | None:
-        """Variable table index, or ``None`` for an invalid node."""
+        """Variable table index, or ``None`` when the node has no variable."""
         ...
 
     def last_position(self) -> tuple[int, int] | None:

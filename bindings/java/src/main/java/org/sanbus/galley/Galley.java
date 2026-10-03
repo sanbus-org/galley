@@ -9,7 +9,10 @@ import org.sanbus.galley.internal.GalleyLibraryLoader;
  * Module-level queries mirroring galley.h.
  */
 public final class Galley {
-    public static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
+    /** {@code GALLEY_INVALID_NODE}: no node at that position. Non-negative, like every address. */
+    public static final long INVALID_NODE = 0x7FFFFFFFFFFFFFFFL;
+    /** {@code GALLEY_NO_VARIABLE}: the core's answer for a node without a variable. */
+    public static final long NO_VARIABLE = 0x7FFFFFFFFFFFFFFFL;
 
     private Galley() {}
 

@@ -16,21 +16,52 @@ func boolToCInt(value bool) C.int {
 	return 0
 }
 
-// cToNode converts a C node address, reporting false for invalid-node
-// results (missing links, empty chains).
-func cToNode(value C.ulonglong) (Node, bool) {
-	node := Node(value)
-	if node == InvalidNode {
-		return 0, false
+// cToNode stamps a C node address with the generation of the tree it was
+// read from, reporting false for invalid-node results (missing links, empty
+// chains).
+func cToNode(generation uint64, value C.ulonglong) (Node, bool) {
+	if uint64(value) == invalidAddress {
+		return Node{}, false
 	}
-	return node, true
+	return Node{generation: generation, address: uint64(value)}, true
 }
 
-type Node uint64
+// invalidAddress is GALLEY_INVALID_NODE; noVariable is GALLEY_NO_VARIABLE.
+// Both are non-negative, like every address: only statuses are negative.
+const (
+	invalidAddress = uint64(0x7FFFFFFFFFFFFFFF)
+	noVariable     = int64(0x7FFFFFFFFFFFFFFF)
+)
 
-// InvalidNode is returned by tree queries when no node exists at the
-// requested position (the root's parent, missing links).
-const InvalidNode Node = Node(0xFFFFFFFFFFFFFFFF)
+// Node is a handle to a node of one parse's AST: the core's parse
+// generation the node belongs to, and its address. Every read and edit
+// hands the generation back to the core, which refuses one it no longer
+// holds with ErrStaleTree, so a Node from an earlier parse never reads the
+// node that took its address.
+type Node struct {
+	generation uint64
+	address    uint64
+}
+
+// Index returns the raw address backing the node (it indexes Snapshot
+// columns).
+func (n Node) Index() uint64 { return n.address }
+
+// InvalidNode is the sentinel for "no node here". It belongs to no parse
+// (generation 0 is never live), so using it is ErrStaleTree.
+var InvalidNode = Node{address: invalidAddress}
+
+// sameTree returns the one generation an edit hands the core: the first
+// node's, and for an edit that takes a second node, the same one. The core
+// compares a single generation per call, so a chain from another parse is
+// refused here with ErrStaleTree instead of being forwarded under the first
+// node's generation.
+func sameTree(node, chain Node) (C.ulonglong, error) {
+	if node.generation != chain.generation {
+		return 0, ErrStaleTree
+	}
+	return C.ulonglong(node.generation), nil
+}
 
 // Status codes mirrored from the C API (negative values are failures).
 type Error int32
@@ -50,7 +81,12 @@ const (
 	ErrSemantic             Error = -12
 	// ErrSessionInUse: a parse holds the session exclusively; a post-parse
 	// accessor was called mid-parse (hook code must use the args door).
-	ErrSessionInUse         Error = -13
+	ErrSessionInUse Error = -13
+	// ErrStaleTree: a handle's tree is gone — the session parsed again
+	// since, the last parse published nothing, or nothing was ever
+	// published. One failure for every source that can find a tree gone,
+	// so a dead handle never reads as a live one.
+	ErrStaleTree Error = -14
 )
 
 var errorDescriptions = map[Error]string{
@@ -67,6 +103,7 @@ var errorDescriptions = map[Error]string{
 	ErrIO:                   "I/O error",
 	ErrSemantic:             "semantic error",
 	ErrSessionInUse:         "session in use",
+	ErrStaleTree:            "stale tree",
 }
 
 func (e Error) Error() string {
@@ -207,99 +244,166 @@ type ParseInfo struct {
 }
 
 // Info returns a summary of the most recent successful parse. The second
-// result is false when AST construction is disabled.
-func (s *Session) Info() (ParseInfo, bool) {
+// result is false when AST construction is disabled; a non-nil error is the
+// core's refusal of the root read, such as ErrSessionInUse while a parse runs.
+func (s *Session) Info() (ParseInfo, bool, error) {
 	if !HasAST() {
-		return ParseInfo{}, false
+		return ParseInfo{}, false, nil
 	}
 	info := ParseInfo{}
-	if root, ok := s.RootNode(); ok {
-		info.Root, info.RootValid = root, true
+	root, ok, err := s.RootNode()
+	if err != nil {
+		return ParseInfo{}, false, err
 	}
+	info.Root, info.RootValid = root, ok
 	var line, column C.uint
 	C.galley_last_position(s.ptr, &line, &column)
 	info.EndLine, info.EndColumn = uint32(line), uint32(column)
-	return info, true
+	return info, true, nil
 }
 
-// NodeCount returns the number of AST nodes allocated by the most recent
-// successful parse.
-func (s *Session) NodeCount() uint64 {
-	return uint64(C.galley_node_count(s.ptr))
+// publishedTree reads the published tree's root and generation from the
+// core in one call: the only source of that generation and the one "is there
+// a tree here" probe. The returned node carries that generation; with
+// nothing published it is Node{} with an invalid address.
+func (s *Session) publishedTree() (Node, error) {
+	var root, generation C.ulonglong
+	if status := C.galley_root_node(s.ptr, &root, &generation); status < 0 {
+		return InvalidNode, Error(int32(status))
+	}
+	return Node{generation: uint64(generation), address: uint64(root)}, nil
 }
 
-// RootNode returns the root node of the most recent successful parse.
-func (s *Session) RootNode() (Node, bool) {
-	return cToNode(C.galley_root_node(s.ptr))
+// NodeCount returns the number of AST nodes in the published tree, or
+// ErrStaleTree when nothing is published.
+func (s *Session) NodeCount() (uint64, error) {
+	tree, err := s.publishedTree()
+	if err != nil {
+		return 0, err
+	}
+	return s.nodeCountIn(tree.generation)
 }
 
-// NodeValid reports whether the address refers to a live node.
-func (s *Session) NodeValid(node Node) bool {
-	return C.galley_node_is_valid(s.ptr, C.ulonglong(node)) != 0
+// nodeCountIn counts the tree generation names; the core refuses a
+// generation it does not hold, 0 included.
+func (s *Session) nodeCountIn(generation uint64) (uint64, error) {
+	count := C.galley_node_count(s.ptr, C.ulonglong(generation))
+	if count < 0 {
+		return 0, Error(int32(count))
+	}
+	return uint64(count), nil
+}
+
+// RootNode returns the root node of the published tree. It is the one "is
+// there a tree here" probe: (root, true, nil) is the root, (_, false, nil)
+// means nothing is published, and a non-nil error is the core's refusal,
+// such as ErrSessionInUse while a parse runs.
+func (s *Session) RootNode() (Node, bool, error) {
+	tree, err := s.publishedTree()
+	if err != nil {
+		return Node{}, false, err
+	}
+	root, ok := cToNode(tree.generation, C.ulonglong(tree.address))
+	return root, ok, nil
 }
 
 // ChildCount returns the number of direct children of a node.
-func (s *Session) ChildCount(node Node) uint32 {
-	return uint32(C.galley_node_child_count(s.ptr, C.ulonglong(node)))
+func (s *Session) ChildCount(node Node) (uint32, error) {
+	count := C.galley_node_child_count(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address))
+	if count < 0 {
+		return 0, Error(int32(count))
+	}
+	return uint32(count), nil
 }
 
 // FirstChild returns the first child of a node.
-func (s *Session) FirstChild(node Node) (Node, bool) {
-	return cToNode(C.galley_node_first_child(s.ptr, C.ulonglong(node)))
+func (s *Session) FirstChild(node Node) (Node, bool, error) {
+	return oneLink(node, C.galley_node_first_child(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address)))
 }
 
 // LastChild returns the last child of a node.
-func (s *Session) LastChild(node Node) (Node, bool) {
-	return cToNode(C.galley_node_last_child(s.ptr, C.ulonglong(node)))
+func (s *Session) LastChild(node Node) (Node, bool, error) {
+	return oneLink(node, C.galley_node_last_child(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address)))
 }
 
 // NextSibling returns the next sibling of a node.
-func (s *Session) NextSibling(node Node) (Node, bool) {
-	return cToNode(C.galley_node_next_sibling(s.ptr, C.ulonglong(node)))
+func (s *Session) NextSibling(node Node) (Node, bool, error) {
+	return oneLink(node, C.galley_node_next_sibling(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address)))
 }
 
 // PriorSibling returns the previous sibling of a node.
-func (s *Session) PriorSibling(node Node) (Node, bool) {
-	return cToNode(C.galley_node_prior_sibling(s.ptr, C.ulonglong(node)))
+func (s *Session) PriorSibling(node Node) (Node, bool, error) {
+	return oneLink(node, C.galley_node_prior_sibling(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address)))
 }
 
 // Parent returns the parent of a node (false for the root).
-func (s *Session) Parent(node Node) (Node, bool) {
-	return cToNode(C.galley_node_parent(s.ptr, C.ulonglong(node)))
+func (s *Session) Parent(node Node) (Node, bool, error) {
+	return oneLink(node, C.galley_node_parent(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address)))
+}
+
+// oneLink turns a link call's answer into the linked node: the answer is the
+// address (GALLEY_INVALID_NODE when the link does not exist) or the core's
+// refusal as a negative status, and the link carries the node's own
+// generation.
+func oneLink(node Node, answer C.longlong) (Node, bool, error) {
+	if answer < 0 {
+		return Node{}, false, Error(int32(answer))
+	}
+	found, ok := cToNode(node.generation, C.ulonglong(answer))
+	return found, ok, nil
 }
 
 // Snapshot holds the most recent successful parse as flat slices: one
-// entry per node address. Missing links read as InvalidNode, missing
-// variables as -1, and spans index LastInput.
+// entry per node address. Missing links read as InvalidNode.Index(), missing
+// variables as -1, and spans index LastInput. Node turns an address of these
+// columns into a handle of the parse they describe.
 type Snapshot struct {
+	// Generation is the parse the columns describe.
+	Generation uint64
 	Count      uint64
-	Parent     []Node
-	FirstChild []Node
-	Next       []Node
+	Parent     []uint64
+	FirstChild []uint64
+	Next       []uint64
 	ChildCount []uint32
 	Variable   []int64
 	SpanStart  []uint64
 	SpanLen    []uint64
 }
 
-// Snapshot returns the most recent successful parse in a single call.
+// Node returns the handle for address index of the snapshot's parse. It goes
+// stale with the snapshot: a later parse refuses it with ErrStaleTree.
+func (snap Snapshot) Node(index uint64) Node {
+	return Node{generation: snap.Generation, address: index}
+}
+
+// Snapshot returns the published tree in a single call.
 // Walk Parent/FirstChild/Next directly instead of one call per node.
-// A stale read — after a later parse, successful or failed — fails with
-// ErrInvalidNode instead of returning an empty snapshot.
+// Every leg carries one generation, so a parse that runs in between fails
+// with ErrStaleTree instead of returning columns that mix two trees, and
+// nothing published fails the same way rather than returning an empty
+// snapshot.
 func (s *Session) Snapshot() (Snapshot, error) {
-	count := s.NodeCount()
+	tree, err := s.publishedTree()
+	if err != nil {
+		return Snapshot{}, err
+	}
+	count, err := s.nodeCountIn(tree.generation)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	snap := Snapshot{
+		Generation: tree.generation,
 		Count:      count,
-		Parent:     make([]Node, count),
-		FirstChild: make([]Node, count),
-		Next:       make([]Node, count),
+		Parent:     make([]uint64, count),
+		FirstChild: make([]uint64, count),
+		Next:       make([]uint64, count),
 		ChildCount: make([]uint32, count),
 		Variable:   make([]int64, count),
 		SpanStart:  make([]uint64, count),
 		SpanLen:    make([]uint64, count),
 	}
 	// Always cross the gate, even at count 0: a stale or contended read
-	// answers here (ErrInvalidNode / ErrSessionInUse) rather than an
+	// answers here (ErrStaleTree / ErrSessionInUse) rather than an
 	// empty snapshot that hides the refusal. Columns stay nil at 0.
 	var parent, firstChild, next *C.ulonglong
 	var childCount *C.uint
@@ -316,6 +420,7 @@ func (s *Session) Snapshot() (Snapshot, error) {
 	}
 	total := C.galley_tree_snapshot(
 		s.ptr,
+		C.ulonglong(tree.generation),
 		parent,
 		firstChild,
 		next,
@@ -332,6 +437,12 @@ func (s *Session) Snapshot() (Snapshot, error) {
 	if uint64(total) != count {
 		return Snapshot{}, ErrInternal
 	}
+	// The core's non-negative "no variable" becomes this API's -1.
+	for i, variable := range snap.Variable {
+		if variable == noVariable {
+			snap.Variable[i] = -1
+		}
+	}
 	return snap, nil
 }
 
@@ -347,7 +458,7 @@ func (s *Session) LastInput() []byte {
 }
 
 // Children returns the direct children of a node in document order.
-func (s *Session) Children(node Node) []Node {
+func (s *Session) Children(node Node) ([]Node, error) {
 	return Children(s, node)
 }
 
@@ -361,7 +472,7 @@ type WalkStep struct {
 // Walker is a pre-order tree walker over the last successful parse. It owns
 // no native resource: the cursor is the whole walker, so abandoning it is
 // free and there is nothing to close. A walker left behind by a later
-// parse answers ErrInvalidNode at its next step instead of reading stale
+// parse answers ErrStaleTree at its next step instead of reading stale
 // storage. Steps follow the live links, so edits between steps are
 // visible; a step whose position is no longer inside the walk's root
 // (removed, or moved elsewhere) reports ErrInvalidNode.
@@ -373,13 +484,14 @@ type Walker struct {
 	cursor C.GalleyWalkCursor
 }
 
-// walkCursor builds a not-started cursor bound to the tree: generation 0
-// reports staleness at the first step, and skipSemanticErrors prunes
-// subtrees rooted at semantic-error nodes.
-func walkCursor(generation C.ulonglong, root Node, skipSemanticErrors bool) C.GalleyWalkCursor {
+// walkCursor builds a not-started cursor bound to the tree root came from:
+// the cursor carries the root's own generation, which the core checks at
+// every step, and skipSemanticErrors prunes subtrees rooted at
+// semantic-error nodes.
+func walkCursor(root Node, skipSemanticErrors bool) C.GalleyWalkCursor {
 	cursor := C.GalleyWalkCursor{
-		generation: generation,
-		root:       C.ulonglong(root),
+		generation: C.ulonglong(root.generation),
+		root:       C.ulonglong(root.address),
 	}
 	if skipSemanticErrors {
 		cursor.options = C.uchar(C.GALLEY_WALK_SKIP_SEMANTIC_ERRORS)
@@ -390,33 +502,25 @@ func walkCursor(generation C.ulonglong, root Node, skipSemanticErrors bool) C.Ga
 // Walk returns a pre-order Walker over the subtree rooted at node, with the
 // root at depth 0. Pass true to prune subtrees rooted at semantic-error
 // nodes. The walker owns no native resource, so nothing can fail at
-// creation: an invalid root or a build without AST construction fails at
-// the first Next with ErrInvalidNode.
+// creation: a stale root fails at the first Next with ErrStaleTree, a build
+// without AST construction with ErrInvalidNode.
 func (s *Session) Walk(root Node, skipSemanticErrors bool) *Walker {
-	var generation C.ulonglong
-	if C.galley_published_generation(s.ptr, &generation) < 0 {
-		generation = 0
-	}
-	return &Walker{session: s, cursor: walkCursor(generation, root, skipSemanticErrors)}
+	return &Walker{session: s, cursor: walkCursor(root, skipSemanticErrors)}
 }
 
 // Walk is the hook-door twin of Session.Walk: a pre-order walk over the
-// in-flight parse's tree, bound to that parse's own generation
-// (galley_hook_generation) and stepped through galley_hook_walk_next. Like
-// Session.Walk, nothing fails at creation.
+// in-flight parse's tree, bound to the root's generation and stepped through
+// galley_hook_walk_next. Like Session.Walk, nothing fails at creation.
 func (d HookDoor) Walk(root Node, skipSemanticErrors bool) *Walker {
-	var generation C.ulonglong
-	if C.galley_hook_generation(d.cptr(), &generation) < 0 {
-		generation = 0
-	}
-	return &Walker{hook: &d, cursor: walkCursor(generation, root, skipSemanticErrors)}
+	return &Walker{hook: &d, cursor: walkCursor(root, skipSemanticErrors)}
 }
 
 // Next advances the walker. ok reports whether a step was yielded: false at
 // the end of the walk and after a failed step, so a plain for/Next loop
 // terminates either way. A non-nil err reports the failure itself:
-// ErrInvalidNode for a stale walker or a removed current node (Go's
-// dead-generation answer), ErrSessionInUse while a parse runs, or
+// ErrStaleTree for a walker whose tree a later parse replaced,
+// ErrInvalidNode for a removed current node, ErrSessionInUse while a parse
+// runs, or
 // ErrNullArgument once the session is closed.
 func (w *Walker) Next() (WalkStep, bool, error) {
 	var status C.longlong
@@ -429,13 +533,10 @@ func (w *Walker) Next() (WalkStep, bool, error) {
 		return WalkStep{}, false, nil
 	}
 	if status < 0 {
-		if status == C.galley_error_stale_tree {
-			return WalkStep{}, false, ErrInvalidNode
-		}
 		return WalkStep{}, false, Error(int32(status))
 	}
 	return WalkStep{
-		Node:            Node(w.cursor.current),
+		Node:            Node{generation: uint64(w.cursor.generation), address: uint64(w.cursor.current)},
 		Depth:           uint32(w.cursor.depth),
 		IsSemanticError: w.cursor.is_semantic_error != 0,
 	}, true, nil
@@ -452,41 +553,41 @@ func (w *Walker) SkipChildren() {
 
 // SymbolName returns the grammar symbol name of a node (empty for
 // terminal-only nodes).
-func (s *Session) SymbolName(node Node) ([]byte, bool) {
+func (s *Session) SymbolName(node Node) ([]byte, error) {
 	var data *C.char
 	var length C.size_t
-	if C.galley_node_symbol_name(s.ptr, C.ulonglong(node), &data, &length) != 0 {
-		return nil, false
+	if status := C.galley_node_symbol_name(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), &data, &length); status < 0 {
+		return nil, Error(int32(status))
 	}
-	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
 // Text returns the source text matched by a node.
-func (s *Session) Text(node Node) ([]byte, bool) {
+func (s *Session) Text(node Node) ([]byte, error) {
 	var data *C.char
 	var length C.size_t
-	if C.galley_node_text(s.ptr, C.ulonglong(node), &data, &length) != 0 {
-		return nil, false
+	if status := C.galley_node_text(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), &data, &length); status < 0 {
+		return nil, Error(int32(status))
 	}
-	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
 // Span returns the byte offset and length of a node's matched source span.
-func (s *Session) Span(node Node) (start uint64, length uint64, ok bool) {
+func (s *Session) Span(node Node) (start uint64, length uint64, err error) {
 	var cStart, cLength C.ulonglong
-	if C.galley_node_span(s.ptr, C.ulonglong(node), &cStart, &cLength) != 0 {
-		return 0, 0, false
+	if status := C.galley_node_span(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), &cStart, &cLength); status < 0 {
+		return 0, 0, Error(int32(status))
 	}
-	return uint64(cStart), uint64(cLength), true
+	return uint64(cStart), uint64(cLength), nil
 }
 
 // LineColumn returns the 1-based line and column of a node's first byte.
-func (s *Session) LineColumn(node Node) (line uint32, column uint32, ok bool) {
+func (s *Session) LineColumn(node Node) (line uint32, column uint32, err error) {
 	var cLine, cColumn C.uint
-	if C.galley_node_line_column(s.ptr, C.ulonglong(node), &cLine, &cColumn) != 0 {
-		return 0, 0, false
+	if status := C.galley_node_line_column(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), &cLine, &cColumn); status < 0 {
+		return 0, 0, Error(int32(status))
 	}
-	return uint32(cLine), uint32(cColumn), true
+	return uint32(cLine), uint32(cColumn), nil
 }
 
 // DiagnosticKind classifies the current diagnostic.
@@ -606,29 +707,41 @@ func (s *Session) Diagnostics() []Diagnostic {
 // TreeAppendChildren appends chain (and its next-linked siblings) as the
 // last children of parent.
 func (s *Session) TreeAppendChildren(parent, chain Node) error {
-	return s.treeStatus(C.galley_tree_append_children(s.ptr, C.ulonglong(parent), C.ulonglong(chain)))
+	generation, err := sameTree(parent, chain)
+	if err != nil {
+		return err
+	}
+	return s.treeStatus(C.galley_tree_append_children(s.ptr, generation, C.ulonglong(parent.address), C.ulonglong(chain.address)))
 }
 
 // TreeInsertBefore inserts chain immediately before target.
 func (s *Session) TreeInsertBefore(target, chain Node) error {
-	return s.treeStatus(C.galley_tree_insert_before(s.ptr, C.ulonglong(target), C.ulonglong(chain)))
+	generation, err := sameTree(target, chain)
+	if err != nil {
+		return err
+	}
+	return s.treeStatus(C.galley_tree_insert_before(s.ptr, generation, C.ulonglong(target.address), C.ulonglong(chain.address)))
 }
 
 // TreeInsertAfter inserts chain immediately after target.
 func (s *Session) TreeInsertAfter(target, chain Node) error {
-	return s.treeStatus(C.galley_tree_insert_after(s.ptr, C.ulonglong(target), C.ulonglong(chain)))
+	generation, err := sameTree(target, chain)
+	if err != nil {
+		return err
+	}
+	return s.treeStatus(C.galley_tree_insert_after(s.ptr, generation, C.ulonglong(target.address), C.ulonglong(chain.address)))
 }
 
 // TreeRemoveSiblings removes count consecutive siblings starting at node
 // and returns the detached chain head.
 func (s *Session) TreeRemoveSiblings(node Node, count int) (Node, bool, error) {
 	var head C.ulonglong
-	status := C.galley_tree_remove_siblings(s.ptr, C.ulonglong(node), C.size_t(count), &head)
+	status := C.galley_tree_remove_siblings(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), C.size_t(count), &head)
 	if err := s.treeStatus(status); err != nil {
-		return 0, false, err
+		return Node{}, false, err
 	}
-	node, ok := cToNode(head)
-	return node, ok, nil
+	detached, ok := cToNode(node.generation, head)
+	return detached, ok, nil
 }
 
 // TreeRemoveSelf detaches node itself from its parent and siblings.
@@ -640,30 +753,34 @@ func (s *Session) TreeRemoveSelf(node Node) (Node, bool, error) {
 // chain head.
 func (s *Session) TreeCleanChildren(node Node) (Node, bool, error) {
 	var head C.ulonglong
-	status := C.galley_tree_clean_children(s.ptr, C.ulonglong(node), &head)
+	status := C.galley_tree_clean_children(s.ptr, C.ulonglong(node.generation), C.ulonglong(node.address), &head)
 	if err := s.treeStatus(status); err != nil {
-		return 0, false, err
+		return Node{}, false, err
 	}
-	node, ok := cToNode(head)
-	return node, ok, nil
+	detached, ok := cToNode(node.generation, head)
+	return detached, ok, nil
 }
 
 // TreeInsertChildrenAt inserts chain into the children of parent at index;
 // an index equal to the child count appends.
 func (s *Session) TreeInsertChildrenAt(parent Node, index int, chain Node) error {
-	return s.treeStatus(C.galley_tree_insert_children_at(s.ptr, C.ulonglong(parent), C.size_t(index), C.ulonglong(chain)))
+	generation, err := sameTree(parent, chain)
+	if err != nil {
+		return err
+	}
+	return s.treeStatus(C.galley_tree_insert_children_at(s.ptr, generation, C.ulonglong(parent.address), C.size_t(index), C.ulonglong(chain.address)))
 }
 
 // TreeRemoveChildrenAt removes count consecutive children of parent
 // starting at index and returns the detached chain head.
 func (s *Session) TreeRemoveChildrenAt(parent Node, index int, count int) (Node, bool, error) {
 	var head C.ulonglong
-	status := C.galley_tree_remove_children_at(s.ptr, C.ulonglong(parent), C.size_t(index), C.size_t(count), &head)
+	status := C.galley_tree_remove_children_at(s.ptr, C.ulonglong(parent.generation), C.ulonglong(parent.address), C.size_t(index), C.size_t(count), &head)
 	if err := s.treeStatus(status); err != nil {
-		return 0, false, err
+		return Node{}, false, err
 	}
-	node, ok := cToNode(head)
-	return node, ok, nil
+	detached, ok := cToNode(parent.generation, head)
+	return detached, ok, nil
 }
 
 // ReserveNodes preallocates node storage for at least capacity nodes.
@@ -681,28 +798,37 @@ func (s *Session) NodeCapacity() uint64 {
 // hooks pass the door, session code passes the session — so each read has
 // one implementation.
 type NodeDoor interface {
-	ChildCount(node Node) uint32
-	Children(node Node) []Node
-	FirstChild(node Node) (Node, bool)
-	LastChild(node Node) (Node, bool)
-	NextSibling(node Node) (Node, bool)
-	PriorSibling(node Node) (Node, bool)
-	Parent(node Node) (Node, bool)
-	SymbolName(node Node) ([]byte, bool)
-	Text(node Node) ([]byte, bool)
-	Span(node Node) (start uint64, length uint64, ok bool)
-	LineColumn(node Node) (line uint32, column uint32, ok bool)
+	ChildCount(node Node) (uint32, error)
+	Children(node Node) ([]Node, error)
+	FirstChild(node Node) (Node, bool, error)
+	LastChild(node Node) (Node, bool, error)
+	NextSibling(node Node) (Node, bool, error)
+	PriorSibling(node Node) (Node, bool, error)
+	Parent(node Node) (Node, bool, error)
+	SymbolName(node Node) ([]byte, error)
+	Text(node Node) ([]byte, error)
+	Span(node Node) (start uint64, length uint64, err error)
+	LineColumn(node Node) (line uint32, column uint32, err error)
 }
 
 // Children returns the direct children of a node in document order,
 // through either door: the iteration runs over the door's link
-// primitives, so each door keeps its own gate on every step.
-func Children(door NodeDoor, node Node) []Node {
+// primitives, so each door keeps its own gate on every step. A refusal
+// ends the iteration and is reported, never answered with a short list.
+func Children(door NodeDoor, node Node) ([]Node, error) {
 	children := []Node{}
-	for child, ok := door.FirstChild(node); ok; child, ok = door.NextSibling(child) {
-		children = append(children, child)
+	child, ok, err := door.FirstChild(node)
+	if err != nil {
+		return nil, err
 	}
-	return children
+	for ok {
+		children = append(children, child)
+		child, ok, err = door.NextSibling(child)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return children, nil
 }
 
 // ProcedureArgs is the per-hook argument passed to a Go procedure hook:
@@ -739,83 +865,94 @@ func (d HookDoor) cptr() *C.GalleyHookDoor { return (*C.GalleyHookDoor)(d.ptr) }
 
 // CurrentNode is the node being reduced.
 func (a ProcedureArgs) CurrentNode() (Node, bool) {
-	return cToNode(C.galley_procedure_current_node(a.cptr()))
+	// The parse's generation, which the core reports for this door; 0 (never
+	// live) if it cannot, so a node made without it is stale.
+	var generation C.ulonglong
+	if C.galley_hook_generation(C.galley_procedure_door(a.cptr()), &generation) < 0 {
+		generation = 0
+	}
+	return cToNode(uint64(generation), C.galley_procedure_current_node(a.cptr()))
 }
 
 // ChildCount reports node's child count through the parse-time door.
-func (d HookDoor) ChildCount(node Node) uint32 {
-	return uint32(C.galley_hook_node_child_count(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) ChildCount(node Node) (uint32, error) {
+	return uint32(C.galley_hook_node_child_count(d.cptr(), C.ulonglong(node.address))), nil
 }
 
 // Children returns node's children, in birth order, through the parse-time door.
-func (d HookDoor) Children(node Node) []Node {
+func (d HookDoor) Children(node Node) ([]Node, error) {
 	return Children(d, node)
 }
 
 // FirstChild returns node's first child through the parse-time door.
-func (d HookDoor) FirstChild(node Node) (Node, bool) {
-	return cToNode(C.galley_hook_node_first_child(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) FirstChild(node Node) (Node, bool, error) {
+	found, ok := cToNode(node.generation, C.galley_hook_node_first_child(d.cptr(), C.ulonglong(node.address)))
+	return found, ok, nil
 }
 
 // LastChild returns node's last child through the parse-time door.
-func (d HookDoor) LastChild(node Node) (Node, bool) {
-	return cToNode(C.galley_hook_node_last_child(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) LastChild(node Node) (Node, bool, error) {
+	found, ok := cToNode(node.generation, C.galley_hook_node_last_child(d.cptr(), C.ulonglong(node.address)))
+	return found, ok, nil
 }
 
 // NextSibling returns node's next sibling through the parse-time door.
-func (d HookDoor) NextSibling(node Node) (Node, bool) {
-	return cToNode(C.galley_hook_node_next_sibling(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) NextSibling(node Node) (Node, bool, error) {
+	found, ok := cToNode(node.generation, C.galley_hook_node_next_sibling(d.cptr(), C.ulonglong(node.address)))
+	return found, ok, nil
 }
 
 // PriorSibling returns node's prior sibling through the parse-time door.
-func (d HookDoor) PriorSibling(node Node) (Node, bool) {
-	return cToNode(C.galley_hook_node_prior_sibling(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) PriorSibling(node Node) (Node, bool, error) {
+	found, ok := cToNode(node.generation, C.galley_hook_node_prior_sibling(d.cptr(), C.ulonglong(node.address)))
+	return found, ok, nil
 }
 
 // Parent returns node's parent through the parse-time door.
-func (d HookDoor) Parent(node Node) (Node, bool) {
-	return cToNode(C.galley_hook_node_parent(d.cptr(), C.ulonglong(node)))
+func (d HookDoor) Parent(node Node) (Node, bool, error) {
+	found, ok := cToNode(node.generation, C.galley_hook_node_parent(d.cptr(), C.ulonglong(node.address)))
+	return found, ok, nil
 }
 
 // SymbolName returns the grammar symbol name of a node through the
 // parse-time door (empty for terminal-only nodes).
-func (d HookDoor) SymbolName(node Node) ([]byte, bool) {
+func (d HookDoor) SymbolName(node Node) ([]byte, error) {
 	var data *C.char
 	var length C.size_t
-	if C.galley_hook_node_symbol_name(d.cptr(), C.ulonglong(node), &data, &length) != 0 {
-		return nil, false
+	if C.galley_hook_node_symbol_name(d.cptr(), C.ulonglong(node.address), &data, &length) != 0 {
+		return nil, ErrInvalidNode
 	}
-	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
 // Text returns the source text matched by a node through the parse-time door.
-func (d HookDoor) Text(node Node) ([]byte, bool) {
+func (d HookDoor) Text(node Node) ([]byte, error) {
 	var data *C.char
 	var length C.size_t
-	if C.galley_hook_node_text(d.cptr(), C.ulonglong(node), &data, &length) != 0 {
-		return nil, false
+	if C.galley_hook_node_text(d.cptr(), C.ulonglong(node.address), &data, &length) != 0 {
+		return nil, ErrInvalidNode
 	}
-	return C.GoBytes(unsafe.Pointer(data), C.int(length)), true
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
 // Span returns the byte offset and length of a node's matched source span
 // through the parse-time door.
-func (d HookDoor) Span(node Node) (start uint64, length uint64, ok bool) {
+func (d HookDoor) Span(node Node) (start uint64, length uint64, err error) {
 	var cStart, cLength C.ulonglong
-	if C.galley_hook_node_span(d.cptr(), C.ulonglong(node), &cStart, &cLength) != 0 {
-		return 0, 0, false
+	if C.galley_hook_node_span(d.cptr(), C.ulonglong(node.address), &cStart, &cLength) != 0 {
+		return 0, 0, ErrInvalidNode
 	}
-	return uint64(cStart), uint64(cLength), true
+	return uint64(cStart), uint64(cLength), nil
 }
 
 // LineColumn returns the 1-based line and column of a node's first byte
 // through the parse-time door.
-func (d HookDoor) LineColumn(node Node) (line uint32, column uint32, ok bool) {
+func (d HookDoor) LineColumn(node Node) (line uint32, column uint32, err error) {
 	var cLine, cColumn C.uint
-	if C.galley_hook_node_line_column(d.cptr(), C.ulonglong(node), &cLine, &cColumn) != 0 {
-		return 0, 0, false
+	if C.galley_hook_node_line_column(d.cptr(), C.ulonglong(node.address), &cLine, &cColumn) != 0 {
+		return 0, 0, ErrInvalidNode
 	}
-	return uint32(cLine), uint32(cColumn), true
+	return uint32(cLine), uint32(cColumn), nil
 }
 
 func procedureStatus(status C.longlong) error {

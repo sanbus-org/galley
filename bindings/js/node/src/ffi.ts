@@ -75,26 +75,44 @@ export interface AddonApi {
   galley_last_position(session: bigint): [number, number] | null;
 
   // node / tree
-  galley_node_count(session: bigint): bigint;
+  //
+  // Every session-door call takes the generation of the tree it addresses,
+  // which the core compares against the published one, a plain Number. The
+  // addon answers a refusal as a negative Number: a status, never INVALID_NODE.
+  // Counts and statuses are Numbers; addresses stay BigInt.
+  galley_node_count(session: bigint, generation: number): number;
   galley_reserve_nodes(session: bigint, capacity: bigint): bigint;
   galley_node_capacity(session: bigint): bigint;
-  galley_root_node(session: bigint): bigint;
-  galley_node_is_valid(session: bigint, node: bigint): number;
-  galley_node_child_count(session: bigint, node: bigint): number;
-  galley_node_first_child(session: bigint, node: bigint): bigint;
-  galley_node_last_child(session: bigint, node: bigint): bigint;
-  galley_node_next_sibling(session: bigint, node: bigint): bigint;
-  galley_node_prior_sibling(session: bigint, node: bigint): bigint;
-  galley_node_parent(session: bigint, node: bigint): bigint;
+  galley_root_node(session: bigint): { status: number; root: bigint; generation: number };
+  galley_node_child_count(session: bigint, generation: number, node: bigint): number;
+  galley_node_first_child(session: bigint, generation: number, node: bigint): bigint | number;
+  galley_node_last_child(session: bigint, generation: number, node: bigint): bigint | number;
+  galley_node_next_sibling(session: bigint, generation: number, node: bigint): bigint | number;
+  galley_node_prior_sibling(session: bigint, generation: number, node: bigint): bigint | number;
+  galley_node_parent(session: bigint, generation: number, node: bigint): bigint | number;
   galley_walk_next(session: bigint, cursor: ArrayBuffer): bigint;
   galley_hook_walk_next(door: bigint, cursor: ArrayBuffer): bigint;
-  galley_node_symbol_name(session: bigint, node: bigint): Buffer | null;
-  galley_node_text(session: bigint, node: bigint): Buffer | null;
-  galley_node_span(session: bigint, node: bigint): [bigint, bigint] | null;
-  galley_node_line_column(session: bigint, node: bigint): [number, number] | null;
-  galley_node_variable_index(session: bigint, node: bigint): bigint;
+  galley_node_symbol_name(
+    session: bigint,
+    generation: number,
+    node: bigint,
+  ): Buffer | number;
+  galley_node_text(session: bigint, generation: number, node: bigint): Buffer | number;
+  galley_node_span(
+    session: bigint,
+    generation: number,
+    node: bigint,
+  ): [bigint, bigint] | number;
+  galley_node_line_column(
+    session: bigint,
+    generation: number,
+    node: bigint,
+  ): [number, number] | number;
+  /** The raw variable index, null for a node without one, or a negative status. */
+  galley_node_variable_index(session: bigint, generation: number, node: bigint): number | null;
   galley_tree_snapshot(
     session: bigint,
+    generation: number,
     outParent: BigUint64Array,
     outFirstChild: BigUint64Array,
     outNext: BigUint64Array,
@@ -104,7 +122,7 @@ export interface AddonApi {
     outSpanLen: BigUint64Array,
     outIsSemanticError: Int32Array,
     capacity: bigint,
-  ): bigint;
+  ): number;
 
   // diagnostics (singular)
   galley_has_diagnostic(session: bigint): number;
@@ -166,25 +184,32 @@ export interface AddonApi {
     index: bigint,
   ): [string, number, number, string] | null;
 
-  // tree editing
-  galley_tree_append_children(session: bigint, parent: bigint, first: bigint): bigint;
-  galley_tree_insert_before(session: bigint, target: bigint, first: bigint): bigint;
-  galley_tree_insert_after(session: bigint, target: bigint, first: bigint): bigint;
-  galley_tree_remove_siblings(session: bigint, node: bigint, count: bigint): [bigint, bigint];
-  galley_tree_remove_self(session: bigint, node: bigint): [bigint, bigint];
-  galley_tree_clean_children(session: bigint, node: bigint): [bigint, bigint];
+  // tree editing, each carrying the generation both of its nodes must have
+  galley_tree_append_children(session: bigint, generation: number, parent: bigint, first: bigint): number;
+  galley_tree_insert_before(session: bigint, generation: number, target: bigint, first: bigint): number;
+  galley_tree_insert_after(session: bigint, generation: number, target: bigint, first: bigint): number;
+  galley_tree_remove_siblings(
+    session: bigint,
+    generation: number,
+    node: bigint,
+    count: bigint,
+  ): [number, bigint];
+  galley_tree_remove_self(session: bigint, generation: number, node: bigint): [number, bigint];
+  galley_tree_clean_children(session: bigint, generation: number, node: bigint): [number, bigint];
   galley_tree_insert_children_at(
     session: bigint,
+    generation: number,
     parent: bigint,
     index: bigint,
     first: bigint,
-  ): bigint;
+  ): number;
   galley_tree_remove_children_at(
     session: bigint,
+    generation: number,
     parent: bigint,
     index: bigint,
     count: bigint,
-  ): [bigint, bigint];
+  ): [number, bigint];
 
   // host hooks: the addon's one callback per library, and the per-session
   // hook state (see galley_session_set_hooks in galley.h)
@@ -216,19 +241,18 @@ export interface AddonApi {
   galley_hook_node_span(door: bigint, node: bigint): [bigint, bigint] | null;
   galley_hook_node_line_column(door: bigint, node: bigint): [number, number] | null;
   galley_hook_tree_append_children(door: bigint, parent: bigint, first: bigint): bigint;
-  galley_hook_tree_clean_children(door: bigint, node: bigint): [bigint, bigint];
-  galley_hook_node_is_valid(door: bigint, node: bigint): number;
-  galley_hook_node_variable_index(door: bigint, node: bigint): bigint;
+  galley_hook_tree_clean_children(door: bigint, node: bigint): [number, bigint];
+  /** The raw variable index; null for a node without one; a negative status for an address outside the parse. */
+  galley_hook_node_variable_index(door: bigint, node: bigint): number | null;
   galley_hook_tree_insert_before(door: bigint, target: bigint, first: bigint): bigint;
   galley_hook_tree_insert_after(door: bigint, target: bigint, first: bigint): bigint;
-  galley_hook_tree_remove_siblings(door: bigint, node: bigint, count: bigint): [bigint, bigint];
-  galley_hook_tree_remove_self(door: bigint, node: bigint): [bigint, bigint];
+  galley_hook_tree_remove_siblings(door: bigint, node: bigint, count: bigint): [number, bigint];
+  galley_hook_tree_remove_self(door: bigint, node: bigint): [number, bigint];
   galley_hook_tree_insert_children_at(door: bigint, parent: bigint, index: bigint, first: bigint): bigint;
-  galley_hook_tree_remove_children_at(door: bigint, parent: bigint, index: bigint, count: bigint): [bigint, bigint];
+  galley_hook_tree_remove_children_at(door: bigint, parent: bigint, index: bigint, count: bigint): [number, bigint];
   /** [status, generation] of the parse that owns the door. */
-  galley_hook_generation(door: bigint): [bigint, bigint];
+  galley_hook_generation(door: bigint): [number, number];
   /** [status, generation] of the published tree (0 when none or stale). */
-  galley_published_generation(session: bigint): [bigint, bigint];
 }
 
 /** Option fields as the addon reads them (camelCase mirrors SessionCOptions). */
@@ -478,9 +502,14 @@ export class NodePort implements FfiPort {
   }
 
   // -- arena and navigation ----------------------------------------------
+  //
+  // These crossings never throw: a refusal travels as a negative value, the
+  // one place the core's own status arrives, and the core's Session turns it
+  // into the host's failure. A generation the core no longer holds is
+  // refused here, not by this binding.
 
-  nodeCount(handle: Handle): number {
-    return toNumber(this.api.galley_node_count(handle as bigint));
+  nodeCount(handle: Handle, generation: number): number {
+    return this.api.galley_node_count(handle as bigint, generation);
   }
 
   reserveNodes(handle: Handle, capacity: bigint): number {
@@ -491,42 +520,39 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_node_capacity(handle as bigint));
   }
 
-  rootNode(handle: Handle): bigint {
+  rootNode(handle: Handle): { status: number; root: bigint; generation: number } {
     return this.api.galley_root_node(handle as bigint);
   }
 
-  nodeValid(handle: Handle, node: bigint): boolean {
-    return this.api.galley_node_is_valid(handle as bigint, node) !== 0;
+  childCount(handle: Handle, generation: number, node: bigint): number {
+    return this.api.galley_node_child_count(handle as bigint, generation, node);
   }
 
-  childCount(handle: Handle, node: bigint): number {
-    return this.api.galley_node_child_count(handle as bigint, node);
+  firstChild(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.api.galley_node_first_child(handle as bigint, generation, node);
   }
 
-  firstChild(handle: Handle, node: bigint): bigint {
-    return this.api.galley_node_first_child(handle as bigint, node);
+  lastChild(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.api.galley_node_last_child(handle as bigint, generation, node);
   }
 
-  lastChild(handle: Handle, node: bigint): bigint {
-    return this.api.galley_node_last_child(handle as bigint, node);
+  nextSibling(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.api.galley_node_next_sibling(handle as bigint, generation, node);
   }
 
-  nextSibling(handle: Handle, node: bigint): bigint {
-    return this.api.galley_node_next_sibling(handle as bigint, node);
+  priorSibling(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.api.galley_node_prior_sibling(handle as bigint, generation, node);
   }
 
-  priorSibling(handle: Handle, node: bigint): bigint {
-    return this.api.galley_node_prior_sibling(handle as bigint, node);
+  parent(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.api.galley_node_parent(handle as bigint, generation, node);
   }
 
-  parent(handle: Handle, node: bigint): bigint {
-    return this.api.galley_node_parent(handle as bigint, node);
-  }
-
-  treeSnapshot(handle: Handle): SnapshotColumns {
+  treeSnapshot(handle: Handle, generation: number): SnapshotColumns | number {
     // No await between sizing and filling, so the count cannot change.
     for (let attempt = 0; attempt < 2; attempt++) {
-      const count = this.nodeCount(handle);
+      const count = this.nodeCount(handle, generation);
+      if (count < 0) return count;
       const parent = new BigUint64Array(count);
       const firstChild = new BigUint64Array(count);
       const next = new BigUint64Array(count);
@@ -535,13 +561,11 @@ export class NodePort implements FfiPort {
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
       const isSemanticError = new Int32Array(count);
-      const total = toNumber(
-        this.api.galley_tree_snapshot(
-          handle as bigint, parent, firstChild, next, childCount,
-          variable, spanStart, spanLen, isSemanticError, BigInt(count),
-        ),
+      const total = this.api.galley_tree_snapshot(
+        handle as bigint, generation, parent, firstChild, next, childCount,
+        variable, spanStart, spanLen, isSemanticError, BigInt(count),
       );
-      if (total < 0) throw new GalleyError("galley_tree_snapshot failed", total as Status);
+      if (total < 0) return total;
       if (total === count) {
         return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
       }
@@ -564,24 +588,24 @@ export class NodePort implements FfiPort {
 
   // -- node accessors -----------------------------------------------------
 
-  nodeSymbolName(handle: Handle, node: bigint): Uint8Array | null {
-    return this.api.galley_node_symbol_name(handle as bigint, node);
+  nodeSymbolName(handle: Handle, generation: number, node: bigint): Uint8Array | number {
+    return this.api.galley_node_symbol_name(handle as bigint, generation, node);
   }
 
-  nodeText(handle: Handle, node: bigint): Uint8Array | null {
-    return this.api.galley_node_text(handle as bigint, node);
+  nodeText(handle: Handle, generation: number, node: bigint): Uint8Array | number {
+    return this.api.galley_node_text(handle as bigint, generation, node);
   }
 
-  nodeSpan(handle: Handle, node: bigint): [bigint, bigint] | null {
-    return this.api.galley_node_span(handle as bigint, node);
+  nodeSpan(handle: Handle, generation: number, node: bigint): [bigint, bigint] | number {
+    return this.api.galley_node_span(handle as bigint, generation, node);
   }
 
-  nodeLineColumn(handle: Handle, node: bigint): [number, number] | null {
-    return this.api.galley_node_line_column(handle as bigint, node);
+  nodeLineColumn(handle: Handle, generation: number, node: bigint): [number, number] | number {
+    return this.api.galley_node_line_column(handle as bigint, generation, node);
   }
 
-  nodeVariableIndex(handle: Handle, node: bigint): number {
-    return toNumber(this.api.galley_node_variable_index(handle as bigint, node));
+  nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null {
+    return this.api.galley_node_variable_index(handle as bigint, generation, node);
   }
 
   symbolNameAt(handle: Handle, index: number): Uint8Array | null {
@@ -755,49 +779,67 @@ export class NodePort implements FfiPort {
 
   // -- tree editing ----------------------------------------------------------
 
-  treeAppendChildren(handle: Handle, parent: bigint, first: bigint): number {
-    return toNumber(this.api.galley_tree_append_children(handle as bigint, parent, first));
+  // Every edit carries the generation both of its nodes must have; the core
+  // refuses one that is not the published tree's, so a dead tree is never
+  // edited by accident.
+
+  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number {
+    return this.api.galley_tree_append_children(handle as bigint, generation, parent, first);
   }
 
-  treeInsertBefore(handle: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.api.galley_tree_insert_before(handle as bigint, target, first));
+  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number {
+    return this.api.galley_tree_insert_before(handle as bigint, generation, target, first);
   }
 
-  treeInsertAfter(handle: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.api.galley_tree_insert_after(handle as bigint, target, first));
+  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number {
+    return this.api.galley_tree_insert_after(handle as bigint, generation, target, first);
   }
 
-  treeRemoveSiblings(handle: Handle, node: bigint, count: number): { status: number; head: bigint } {
-    const [status, head] = this.api.galley_tree_remove_siblings(handle as bigint, node, BigInt(count));
-    return { status: toNumber(status), head };
+  treeRemoveSiblings(
+    handle: Handle,
+    generation: number,
+    node: bigint,
+    count: number,
+  ): { status: number; head: bigint } {
+    const [status, head] = this.api.galley_tree_remove_siblings(
+      handle as bigint, generation, node, BigInt(count),
+    );
+    return { status, head };
   }
 
-  treeRemoveSelf(handle: Handle, node: bigint): { status: number; head: bigint } {
-    const [status, head] = this.api.galley_tree_remove_self(handle as bigint, node);
-    return { status: toNumber(status), head };
+  treeRemoveSelf(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
+    const [status, head] = this.api.galley_tree_remove_self(handle as bigint, generation, node);
+    return { status, head };
   }
 
-  treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
-    const [status, head] = this.api.galley_tree_clean_children(handle as bigint, node);
-    return { status: toNumber(status), head };
+  treeCleanChildren(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
+    const [status, head] = this.api.galley_tree_clean_children(handle as bigint, generation, node);
+    return { status, head };
   }
 
-  treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
-    return toNumber(
-      this.api.galley_tree_insert_children_at(handle as bigint, parent, BigInt(index), first),
+  treeInsertChildrenAt(
+    handle: Handle,
+    generation: number,
+    parent: bigint,
+    index: number,
+    first: bigint,
+  ): number {
+    return this.api.galley_tree_insert_children_at(
+      handle as bigint, generation, parent, BigInt(index), first,
     );
   }
 
   treeRemoveChildrenAt(
     handle: Handle,
+    generation: number,
     parent: bigint,
     index: number,
     count: number,
   ): { status: number; head: bigint } {
     const [status, head] = this.api.galley_tree_remove_children_at(
-      handle as bigint, parent, BigInt(index), BigInt(count),
+      handle as bigint, generation, parent, BigInt(index), BigInt(count),
     );
-    return { status: toNumber(status), head };
+    return { status, head };
   }
 
   // -- procedure hooks ----------------------------------------------------------
@@ -895,12 +937,9 @@ export class NodePort implements FfiPort {
     return { status: toNumber(status), head };
   }
 
-  hookNodeValid(door: Handle, node: bigint): boolean {
-    return this.api.galley_hook_node_is_valid(door as bigint, node) !== 0;
-  }
-
-  hookNodeVariableIndex(door: Handle, node: bigint): number {
-    return toNumber(this.api.galley_hook_node_variable_index(door as bigint, node));
+  hookNodeVariableIndex(door: Handle, node: bigint): number | null {
+    const index = this.api.galley_hook_node_variable_index(door as bigint, node);
+    return index === null || index < 0 ? null : index;
   }
 
   hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number {
@@ -930,14 +969,9 @@ export class NodePort implements FfiPort {
     return { status: toNumber(status), head };
   }
 
-  hookGeneration(door: Handle): bigint {
+  hookGeneration(door: Handle): number {
     const [status, generation] = this.api.galley_hook_generation(door as bigint);
-    return toNumber(status) < 0 ? 0n : generation;
-  }
-
-  publishedGeneration(handle: Handle): { status: number; generation: bigint } {
-    const [status, generation] = this.api.galley_published_generation(handle as bigint);
-    return { status: toNumber(status), generation };
+    return status < 0 ? 0 : generation;
   }
 
   setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {

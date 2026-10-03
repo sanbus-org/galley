@@ -26,29 +26,10 @@ import org.sanbus.galley.internal.GalleyLibrary;
  */
 public final class Session implements AutoCloseable {
 
-    private static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
-
     private MemorySegment handle;
     private final GalleyLibrary lib;
     private boolean closed = false;
     private final Parser parser;
-    /**
-     * The core's generation of this session's published tree, as last read
-     * from the core: after every parse the core did not refuse, on close,
-     * and whenever a handle's generation disagrees with it; 0 when nothing
-     * is published, {@link #UNKNOWN_GENERATION} when a read failed and the
-     * next use must ask again. Hosts never count generations, they cache
-     * what the core reports. Written under the same thread discipline as the session
-     * (not thread-safe); volatile so another thread's gate reads the latest.
-     */
-    private volatile long publishedGeneration = 0;
-    /**
-     * The cache value meaning "ask the core again": a failed read (a parse
-     * started in between) leaves it instead of writing 0, which would read
-     * as "nothing published". No real generation is zero or negative, so no
-     * handle ever matches it.
-     */
-    private static final long UNKNOWN_GENERATION = -1;
     /** The session door: post-parse access, refused by the core while a parse runs. */
     private final NodeDoor sessionDoor;
     /** Handle the library passes back with this session's hooks; routes the parser's one dispatch stub here. */
@@ -125,9 +106,6 @@ public final class Session implements AutoCloseable {
     /** The native session handle; the session door crosses it. */
     MemorySegment handle() { return handle; }
 
-    /** The core's generation of the published tree, as last read; 0 when nothing is published. */
-    long publishedGeneration() { return publishedGeneration; }
-
     private void requireOpen() {
         if (closed || handle == null || handle.equals(MemorySegment.NULL)) throw new GalleyClosedException("session");
     }
@@ -148,54 +126,19 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Re-reads the published generation from the core into the cache. A
-     * parse in flight makes the core refuse with {@code ERROR_SESSION_IN_USE},
-     * which propagates and leaves the cache as it was.
-     */
-    private void refreshPublishedGeneration() {
-        checkStatus(readPublishedGeneration());
-    }
-
-    /**
-     * Reads the core's published generation into the cache and returns the
-     * native status; a refusal leaves the cache as it was.
-     */
-    private long readPublishedGeneration() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
-            long status = lib.galley_published_generation(handle, out);
-            if (status >= 0) publishedGeneration = out.get(ValueLayout.JAVA_LONG, 0);
-            return status;
-        }
-    }
-
-    /**
-     * The single session-door generation gate: passes only the generation
-     * of the tree the core published. A mismatch first asks the core again,
-     * because the cache can lag it and a parse in flight must report
-     * {@code ERROR_SESSION_IN_USE} rather than a stale handle.
-     *
-     * @throws GenerationInvalidatedException if the core's published tree
-     *         is not {@code generation}'s
-     */
-    void requireSessionGeneration(long generation, String what) {
-        if (generation > 0 && generation == publishedGeneration) return;
-        refreshPublishedGeneration();
-        if (generation > 0 && generation == publishedGeneration) return;
-        throw GalleyClosedException.invalidated(what);
-    }
-
-    /**
      * The single gate for a node argument crossing {@code door}: the node
-     * must belong to this session and carry the generation the door
-     * accepts, because the crossing sends a bare address and native storage
-     * only bounds-checks it, so a node of another session or generation
-     * would silently alias whichever node holds that index here. A node
-     * whose own session is closed reports that first. Only a {@link Node}
-     * reaches this gate: a raw address carries no generation to compare.
+     * must belong to this session, and it carries the generation every call
+     * of this operation hands the core. On the session door the core refuses
+     * a generation that is not the published tree's, so the session keeps no
+     * cached copy of it and cannot disagree with the core. On the hook door
+     * the generation is checked here, because the hook twins take none: the
+     * door serves one parse, so a node of another generation would alias
+     * whichever node holds that index in that parse. Either way a bare
+     * address would alias storage unchecked, which is why only a {@link Node}
+     * reaches this gate.
      *
      * @throws IllegalArgumentException if {@code node} belongs to another session
-     * @throws GenerationInvalidatedException if its generation is not the door's
+     * @throws StaleTreeException if its generation is not the door's
      */
     long address(Node node, NodeDoor door) {
         Session home = node.session();
@@ -203,37 +146,96 @@ public final class Session implements AutoCloseable {
         if (home != this) {
             throw new IllegalArgumentException("node belongs to a different session than this operation");
         }
-        if (door.isHook()) {
-            long generation = node.generation();
-            if (generation <= 0 || generation != door.generation()) throw GalleyClosedException.invalidated("node");
-        } else {
-            requireSessionGeneration(node.generation(), "node");
+        if (door.isHook() && node.generation() != door.generation()) {
+            throw new StaleTreeException("node");
         }
         return node.getAddress();
     }
 
-    /** Wraps an address read through {@code door}; invalid becomes null. */
-    private Node node(NodeDoor door, long address) {
-        return address == INVALID_NODE ? null : new Node(this, address, door.generation());
+    /**
+     * What one node operation crosses with, fixed by {@link #cross}: the
+     * door, the one generation every node of the operation carries (the
+     * first node's own, which on the hook door {@link #address} has just
+     * proved is the running parse's), and that node's address.
+     */
+    private record Crossing(NodeDoor door, long generation, long address) {}
+
+    /**
+     * The one gate of a node operation: closed checks and door choice
+     * ({@link #door(Node)}), then the node's admission to that door
+     * ({@link #address}). Nothing crosses without coming through here.
+     */
+    private Crossing cross(Node node) {
+        NodeDoor door = door(node);
+        return new Crossing(door, node.generation(), address(node, door));
     }
 
-    /** {@link #door()} for a call that takes {@code node}: a node whose own session is closed reports that first. */
+    /**
+     * The address of a second node of the same operation. A call hands the
+     * core one generation, so the second node must carry it: an edit mixing
+     * two trees is refused here instead of acting on a chain from another
+     * parse.
+     *
+     * @throws StaleTreeException if {@code chain} does not carry the crossing's generation
+     */
+    private long second(Crossing crossing, Node chain) {
+        long address = address(chain, crossing.door());
+        if (chain.generation() != crossing.generation()) throw new StaleTreeException("node");
+        return address;
+    }
+
+    /** Wraps an address read through a crossing; invalid becomes null. */
+    private Node node(long address, long generation) {
+        return address == Galley.INVALID_NODE ? null : new Node(this, address, generation);
+    }
+
+    /**
+     * {@link #door()} for a call that takes {@code node}. A null handle is a
+     * missing argument, not a refusal about the tree's lifetime, so it fails
+     * as one: an empty answer here would be indistinguishable from "this node
+     * really has no children". A node whose own session is closed reports that
+     * before its door is chosen.
+     *
+     * @throws NullPointerException if {@code node} is null
+     */
     private NodeDoor door(Node node) {
+        Objects.requireNonNull(node, "node");
         if (node.session().isClosed()) throw new GalleyClosedException("node's session");
         return door();
     }
 
+    /**
+     * The host failure for a negative status the core reported on the session
+     * door, with the session's diagnostic snapshot when one exists.
+     */
     GalleyException errorFromStatus(long status) {
-        String msg = lib.galley_status_string(status);
-        if (msg == null) msg = "unknown galley error";
-        Diagnostic diag = null;
+        Diagnostic diagnostic = null;
         try {
             if (handle != null && !handle.equals(MemorySegment.NULL) && lib.galley_has_diagnostic(handle) != 0) {
-                diag = buildDiagnosticSingular();
-                if (diag.getMessage() != null && !diag.getMessage().isEmpty()) msg = diag.getMessage();
+                diagnostic = buildDiagnosticSingular();
             }
         } catch (Exception ignored) {}
-        return new GalleyException(msg, (int) status, diag);
+        return statusFailure(lib, status, diagnostic);
+    }
+
+    /**
+     * The one mapper from a negative core status to the host failure, for
+     * every door and every crossing. A stale tree is one failure however it
+     * arrived — the core's own stale status on the session door, a hook
+     * crossing, or a walk step — so it is always the {@link StaleTreeException}
+     * subclass, and {@code catch (GalleyException)} still catches it.
+     * {@code diagnostic} may be null.
+     */
+    static GalleyException statusFailure(GalleyLibrary lib, long status, Diagnostic diagnostic) {
+        if (status == StatusCode.ERROR_STALE_TREE.getCode()) {
+            return new StaleTreeException("tree");
+        }
+        String message = lib.galley_status_string(status);
+        if (message == null) message = "unknown galley error";
+        if (diagnostic != null && diagnostic.getMessage() != null && !diagnostic.getMessage().isEmpty()) {
+            message = diagnostic.getMessage();
+        }
+        return new GalleyException(message, (int) status, diagnostic);
     }
 
     private void checkStatus(long status) {
@@ -241,20 +243,17 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Single gate ending every parse leg: reads the core's published
-     * generation (so handles of earlier parses fail at their next use
-     * instead of reading reallocated storage), then throws or returns the
-     * parsed byte count. A parse the core refused with
-     * {@code ERROR_SESSION_IN_USE} changed nothing, so it reads nothing and
-     * leaves every handle alone. Parsing itself never throws merely because
-     * a walker is open.
+     * Single gate ending every parse leg: drops the parse's door, which dies
+     * with the parse, then throws or returns the parsed byte count. The
+     * handles of earlier parses need no bookkeeping here — the core refuses
+     * their generation at their next read. A parse the core refused with
+     * {@code ERROR_SESSION_IN_USE} started nothing, so it leaves the running
+     * parse's door alone. Parsing itself never throws merely because a
+     * walker is open.
      */
     private int completeParse(long status) {
         if (status != StatusCode.ERROR_SESSION_IN_USE.getCode()) {
-            // The parse is over: its door dies with it. A failed read leaves
-            // the cache unknown, never 0, so the next use asks again.
             parseDoor = null;
-            if (readPublishedGeneration() < 0) publishedGeneration = UNKNOWN_GENERATION;
         }
         if (status < 0) throw errorFromStatus(status);
         return (int) status;
@@ -292,7 +291,6 @@ public final class Session implements AutoCloseable {
         }
         closed = true;
         parseDoor = null;
-        publishedGeneration = 0;
     }
 
     // -- hooks --
@@ -510,9 +508,35 @@ public final class Session implements AutoCloseable {
 
     // -- arena --
 
+    /**
+     * Number of AST nodes in the published tree.
+     *
+     * @throws StaleTreeException when nothing is published
+     */
     public long nodeCount() {
         requireOpen();
-        return lib.galley_node_count(handle);
+        return nodeCount(published()[1]);
+    }
+
+    /**
+     * The count of the tree {@code generation} names. The core refuses a
+     * generation it does not hold, 0 (nothing published) included, so
+     * nothing published is never a zero.
+     */
+    long nodeCount(long generation) {
+        long count = lib.galley_node_count(handle, generation);
+        checkStatus(count);
+        return count;
+    }
+
+    /**
+     * The published tree's generation, read from the core in the same call
+     * that reads its root. 0 when nothing is published.
+     */
+    private long[] published() {
+        Scratch scratch = Scratch.local();
+        checkStatus(lib.galley_root_node(handle, scratch.first, scratch.second));
+        return new long[]{scratch.firstLong(), scratch.secondLong()};
     }
 
     public void reserveNodes(long capacity) {
@@ -528,33 +552,27 @@ public final class Session implements AutoCloseable {
 
     // -- navigation --
 
+    /**
+     * Root of the published tree, or null when nothing is published — the
+     * one "is there a tree here" probe. The node carries the core generation
+     * that tree has, which every later read hands back to the core.
+     *
+     * @throws GalleyException with {@code ERROR_SESSION_IN_USE} while a parse runs
+     */
     public Node rootNode() {
         requireOpen();
-        // Stamp from a fresh read of the core, never the cache: a refusal (a
-        // parse is in flight) answers null, like the native refusal.
-        if (readPublishedGeneration() < 0) return null;
-        long generation = publishedGeneration;
-        long addr = lib.galley_root_node(handle);
-        if (addr == INVALID_NODE) return null;
-        return new Node(this, addr, generation);
-    }
-
-    public boolean nodeValid(Node node) {
-        if (node == null) return false;
-        NodeDoor door = door(node);
-        return door.nodeValid(address(node, door));
+        long[] tree = published();
+        if (tree[0] == Galley.INVALID_NODE) return null;
+        return new Node(this, tree[0], tree[1]);
     }
 
     public int childCount(Node node) {
-        if (node == null) return 0;
-        NodeDoor door = door(node);
-        return door.childCount(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().childCount(crossing.generation(), crossing.address());
     }
 
     public List<Node> children(Node node) {
-        if (node == null) return new ArrayList<>();
-        NodeDoor door = door(node);
-        return children(door, address(node, door));
+        return children(cross(node));
     }
 
     /**
@@ -562,61 +580,54 @@ public final class Session implements AutoCloseable {
      * crossing the same door. A child count that moves mid-iteration throws
      * instead of yielding a torn walk.
      */
-    private List<Node> children(NodeDoor door, long address) {
-        int count = door.childCount(address);
+    private List<Node> children(Crossing crossing) {
+        NodeDoor door = crossing.door();
+        long generation = crossing.generation();
+        int count = door.childCount(generation, crossing.address());
         List<Node> out = new ArrayList<>(count);
-        long child = door.firstChild(address);
+        long child = door.link(NodeDoor.Link.FIRST_CHILD, generation, crossing.address());
         for (int i = 0; i < count; i++) {
-            if (child == INVALID_NODE) throw new IllegalStateException("child count changed during iteration");
-            out.add(node(door, child));
-            child = door.nextSibling(child);
+            if (child == Galley.INVALID_NODE) throw new IllegalStateException("child count changed during iteration");
+            out.add(node(child, generation));
+            child = door.link(NodeDoor.Link.NEXT_SIBLING, generation, child);
         }
         return out;
     }
 
-    public Node firstChild(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.firstChild(address(node, door)));
+    /** The one link reader behind the five link methods. */
+    private Node link(Node node, NodeDoor.Link which) {
+        Crossing crossing = cross(node);
+        return node(crossing.door().link(which, crossing.generation(), crossing.address()), crossing.generation());
     }
 
-    public Node lastChild(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.lastChild(address(node, door)));
-    }
+    public Node firstChild(Node node) { return link(node, NodeDoor.Link.FIRST_CHILD); }
 
-    public Node nextSibling(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.nextSibling(address(node, door)));
-    }
+    public Node lastChild(Node node) { return link(node, NodeDoor.Link.LAST_CHILD); }
 
-    public Node priorSibling(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.priorSibling(address(node, door)));
-    }
+    public Node nextSibling(Node node) { return link(node, NodeDoor.Link.NEXT_SIBLING); }
 
-    public Node parent(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.parent(address(node, door)));
-    }
+    public Node priorSibling(Node node) { return link(node, NodeDoor.Link.PRIOR_SIBLING); }
+
+    public Node parent(Node node) { return link(node, NodeDoor.Link.PARENT); }
 
     /**
-     * Flat bulk read of the most recent successful parse in a single call:
-     * one entry per node address. Missing links read as {@code -1}
-     * (matching {@link #INVALID_NODE} bits), missing variables as -1, and
-     * spans index {@link #lastInput()}. Walk {@code parent}/
-     * {@code firstChild}/{@code next} directly instead of one call per
-     * node; {@link TreeSnapshot#node(long)} is the one conversion from a
-     * stored address back to a node.
+     * Flat bulk read of the published tree in a single call: one entry per
+     * node address. Missing links read as {@link Galley#INVALID_NODE}, missing
+     * variables as -1, and spans index
+     * {@link #lastInput()}. Walk {@code parent}/{@code firstChild}/
+     * {@code next} directly instead of one call per node;
+     * {@link TreeSnapshot#node(long)} is the one conversion from a stored
+     * address back to a node.
+     *
+     * Every leg carries one generation, so a parse that runs in between
+     * raises instead of returning columns that mix two trees.
+     *
+     * @throws StaleTreeException when nothing is published
      */
     public TreeSnapshot snapshot() {
         requireOpen();
-        // Stamp from the published-generation cache: the columns describe
-        // the published tree, so node() must return nodes of exactly that
-        // parse. A refusal (a parse is in flight) leaves the cache as it
-        // was, which is still the parse the columns come from.
-        readPublishedGeneration();
-        long generation = publishedGeneration;
-        long count = lib.galley_node_count(handle);
+        long generation = published()[1];
+        long count = nodeCount(generation);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment parent = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment firstChild = arena.allocate(ValueLayout.JAVA_LONG, count);
@@ -626,7 +637,7 @@ public final class Session implements AutoCloseable {
             MemorySegment spanStart = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment spanLen = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment semantic = arena.allocate(ValueLayout.JAVA_INT, count);
-            long total = lib.galley_tree_snapshot(handle, parent, firstChild, next,
+            long total = lib.galley_tree_snapshot(handle, generation, parent, firstChild, next,
                     childCount, variable, spanStart, spanLen, semantic, count);
             if (total < 0) throw errorFromStatus(total);
             if (total != count) throw new IllegalStateException("node count changed during snapshot");
@@ -635,6 +646,10 @@ public final class Session implements AutoCloseable {
             long[] nextArray = next.toArray(ValueLayout.JAVA_LONG);
             int[] childCountArray = childCount.toArray(ValueLayout.JAVA_INT);
             long[] variableArray = variable.toArray(ValueLayout.JAVA_LONG);
+            // The core's non-negative "no variable" becomes this API's -1.
+            for (int i = 0; i < variableArray.length; i++) {
+                if (variableArray[i] == Galley.NO_VARIABLE) variableArray[i] = -1;
+            }
             long[] spanStartArray = spanStart.toArray(ValueLayout.JAVA_LONG);
             long[] spanLenArray = spanLen.toArray(ValueLayout.JAVA_LONG);
             boolean[] semanticArray = new boolean[(int) count];
@@ -666,32 +681,27 @@ public final class Session implements AutoCloseable {
 
     /**
      * Creates the walker {@link Node#walk} hands out: the one place a walk
-     * is started. Closed checks and door choice come from {@link #door(Node)},
-     * the generation gate for that door from {@link #address}.
+     * is started. Closed checks and door choice come from {@link #cross}. The
+     * walk is bound to the tree the node came from: its cursor carries the
+     * node's own generation, and on the session door nothing asks the core
+     * until the first step, which refuses a generation that is gone.
      */
     Walker startWalk(Node node, boolean skipSemanticErrors) {
-        NodeDoor door = door(node);          // closed checks + door choice
-        long address = address(node, door);   // generation gate for that door
-        // The walk is bound to the tree the node came from: stamp from the
-        // node's own generation, which the gate above just proved live for
-        // this door — no refresh of its own.
-        return new Walker(this, address, node.generation(), skipSemanticErrors);
+        Crossing crossing = cross(node);
+        return new Walker(this, crossing.address(), crossing.generation(), skipSemanticErrors);
     }
 
     /**
      * One step of a walk: crosses the door of the calling context — the
      * hook door inside a hook dispatch of this session's running parse,
      * the session door everywhere else — and maps the status onto the
-     * walker's contract: null at the end of the walk, the walker's own
-     * {@link GenerationInvalidatedException} when its generation is not
-     * the tree's anymore, {@code door.failure} for everything else.
+     * walker's contract: null at the end of the walk, {@code door.failure}
+     * (which maps a stale tree to {@link StaleTreeException}) for a refusal.
      */
     Walker.WalkStep walkerStep(MemorySegment cursor, long generation) {
         requireOpen();
         NodeDoor door = door();
         long status = door.walkStep(cursor);
-        if (status == StatusCode.ERROR_STALE_TREE.getCode())
-            throw GalleyClosedException.invalidated("walker");
         if (status < 0) throw door.failure(status);
         if (status == 0) return null;
         return new Walker.WalkStep(
@@ -710,35 +720,31 @@ public final class Session implements AutoCloseable {
         return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
-    /** Raw bytes behind {@link #symbolName(Node)}. Null for invalid nodes. */
+    /** Raw bytes behind {@link #symbolName(Node)}. */
     public byte[] symbolNameBytes(Node node) {
-        if (node == null) return null;
-        NodeDoor door = door(node);
-        return door.symbolNameBytes(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().symbolNameBytes(crossing.generation(), crossing.address());
     }
 
     public byte[] text(Node node) {
-        if (node == null) return null;
-        NodeDoor door = door(node);
-        return door.text(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().text(crossing.generation(), crossing.address());
     }
 
     public long[] span(Node node) {
-        if (node == null) return null;
-        NodeDoor door = door(node);
-        return door.span(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().span(crossing.generation(), crossing.address());
     }
 
     public int[] lineColumn(Node node) {
-        if (node == null) return null;
-        NodeDoor door = door(node);
-        return door.lineColumn(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().lineColumn(crossing.generation(), crossing.address());
     }
 
+    /** Raw variable index, or null when the node has no variable. */
     public Integer variableIndex(Node node) {
-        if (node == null) return null;
-        NodeDoor door = door(node);
-        return door.variableIndex(address(node, door));
+        Crossing crossing = cross(node);
+        return crossing.door().variableIndex(crossing.generation(), crossing.address());
     }
 
     public int[] lastPosition() {
@@ -1168,43 +1174,43 @@ public final class Session implements AutoCloseable {
     // -- tree editing --
 
     public void appendChildren(Node parent, Node chain) {
-        NodeDoor door = door(parent);
-        door.appendChildren(address(parent, door), address(chain, door));
+        Crossing crossing = cross(parent);
+        crossing.door().appendChildren(crossing.generation(), crossing.address(), second(crossing, chain));
     }
 
     public void insertBefore(Node target, Node chain) {
-        NodeDoor door = door(target);
-        door.insertBefore(address(target, door), address(chain, door));
+        Crossing crossing = cross(target);
+        crossing.door().insertBefore(crossing.generation(), crossing.address(), second(crossing, chain));
     }
 
     public void insertAfter(Node target, Node chain) {
-        NodeDoor door = door(target);
-        door.insertAfter(address(target, door), address(chain, door));
+        Crossing crossing = cross(target);
+        crossing.door().insertAfter(crossing.generation(), crossing.address(), second(crossing, chain));
     }
 
     public Node removeSiblings(Node node, int count) {
-        NodeDoor door = door(node);
-        return node(door, door.removeSiblings(address(node, door), count));
+        Crossing crossing = cross(node);
+        return node(crossing.door().removeSiblings(crossing.generation(), crossing.address(), count), crossing.generation());
     }
 
     public Node removeSelf(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.removeSelf(address(node, door)));
+        Crossing crossing = cross(node);
+        return node(crossing.door().removeSelf(crossing.generation(), crossing.address()), crossing.generation());
     }
 
     public Node cleanChildren(Node node) {
-        NodeDoor door = door(node);
-        return node(door, door.cleanChildren(address(node, door)));
+        Crossing crossing = cross(node);
+        return node(crossing.door().cleanChildren(crossing.generation(), crossing.address()), crossing.generation());
     }
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
-        NodeDoor door = door(parent);
-        door.insertChildrenAt(address(parent, door), index, address(chain, door));
+        Crossing crossing = cross(parent);
+        crossing.door().insertChildrenAt(crossing.generation(), crossing.address(), index, second(crossing, chain));
     }
 
     public Node removeChildrenAt(Node parent, int index, int count) {
-        NodeDoor door = door(parent);
-        return node(door, door.removeChildrenAt(address(parent, door), index, count));
+        Crossing crossing = cross(parent);
+        return node(crossing.door().removeChildrenAt(crossing.generation(), crossing.address(), index, count), crossing.generation());
     }
 
     // -- symbol table --

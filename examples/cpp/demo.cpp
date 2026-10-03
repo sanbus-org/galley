@@ -21,10 +21,11 @@ struct SessionGuard {
     SessionGuard &operator=(const SessionGuard &) = delete;
 };
 
-bool printTree(GalleySession &session, GalleyNodeAddress root) {
+/* Walks the published tree from `root`, passing its generation to every read:
+ * the core refuses one that is not the live tree's. */
+bool printTree(GalleySession &session, GalleyNodeAddress root,
+               unsigned long long generation) {
     GalleyWalkCursor cursor{};
-    unsigned long long generation = 0;
-    if (galley_published_generation(&session, &generation) != galley_ok) return false;
     cursor.generation = generation;
     cursor.root = root;
     long long status;
@@ -35,14 +36,14 @@ bool printTree(GalleySession &session, GalleyNodeAddress root) {
         std::size_t name_len = 0;
         const char *text_data = nullptr;
         std::size_t text_len = 0;
-        if (galley_node_symbol_name(&session, node, &name_data, &name_len) != galley_ok ||
-            galley_node_text(&session, node, &text_data, &text_len) != galley_ok) {
+        if (galley_node_symbol_name(&session, generation, node, &name_data, &name_len) != galley_ok ||
+            galley_node_text(&session, generation, node, &text_data, &text_len) != galley_ok) {
             return false;
         }
 
         for (unsigned i = 0; i <= depth; ++i) std::fputs("  ", stdout);
         unsigned int line = 0, column = 0;
-        galley_node_line_column(&session, node, &line, &column);
+        galley_node_line_column(&session, generation, node, &line, &column);
         std::printf("%.*s [line %u, %zu bytes]\n",
                     static_cast<int>(name_len), name_data, line, text_len);
     }
@@ -93,18 +94,28 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Successful parse: walk the tree. */
-    std::printf("parsed %lld bytes, %llu AST nodes\n",
-                parsed, galley_node_count(&session));
+    /* Successful parse: one read of the root yields both the node and the
+     * generation every read of this tree carries. */
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    unsigned long long generation = 0;
+    if (galley_root_node(&session, &root, &generation) != galley_ok) {
+        std::fprintf(stderr, "failed to read the root node\n");
+        return 1;
+    }
+    const long long node_count = galley_node_count(&session, generation);
+    if (node_count < 0) {
+        std::fprintf(stderr, "failed to read the node count\n");
+        return 1;
+    }
+    std::printf("parsed %lld bytes, %lld AST nodes\n", parsed, node_count);
     if (!galley_has_ast()) {
         std::puts("AST construction disabled; skipping tree walk");
     } else {
-        const GalleyNodeAddress root = galley_root_node(&session);
         if (root == GALLEY_INVALID_NODE) {
             std::fprintf(stderr, "expected a root node\n");
             return 1;
         }
-        if (!printTree(session, root)) {
+        if (!printTree(session, root, generation)) {
             return 1;
         }
     }
@@ -189,24 +200,38 @@ int main(int argc, char *argv[]) {
         std::printf("file parse: %lld bytes, ended at %u:%u\n",
                     file_parsed, end_line, end_column);
 
-        /* Tree editing: detach the root's children, then reattach them. */
+        /* Tree editing: detach the root's children, then reattach them. The
+         * file parse republished the tree, so its generation is read again. */
         if (galley_has_ast()) {
-            const GalleyNodeAddress root = galley_root_node(&session);
-            const unsigned int before = galley_node_child_count(&session, root);
+            if (galley_root_node(&session, &root, &generation) != galley_ok ||
+                root == GALLEY_INVALID_NODE) {
+                std::fprintf(stderr, "expected a root node\n");
+                return 1;
+            }
+            const long long before = galley_node_child_count(&session, generation, root);
+            if (before < 0) {
+                std::fprintf(stderr, "failed to read the child count\n");
+                return 1;
+            }
             GalleyNodeAddress head = GALLEY_INVALID_NODE;
-            if (galley_tree_clean_children(&session, root, &head) != galley_ok ||
+            if (galley_tree_clean_children(&session, generation, root, &head) != galley_ok ||
                 head == GALLEY_INVALID_NODE) {
                 std::fprintf(stderr, "expected the root to have children\n");
                 return 1;
             }
-            const long long reattached = galley_tree_append_children(&session, root, head);
+            const long long reattached =
+                galley_tree_append_children(&session, generation, root, head);
             if (reattached != galley_ok) {
                 std::fprintf(stderr, "failed to reattach children: %s (%lld)\n",
                              galley_status_string(reattached), reattached);
                 return 1;
             }
-            std::printf("tree edit: %u children before, %u after reattach\n",
-                        before, galley_node_child_count(&session, root));
+            const long long after = galley_node_child_count(&session, generation, root);
+            if (after < 0) {
+                std::fprintf(stderr, "failed to read the child count\n");
+                return 1;
+            }
+            std::printf("tree edit: %lld children before, %lld after reattach\n", before, after);
         }
     }
     return 0;

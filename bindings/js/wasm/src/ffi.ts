@@ -26,8 +26,8 @@ import type {
   SessionCOptions,
   SnapshotColumns,
 } from "@sanbus/galley-core";
-import { GalleyError, Status } from "@sanbus/galley-core";
-import { resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
+import { GalleyError, NO_VARIABLE, Status } from "@sanbus/galley-core";
+import { GenerationBigInt, linkOrStatus, resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
 import { checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
 
 const LIBRARY_BASE = "galley-js-wasm";
@@ -68,19 +68,19 @@ interface GalleyWasmExports {
     messageLen: number,
   ): bigint;
   galley_parse(session: number, data: number, len: number): bigint;
-  galley_node_count(session: number): bigint;
+  galley_node_count(session: number, generation: bigint): bigint;
   galley_reserve_nodes(session: number, capacity: bigint): bigint;
   galley_node_capacity(session: number): bigint;
-  galley_root_node(session: number): bigint;
-  galley_node_is_valid(session: number, node: bigint): number;
-  galley_node_child_count(session: number, node: bigint): number;
-  galley_node_first_child(session: number, node: bigint): bigint;
-  galley_node_last_child(session: number, node: bigint): bigint;
-  galley_node_next_sibling(session: number, node: bigint): bigint;
-  galley_node_prior_sibling(session: number, node: bigint): bigint;
-  galley_node_parent(session: number, node: bigint): bigint;
+  galley_root_node(session: number, outRoot: number, outGeneration: number): bigint;
+  galley_node_child_count(session: number, generation: bigint, node: bigint): bigint;
+  galley_node_first_child(session: number, generation: bigint, node: bigint): bigint;
+  galley_node_last_child(session: number, generation: bigint, node: bigint): bigint;
+  galley_node_next_sibling(session: number, generation: bigint, node: bigint): bigint;
+  galley_node_prior_sibling(session: number, generation: bigint, node: bigint): bigint;
+  galley_node_parent(session: number, generation: bigint, node: bigint): bigint;
   galley_tree_snapshot(
     session: number,
+    generation: bigint,
     outParent: number,
     outFirstChild: number,
     outNext: number,
@@ -93,11 +93,11 @@ interface GalleyWasmExports {
   ): bigint;
   galley_walk_next(session: number, cursor: number): bigint;
   galley_hook_walk_next(door: number, cursor: number): bigint;
-  galley_node_symbol_name(session: number, node: bigint, outData: number, outLen: number): bigint;
-  galley_node_text(session: number, node: bigint, outData: number, outLen: number): bigint;
-  galley_node_span(session: number, node: bigint, outStart: number, outLen: number): bigint;
-  galley_node_line_column(session: number, node: bigint, outLine: number, outCol: number): bigint;
-  galley_node_variable_index(session: number, node: bigint): bigint;
+  galley_node_symbol_name(session: number, generation: bigint, node: bigint, outData: number, outLen: number): bigint;
+  galley_node_text(session: number, generation: bigint, node: bigint, outData: number, outLen: number): bigint;
+  galley_node_span(session: number, generation: bigint, node: bigint, outStart: number, outLen: number): bigint;
+  galley_node_line_column(session: number, generation: bigint, node: bigint, outLine: number, outCol: number): bigint;
+  galley_node_variable_index(session: number, generation: bigint, node: bigint): bigint;
   galley_last_position(session: number, outLine: number, outCol: number): bigint;
   galley_last_input(session: number, outData: number, outLen: number): bigint;
   galley_has_diagnostic(session: number): number;
@@ -215,15 +215,16 @@ interface GalleyWasmExports {
     outVar: number,
     outVarLen: number,
   ): bigint;
-  galley_tree_append_children(session: number, parent: bigint, first: bigint): bigint;
-  galley_tree_insert_before(session: number, target: bigint, first: bigint): bigint;
-  galley_tree_insert_after(session: number, target: bigint, first: bigint): bigint;
-  galley_tree_remove_siblings(session: number, node: bigint, count: number, outHead: number): bigint;
-  galley_tree_remove_self(session: number, node: bigint, outHead: number): bigint;
-  galley_tree_clean_children(session: number, node: bigint, outHead: number): bigint;
-  galley_tree_insert_children_at(session: number, parent: bigint, index: number, first: bigint): bigint;
+  galley_tree_append_children(session: number, generation: bigint, parent: bigint, first: bigint): bigint;
+  galley_tree_insert_before(session: number, generation: bigint, target: bigint, first: bigint): bigint;
+  galley_tree_insert_after(session: number, generation: bigint, target: bigint, first: bigint): bigint;
+  galley_tree_remove_siblings(session: number, generation: bigint, node: bigint, count: number, outHead: number): bigint;
+  galley_tree_remove_self(session: number, generation: bigint, node: bigint, outHead: number): bigint;
+  galley_tree_clean_children(session: number, generation: bigint, node: bigint, outHead: number): bigint;
+  galley_tree_insert_children_at(session: number, generation: bigint, parent: bigint, index: number, first: bigint): bigint;
   galley_tree_remove_children_at(
     session: number,
+    generation: bigint,
     parent: bigint,
     index: number,
     count: number,
@@ -252,7 +253,6 @@ interface GalleyWasmExports {
   galley_hook_node_line_column(door: number, node: bigint, outLine: number, outCol: number): bigint;
   galley_hook_tree_append_children(door: number, parent: bigint, first: bigint): bigint;
   galley_hook_tree_clean_children(door: number, node: bigint, outHead: number): bigint;
-  galley_hook_node_is_valid(door: number, node: bigint): number;
   galley_hook_node_variable_index(door: number, node: bigint): bigint;
   galley_hook_tree_insert_before(door: number, target: bigint, first: bigint): bigint;
   galley_hook_tree_insert_after(door: number, target: bigint, first: bigint): bigint;
@@ -261,7 +261,6 @@ interface GalleyWasmExports {
   galley_hook_tree_insert_children_at(door: number, parent: bigint, index: number, first: bigint): bigint;
   galley_hook_tree_remove_children_at(door: number, parent: bigint, index: number, count: number, outHead: number): bigint;
   galley_hook_generation(door: number, outGeneration: number): bigint;
-  galley_published_generation(session: number, outGeneration: number): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): number;
   galley_hooks_name_data(index: number): number;
@@ -657,16 +656,6 @@ function toNumber(value: bigint): number {
   return Number(value);
 }
 
-/** Reinterpret a guest i64 as an unsigned u64 address (INVALID_NODE survives). */
-function asAddress(value: bigint): bigint {
-  return BigInt.asUintN(64, value);
-}
-
-/** Encode a u64 address (possibly INVALID_NODE) as a guest i64. */
-function asI64(value: bigint): bigint {
-  return BigInt.asIntN(64, value);
-}
-
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -695,6 +684,19 @@ export class WasmPort implements FfiPort {
    * relocates, so a single guest allocation serves every walk step.
    */
   #walkCursorSlot: number | null = null;
+  /**
+   * The 16 guest bytes every session-door node crossing writes its
+   * out-values into, allocated once per port instance. A JS realm is
+   * single-threaded and no node crossing re-enters JS, and results are read
+   * out before the call returns, so one slot serves every call and nothing
+   * is allocated per call.
+   */
+  #nodeOutSlotPointer: number | null = null;
+
+  #nodeOutSlot(): number {
+    if (this.#nodeOutSlotPointer === null) this.#nodeOutSlotPointer = this.malloc(16);
+    return this.#nodeOutSlotPointer;
+  }
 
   hookNames(): string[] {
     if (this.#hookNameTable !== null) return this.#hookNameTable;
@@ -734,6 +736,11 @@ export class WasmPort implements FfiPort {
   private readBytes(ptr: number, len: number): Uint8Array<ArrayBuffer> {
     if (ptr === 0 || len === 0) return new Uint8Array(0);
     return this.memoryBytes().slice(ptr, ptr + len);
+  }
+
+  /** Reads a guest u64 the core wrote into an out-parameter. */
+  #readU64(ptr: number): bigint {
+    return this.dataView().getBigUint64(ptr, true);
   }
 
   private readCString(ptr: number): string {
@@ -909,72 +916,87 @@ export class WasmPort implements FfiPort {
 
   // -- arena and navigation ---------------------------------------------------
 
-  nodeCount(handle: Handle): number {
-    return toNumber(this.wasm.galley_node_count(handle as number));
+  /** The generation as the BigInt wasm's `i64` parameter requires. */
+  readonly #generation = new GenerationBigInt();
+
+  nodeCount(handle: Handle, generation: number): number {
+    return Number(this.wasm.galley_node_count(handle as number, this.#generation.of(generation)));
   }
 
   reserveNodes(handle: Handle, capacity: bigint): number {
-    return toNumber(this.wasm.galley_reserve_nodes(handle as number, asI64(capacity)));
+    return toNumber(this.wasm.galley_reserve_nodes(handle as number, capacity));
   }
 
   nodeCapacity(handle: Handle): number {
     return toNumber(this.wasm.galley_node_capacity(handle as number));
   }
 
-  rootNode(handle: Handle): bigint {
-    return asAddress(this.wasm.galley_root_node(handle as number));
+  rootNode(handle: Handle): { status: number; root: bigint; generation: number } {
+    const out = this.#nodeOutSlot();
+    const status = this.wasm.galley_root_node(handle as number, out, out + 8);
+    return {
+      status: Number(status),
+      root: this.#readU64(out),
+      generation: Number(this.#readU64(out + 8)),
+    };
   }
 
-  nodeValid(handle: Handle, node: bigint): boolean {
-    return this.wasm.galley_node_is_valid(handle as number, asI64(node)) !== 0;
+  childCount(handle: Handle, generation: number, node: bigint): number {
+    return Number(this.wasm.galley_node_child_count(handle as number, this.#generation.of(generation), node));
   }
 
-  childCount(handle: Handle, node: bigint): number {
-    return this.wasm.galley_node_child_count(handle as number, asI64(node));
+  /** One link through the session door: the address, or the core's refusal as a Number. */
+  #link(
+    read: (session: number, generation: bigint, node: bigint) => bigint,
+    handle: Handle,
+    generation: number,
+    node: bigint,
+  ): bigint | number {
+    return linkOrStatus(read(handle as number, this.#generation.of(generation), node));
   }
 
-  firstChild(handle: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_node_first_child(handle as number, asI64(node)));
+  firstChild(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.#link(this.wasm.galley_node_first_child, handle, generation, node);
   }
 
-  lastChild(handle: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_node_last_child(handle as number, asI64(node)));
+  lastChild(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.#link(this.wasm.galley_node_last_child, handle, generation, node);
   }
 
-  nextSibling(handle: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_node_next_sibling(handle as number, asI64(node)));
+  nextSibling(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.#link(this.wasm.galley_node_next_sibling, handle, generation, node);
   }
 
-  priorSibling(handle: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_node_prior_sibling(handle as number, asI64(node)));
+  priorSibling(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.#link(this.wasm.galley_node_prior_sibling, handle, generation, node);
   }
 
-  parent(handle: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_node_parent(handle as number, asI64(node)));
+  parent(handle: Handle, generation: number, node: bigint): bigint | number {
+    return this.#link(this.wasm.galley_node_parent, handle, generation, node);
   }
 
-  treeSnapshot(handle: Handle): SnapshotColumns {
+  treeSnapshot(handle: Handle, generation: number): SnapshotColumns | number {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const count = this.nodeCount(handle);
-      const empty = {
-        count,
-        parent: new BigUint64Array(0),
-        firstChild: new BigUint64Array(0),
-        next: new BigUint64Array(0),
-        childCount: new Uint32Array(0),
-        variable: new BigInt64Array(0),
-        spanStart: new BigUint64Array(0),
-        spanLen: new BigUint64Array(0),
-        isSemanticError: new Int32Array(0),
-      };
+      const count = this.nodeCount(handle, generation);
+      if (count < 0) return count;
       if (count === 0) {
-        // A zero count (nothing parsed yet, or a stale last result)
-        // still crosses with null columns so the gate can answer.
+        // A zero count (a build with no AST construction) still crosses
+        // with null columns so the gate can answer.
         const status = toNumber(
-          this.wasm.galley_tree_snapshot(handle as number, 0, 0, 0, 0, 0, 0, 0, 0, 0n),
+          this.wasm.galley_tree_snapshot(handle as number, this.#generation.of(generation), 0, 0, 0, 0, 0, 0, 0, 0, 0n),
         );
-        if (status < 0) throw new GalleyError("galley_tree_snapshot failed", status as Status);
-        return empty;
+        if (status < 0) return status;
+        return {
+          count,
+          parent: new BigUint64Array(0),
+          firstChild: new BigUint64Array(0),
+          next: new BigUint64Array(0),
+          childCount: new Uint32Array(0),
+          variable: new BigInt64Array(0),
+          spanStart: new BigUint64Array(0),
+          spanLen: new BigUint64Array(0),
+          isSemanticError: new Int32Array(0),
+        };
       }
       // Eight-byte columns first (parent, firstChild, next, spanStart,
       // spanLen, variable), then the u32 childCount tail and the i32
@@ -993,11 +1015,11 @@ export class WasmPort implements FfiPort {
       const base = this.malloc(total);
       try {
         const status = this.wasm.galley_tree_snapshot(
-          handle as number, base + offParent, base + offFirst, base + offNext,
+          handle as number, this.#generation.of(generation), base + offParent, base + offFirst, base + offNext,
           base + offChildCount, base + offVariable, base + offSpanStart,
           base + offSpanLen, base + offSemantic, BigInt(count),
         );
-        if (isNegative(status)) throw new GalleyError("galley_tree_snapshot failed", Number(status) as Status);
+        if (isNegative(status)) return Number(status);
         if (status !== BigInt(count)) continue;
         const memory = this.memoryBytes();
         const column64 = (offset: number) =>
@@ -1110,42 +1132,45 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  nodeSymbolName(handle: Handle, node: bigint): Uint8Array | null {
+  nodeSymbolName(handle: Handle, generation: number, node: bigint): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_node_symbol_name(session, asI64(node), data, len));
+    const out = this.#nodeOutSlot();
+    const status = this.wasm.galley_node_symbol_name(
+      session, this.#generation.of(generation), node, out, out + 4,
+    );
+    if (isNegative(status)) return Number(status);
+    const view = this.dataView();
+    return this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true));
   }
 
-  nodeText(handle: Handle, node: bigint): Uint8Array | null {
+  nodeText(handle: Handle, generation: number, node: bigint): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_node_text(session, asI64(node), data, len));
+    const out = this.#nodeOutSlot();
+    const status = this.wasm.galley_node_text(session, this.#generation.of(generation), node, out, out + 4);
+    if (isNegative(status)) return Number(status);
+    const view = this.dataView();
+    return this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true));
   }
 
-  nodeSpan(handle: Handle, node: bigint): [bigint, bigint] | null {
-    const out = this.malloc(16);
-    try {
-      const status = this.wasm.galley_node_span(handle as number, asI64(node), out, out + 8);
-      if (isNegative(status)) return null;
-      const view = this.dataView();
-      return [view.getBigUint64(out, true), view.getBigUint64(out + 8, true)];
-    } finally {
-      this.free(out, 16);
-    }
+  nodeSpan(handle: Handle, generation: number, node: bigint): [bigint, bigint] | number {
+    const out = this.#nodeOutSlot();
+    const status = this.wasm.galley_node_span(handle as number, this.#generation.of(generation), node, out, out + 8);
+    if (isNegative(status)) return Number(status);
+    const view = this.dataView();
+    return [view.getBigUint64(out, true), view.getBigUint64(out + 8, true)];
   }
 
-  nodeLineColumn(handle: Handle, node: bigint): [number, number] | null {
-    const out = this.malloc(8);
-    try {
-      const status = this.wasm.galley_node_line_column(handle as number, asI64(node), out, out + 4);
-      if (isNegative(status)) return null;
-      const view = this.dataView();
-      return [view.getUint32(out, true), view.getUint32(out + 4, true)];
-    } finally {
-      this.free(out, 8);
-    }
+  nodeLineColumn(handle: Handle, generation: number, node: bigint): [number, number] | number {
+    const out = this.#nodeOutSlot();
+    const status = this.wasm.galley_node_line_column(handle as number, this.#generation.of(generation), node, out, out + 4);
+    if (isNegative(status)) return Number(status);
+    const view = this.dataView();
+    return [view.getUint32(out, true), view.getUint32(out + 4, true)];
   }
 
-  nodeVariableIndex(handle: Handle, node: bigint): number {
-    return toNumber(this.wasm.galley_node_variable_index(handle as number, asI64(node)));
+  nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null {
+    const index = this.wasm.galley_node_variable_index(handle as number, this.#generation.of(generation), node);
+    return index === NO_VARIABLE ? null : Number(index);
   }
 
   symbolNameAt(handle: Handle, index: number): Uint8Array | null {
@@ -1516,77 +1541,73 @@ export class WasmPort implements FfiPort {
 
   // -- tree editing --------------------------------------------------------------------
 
-  treeAppendChildren(handle: Handle, parent: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_tree_append_children(handle as number, asI64(parent), asI64(first)));
+  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_tree_append_children(handle as number, this.#generation.of(generation), parent, first));
   }
 
-  treeInsertBefore(handle: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_tree_insert_before(handle as number, asI64(target), asI64(first)));
+  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_tree_insert_before(handle as number, this.#generation.of(generation), target, first));
   }
 
-  treeInsertAfter(handle: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_tree_insert_after(handle as number, asI64(target), asI64(first)));
+  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number {
+    return toNumber(this.wasm.galley_tree_insert_after(handle as number, this.#generation.of(generation), target, first));
   }
 
-  treeRemoveSiblings(handle: Handle, node: bigint, count: number): { status: number; head: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(
-        this.wasm.galley_tree_remove_siblings(handle as number, asI64(node), count, out),
-      );
-      return { status, head: this.dataView().getBigUint64(out, true) };
-    } finally {
-      this.free(out, 8);
-    }
+  treeRemoveSiblings(
+    handle: Handle,
+    generation: number,
+    node: bigint,
+    count: number,
+  ): { status: number; head: bigint } {
+    const out = this.#nodeOutSlot();
+    const status = toNumber(
+      this.wasm.galley_tree_remove_siblings(handle as number, this.#generation.of(generation), node, count, out),
+    );
+    return { status, head: this.dataView().getBigUint64(out, true) };
   }
 
-  treeRemoveSelf(handle: Handle, node: bigint): { status: number; head: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(this.wasm.galley_tree_remove_self(handle as number, asI64(node), out));
-      return { status, head: this.dataView().getBigUint64(out, true) };
-    } finally {
-      this.free(out, 8);
-    }
+  treeRemoveSelf(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
+    const out = this.#nodeOutSlot();
+    const status = toNumber(this.wasm.galley_tree_remove_self(handle as number, this.#generation.of(generation), node, out));
+    return { status, head: this.dataView().getBigUint64(out, true) };
   }
 
-  treeCleanChildren(handle: Handle, node: bigint): { status: number; head: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(this.wasm.galley_tree_clean_children(handle as number, asI64(node), out));
-      return { status, head: this.dataView().getBigUint64(out, true) };
-    } finally {
-      this.free(out, 8);
-    }
+  treeCleanChildren(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
+    const out = this.#nodeOutSlot();
+    const status = toNumber(this.wasm.galley_tree_clean_children(handle as number, this.#generation.of(generation), node, out));
+    return { status, head: this.dataView().getBigUint64(out, true) };
   }
 
-  treeInsertChildrenAt(handle: Handle, parent: bigint, index: number, first: bigint): number {
+  treeInsertChildrenAt(
+    handle: Handle,
+    generation: number,
+    parent: bigint,
+    index: number,
+    first: bigint,
+  ): number {
     return toNumber(
-      this.wasm.galley_tree_insert_children_at(handle as number, asI64(parent), index, asI64(first)),
+      this.wasm.galley_tree_insert_children_at(handle as number, this.#generation.of(generation), parent, index, first),
     );
   }
 
   treeRemoveChildrenAt(
     handle: Handle,
+    generation: number,
     parent: bigint,
     index: number,
     count: number,
   ): { status: number; head: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(
-        this.wasm.galley_tree_remove_children_at(handle as number, asI64(parent), index, count, out),
-      );
-      return { status, head: this.dataView().getBigUint64(out, true) };
-    } finally {
-      this.free(out, 8);
-    }
+    const out = this.#nodeOutSlot();
+    const status = toNumber(
+      this.wasm.galley_tree_remove_children_at(handle as number, this.#generation.of(generation), parent, index, count, out),
+    );
+    return { status, head: this.dataView().getBigUint64(out, true) };
   }
 
   // -- procedure hooks (parse-time state) ---------------------------------------------------
 
   procCurrentNode(args: Handle): bigint {
-    return asAddress(this.wasm.galley_procedure_current_node(args as number));
+    return this.wasm.galley_procedure_current_node(args as number);
   }
 
   procDoor(args: Handle): Handle {
@@ -1594,7 +1615,7 @@ export class WasmPort implements FfiPort {
   }
 
   procSetCurrentNode(args: Handle, node: bigint): void {
-    this.wasm.galley_procedure_set_current_node(args as number, asI64(node));
+    this.wasm.galley_procedure_set_current_node(args as number, node);
   }
 
   procDropSelf(args: Handle): number {
@@ -1636,43 +1657,43 @@ export class WasmPort implements FfiPort {
   // -- hook door: parse-time node/tree accessors --------------------------
 
   hookNodeChildCount(door: Handle, node: bigint): number {
-    return this.wasm.galley_hook_node_child_count(door as number, asI64(node));
+    return this.wasm.galley_hook_node_child_count(door as number, node);
   }
 
   hookNodeFirstChild(door: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_hook_node_first_child(door as number, asI64(node)));
+    return this.wasm.galley_hook_node_first_child(door as number, node);
   }
 
   hookNodeLastChild(door: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_hook_node_last_child(door as number, asI64(node)));
+    return this.wasm.galley_hook_node_last_child(door as number, node);
   }
 
   hookNodeNextSibling(door: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_hook_node_next_sibling(door as number, asI64(node)));
+    return this.wasm.galley_hook_node_next_sibling(door as number, node);
   }
 
   hookNodePriorSibling(door: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_hook_node_prior_sibling(door as number, asI64(node)));
+    return this.wasm.galley_hook_node_prior_sibling(door as number, node);
   }
 
   hookNodeParent(door: Handle, node: bigint): bigint {
-    return asAddress(this.wasm.galley_hook_node_parent(door as number, asI64(node)));
+    return this.wasm.galley_hook_node_parent(door as number, node);
   }
 
   hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null {
     const a = door as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_symbol_name(a, asI64(node), data, len));
+    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_symbol_name(a, node, data, len));
   }
 
   hookNodeText(door: Handle, node: bigint): Uint8Array | null {
     const a = door as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_text(a, asI64(node), data, len));
+    return this.tryCopyBytes((data, len) => this.wasm.galley_hook_node_text(a, node, data, len));
   }
 
   hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null {
     const out = this.malloc(16);
     try {
-      const status = this.wasm.galley_hook_node_span(door as number, asI64(node), out, out + 8);
+      const status = this.wasm.galley_hook_node_span(door as number, node, out, out + 8);
       if (isNegative(status)) return null;
       const view = this.dataView();
       return [view.getBigUint64(out, true), view.getBigUint64(out + 8, true)];
@@ -1684,7 +1705,7 @@ export class WasmPort implements FfiPort {
   hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null {
     const out = this.malloc(8);
     try {
-      const status = this.wasm.galley_hook_node_line_column(door as number, asI64(node), out, out + 4);
+      const status = this.wasm.galley_hook_node_line_column(door as number, node, out, out + 4);
       if (isNegative(status)) return null;
       const view = this.dataView();
       return [view.getUint32(out, true), view.getUint32(out + 4, true)];
@@ -1694,33 +1715,30 @@ export class WasmPort implements FfiPort {
   }
 
   hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_hook_tree_append_children(door as number, asI64(parent), asI64(first)));
+    return toNumber(this.wasm.galley_hook_tree_append_children(door as number, parent, first));
   }
 
   hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint } {
     const out = this.malloc(8);
     try {
-      const status = toNumber(this.wasm.galley_hook_tree_clean_children(door as number, asI64(node), out));
+      const status = toNumber(this.wasm.galley_hook_tree_clean_children(door as number, node, out));
       return { status, head: this.dataView().getBigUint64(out, true) };
     } finally {
       this.free(out, 8);
     }
   }
 
-  hookNodeValid(door: Handle, node: bigint): boolean {
-    return this.wasm.galley_hook_node_is_valid(door as number, asI64(node)) !== 0;
-  }
-
-  hookNodeVariableIndex(door: Handle, node: bigint): number {
-    return toNumber(this.wasm.galley_hook_node_variable_index(door as number, asI64(node)));
+  hookNodeVariableIndex(door: Handle, node: bigint): number | null {
+    const index = this.wasm.galley_hook_node_variable_index(door as number, node);
+    return isNegative(index) || index === NO_VARIABLE ? null : Number(index);
   }
 
   hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_hook_tree_insert_before(door as number, asI64(target), asI64(first)));
+    return toNumber(this.wasm.galley_hook_tree_insert_before(door as number, target, first));
   }
 
   hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number {
-    return toNumber(this.wasm.galley_hook_tree_insert_after(door as number, asI64(target), asI64(first)));
+    return toNumber(this.wasm.galley_hook_tree_insert_after(door as number, target, first));
   }
 
   #hookHeadCall(call: (out: number) => bigint): { status: number; head: bigint } {
@@ -1735,41 +1753,31 @@ export class WasmPort implements FfiPort {
 
   hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint } {
     return this.#hookHeadCall((out) =>
-      this.wasm.galley_hook_tree_remove_siblings(door as number, asI64(node), count, out),
+      this.wasm.galley_hook_tree_remove_siblings(door as number, node, count, out),
     );
   }
 
   hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
-    return this.#hookHeadCall((out) => this.wasm.galley_hook_tree_remove_self(door as number, asI64(node), out));
+    return this.#hookHeadCall((out) => this.wasm.galley_hook_tree_remove_self(door as number, node, out));
   }
 
   hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {
     return toNumber(
-      this.wasm.galley_hook_tree_insert_children_at(door as number, asI64(parent), index, asI64(first)),
+      this.wasm.galley_hook_tree_insert_children_at(door as number, parent, index, first),
     );
   }
 
   hookTreeRemoveChildrenAt(door: Handle, parent: bigint, index: number, count: number): { status: number; head: bigint } {
     return this.#hookHeadCall((out) =>
-      this.wasm.galley_hook_tree_remove_children_at(door as number, asI64(parent), index, count, out),
+      this.wasm.galley_hook_tree_remove_children_at(door as number, parent, index, count, out),
     );
   }
 
-  hookGeneration(door: Handle): bigint {
+  hookGeneration(door: Handle): number {
     const out = this.malloc(8);
     try {
       const status = this.wasm.galley_hook_generation(door as number, out);
-      return isNegative(status) ? 0n : this.dataView().getBigUint64(out, true);
-    } finally {
-      this.free(out, 8);
-    }
-  }
-
-  publishedGeneration(handle: Handle): { status: number; generation: bigint } {
-    const out = this.malloc(8);
-    try {
-      const status = toNumber(this.wasm.galley_published_generation(handle as number, out));
-      return { status, generation: this.dataView().getBigUint64(out, true) };
+      return isNegative(status) ? 0 : Number(this.dataView().getBigUint64(out, true));
     } finally {
       this.free(out, 8);
     }

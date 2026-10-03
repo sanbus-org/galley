@@ -18,7 +18,6 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * tree editing.
  */
 public final class ProcedureArguments {
-    private static final long INVALID_NODE = 0xFFFFFFFFFFFFFFFFL;
 
     private final MemorySegment argsSegment;
     private final GalleyLibrary lib;
@@ -39,16 +38,23 @@ public final class ProcedureArguments {
 
     /**
      * The single gate for per-hook state: every accessor takes the native
-     * arguments from here and nowhere else.
+     * arguments from here and nowhere else. A reference used after its hook
+     * returned names that lifetime, not a stale tree: the arguments are gone,
+     * whatever the session's current tree is.
      */
     private MemorySegment live() {
-        if (expired) throw GalleyClosedException.invalidated("procedure arguments");
+        if (expired) throw expiredArguments();
         return argsSegment;
     }
 
     private NodeDoor requireDoor() {
-        if (door == null) throw GalleyClosedException.invalidated("procedure arguments");
+        if (door == null) throw expiredArguments();
         return door;
+    }
+
+    private static GalleyClosedException expiredArguments() {
+        return new GalleyClosedException("procedure arguments",
+                                         "procedure arguments are invalidated");
     }
 
     /**
@@ -56,13 +62,13 @@ public final class ProcedureArguments {
      */
     public Node currentNode() {
         long address = lib.galley_procedure_current_node(live());
-        if (address == INVALID_NODE) return null;
+        if (address == Galley.INVALID_NODE) return null;
         return new Node(session, address, requireDoor().generation());
     }
 
     public void setCurrentNode(Node node) {
         MemorySegment args = live();
-        lib.galley_procedure_set_current_node(args, node == null ? INVALID_NODE : session.address(node, requireDoor()));
+        lib.galley_procedure_set_current_node(args, node == null ? Galley.INVALID_NODE : session.address(node, requireDoor()));
     }
 
     public long dropSelf() {
@@ -113,7 +119,7 @@ public final class ProcedureArguments {
     }
 
     private long succeeded(long status) {
-        if (status < 0) throw NodeDoor.hookFailure(lib, status);
+        if (status < 0) throw Session.statusFailure(lib, status, null);
         return status;
     }
 }

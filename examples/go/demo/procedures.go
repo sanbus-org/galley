@@ -23,16 +23,16 @@ import (
 import "C"
 
 func textOf(door galley.NodeDoor, node galley.Node) []byte {
-	text, ok := door.Text(node)
-	if !ok {
+	text, err := door.Text(node)
+	if err != nil {
 		return nil
 	}
 	return text
 }
 
 func nameOf(door galley.NodeDoor, node galley.Node) string {
-	bytes, ok := door.SymbolName(node)
-	if !ok {
+	bytes, err := door.SymbolName(node)
+	if err != nil {
 		return ""
 	}
 	return string(bytes)
@@ -41,6 +41,11 @@ func nameOf(door galley.NodeDoor, node galley.Node) string {
 func posOf(door galley.NodeDoor, node galley.Node) (uint32, uint32) {
 	line, column, _ := door.LineColumn(node)
 	return line, column
+}
+
+func childCountOf(door galley.NodeDoor, node galley.Node) uint32 {
+	count, _ := door.ChildCount(node)
+	return count
 }
 
 func parseU(bytes []byte) uint {
@@ -66,7 +71,8 @@ func countPairs(door galley.NodeDoor, node galley.Node) (uint, uint) {
 		return 1, parseU(number)
 	}
 	var count, total uint
-	for _, child := range door.Children(node) {
+	children, _ := door.Children(node)
+	for _, child := range children {
 		childCount, childSum := countPairs(door, child)
 		count += childCount
 		total += childSum
@@ -154,7 +160,7 @@ func reduction_Pair(ptr unsafe.Pointer) {
 			break
 		}
 	}
-	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, door.ChildCount(node), line, column))
+	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, childCountOf(door, node), line, column))
 }
 
 //export reduction_Document
