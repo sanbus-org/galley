@@ -8,7 +8,12 @@ import java.util.*;
 /**
  * Builds a Galley parser and its shared library for a Java consumer.
  *
- * Usage: java -jar galley.jar &lt;language-dir&gt; [generator flags...]
+ * Usage: java -jar galley.jar &lt;language-dir&gt; [--optimize &lt;mode&gt;] [generator flags...]
+ *
+ * `--optimize` takes a Zig build mode (Debug, ReleaseSafe, ReleaseFast,
+ * ReleaseSmall) for the parser library; without it the library builds
+ * ReleaseFast. Debug builds enable the runtime's misuse checks; release
+ * builds do not check.
  *
  * Generator flags forward verbatim to the generator ahead of
  * `--emit-metadata --emit-host-procedures`: this tool forwards every flag it does not own and
@@ -262,13 +267,33 @@ public final class GalleyBuild {
         return parserType;
     }
 
+    // The consumer build command for the parser library. -Doptimize appears
+    // only when the user chose a mode; the consumer build owns the default.
+    private static List<String> consumerBuildArguments(
+            Path consumerBuildFile, Path languageDir, String proceduresZigSource, String optimize) {
+        List<String> arguments = new ArrayList<>(Arrays.asList(
+                zigExecutable(), "build",
+                "--build-file", consumerBuildFile.toString(),
+                "-Dlanguage-dir=" + languageDir.toString(),
+                "-Dlib-name=" + LIBRARY_NAME,
+                "-Doutput=" + libFileName(LIBRARY_NAME)
+        ));
+        if (optimize != null && !optimize.isEmpty()) arguments.add("-Doptimize=" + optimize);
+        // config.zig and {ll,lr}_error_messages.zig are inferred by the
+        // consumer build from the parser location.
+        arguments.add("-Dprocedures-zig-source=" + proceduresZigSource);
+        arguments.addAll(Arrays.asList("--prefix", languageDir.toString(), "install"));
+        return arguments;
+    }
+
     public static void main(String[] args) {
-        String usage = "usage: galley-java <language-dir> [generator flags...]";
+        String usage = "usage: galley-java <language-dir> [--optimize <mode>] [generator flags...]";
         if (args.length < 1) fatal(usage);
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("win")) fatal("the java bindings target POSIX platforms");
         Path languageDir = Paths.get(args[0]).toAbsolutePath().normalize();
         List<String> generatorFlags = new ArrayList<>();
+        String optimize = null;
         for (int i = 1; i < args.length; i++) {
             String flag = args[i];
             if (flag.equals("-h") || flag.equals("--help")) {
@@ -276,7 +301,11 @@ public final class GalleyBuild {
                 return;
             }
             if (flag.equals("--watch")) fatal("--watch needs its own entry (not yet implemented); this build runs the generator once");
-            if (flag.equals("--parser-type")) {
+            if (flag.equals("--optimize")) {
+                i++;
+                if (i >= args.length) fatal("--optimize needs Debug, ReleaseSafe, ReleaseFast or ReleaseSmall; " + usage);
+                optimize = args[i];
+            } else if (flag.equals("--parser-type")) {
                 i++;
                 if (i >= args.length) fatal("--parser-type needs ll or lr; " + usage);
                 generatorFlags.add(flag);
@@ -350,20 +379,9 @@ public final class GalleyBuild {
             emitParserClass(packageName, hookClass, procedureHooks, languageDir);
         }
 
-        List<String> consumerArgs = new ArrayList<>(Arrays.asList(
-                zigExecutable(), "build",
-                "--build-file", galleySource.resolve("bindings").resolve("c").resolve("consumer").resolve("build.zig").toString(),
-                "-Dlanguage-dir=" + languageDir.toString(),
-                "-Dlib-name=" + LIBRARY_NAME,
-                "-Doutput=" + libFileName(LIBRARY_NAME),
-                "-Doptimize=ReleaseFast",
-                "--prefix", languageDir.toString(),
-                "install"
-        ));
-        // config.zig and {ll,lr}_error_messages.zig are inferred by the
-        // consumer build from the parser location: the shim always goes
-        // in before the "install" arg (last).
-        consumerArgs.add(consumerArgs.size() - 1, "-Dprocedures-zig-source=" + proceduresZigSource);
+        List<String> consumerArgs = consumerBuildArguments(
+                galleySource.resolve("bindings").resolve("c").resolve("consumer").resolve("build.zig"),
+                languageDir, proceduresZigSource, optimize);
         run(consumerArgs, galleySource);
 
         Path dest = languageDir.resolve(libFileName(LIBRARY_NAME));

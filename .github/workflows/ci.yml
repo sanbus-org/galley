@@ -168,6 +168,7 @@ jobs:
           if [ "${{ matrix.language }}" = c ]; then
             cmake --build build-c-fixture --target test_concurrency_c
             ctest --test-dir build-c-fixture -R '^concurrency-c$' --output-on-failure
+            ctest --test-dir build-c-fixture -R '^optimize-wiring$' --output-on-failure
           fi
 
       - name: Build and run example (cargo)
@@ -180,7 +181,9 @@ jobs:
         if: ${{ matrix.language == 'rust' }}
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
-        run: cargo test --release --manifest-path bindings/rust/test-fixture/Cargo.toml
+        run: |
+          cargo test --release --manifest-path bindings/rust/test-fixture/Cargo.toml
+          cargo test --release --manifest-path bindings/rust/Cargo.toml --lib
 
       - name: Prove no-checkout generate and compile (cargo)
         if: ${{ matrix.language == 'rust' }}
@@ -640,7 +643,7 @@ jobs:
           ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
           zig build --build-file bindings/c/consumer/build.zig \
             "-Dparser-source=$work/_lr-parser.zig" \
-            -Dlib-name=keyvalue-lr -Doutput=libkeyvalue-lr.so -Doptimize=ReleaseFast \
+            -Dlib-name=keyvalue-lr -Doutput=libkeyvalue-lr.so \
             --prefix "$work" install
           cat > "$work/driver.c" <<'EOF'
           #include <galley.h>

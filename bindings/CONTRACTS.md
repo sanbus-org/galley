@@ -80,6 +80,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 ## Builds
 
+- Every builder builds the parser library ReleaseFast by default and accepts a Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`), passed to zig verbatim and forwarded only when the user chose one. Debug builds enable the runtime's misuse checks and a failed check aborts the process; release builds do not check. The one exception is the index and count of the tree-edit calls (insert children at, remove children at, remove siblings): they are range-checked in every build and an out-of-range value fails with the invalid-node error.
 - Every build links the host shim the generator writes (`--emit-host-procedures`; non-empty even when the grammar disables procedures), so a hook installed later fires without a rebuild.
 - A `procedures.c` / `procedures.cpp` next to a grammar is a fatal build error naming the host file to use instead.
 - Every generated file carries its marker banner, builders refuse to overwrite a file without it, and guards are checked before anything is written.

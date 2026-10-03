@@ -571,6 +571,49 @@ static void test_tree_edit(void) {
     galley_session_destroy(session);
 }
 
+/* An index or count past the end is refused in every build, never read:
+ * hosts hand these over unchecked. */
+static void test_tree_edit_range(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    GalleyNodeAddress root = galley_root_node(session);
+    unsigned int before = galley_node_child_count(session, root);
+    CHECK(before > 0);
+    GalleyNodeAddress head = GALLEY_INVALID_NODE;
+    CHECK(galley_tree_clean_children(session, root, &head) == galley_ok);
+
+    /* Insert: the child count is the last valid index. */
+    CHECK(galley_tree_insert_children_at(session, root, 1, head) == galley_error_invalid_node);
+    CHECK(galley_tree_insert_children_at(session, root, (size_t)-1, head) == galley_error_invalid_node);
+    CHECK(galley_node_child_count(session, root) == 0);
+    CHECK(galley_tree_insert_children_at(session, root, 0, head) == galley_ok);
+    CHECK(galley_node_child_count(session, root) == before);
+
+    /* Remove children: the index must be a child, and index plus count must fit. */
+    GalleyNodeAddress removed = GALLEY_INVALID_NODE;
+    CHECK(galley_tree_remove_children_at(session, root, before, 1, &removed) == galley_error_invalid_node);
+    CHECK(galley_tree_remove_children_at(session, root, 0, (size_t)before + 1, &removed) == galley_error_invalid_node);
+    CHECK(galley_tree_remove_children_at(session, root, (size_t)-1, 1, &removed) == galley_error_invalid_node);
+    CHECK(galley_tree_remove_children_at(session, root, 0, (size_t)-1, &removed) == galley_error_invalid_node);
+
+    /* Remove siblings: the run must end at a sibling. */
+    GalleyNodeAddress first = galley_node_first_child(session, root);
+    CHECK(first != GALLEY_INVALID_NODE);
+    CHECK(galley_tree_remove_siblings(session, first, (size_t)before + 1, &removed) == galley_error_invalid_node);
+    CHECK(galley_tree_remove_siblings(session, first, (size_t)-1, &removed) == galley_error_invalid_node);
+
+    /* A count of 0 removes nothing, whatever the index. */
+    removed = 0;
+    CHECK(galley_tree_remove_children_at(session, root, (size_t)-1, 0, &removed) == galley_ok);
+    CHECK(removed == GALLEY_INVALID_NODE);
+    removed = 0;
+    CHECK(galley_tree_remove_siblings(session, first, 0, &removed) == galley_ok);
+    CHECK(removed == GALLEY_INVALID_NODE);
+
+    CHECK(galley_node_child_count(session, root) == before);
+    galley_session_destroy(session);
+}
+
 /* The two doors of the split node/tree API, recorded mid-parse by
  * reduction_Document in the fixture's procedures.c after the stash ran
  * here: the parse-time door reads nodes while the parse holds the lock,
@@ -582,6 +625,7 @@ extern "C" {
 #endif
 void fixture_stash_session(GalleySession *session);
 long long fixture_hook_text_status(void);
+long long fixture_hook_range_status(int which);
 long long fixture_stashed_kind_status(void);
 int fixture_later_hook_shares_door(void);
 long long fixture_later_hook_child_count(void);
@@ -609,6 +653,10 @@ static void test_hook_door(void) {
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
     fixture_stash_session(NULL);
     CHECK(fixture_hook_text_status() == galley_ok);
+    /* The hook door range-checks host indexes and counts like the session door. */
+    CHECK(fixture_hook_range_status(0) == galley_error_invalid_node);
+    CHECK(fixture_hook_range_status(1) == galley_error_invalid_node);
+    CHECK(fixture_hook_range_status(2) == galley_error_invalid_node);
     CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
     CHECK(fixture_later_hook_shares_door() == 1);
     CHECK(fixture_later_hook_child_count() > 0);
@@ -949,6 +997,7 @@ int main(void) {
     test_cached_diagnostic_serves_concurrent_readers();
     test_reserve_nodes();
     test_tree_edit();
+    test_tree_edit_range();
     test_hook_door();
     test_generations();
     test_walk_skip_children();

@@ -97,7 +97,7 @@ pub fn leftRecursiveReduction(args: *ProcedureArguments) !void {
             data_structures.Node.removeSelf(head_address, args.context.node_allocator);
             const children = data_structures.Node.cleanChildren(head_address, args.context.node_allocator);
             if (children != data_structures.Node.invalid_pointer) {
-                try data_structures.Node.insertChildren(node_address, args.context.node_allocator, 0, children);
+                data_structures.Node.insertChildren(node_address, args.context.node_allocator, 0, children);
             }
         }
     }

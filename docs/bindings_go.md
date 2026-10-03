@@ -36,6 +36,10 @@ $ go build .
 $ ./my-parser-consumer
 ```
 
+Add `--optimize Debug` to build the parser library in Debug with the
+runtime's misuse checks (a failed check aborts the process); the default is ReleaseFast. `--optimize` takes any
+Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`).
+
 Generator flags forward verbatim to the generator ahead of
 `--emit-metadata`: every flag `gen` does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).

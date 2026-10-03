@@ -397,6 +397,35 @@ function smokeLoadAddon(addonOutput, languageDirectory, libraryName) {
 }
 
 /**
+ * The consumer build command for one parser artifact. `-Doptimize` appears
+ * only when the user chose a mode; the consumer build owns the default.
+ */
+function consumerBuildArguments({
+  buildFile,
+  languageDir,
+  libraryName,
+  wasm,
+  outputFileName,
+  proceduresZigSource,
+  optimize,
+}) {
+  return [
+    "build",
+    "--build-file",
+    buildFile,
+    `-Dlanguage-dir=${languageDir}`,
+    `-Dlib-name=${libraryName}`,
+    ...(wasm ? [`-Dtarget=${WASM_TARGET}`, "-Dwasm"] : []),
+    `-Doutput=${outputFileName}`,
+    ...(optimize ? [`-Doptimize=${optimize}`] : []),
+    `-Dprocedures-zig-source=${proceduresZigSource}`,
+    "--prefix",
+    languageDir,
+    "install",
+  ];
+}
+
+/**
  * Build one parser artifact next to the grammar. `wasm` selects the WASI
  * reactor module (wasm shim, `-Dwasm` target); otherwise a native shared
  * library (native shim). `platform` names the host for the native filename
@@ -422,6 +451,11 @@ function smokeLoadAddon(addonOutput, languageDirectory, libraryName) {
  *   native library (Node only; Bun and Deno load the library directly)
  * @param {Function|null} [options.artifactFileName]
  * @param {Function|null} [options.wasmArtifactFileName]
+ * @param {string|null} [options.optimize] Zig build mode of the parser
+ *   library (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`), passed
+ *   to zig verbatim; unset keeps the consumer build's default (ReleaseFast).
+ *   Debug builds enable the runtime's misuse checks and a failed check aborts the process;
+ *   release builds do not check. An empty value counts as not chosen.
  * @param {string[]} [options.generatorFlags] extra generator CLI flags
  *   forwarded verbatim ahead of `--emit-host-procedures`. The wrappers forward
  *   every flag they don't own; the binary owns its surface (unknown flags
@@ -441,6 +475,7 @@ export async function buildParserArtifact({
   addon = false,
   artifactFileName = null,
   wasmArtifactFileName = null,
+  optimize = null,
   generatorFlags = [],
 }) {
   if (!languageDirectory) fatal("no language directory given");
@@ -489,20 +524,15 @@ export async function buildParserArtifact({
   // Compiling needs the kit (or a checkout leg); generation above
   // deliberately needs neither.
   const { buildFile } = resolveCompileInputs();
-  const consumerArguments = [
-    "build",
-    "--build-file",
+  const consumerArguments = consumerBuildArguments({
     buildFile,
-    `-Dlanguage-dir=${languageDir}`,
-    `-Dlib-name=${libraryName}`,
-    ...(wasm ? [`-Dtarget=${WASM_TARGET}`, "-Dwasm"] : []),
-    `-Doutput=${outputFileName}`,
-    "-Doptimize=ReleaseFast",
-    `-Dprocedures-zig-source=${proceduresZigSource}`,
-    "--prefix",
     languageDir,
-    "install",
-  ];
+    libraryName,
+    wasm,
+    outputFileName,
+    proceduresZigSource,
+    optimize,
+  });
   // `config.zig` and `{ll,lr}_error_messages.zig` are inferred by the
   // consumer build from the parser location.
   runZig(consumerArguments, { cwd: languageDir });

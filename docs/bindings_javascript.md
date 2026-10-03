@@ -69,6 +69,11 @@ npx galley build <language-dir> --native-only
 npx galley build <language-dir> --wasm-only
 ```
 
+Add `--optimize Debug` to build the parser libraries in Debug with the
+runtime's misuse checks (a failed check aborts the process); the default is ReleaseFast. `--optimize` takes any
+Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`).
+Programmatically, `buildParserArtifact` takes the same value as `optimize`.
+
 Generator flags forward verbatim ahead of `--emit-host-procedures`: every flag
 `galley build` does not own goes to the generator, which owns its surface
 (documented in [Configuration](/configuration)). Anything else is a

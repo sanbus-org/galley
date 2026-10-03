@@ -41,6 +41,10 @@
 //! without `-Doutput`, as a `lib/` + `include/` tree. The header is only
 //! installed with `-Dinstall-header`; consumers that need it read it from
 //! the Galley checkout (`bindings/c/galley.h`) instead.
+//!
+//! The library is built ReleaseFast unless `-Doptimize=<mode>` says otherwise;
+//! this file owns that default for every builder. Debug builds enable the
+//! runtime's misuse checks; release builds do not check.
 
 const std = @import("std");
 const galley_pkg = @import("galley");
@@ -57,7 +61,14 @@ fn exists(io: std.Io, path: []const u8) bool {
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    // `standardOptimizeOption(.{ .preferred_optimize_mode = ... })` would drop the `-Doptimize`
+    // option and default to Debug, so the option is declared here with a ReleaseFast default.
+    // `--release=<mode>` is not honored; pass `-Doptimize=<mode>`.
+    const optimize = b.option(
+        std.builtin.OptimizeMode,
+        "optimize",
+        "Build mode of the parser library (default: ReleaseFast); Debug enables the runtime's misuse checks",
+    ) orelse .ReleaseFast;
 
     const parser_source_option = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (default: discovered from -Dlanguage-dir)");
     const language_dir_option = b.option([]const u8, "language-dir", "Language directory containing the generated parser (_ll-parser.zig or _lr-parser.zig; one library embeds one parser)");

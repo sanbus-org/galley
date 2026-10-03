@@ -157,11 +157,15 @@ Galley-side build knowledge is required:
        "-Dlanguage-dir=/path/to/language-dir" \
        "-Dlib-name=mylang" \
        "-Doutput=libmylang.so" \
-       "-Doptimize=ReleaseFast" \
        --prefix /path/to/language-dir install
    # → /path/to/language-dir/libmylang.so (no lib/ layer, no header;
    #    read galley.h from <galley>/bindings/c, or pass -Dinstall-header)
    ```
+
+   The library builds ReleaseFast unless you pass `-Doptimize=<mode>`;
+   `-Doptimize=Debug` turns on the runtime's misuse checks (a failed check
+   aborts the process), which release builds leave out. `--release=<mode>`
+   is not honored.
 
    Both parser families work identically through this ABI: the consumer
    locates `_ll-parser.zig` vs `_lr-parser.zig` in the language dir and infers
@@ -197,6 +201,7 @@ Useful variables:
 | Variable | Purpose |
 | --- | --- |
 | `GALLEY_CHECKOUT` | Existing Galley working tree (required) |
+| `GALLEY_OPTIMIZE` | Zig build mode of the parser libraries (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`); unset builds ReleaseFast |
 
 Generated files (`_ll-parser.zig`, `config.zig`, `procedures.zig`) and the
 grammar library (`libkeyvalue-c.*`, `libbenchmark-c.*`) live in
@@ -307,7 +312,10 @@ unaffected: it keeps the last successful input throughout.
 ### Editing the Tree
 
 Chains passed to edit functions must be detached orphans; edits never
-invalidate other addresses. Only Debug builds check this: in other builds,
+invalidate other addresses. Indexes and counts must stay within the
+siblings and children present. An index or count past the end returns
+`galley_error_invalid_node` in every build. The other rules are checked only
+in Debug builds, where a failed check aborts the process: in other builds,
 passing an attached chain corrupts the tree.
 
 ```c
@@ -401,7 +409,7 @@ mkdir -p galley-c && tar xzf galley-c-<version>-linux-x64.tar.gz -C galley-c --s
 ./galley-c/bin/galley --emit-metadata <language-dir>
 zig build --build-file galley-c/share/galley/compile-kit/build.zig \
   -Dlanguage-dir=<language-dir> -Dlib-name=<name> \
-  -Doutput=lib<name>.so -Doptimize=ReleaseFast \
+  -Doutput=lib<name>.so \
   --prefix <language-dir> install
 ```
 

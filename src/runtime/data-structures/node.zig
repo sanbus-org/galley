@@ -487,7 +487,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             }
         }
 
-        const InsertionFault = enum {
+        pub const InsertionFault = enum {
             chain_head_has_parent,
             chain_head_has_prior,
             /// The chain contains the anchor or one of its ancestors, so linking it would form a cycle.
@@ -509,15 +509,56 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
                     if (ancestor == chain_node) return .chain_contains_anchor_or_ancestor;
                 }
             }
-            if (index) |position| {
-                if (position > node_allocator.atConst(anchor_address).children_count) return .index_out_of_range;
-            }
+            if (index) |position| return insertionRangeFault(node_allocator, anchor_address, position);
+            return null;
+        }
+
+        /// The index part of `insertionFault`: `.index_out_of_range` when `index` is past the end of
+        /// `parent_address`'s children, else null. The C ABI runs this one check in every build, because
+        /// a host-supplied index must never read out of bounds; the other insertion faults stay Debug-only.
+        pub fn insertionRangeFault(node_allocator: NodeAllocator, parent_address: Pointer, index: usize) ?InsertionFault {
+            if (index > node_allocator.atConst(parent_address).children_count) return .index_out_of_range;
             return null;
         }
 
         fn debugAssertInsertable(node_allocator: NodeAllocator, anchor_address: Pointer, first_node: Pointer, index: ?usize) void {
             if (comptime builtin.mode == .Debug) {
                 std.debug.assert(insertionFault(node_allocator, anchor_address, first_node, index) == null);
+            }
+        }
+
+        pub const RemovalFault = enum {
+            /// `index` is not below the parent's child count while `count` is positive.
+            index_out_of_range,
+            /// Fewer than `count` siblings remain from the first removed node, so the run would end past the last sibling.
+            count_exceeds_remaining_siblings,
+        };
+
+        /// Misuse of a removal, or null. With `index == null`, `anchor_address` is the first node of the
+        /// run of `count` siblings; otherwise it is the parent and the run starts at child `index`. Debug
+        /// builds assert this is null on entry to the public removal functions; release builds never run it
+        /// (the C ABI runs it in every build, because host-supplied indexes and counts must never read
+        /// out of bounds).
+        pub fn removalFault(node_allocator: NodeAllocator, anchor_address: Pointer, index: ?usize, count: usize) ?RemovalFault {
+            if (count == 0) return null;
+            if (index) |position| {
+                const children_count = node_allocator.atConst(anchor_address).children_count;
+                if (position >= children_count) return .index_out_of_range;
+                if (count > children_count - position) return .count_exceeds_remaining_siblings;
+                return null;
+            }
+            var last_removed = anchor_address;
+            var i: usize = 1;
+            while (i < count) : (i += 1) {
+                last_removed = node_allocator.atConst(last_removed).next;
+                if (last_removed == invalid_pointer) return .count_exceeds_remaining_siblings;
+            }
+            return null;
+        }
+
+        fn debugAssertRemovable(node_allocator: NodeAllocator, anchor_address: Pointer, index: ?usize, count: usize) void {
+            if (comptime builtin.mode == .Debug) {
+                std.debug.assert(removalFault(node_allocator, anchor_address, index, count) == null);
             }
         }
 
@@ -573,8 +614,9 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         }
 
         /// Insert `first_node` (and any chain) into `self.children` at position `index`.
-        /// Same contract as `insertBefore`, and Debug builds also assert `index <= children_count`.
-        pub fn insertChildren(self_address: Pointer, node_allocator: NodeAllocator, index: usize, first_node: Pointer) !void {
+        /// Same contract as `insertBefore`; `index` must be at most `children_count`, which Debug
+        /// builds assert. It cannot fail.
+        pub fn insertChildren(self_address: Pointer, node_allocator: NodeAllocator, index: usize, first_node: Pointer) void {
             debugAssertInsertable(node_allocator, self_address, first_node, index);
             const self = node_allocator.at(self_address);
 
@@ -586,21 +628,12 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             } else if (index == 0) {
                 Self.insertBefore(self.first_child, node_allocator, first_node);
             } else {
-                // Traverse to find the child at index - 1
-                var current_child = self.first_child;
-                var i: usize = 0;
-                while (i < index - 1) : (i += 1) {
-                    if (current_child != invalid_pointer) {
-                        current_child = node_allocator.at(current_child).next;
-                    } else {
-                        break;
-                    }
+                var previous_child = self.first_child;
+                var i: usize = 1;
+                while (i < index) : (i += 1) {
+                    previous_child = node_allocator.at(previous_child).next;
                 }
-                if (current_child != invalid_pointer) {
-                    Self.insertAfter(current_child, node_allocator, first_node);
-                } else {
-                    return error.IndexOutOfBounds;
-                }
+                Self.insertAfter(previous_child, node_allocator, first_node);
             }
         }
 
@@ -719,16 +752,18 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 
         /// Remove `count` consecutive siblings starting at `self_address`, detaching them from parent
         /// and sibling chains. Returns the head of the detached chain, or `invalid_pointer` when `count == 0`.
-        pub fn remove(self_address: Pointer, node_allocator: NodeAllocator, count: usize) !Pointer {
+        /// `count` must not exceed the siblings remaining from `self_address`; Debug builds assert that.
+        /// Release builds do not check. It cannot fail.
+        pub fn remove(self_address: Pointer, node_allocator: NodeAllocator, count: usize) Pointer {
             if (count == 0) {
                 return invalid_pointer;
             }
+            debugAssertRemovable(node_allocator, self_address, null, count);
 
             var last_removed_address = self_address;
             var i: usize = 1;
             while (i < count) : (i += 1) {
                 last_removed_address = node_allocator.at(last_removed_address).next;
-                if (last_removed_address == invalid_pointer) return error.CountExceedsRemainingSiblings;
             }
 
             detachRun(self_address, last_removed_address, @intCast(count), node_allocator);
@@ -742,34 +777,26 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 
         /// Remove `count` consecutive children starting at `index`, detaching them from parent
         /// and sibling chains. Returns the head of the detached chain, or `invalid_pointer` when `count == 0`.
-        pub fn removeChildren(self_address: Pointer, node_allocator: NodeAllocator, index: usize, count: usize) !Pointer {
-            const self = node_allocator.at(self_address);
+        /// `index + count` must not exceed the child count; Debug builds assert that. Release builds do
+        /// not check. It cannot fail.
+        pub fn removeChildren(self_address: Pointer, node_allocator: NodeAllocator, index: usize, count: usize) Pointer {
             if (count == 0) {
                 return invalid_pointer;
             }
+            debugAssertRemovable(node_allocator, self_address, index, count);
 
-            // Find the child at index
-            var current_child = self.first_child;
+            var first_removed = node_allocator.at(self_address).first_child;
             var i: usize = 0;
             while (i < index) : (i += 1) {
-                if (current_child != invalid_pointer) {
-                    current_child = node_allocator.at(current_child).next;
-                } else {
-                    break;
-                }
+                first_removed = node_allocator.at(first_removed).next;
             }
-
-            if (current_child != invalid_pointer) {
-                return try Self.remove(current_child, node_allocator, count);
-            } else {
-                return error.IndexOutOfBounds;
-            }
+            return Self.remove(first_removed, node_allocator, count);
         }
 
         /// Remove one child at `index`, detaching it from parent and sibling chains.
-        /// Returns the removed node address.
-        pub fn removeChild(self_address: Pointer, node_allocator: NodeAllocator, index: usize) !Pointer {
-            return try Self.removeChildren(self_address, node_allocator, index, 1);
+        /// Returns the removed node address. `index` must be below the child count; Debug builds assert that.
+        pub fn removeChild(self_address: Pointer, node_allocator: NodeAllocator, index: usize) Pointer {
+            return Self.removeChildren(self_address, node_allocator, index, 1);
         }
 
         /// Clean all children detaching them from parent and sibling chains.
@@ -1274,7 +1301,7 @@ fn testRemove(fixture: *TestFixture) !void {
     }
     try std.testing.expectEqual(@as(usize, 4), count);
 
-    const removed_head = try TestNode.remove(2, node_allocator, 2);
+    const removed_head = TestNode.remove(2, node_allocator, 2);
 
     // Parent (root) now has 2 children: 1, 4
     count = 0;
@@ -1406,7 +1433,7 @@ fn testInsertChildren(fixture: *TestFixture) !void {
     const new_node = fixture.free_nodes[0];
 
     // Insert at the beginning (index 0)
-    try TestNode.insertChildren(parent, node_allocator, 0, new_node);
+    TestNode.insertChildren(parent, node_allocator, 0, new_node);
 
     var count: usize = 0;
     var curr = fixture.nodes[parent].first_child;
@@ -1426,7 +1453,7 @@ fn testInsertChildren(fixture: *TestFixture) !void {
 
     // Insert at the end (index 4)
     const new_node2 = fixture.free_nodes[1];
-    try TestNode.insertChildren(parent, node_allocator, 4, new_node2);
+    TestNode.insertChildren(parent, node_allocator, 4, new_node2);
 
     count = 0;
     curr = fixture.nodes[parent].first_child;
@@ -1541,7 +1568,7 @@ fn testDetachedNodeInvariant(fixture: *TestFixture) !void {
 
     // remove(count): the removed chain has no parent and is cut off from
     // the tree at both ends; only the links inside the chain remain.
-    const head = try TestNode.remove(3, node_allocator, 2);
+    const head = TestNode.remove(3, node_allocator, 2);
     try std.testing.expectEqual(asSize(3), head);
     try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[3].parent);
     try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[3].prior);
@@ -1623,7 +1650,7 @@ fn testRemovingSeveralSiblingsBumpsStructureVersion(fixture: *TestFixture) !void
     TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[3]);
 
     const before = node_allocator.structure_version;
-    _ = try TestNode.remove(first, node_allocator, 2);
+    _ = TestNode.remove(first, node_allocator, 2);
     try std.testing.expect(node_allocator.structure_version != before);
 }
 
@@ -1645,7 +1672,7 @@ fn testChainEditsBumpStructureVersionOnce(fixture: *TestFixture) !void {
     // linked as one chain, so appending its head re-attaches all of them.
     TestNode.appendChildren(parent, node_allocator, fixture.free_nodes[1]);
     before = node_allocator.structure_version;
-    _ = try TestNode.remove(fixture.free_nodes[1], node_allocator, 3);
+    _ = TestNode.remove(fixture.free_nodes[1], node_allocator, 3);
     try std.testing.expectEqual(before + 1, node_allocator.structure_version);
     // The sibling after the run keeps its parent and stays the parent's only child, unlinked from the run.
     const survivor = fixture.free_nodes[4];
@@ -1718,7 +1745,7 @@ fn testAttachingKeepsStructureVersion(fixture: *TestFixture) !void {
     const fifth = fixture.free_nodes[5];
     TestNode.insertAfter(first, node_allocator, fifth);
     const sixth = fixture.free_nodes[6];
-    try TestNode.insertChildren(parent, node_allocator, 2, sixth);
+    TestNode.insertChildren(parent, node_allocator, 2, sixth);
     try std.testing.expectEqual(before, node_allocator.structure_version);
     try std.testing.expectEqual(@as(u32, 6), fixture.nodes[parent].children_count);
     try std.testing.expectEqual(fourth, fixture.nodes[parent].first_child);
@@ -1755,7 +1782,7 @@ fn testInsertionFaults(fixture: *TestFixture) !void {
     fixture.nodes[detached].prior = TestNode.invalid_pointer;
 
     // A chain holding the anchor or one of its ancestors: node 8 sits under 2, which sits under the root.
-    const subtree_root = try TestNode.remove(2, node_allocator, 1);
+    const subtree_root = TestNode.remove(2, node_allocator, 1);
     try std.testing.expectEqual(asSize(2), subtree_root);
     try std.testing.expectEqual(
         @as(?TestFixtureFault, .chain_contains_anchor_or_ancestor),
@@ -1783,15 +1810,56 @@ test "insertion misuse is detected by the Debug check" {
     try runWithContext(testInsertionFaults);
 }
 
-fn testRemoveCountExceeds(fixture: *TestFixture) !void {
+fn testRemovalFaults(fixture: *TestFixture) !void {
     const node_allocator = &fixture.node_allocator;
-    // child 4 (address 4) is the last child of root; asking for 2 beyond it should error
-    const result = TestNode.remove(4, node_allocator, 2);
-    try std.testing.expectError(error.CountExceedsRemainingSiblings, result);
+    const children_count = fixture.nodes[fixture.root].children_count;
+    try std.testing.expectEqual(@as(u32, 4), children_count);
+
+    // A run of siblings that ends past the last sibling: node 4 is the last child of the root.
+    try std.testing.expectEqual(@as(?TestRemovalFault, null), TestNode.removalFault(node_allocator, 4, null, 1));
+    try std.testing.expectEqual(
+        @as(?TestRemovalFault, .count_exceeds_remaining_siblings),
+        TestNode.removalFault(node_allocator, 4, null, 2),
+    );
+
+    // A run of children addressed by index.
+    try std.testing.expectEqual(@as(?TestRemovalFault, null), TestNode.removalFault(node_allocator, fixture.root, 1, 3));
+    try std.testing.expectEqual(
+        @as(?TestRemovalFault, .count_exceeds_remaining_siblings),
+        TestNode.removalFault(node_allocator, fixture.root, 1, 4),
+    );
+    try std.testing.expectEqual(
+        @as(?TestRemovalFault, .index_out_of_range),
+        TestNode.removalFault(node_allocator, fixture.root, children_count, 1),
+    );
+    // Removing nothing is never a fault.
+    try std.testing.expectEqual(@as(?TestRemovalFault, null), TestNode.removalFault(node_allocator, fixture.root, children_count + 5, 0));
 }
 
-test "remove count exceeds remaining siblings" {
-    try runWithContext(testRemoveCountExceeds);
+const TestRemovalFault = TestNode.RemovalFault;
+
+fn testRemoveChildrenByIndex(fixture: *TestFixture) !void {
+    const node_allocator = &fixture.node_allocator;
+    // The root's children are 1, 2, 3, 4: removing two from index 1 detaches 2 and 3.
+    const head = TestNode.removeChildren(fixture.root, node_allocator, 1, 2);
+    try std.testing.expectEqual(asSize(2), head);
+    try std.testing.expectEqual(@as(u32, 2), fixture.nodes[fixture.root].children_count);
+    try std.testing.expectEqual(asSize(1), fixture.nodes[fixture.root].first_child);
+    try std.testing.expectEqual(asSize(4), fixture.nodes[1].next);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[head].parent);
+    try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[head].prior);
+
+    try std.testing.expectEqual(TestNode.invalid_pointer, TestNode.removeChildren(fixture.root, node_allocator, 0, 0));
+    try std.testing.expectEqual(asSize(4), TestNode.removeChild(fixture.root, node_allocator, 1));
+    try std.testing.expectEqual(@as(u32, 1), fixture.nodes[fixture.root].children_count);
+}
+
+test "removeChildren and removeChild detach children by index" {
+    try runWithContext(testRemoveChildrenByIndex);
+}
+
+test "removal misuse is detected by the Debug check" {
+    try runWithContext(testRemovalFaults);
 }
 
 fn testImmediateAppendChildren(fixture: *TestFixture) !void {

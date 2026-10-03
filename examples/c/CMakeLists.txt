@@ -29,6 +29,16 @@ if(NOT EXISTS "${GALLEY_CHECKOUT}/build.zig")
 endif()
 set(GALLEY_SOURCE_DIR "${GALLEY_CHECKOUT}")
 
+set(GALLEY_OPTIMIZE "" CACHE STRING
+    "Zig build mode of the parser libraries (Debug, ReleaseSafe, ReleaseFast, ReleaseSmall); empty keeps the consumer build's ReleaseFast default. Debug enables the runtime's misuse checks; release builds do not check.")
+set(GALLEY_OPTIMIZE_ARGUMENT "")
+if(NOT GALLEY_OPTIMIZE STREQUAL "")
+    set(GALLEY_OPTIMIZE_ARGUMENT "-Doptimize=${GALLEY_OPTIMIZE}")
+endif()
+# The libraries depend on this stamp, so changing the mode rebuilds them.
+set(GALLEY_OPTIMIZE_STAMP "${CMAKE_BINARY_DIR}/galley-optimize-mode.txt")
+file(CONFIGURE OUTPUT "${GALLEY_OPTIMIZE_STAMP}" CONTENT "${GALLEY_OPTIMIZE}\n")
+
 set(GALLEY_CLI        "${GALLEY_SOURCE_DIR}/zig-out/bin/galley")
 set(GALLEY_INCLUDE_DIR "${GALLEY_SOURCE_DIR}/bindings/c")
 set(GENERATED_PARSER  "${CMAKE_CURRENT_SOURCE_DIR}/_ll-parser.zig")
@@ -75,11 +85,11 @@ add_custom_command(
             "-Dparser-source=${GENERATED_PARSER}"
             "-Dlib-name=keyvalue-c"
             "-Doutput=${GALLEY_LIB_FILENAME}"
-            "-Doptimize=ReleaseFast"
+            ${GALLEY_OPTIMIZE_ARGUMENT}
             --prefix "${CMAKE_CURRENT_SOURCE_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS "${GENERATED_PARSER}"
+    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${GENERATED_PARSER}"
     VERBATIM
 )
 add_custom_target(galley_c_api DEPENDS
@@ -121,11 +131,11 @@ add_custom_command(
             "-Dparser-source=${BENCHMARK_PARSER}"
             "-Dlib-name=benchmark-c"
             "-Doutput=${BENCHMARK_LIB_FILENAME}"
-            "-Doptimize=ReleaseFast"
+            ${GALLEY_OPTIMIZE_ARGUMENT}
             --prefix "${BENCHMARK_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
+    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
     VERBATIM
 )
 add_custom_target(galley_benchmark_c_api DEPENDS

@@ -496,9 +496,13 @@ fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usi
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     if (out_head == null) return galley_error_null_argument;
     const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.remove(node_ptr, door.node_allocator, count) catch |err| switch (err) {
-        error.CountExceedsRemainingSiblings => return galley_error_invalid_node,
-    };
+    // Host-supplied counts must never read out of bounds: this range check runs in every build.
+    if (root.data_structures.Node.removalFault(door.node_allocator, node_ptr, null, count) != null) return galley_error_invalid_node;
+    const head = root.data_structures.Node.remove(node_ptr, door.node_allocator, count);
+    if (head == root.data_structures.Node.invalid_pointer) {
+        out_head.?.* = galley_invalid_node;
+        return galley_ok;
+    }
     out_head.?.* = head;
     return galley_ok;
 }
@@ -525,9 +529,9 @@ fn treeInsertChildrenAtCore(
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
     const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
-    root.data_structures.Node.insertChildren(parent_ptr, door.node_allocator, index, first_ptr) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-    };
+    // Host-supplied indexes must never read out of bounds: this range check runs in every build.
+    if (root.data_structures.Node.insertionRangeFault(door.node_allocator, parent_ptr, index) != null) return galley_error_invalid_node;
+    root.data_structures.Node.insertChildren(parent_ptr, door.node_allocator, index, first_ptr);
     return galley_ok;
 }
 
@@ -541,10 +545,9 @@ fn treeRemoveChildrenAtCore(
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
     if (out_head == null) return galley_error_null_argument;
     const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
-    const head = root.data_structures.Node.removeChildren(parent_ptr, door.node_allocator, index, count) catch |err| switch (err) {
-        error.IndexOutOfBounds => return galley_error_invalid_node,
-        error.CountExceedsRemainingSiblings => return galley_error_invalid_node,
-    };
+    // Host-supplied indexes and counts must never read out of bounds: this range check runs in every build.
+    if (root.data_structures.Node.removalFault(door.node_allocator, parent_ptr, index, count) != null) return galley_error_invalid_node;
+    const head = root.data_structures.Node.removeChildren(parent_ptr, door.node_allocator, index, count);
     if (head == root.data_structures.Node.invalid_pointer) {
         out_head.?.* = galley_invalid_node;
         return galley_ok;
@@ -2008,7 +2011,11 @@ export fn galley_hook_tree_insert_after(
 /// Removes `count` consecutive siblings starting at `node`, detaching them
 /// from parent and sibling chains. Writes the address of the first removed
 /// node to `out_head`; the removed nodes remain allocated and readable but
-/// are orphaned.
+/// are orphaned. A `count` of 0 is a no-op that returns `galley_ok` with an
+/// invalid head; a `count` larger than the siblings remaining from `node`
+/// returns `galley_error_invalid_node` in every build. Other misuse is
+/// undefined behavior in release builds; Debug builds check it and abort
+/// the process on failure.
 export fn galley_tree_remove_siblings(
     session_ptr: ?*GalleySession,
     node: GalleyNodeAddress,
@@ -2694,7 +2701,11 @@ export fn galley_hook_tree_snapshot(
 }
 
 /// Inserts `first_node` (and its chain) into the children of `parent` at
-/// `index`. An index equal to the child count appends.
+/// `index`. An index equal to the child count appends; a larger index returns
+/// `galley_error_invalid_node` in every build. Other misuse (a chain that is
+/// still attached, or that contains `parent` or one of its ancestors) is
+/// undefined behavior in release builds; Debug builds check it and abort the
+/// process on failure.
 export fn galley_tree_insert_children_at(
     session_ptr: ?*GalleySession,
     parent: GalleyNodeAddress,
@@ -2723,7 +2734,10 @@ export fn galley_hook_tree_insert_children_at(
 }
 
 /// Removes `count` consecutive children of `parent` starting at child
-/// `index`, writing the detached chain head to `out_head`.
+/// `index`, writing the detached chain head to `out_head`. A `count` of 0 is
+/// a no-op that returns `galley_ok` with an invalid head, whatever the
+/// `index`; an `index` and `count` that reach past the last child return
+/// `galley_error_invalid_node` in every build.
 export fn galley_tree_remove_children_at(
     session_ptr: ?*GalleySession,
     parent: GalleyNodeAddress,
