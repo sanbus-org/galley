@@ -60,13 +60,15 @@ def _restore_procedures(saved: dict[str, Any]) -> None:
 
 
 class ParserSurfaceTests(unittest.TestCase):
-    def test_node_and_snapshot_cannot_be_constructed(self):
+    def test_node_snapshot_and_walk_step_cannot_be_constructed(self):
         # Creation happens only inside the extension (the session's read
-        # paths); both types expose no constructor.
+        # paths and the walker); the types expose no constructor.
         with self.assertRaises(TypeError):
             grammar.Node()
         with self.assertRaises(TypeError):
             grammar.Snapshot()
+        with self.assertRaises(TypeError):
+            grammar.WalkStep()
 
     def test_stub_matches_extension_surface(self):
         # __init__.pyi is a hand-kept mirror of the package API: it must
@@ -89,22 +91,21 @@ class ParserSurfaceTests(unittest.TestCase):
         self.assertEqual(sorted(set(names)), sorted(set(module_names)))
 
     def test_stub_walk_return_is_walker(self):
-        # Runtime always returns a Walker (the cursor lives host-side; an
-        # invalid root fails at its first step instead of yielding None);
-        # the stub must spell the same non-optional `Walker`.
+        # Runtime always returns a Walker (the cursor lives host-side, never
+        # None); the stub must spell the same non-optional `Walker` on Node.
         import ast
         import pathlib
 
         stub_path = pathlib.Path(grammar.__file__).parent / "__init__.pyi"
         tree = ast.parse(stub_path.read_text(encoding="utf-8"))
-        session_class = next(
+        node_class = next(
             node
             for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "Session"
+            if isinstance(node, ast.ClassDef) and node.name == "Node"
         )
         walk = next(
             node
-            for node in session_class.body
+            for node in node_class.body
             if isinstance(node, ast.FunctionDef) and node.name == "walk"
         )
         assert walk.returns is not None
@@ -731,13 +732,63 @@ class WalkTests(unittest.TestCase):
         self.assertGreater(len(expected), 1)
 
         walked = [
-            (step["node"].address, step["depth"]) for step in self.session.walk(root)
+            (step.node.address, step.depth) for step in root.walk()
         ]
         self.assertEqual(expected, walked)
-        first = next(iter(self.session.walk(root)))
-        self.assertEqual(first["node"], root)
-        self.assertEqual(first["depth"], 0)
-        self.assertFalse(first["is_semantic_error"])
+        first = next(iter(root.walk()))
+        self.assertEqual(first.node, root)
+        self.assertEqual(first.depth, 0)
+        self.assertFalse(first.is_semantic_error)
+
+    def test_walk_from_a_non_root_node_yields_its_subtree_with_relative_depths(
+        self,
+    ) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        pair_list = self.session.first_child(root)
+        assert pair_list is not None
+        pair = self.session.first_child(pair_list)
+        assert pair is not None
+        self.assertNotEqual(pair, root)
+
+        def recurse(node: grammar.Node, depth: int, out: list[tuple[int, int]]) -> None:
+            out.append((node.address, depth))
+            for child in node.children():
+                recurse(child, depth + 1, out)
+
+        expected: list[tuple[int, int]] = []
+        recurse(pair, 0, expected)
+        walked = [(step.node.address, step.depth) for step in pair.walk()]
+        self.assertEqual(walked, expected)
+        self.assertEqual(walked[0], (pair.address, 0))
+        # A strict subtree: the full walk from the root visits more.
+        self.assertLess(len(walked), len(list(root.walk())))
+
+    def test_session_has_no_walk(self) -> None:
+        self.assertFalse(hasattr(grammar.Session, "walk"))
+        self.assertFalse(hasattr(self.session, "walk"))
+        root = self.session.root_node()
+        assert root is not None
+        self.assertTrue(hasattr(root, "walk"))
+
+    def test_walk_step_is_read_only_and_cannot_be_constructed(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        root = self.session.root_node()
+        assert root is not None
+        step = next(iter(root.walk()))
+        self.assertIsInstance(step, grammar.WalkStep)
+        for name in ("node", "depth", "is_semantic_error"):
+            with self.assertRaises(AttributeError):
+                setattr(step, name, None)
+        with self.assertRaises(AttributeError):
+            step.extra = 1  # type: ignore[attr-defined]
+        with self.assertRaises(TypeError):
+            step["node"]  # type: ignore[index]
+        with self.assertRaises(TypeError):
+            grammar.WalkStep()  # type: ignore[call-arg]
 
     def test_snapshot_matches_per_node_accessors(self) -> None:
         if not grammar.has_ast():
@@ -805,7 +856,7 @@ class WalkTests(unittest.TestCase):
                 child = snap.next[child]
             self.assertEqual(len(chain), snap.child_count[address])
             stack.extend(reversed(chain))
-        walked = [step["node"].address for step in self.session.walk(root)]
+        walked = [step.node.address for step in root.walk()]
         self.assertEqual(preorder, walked)
 
     def test_snapshot_node_round_trips_columns_and_accessors(self) -> None:
@@ -863,13 +914,11 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         first = next(walker)
-        self.assertEqual(first["node"], root)
+        self.assertEqual(first.node, root)
         walker.skip_children()
         self.assertEqual(list(walker), [])
-        with self.assertRaisesRegex(TypeError, "expected a Node"):
-            self.session.walk(grammar.INVALID_NODE)
 
     def test_walk_stale_root_raises(self) -> None:
         # A Node root from a previous parse generation is stale: the
@@ -879,14 +928,14 @@ class WalkTests(unittest.TestCase):
         assert root is not None
         self.session.parse("alpha:12,beta:3")
         with self.assertRaises(ValueError):
-            self.session.walk(root)
+            root.walk()
 
     def test_walker_step_after_reparse_raises(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         self.assertIsNotNone(next(walker))
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         with self.assertRaises(ValueError):
@@ -897,7 +946,7 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         self.assertIsNotNone(next(walker))
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         # skip_children is a pure host-side state write: staleness is the
@@ -911,7 +960,7 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         # Parsing never raises merely because a walker is open; the
         # abandoned walker fails at its next step instead.
         self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
@@ -919,14 +968,14 @@ class WalkTests(unittest.TestCase):
             next(walker)
         fresh = self.session.root_node()
         assert fresh is not None
-        self.assertGreater(len(list(self.session.walk(fresh))), 1)
+        self.assertGreater(len(list(fresh.walk())), 1)
 
     def test_failed_parse_invalidates_walkers(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         self.assertIsNotNone(next(walker))
         with self.assertRaises(grammar.GalleyError):
             self.session.parse("alpha:")
@@ -940,7 +989,7 @@ class WalkTests(unittest.TestCase):
         # thread mid-parse is refused as in use, never a silent stop.
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         self.assertIsNotNone(next(walker))
         first_hook_done = threading.Event()
         probes_done = threading.Event()
@@ -970,11 +1019,11 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         leaf: grammar.Node | None = None
         for step in walker:
-            if step["depth"] >= 1 and len(step["node"]) == 0:
-                leaf = step["node"]
+            if step.depth >= 1 and len(step.node) == 0:
+                leaf = step.node
                 break
         self.assertIsNotNone(leaf)
         assert leaf is not None
@@ -991,12 +1040,12 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         # Advance to an interior node with children beneath it.
         interior: grammar.Node | None = None
         for step in walker:
-            if step["depth"] == 1:
-                interior = step["node"]
+            if step.depth == 1:
+                interior = step.node
                 break
         self.assertIsNotNone(interior)
         assert interior is not None
@@ -1017,13 +1066,13 @@ class WalkTests(unittest.TestCase):
         root = self.session.root_node()
         assert root is not None
         baseline = [
-            (step["node"].address, step["depth"]) for step in self.session.walk(root)
+            (step.node.address, step.depth) for step in root.walk()
         ]
         self.assertGreater(len(baseline), 1)
 
-        walker = self.session.walk(root)
+        walker = root.walk()
         first = next(walker)
-        self.assertEqual(first["node"], root)
+        self.assertEqual(first.node, root)
         removed = self.session.first_child(root)
         assert removed is not None
         self.assertEqual(removed.address, baseline[1][0])
@@ -1034,13 +1083,13 @@ class WalkTests(unittest.TestCase):
         skip = 2
         while skip < len(baseline) and baseline[skip][1] > baseline[1][1]:
             skip += 1
-        remaining = [(step["node"].address, step["depth"]) for step in walker]
+        remaining = [(step.node.address, step.depth) for step in walker]
         self.assertEqual(remaining, baseline[skip:])
         # Re-inserting the removed subtree brings it back into the walk.
         assert head is not None
         self.session.append_children(root, head)
         restored = [
-            (step["node"].address, step["depth"]) for step in self.session.walk(root)
+            (step.node.address, step.depth) for step in root.walk()
         ]
         self.assertEqual(len(restored), len(baseline))
         self.assertIn((removed.address, baseline[1][1]), restored)
@@ -1075,17 +1124,17 @@ class WalkTests(unittest.TestCase):
         assert pair is not None
         self.assertIsNotNone(self.session.next_sibling(pair))  # S exists
 
-        walker = self.session.walk(pair)
+        walker = pair.walk()
         step = None
         for step in walker:
             # C: the leaf digit '2' at depth 3 (its NumberTail parent
             # matches the same text one level up, so the depth disambiguates).
-            if step["node"].text() == b"2" and step["depth"] == 3:
+            if step.node.text() == b"2" and step.depth == 3:
                 break
         assert step is not None
-        self.assertEqual(step["node"].text(), b"2")
-        self.assertEqual(step["depth"], 3)
-        node_c = step["node"]
+        self.assertEqual(step.node.text(), b"2")
+        self.assertEqual(step.depth, 3)
+        node_c = step.node
         node_b = self.session.parent(node_c)
         node_a = self.session.parent(node_b) if node_b else None
         assert node_b is not None and node_a is not None
@@ -1116,10 +1165,10 @@ class WalkTests(unittest.TestCase):
         first_letter = self.session.first_child(key)
         assert first_letter is not None
 
-        walker = self.session.walk(pair)
+        walker = pair.walk()
         step = None
         for step in walker:
-            if step["node"].address == first_letter.address:
+            if step.node.address == first_letter.address:
                 break
         assert step is not None
 
@@ -1154,15 +1203,15 @@ class WalkTests(unittest.TestCase):
         assert key_alpha is not None
         old_depth = 3  # Document -> PairList -> Pair alpha -> Key
 
-        walker = self.session.walk(root)
+        walker = root.walk()
         first = next(walker)
-        self.assertEqual(first["depth"], 0)  # the edit happens at the root step
+        self.assertEqual(first.depth, 0)  # the edit happens at the root step
 
         head = self.session.remove_self(key_alpha)
         assert head is not None
         self.session.append_children(pair_beta, head)
 
-        steps = [(step["node"].address, step["depth"]) for step in walker]
+        steps = [(step.node.address, step.depth) for step in walker]
         new_depth = 5  # Document -> PairList -> PairListTail -> PairList -> beta -> Key
         self.assertNotIn((key_alpha.address, old_depth), steps)
         self.assertIn((key_alpha.address, new_depth), steps)
@@ -1172,7 +1221,7 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        walker = self.session.walk(root)
+        walker = root.walk()
         self.assertGreater(len(list(walker)), 0)
         with self.assertRaises(StopIteration):
             next(walker)
@@ -1203,12 +1252,12 @@ class WalkTests(unittest.TestCase):
             node = args.current_node()
             assert node is not None
             full = [
-                (step["node"].address, step["depth"], step["is_semantic_error"])
-                for step in self.session.walk(node)
+                (step.node.address, step.depth, step.is_semantic_error)
+                for step in node.walk()
             ]
             pruned = [
-                (step["node"].address, step["depth"])
-                for step in self.session.walk(node, skip_semantic_errors=True)
+                (step.node.address, step.depth)
+                for step in node.walk(skip_semantic_errors=True)
             ]
             recorded.append((full, pruned))
 
@@ -1484,9 +1533,9 @@ class GenerationTests(unittest.TestCase):
         root = self.session.root_node()
         assert root is not None
         found: grammar.Node | None = None
-        for step in self.session.walk(root):
-            if step["node"].address == first.address:
-                found = step["node"]
+        for step in root.walk():
+            if step.node.address == first.address:
+                found = step.node
                 break
         self.assertIsNotNone(found)
         assert found is not None
@@ -1578,8 +1627,8 @@ class GenerationTests(unittest.TestCase):
             node = args.current_node()
             assert node is not None
             steps = [
-                (step["node"].address, step["depth"])
-                for step in self.session.walk(node)
+                (step.node.address, step.depth)
+                for step in node.walk()
             ]
             recorded.append((steps, node))
 
@@ -1589,17 +1638,15 @@ class GenerationTests(unittest.TestCase):
         self.assertGreater(len(recorded), 0)
         for steps, hook_root in recorded:
             replayed = [
-                (step["node"].address, step["depth"])
-                for step in self.session.walk(hook_root)
+                (step.node.address, step.depth)
+                for step in hook_root.walk()
             ]
             self.assertEqual(replayed, steps)
 
         root = self.session.root_node()
         assert root is not None
-        with self.assertRaisesRegex(TypeError, "expected a Node"):
-            self.session.walk(2**40)
         # walk() always hands back a walker, never None.
-        self.assertIsNotNone(self.session.walk(root))
+        self.assertIsNotNone(root.walk())
 
     def test_node_equality_ignores_the_door(self) -> None:
         # The same node reached inside the hook and from the session after
@@ -1669,7 +1716,7 @@ class LifetimeTests(unittest.TestCase):
         session.parse("alpha:12")
         root = session.root_node()
         assert root is not None
-        walker = session.walk(root)
+        walker = root.walk()
         self.assertIsNotNone(next(walker))
         session.close()
         with self.assertRaises(ValueError):

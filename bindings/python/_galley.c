@@ -391,9 +391,19 @@ typedef struct WalkerObject {
     GalleyWalkCursor cursor;
 } WalkerObject;
 
+/* One yielded walk position. Immutable, and made only by the walker: the
+ * type has no constructor, like Node and Snapshot. */
+typedef struct {
+    PyObject_HEAD
+    PyObject *node;
+    unsigned long depth;
+    int is_semantic_error;
+} WalkStepObject;
+
 static PyTypeObject Session_Type;
 static PyTypeObject Node_Type;
 static PyTypeObject Walker_Type;
+static PyTypeObject WalkStep_Type;
 
 /* ------------------------------------------------------------------ */
 /* Argument helpers                                                    */
@@ -1281,7 +1291,7 @@ static PyGetSetDef Snapshot_getset[] = {
     SNAPSHOT_COLUMN("span_len", span_len,
                     "Span length per node."),
     SNAPSHOT_COLUMN("is_semantic_error", is_semantic_error,
-                     "The semantic-error flag ``walk`` yields, per node."),
+                     "The semantic-error flag a walk step carries, per node."),
     {NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -1305,7 +1315,7 @@ PyDoc_STRVAR(snapshot_doc,
 "call: a Snapshot with ``count`` and one tuple per node address for\n"
 "``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
 "``span_start``, ``span_len`` and ``is_semantic_error`` (the flag\n"
-"``walk`` yields). Missing links and variables are None. The columns\n"
+"a walk step carries). Missing links and variables are None. The columns\n"
 "are read-only; ``snapshot.node(index)`` is the one conversion from a\n"
 "column address back to a node, and only for the parse these columns\n"
 "describe.\n"
@@ -1457,63 +1467,6 @@ done:
     PyMem_Free(span_len);
     PyMem_Free(is_semantic_error);
     return (PyObject *)snapshot;
-}
-
-PyDoc_STRVAR(walk_doc,
-"walk(root, skip_semantic_errors=False)\n"
-"\n"
-"Returns a pre-order Walker over the subtree rooted at ``root``. Each\n"
-"iteration yields a ``{\"node\", \"depth\", \"is_semantic_error\"}`` dict,\n"
-"with the root at depth 0. Pass a true ``skip_semantic_errors`` to prune\n"
-"subtrees rooted at semantic-error nodes.\n"
-"\n"
-"The walker owns no native resource: abandoning it is free, and parsing\n"
-"again while one exists succeeds -- its next step raises ValueError\n"
-"(\"walker is invalidated\"). Each step picks its door like any node\n"
-"call: inside a hook of the running parse it walks that parse's\n"
-"in-flight tree, otherwise the published one. Steps follow the live\n"
-"links, so edits between steps are visible; a step whose position is no\n"
-"longer inside the walk's root (removed, or moved elsewhere) raises\n"
-"GalleyError (invalid node), and stepping while a parse holds the\n"
-"session raises GalleyError with ERROR_SESSION_IN_USE.");
-
-static PyObject *Session_walk(PyObject *self, PyObject *args, PyObject *keywords)
-{
-    PyObject *root = NULL;
-    GalleyNodeAddress address;
-    int skip = 0;
-    WalkerObject *walker_obj;
-    NodeCrossing cross;
-    static char *names[] = {"root", "skip_semantic_errors", NULL};
-
-    if (require_session(self) == NULL)
-        return NULL;
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, "O|$p:walk", names,
-                                     &root, &skip))
-        return NULL;
-    /* Door choice like every other node call, so a walk created inside a
-     * hook belongs to that parse and steps through its door. */
-    if (session_crossing(self, &cross) < 0)
-        return NULL;
-    if (node_argument(root, self, &cross, &address) < 0)
-        return NULL;
-    walker_obj = PyObject_New(WalkerObject, &Walker_Type);
-    if (walker_obj == NULL)
-        return NULL;
-    walker_obj->session_obj = Py_NewRef(self);
-    /* The walk is bound to the tree the root node came from: stamp the
-     * cursor from the node's own generation, which node_argument just
-     * proved live against this door — no refresh of its own. */
-    walker_obj->cursor = (GalleyWalkCursor){
-        .generation = ((NodeObject *)root)->generation,
-        .root = address,
-        .current = 0,
-        .depth = 0,
-        .state = GALLEY_WALK_STATE_NOT_STARTED,
-        .options = (unsigned char)(skip ? GALLEY_WALK_SKIP_SEMANTIC_ERRORS : 0),
-        .is_semantic_error = 0,
-    };
-    return (PyObject *)walker_obj;
 }
 
 PyDoc_STRVAR(symbol_name_doc,
@@ -2915,8 +2868,6 @@ static PyMethodDef Session_methods[] = {
      snapshot_doc},
     {"last_input", (PyCFunction)(void (*)(void))Session_last_input,
      METH_NOARGS, last_input_doc},
-    {"walk", (PyCFunction)(void (*)(void))Session_walk,
-     METH_VARARGS | METH_KEYWORDS, walk_doc},
     {"symbol_name", (PyCFunction)(void (*)(void))Session_symbol_name, METH_O,
      symbol_name_doc},
     {"text", (PyCFunction)(void (*)(void))Session_text, METH_O, text_doc},
@@ -3208,6 +3159,58 @@ static PyObject *Node_append_children(NodeObject *self, PyObject *chain)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(node_walk_doc,
+"walk(skip_semantic_errors=False)\n"
+"\n"
+"Returns a pre-order Walker over the subtree rooted at this node, the\n"
+"node itself at depth 0. Each iteration yields a WalkStep with ``node``,\n"
+"``depth`` (relative to this node) and ``is_semantic_error``. Pass a\n"
+"true ``skip_semantic_errors`` to prune subtrees rooted at\n"
+"semantic-error nodes.\n"
+"\n"
+"The walker owns no native resource: abandoning it is free, and parsing\n"
+"again while one exists succeeds -- its next step raises ValueError\n"
+"(\"walker is invalidated\"). Each step picks its door like any node\n"
+"call: inside a hook of the running parse it walks that parse's\n"
+"in-flight tree, otherwise the published one. Steps follow the live\n"
+"links, so edits between steps are visible; a step whose position is no\n"
+"longer inside the walk's root (removed, or moved elsewhere) raises\n"
+"GalleyError (invalid node), and stepping while a parse holds the\n"
+"session raises GalleyError with ERROR_SESSION_IN_USE.");
+
+static PyObject *Node_walk(NodeObject *self, PyObject *args, PyObject *keywords)
+{
+    int skip = 0;
+    WalkerObject *walker_obj;
+    NodeCrossing cross;
+    static char *names[] = {"skip_semantic_errors", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "|$p:walk", names, &skip))
+        return NULL;
+    /* Door choice and generation check like every other node call, so a
+     * walk created inside a hook belongs to that parse and steps through
+     * its door. */
+    if (node_crossing(self, &cross) < 0)
+        return NULL;
+    walker_obj = PyObject_New(WalkerObject, &Walker_Type);
+    if (walker_obj == NULL)
+        return NULL;
+    walker_obj->session_obj = Py_NewRef(self->session_obj);
+    /* The walk is bound to the tree this node came from: stamp the cursor
+     * from the node's own generation, which node_crossing just proved live
+     * against this door -- no refresh of its own. */
+    walker_obj->cursor = (GalleyWalkCursor){
+        .generation = self->generation,
+        .root = self->address,
+        .current = 0,
+        .depth = 0,
+        .state = GALLEY_WALK_STATE_NOT_STARTED,
+        .options = (unsigned char)(skip ? GALLEY_WALK_SKIP_SEMANTIC_ERRORS : 0),
+        .is_semantic_error = 0,
+    };
+    return (PyObject *)walker_obj;
+}
+
 PyDoc_STRVAR(node_children_doc, "children()\n\nReturns a tuple of the direct children of this node.");
 PyDoc_STRVAR(node_text_doc, "text()\n\nReturns the text of this node as bytes, or None.");
 PyDoc_STRVAR(node_symbol_name_doc, "symbol_name()\n\nReturns the symbol name of this node as bytes, or None.");
@@ -3232,6 +3235,8 @@ static PyMethodDef Node_methods[] = {
     {"last_child", (PyCFunction)Node_last_child, METH_NOARGS, node_last_child_doc},
     {"clean_children", (PyCFunction)Node_clean_children, METH_NOARGS, clean_children_doc},
     {"append_children", (PyCFunction)Node_append_children, METH_O, append_children_doc},
+    {"walk", (PyCFunction)(void (*)(void))Node_walk,
+     METH_VARARGS | METH_KEYWORDS, node_walk_doc},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3317,6 +3322,54 @@ static PyTypeObject Node_Type = {
 };
 
 /* ------------------------------------------------------------------ */
+/* WalkStep — one position of a walk                                    */
+/* ------------------------------------------------------------------ */
+
+static void WalkStep_dealloc(WalkStepObject *self)
+{
+    Py_XDECREF(self->node);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *WalkStep_get_node(WalkStepObject *self, void *Py_UNUSED(closure))
+{
+    return Py_NewRef(self->node);
+}
+
+static PyObject *WalkStep_get_depth(WalkStepObject *self, void *Py_UNUSED(closure))
+{
+    return PyLong_FromUnsignedLong(self->depth);
+}
+
+static PyObject *WalkStep_get_is_semantic_error(WalkStepObject *self,
+                                                void *Py_UNUSED(closure))
+{
+    return PyBool_FromLong(self->is_semantic_error);
+}
+
+static PyGetSetDef WalkStep_getset[] = {
+    {"node", (getter)WalkStep_get_node, NULL,
+     "The node this step visited.", NULL},
+    {"depth", (getter)WalkStep_get_depth, NULL,
+     "Depth below the walk's root node, which is at depth 0.", NULL},
+    {"is_semantic_error", (getter)WalkStep_get_is_semantic_error, NULL,
+     "True when the visited node is flagged as a semantic error.", NULL},
+    {NULL, NULL, NULL, NULL, NULL}
+};
+
+static PyTypeObject WalkStep_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = GALLEY_MODULE_STRING ".WalkStep",
+    .tp_basicsize = sizeof(WalkStepObject),
+    .tp_itemsize = 0,
+    .tp_dealloc = (destructor)WalkStep_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_doc = "One position of a walk: read-only node, depth and "
+              "is_semantic_error. Yielded by Walker, never constructed.",
+    .tp_getset = WalkStep_getset,
+};
+
+/* ------------------------------------------------------------------ */
 /* Walker — shared pre-order tree traversal                           */
 /* ------------------------------------------------------------------ */
 
@@ -3332,8 +3385,7 @@ static PyObject *Walker_iternext(WalkerObject *self)
     NodeCrossing cross;
     long long status;
     NodeObject *node_obj;
-    PyObject *depth_obj;
-    PyObject *flag_obj;
+    WalkStepObject *step;
 
     if (session_object->session == NULL) {
         PyErr_SetString(PyExc_ValueError, "session is closed");
@@ -3361,37 +3413,15 @@ static PyObject *Walker_iternext(WalkerObject *self)
                          self->cursor.current);
     if (node_obj == NULL)
         return NULL;
-    depth_obj = PyLong_FromUnsignedLong(self->cursor.depth);
-    if (depth_obj == NULL) {
-        Py_DECREF(node_obj);
-        return NULL;
-    }
-    flag_obj = PyBool_FromLong(self->cursor.is_semantic_error != 0);
-    if (flag_obj == NULL) {
-        Py_DECREF(node_obj);
-        Py_DECREF(depth_obj);
-        return NULL;
-    }
-    PyObject *step = PyDict_New();
+    step = PyObject_New(WalkStepObject, &WalkStep_Type);
     if (step == NULL) {
         Py_DECREF(node_obj);
-        Py_DECREF(depth_obj);
-        Py_DECREF(flag_obj);
         return NULL;
     }
-    if (PyDict_SetItemString(step, "node", (PyObject *)node_obj) < 0 ||
-        PyDict_SetItemString(step, "depth", depth_obj) < 0 ||
-        PyDict_SetItemString(step, "is_semantic_error", flag_obj) < 0) {
-        Py_DECREF(node_obj);
-        Py_DECREF(depth_obj);
-        Py_DECREF(flag_obj);
-        Py_DECREF(step);
-        return NULL;
-    }
-    Py_DECREF(node_obj);
-    Py_DECREF(depth_obj);
-    Py_DECREF(flag_obj);
-    return step;
+    step->node = (PyObject *)node_obj;
+    step->depth = self->cursor.depth;
+    step->is_semantic_error = self->cursor.is_semantic_error != 0;
+    return (PyObject *)step;
 }
 
 PyDoc_STRVAR(walker_skip_children_doc,
@@ -3427,7 +3457,7 @@ static PyTypeObject Walker_Type = {
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Walker_dealloc,
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "Pre-order tree walker. Iterates {'node', 'depth', 'is_semantic_error'} dicts.",
+    .tp_doc = "Pre-order tree walker. Iterates WalkStep objects.",
     .tp_methods = Walker_methods,
     .tp_iter = PyObject_SelfIter,
     .tp_iternext = (iternextfunc)Walker_iternext,
@@ -3905,6 +3935,8 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
         return NULL;
     if (PyType_Ready(&ProcedureArgs_Type) < 0)
         return NULL;
+    if (PyType_Ready(&WalkStep_Type) < 0)
+        return NULL;
     if (PyType_Ready(&Walker_Type) < 0)
         return NULL;
     if (PyType_Ready(&Snapshot_Type) < 0)
@@ -3949,6 +3981,11 @@ PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
     if (PyModule_AddObject(module, "ProcedureArguments",
                            (PyObject *)&ProcedureArgs_Type) < 0) {
         Py_DECREF(&ProcedureArgs_Type);
+        goto fail;
+    }
+    Py_INCREF(&WalkStep_Type);
+    if (PyModule_AddObject(module, "WalkStep", (PyObject *)&WalkStep_Type) < 0) {
+        Py_DECREF(&WalkStep_Type);
         goto fail;
     }
     Py_INCREF(&Walker_Type);

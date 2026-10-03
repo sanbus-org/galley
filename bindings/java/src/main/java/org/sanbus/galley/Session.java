@@ -665,19 +665,11 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Pre-order walker over the subtree rooted at {@code node}, with the
-     * root at depth 0. Pass true to prune subtrees rooted at semantic-error
-     * nodes. Always returns a walker; an invalid root fails at its first
-     * step. The walker owns no native resource: abandoning it is free, and
-     * parsing again with one open succeeds — its next step throws instead.
-     * Each step picks its door like any node call, so a walk created
-     * inside a hook of a running parse walks that parse's in-flight tree.
-     * Steps follow the live links, so edits between steps are visible; a
-     * step whose position is no longer inside the walk's root (removed, or
-     * moved elsewhere) throws {@code invalid node}.
+     * Creates the walker {@link Node#walk} hands out: the one place a walk
+     * is started. Closed checks and door choice come from {@link #door(Node)},
+     * the generation gate for that door from {@link #address}.
      */
-    public Walker walk(Node node, boolean skipSemanticErrors) {
-        Objects.requireNonNull(node, "node");
+    Walker startWalk(Node node, boolean skipSemanticErrors) {
         NodeDoor door = door(node);          // closed checks + door choice
         long address = address(node, door);   // generation gate for that door
         // The walk is bound to the tree the node came from: stamp from the

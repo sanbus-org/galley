@@ -404,7 +404,7 @@ await test("snapshot matches per-node accessors in one crossing", async () => {
       for (let k = chain.length - 1; k >= 0; k--) stack.push(chain[k]);
     }
     const walked = [];
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     for (const step of walker) walked.push(step.node.address);
     assert.deepEqual(preorder, walked);
@@ -516,7 +516,7 @@ await test("one interned node per address of a parse", async () => {
     assert.ok(root.children()[0] === child);
     const snap = s.snapshot();
     assert.ok(snap.node(child.address) === child);
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     const step = walker.next();
     assert.equal(step.done, false);
@@ -688,7 +688,7 @@ await test("walk matches hand-rolled recursion", async () => {
     const expected = [];
     recurse(root, 0, expected);
     assert.ok(expected.length > 1);
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     const walked = [];
     for (const step of walker) {
@@ -706,7 +706,7 @@ await test("walk skipChildren prunes the subtree", async () => {
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     const first = walker.next();
     assert.equal(first.done, false);
@@ -714,8 +714,6 @@ await test("walk skipChildren prunes the subtree", async () => {
     assert.equal(first.value.depth, 0);
     walker.skipChildren();
     assert.equal(walker.next().done, true);
-    // A raw address is refused at entry; the walk never sees it.
-    assert.throws(() => s.walk(INVALID_NODE), TypeError);
   } finally {
     s.close();
   }
@@ -726,7 +724,7 @@ await test("walker step after close throws", async () => {
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     assert.equal(walker.next().done, false);
     s.close();
@@ -742,7 +740,7 @@ await test("walker step after re-parse throws", async () => {
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     assert.equal(walker.next().done, false);
     assert.equal(s.parse("alpha:12,beta:3"), 15);
@@ -753,7 +751,7 @@ await test("walker step after re-parse throws", async () => {
     assert.throws(() => walker.next(), SessionClosedError);
     const fresh = s.rootNode();
     assert.ok(fresh !== null);
-    const rewound = s.walk(fresh);
+    const rewound = fresh.walk();
     assert.ok(rewound !== null);
     assert.equal(rewound.next().done, false);
   } finally {
@@ -784,7 +782,7 @@ await test("parse with abandoned walker succeeds", async () => {
   try {
     s.parse("alpha:12,beta:3");
     const root = s.rootNode();
-    const walker = s.walk(root);
+    const walker = root.walk();
     assert.ok(walker !== null);
     // Parsing never throws merely because a walker is open; the
     // abandoned walker fails at its next step instead.

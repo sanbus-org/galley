@@ -219,22 +219,23 @@ payloads are unavailable through bindings.
 
 ## Tree Walking
 
-`session.walk(root)` returns a pre-order `Walker` over the last successful
-parse, yielding `{"node", "depth", "is_semantic_error"}` dicts with the
-root at depth 0 — the shared runtime walker. The walker owns no native
+`node.walk()` returns a pre-order `Walker` over that node's subtree,
+yielding read-only `WalkStep` objects with `node`, `depth` and
+`is_semantic_error` attributes; the node itself is at depth 0 — the
+shared runtime walker. The walker owns no native
 resource: no `close` and no context-manager block, and abandoning it is
 free — its next step raises the dead-generation error instead of reading
 stale storage. `walker.skip_children()` prunes the last yielded
 node's children host-side, without a native call;
-`session.walk(root, skip_semantic_errors=True)` prunes
+`node.walk(skip_semantic_errors=True)` prunes
 subtrees rooted at semantic-error nodes. Steps follow the live links, so
 edits between steps are visible, and a step whose position is no longer
 inside the walk's root (removed, or moved elsewhere) raises
 `GalleyError` with `ERROR_INVALID_NODE`:
 
 ```python
-for step in session.walk(session.root_node()):
-    print("  " * step["depth"], session.symbol_name(step["node"]))
+for step in session.root_node().walk():
+    print("  " * step.depth, session.symbol_name(step.node))
 ```
 
 ## Error Messages

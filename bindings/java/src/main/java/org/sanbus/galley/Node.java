@@ -107,6 +107,23 @@ public final class Node implements Iterable<Node> {
         return session.children(this);
     }
 
+    /**
+     * Pre-order walker over the subtree rooted at this node, this node
+     * included at depth 0. Pass true to prune subtrees rooted at
+     * semantic-error nodes. The walker owns no native resource: abandoning
+     * it is free, and parsing again with one open succeeds — its next step
+     * throws instead. Each step picks its door like any node call, so a
+     * walk created inside a hook of a running parse walks that parse's
+     * in-flight tree. Steps follow the live links, so edits between steps
+     * are visible; a step whose position is no longer inside the walk's
+     * root (removed, or moved elsewhere) throws {@code invalid node}.
+     *
+     * @throws GenerationInvalidatedException if this node's generation is gone
+     */
+    public Walker walk(boolean skipSemanticErrors) {
+        return session.startWalk(this, skipSemanticErrors);
+    }
+
     public Node cleanChildren() {
         return session.cleanChildren(this);
     }
