@@ -42,6 +42,10 @@ Generator flags forward verbatim to the generator ahead of
 `--emit-host-procedures`: every flag the tool does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
+Add `--optimize Debug` to build the parser library in Debug with the
+runtime's misuse checks (a failed check aborts the process); the default is ReleaseFast. `--optimize` takes any
+Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`).
+
 The command generates the parser (`--emit-host-procedures`), builds the grammar
 as a static archive through Galley's generic consumer build file, detects
 optional hook files next to your grammar (`procedures.py` for Python

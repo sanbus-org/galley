@@ -35,3 +35,7 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 - A call is inside a hook dispatch exactly while a hook of the session's parse runs: one thread per session and a synchronous parse leave no other code to run.
 - A walk starts from the node: `node.walk(skipSemanticErrors = false)` covers that node's subtree, the node itself at depth 0, and `Session` has no public `walk`.
 - Sessions close explicitly or through disposal blocks; walkers own no native resource — one cursor each — so they carry no `close` or `using`. Steps follow the live links, so edits between steps are visible; `skipChildren()` is only a state write, and a step whose position is no longer inside the walk's root (removed, or moved elsewhere) throws the invalid-node error rather than yielding anything past that point.
+
+## Builds
+
+- The build mode is `galley build <language-dir> --optimize <mode>`, or the `optimize` option of `buildParserArtifact`; without it the parser libraries build ReleaseFast. The per-adapter builders stay flag-free.

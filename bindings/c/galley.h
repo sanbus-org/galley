@@ -429,7 +429,10 @@ long long galley_diagnostic_message_ansi(GalleySession *session, const char **ou
  * and readable but are orphaned. Post-parse edits take the exclusive lock:
  * galley_error_session_in_use while a parse is in flight,
  * galley_error_invalid_node for an address from a dead parse; hook-time
- * edits use the galley_hook_tree_* twins. */
+ * edits use the galley_hook_tree_* twins. Misuse other than an out-of-range
+ * index or count (see the calls below) is undefined behavior in release
+ * builds; Debug builds check it and abort the process on failure, for every
+ * tree edit including insert_before, insert_after and append_children. */
 
 /* Appends first_node (and its next-chain) as the last children of parent. */
 long long galley_tree_append_children(GalleySession *session,
@@ -445,7 +448,11 @@ long long galley_tree_insert_after(GalleySession *session,
 /* Removes count consecutive siblings starting at node (galley_tree_remove),
  * or just node itself (galley_tree_remove_self), detaching them from parent
  * and sibling chains. Writes the address of the first removed node to
- * out_head. */
+ * out_head. A count of 0 is a no-op that returns galley_ok with an invalid
+ * head; a count larger than the siblings remaining from node returns
+ * galley_error_invalid_node in every build. Other misuse is undefined
+ * behavior in release builds; Debug builds check it and abort the process
+ * on failure. */
 long long galley_tree_remove_siblings(GalleySession *session, GalleyNodeAddress node,
                                       size_t count, GalleyNodeAddress *out_head);
 long long galley_tree_remove_self(GalleySession *session, GalleyNodeAddress node,
@@ -457,12 +464,19 @@ long long galley_tree_clean_children(GalleySession *session, GalleyNodeAddress n
                                      GalleyNodeAddress *out_head);
 
 /* Inserts first_node (and its chain) into the children of parent at index.
- * An index equal to the child count appends. */
+ * An index equal to the child count appends; a larger index returns
+ * galley_error_invalid_node in every build. Other misuse (a chain that is
+ * still attached, or that contains parent or one of its ancestors) is
+ * undefined behavior in release builds; Debug builds check it and abort the
+ * process on failure. */
 long long galley_tree_insert_children_at(GalleySession *session, GalleyNodeAddress parent,
                                          size_t index, GalleyNodeAddress first_node);
 
 /* Removes count consecutive children of parent starting at child index,
- * writing the detached chain head to out_head. */
+ * writing the detached chain head to out_head. A count of 0 is a no-op that
+ * returns galley_ok with an invalid head, whatever the index; an index and
+ * count that reach past the last child return galley_error_invalid_node in
+ * every build. */
 long long galley_tree_remove_children_at(GalleySession *session, GalleyNodeAddress parent,
                                          size_t index, size_t count,
                                          GalleyNodeAddress *out_head);

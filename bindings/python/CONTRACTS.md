@@ -26,3 +26,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 - Nodes expose their address as a read-only attribute for display; a session method takes a `Node`, and `Session.snapshot().node(index)` is the one conversion from a stored address back to a node, taking an `int` index only (`TypeError` for anything else, a `bool` included).
 - A walk starts from the node: `node.walk(skip_semantic_errors=False)` covers that node's subtree, the node itself at depth 0, and `Session` has no `walk`. Steps are immutable `WalkStep` objects with `node`, `depth`, and `is_semantic_error` read-only attributes; they cannot be constructed from Python, like `Node` and `Snapshot`.
 - Walkers own no native resource — one cursor each — so they are never closed and take no context-manager block; sessions support `with` blocks. Steps follow the live links, so edits between steps are visible; `skip_children()` is only a state write, and a step whose position is no longer inside the walk's root (removed, or moved elsewhere) fails with the invalid-node error rather than yielding anything past that point.
+
+## Builds
+
+- The build mode is `python -m galley <language-dir> --optimize <mode>`; without it the parser library builds ReleaseFast.

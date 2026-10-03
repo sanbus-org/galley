@@ -35,6 +35,10 @@ Generator flags forward verbatim to the generator ahead of
 `--emit-metadata --emit-host-procedures`: every flag the tool does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
+Add `--optimize Debug` to build the parser library in Debug with the
+runtime's misuse checks (a failed check aborts the process); the default is ReleaseFast. `--optimize` takes any
+Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`).
+
 The tool requires `GALLEY_CHECKOUT` (a Galley working tree);
 `ZIG_EXECUTABLE` selects zig. For convenience,
 `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the

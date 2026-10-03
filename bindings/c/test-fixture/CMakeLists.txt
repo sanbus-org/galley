@@ -26,6 +26,16 @@ if(NOT EXISTS "${GALLEY_CHECKOUT}/build.zig")
 endif()
 set(GALLEY_SOURCE_DIR "${GALLEY_CHECKOUT}")
 
+set(GALLEY_OPTIMIZE "" CACHE STRING
+    "Zig build mode of the parser libraries (Debug, ReleaseSafe, ReleaseFast, ReleaseSmall); empty keeps the consumer build's ReleaseFast default. Debug enables the runtime's misuse checks; release builds do not check.")
+set(GALLEY_OPTIMIZE_ARGUMENT "")
+if(NOT GALLEY_OPTIMIZE STREQUAL "")
+    set(GALLEY_OPTIMIZE_ARGUMENT "-Doptimize=${GALLEY_OPTIMIZE}")
+endif()
+# The libraries depend on this stamp, so changing the mode rebuilds them.
+set(GALLEY_OPTIMIZE_STAMP "${CMAKE_BINARY_DIR}/galley-optimize-mode.txt")
+file(CONFIGURE OUTPUT "${GALLEY_OPTIMIZE_STAMP}" CONTENT "${GALLEY_OPTIMIZE}\n")
+
 set(GALLEY_CLI        "${GALLEY_SOURCE_DIR}/zig-out/bin/galley")
 set(GALLEY_INCLUDE_DIR "${GALLEY_SOURCE_DIR}/bindings/c")
 set(GENERATED_PARSER  "${CMAKE_CURRENT_SOURCE_DIR}/_ll-parser.zig")
@@ -72,11 +82,11 @@ add_custom_command(
             "-Dparser-source=${GENERATED_PARSER}"
             "-Dlib-name=galley-c-fixture"
             "-Doutput=${GALLEY_LIB_FILENAME}"
-            "-Doptimize=ReleaseFast"
+            ${GALLEY_OPTIMIZE_ARGUMENT}
             --prefix "${CMAKE_CURRENT_SOURCE_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS "${GENERATED_PARSER}" ${GALLEY_LIBRARY_SOURCES}
+    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${GENERATED_PARSER}" ${GALLEY_LIBRARY_SOURCES}
     VERBATIM
 )
 add_custom_target(galley_c_fixture DEPENDS
@@ -111,11 +121,11 @@ function(galley_host_shim_library name grammar_directory library_variable)
                 "-Dprocedures-zig-source=${directory}/host_procedures.zig"
                 "-Dlib-name=galley-concurrency-${name}"
                 "-Doutput=${filename}"
-                "-Doptimize=ReleaseFast"
+                ${GALLEY_OPTIMIZE_ARGUMENT}
                 --prefix "${directory}"
                 install
         WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-        DEPENDS "${directory}/_ll-parser.zig" "${directory}/host_procedures.zig" ${GALLEY_LIBRARY_SOURCES}
+        DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${directory}/_ll-parser.zig" "${directory}/host_procedures.zig" ${GALLEY_LIBRARY_SOURCES}
         VERBATIM
     )
     set(${library_variable} "${directory}/${filename}" PARENT_SCOPE)
@@ -159,3 +169,12 @@ target_link_libraries(test_concurrency_c PRIVATE Threads::Threads ${CMAKE_DL_LIB
 add_dependencies(test_concurrency_c galley_concurrency_fixture)
 add_test(NAME concurrency-c
     COMMAND test_concurrency_c "${CONCURRENCY_FIRST_LIBRARY}" "${CONCURRENCY_SECOND_LIBRARY}")
+
+# GALLEY_OPTIMIZE reaches the library build command only when set.
+add_test(NAME optimize-wiring
+    COMMAND "${CMAKE_COMMAND}"
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DWORK_DIR=${CMAKE_BINARY_DIR}/optimize-wiring"
+            "-DGALLEY_CHECKOUT=${GALLEY_CHECKOUT}"
+            "-DGENERATOR=${CMAKE_GENERATOR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/check_optimize_wiring.cmake")

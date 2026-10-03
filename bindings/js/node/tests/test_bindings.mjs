@@ -14,7 +14,9 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { artifactFileName } from "@sanbus/galley-core/internal";
@@ -1620,6 +1622,45 @@ await test("two language directories parse independently", async () => {
   } finally {
     fs.rmSync(secondDir, { recursive: true, force: true });
   }
+});
+
+// `galley build` runs with a fake generator and a fake zig that records its arguments and
+// fails, so nothing builds: -Doptimize must reach the consumer build only when a mode was chosen.
+function recordConsumerBuildArguments(extraArguments) {
+  const workDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "galley-optimize-test-"));
+  try {
+    const checkout = path.join(workDirectory, "checkout");
+    fs.mkdirSync(checkout);
+    fs.writeFileSync(path.join(checkout, "build.zig"), "");
+    const generator = path.join(workDirectory, "generator");
+    fs.writeFileSync(generator, '#!/bin/sh\n[ "$1" = --help ] && echo --emit-host-procedures\nexit 0\n', { mode: 0o755 });
+    const recorded = path.join(workDirectory, "recorded.txt");
+    const fakeZig = path.join(workDirectory, "zig");
+    fs.writeFileSync(fakeZig, `#!/bin/sh\nprintf '%s\\n' "$@" > '${recorded}'\nexit 1\n`, { mode: 0o755 });
+    const languageDirectory = path.join(workDirectory, "language");
+    fs.mkdirSync(languageDirectory);
+    fs.writeFileSync(path.join(languageDirectory, "ll.grm"), "");
+    const result = spawnSync(
+      process.execPath,
+      [path.join(__dirname, "..", "..", "universal", "build.mjs"), "build", languageDirectory, "--native-only", ...extraArguments],
+      {
+        encoding: "utf-8",
+        env: { ...process.env, GALLEY_CHECKOUT: checkout, GALLEY_CLI: generator, ZIG_EXECUTABLE: fakeZig },
+      },
+    );
+    assert.equal(result.status, 1, result.stderr);
+    return fs.readFileSync(recorded, "utf-8").split("\n");
+  } finally {
+    fs.rmSync(workDirectory, { recursive: true, force: true });
+  }
+}
+
+await test("the consumer build gets -Doptimize only when a mode is chosen", () => {
+  const defaultArguments = recordConsumerBuildArguments([]);
+  assert.ok(defaultArguments.includes("--build-file"));
+  assert.deepEqual(defaultArguments.filter((argument) => argument.startsWith("-Doptimize")), []);
+  assert.deepEqual(recordConsumerBuildArguments(["--optimize", ""]).filter((argument) => argument.startsWith("-Doptimize")), []);
+  assert.ok(recordConsumerBuildArguments(["--optimize", "Debug"]).includes("-Doptimize=Debug"));
 });
 
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, GalleyError, Status, collect });

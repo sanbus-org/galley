@@ -179,6 +179,10 @@ changes. Only the parser-type selection travels as a build-script option
 `.parser_type(ParserType::Ll)` or `.parser_type(ParserType::Lr)` generates
 one.
 
+The parser library builds ReleaseFast. `.optimize("Debug")` builds it in
+Debug with the runtime's misuse checks instead (a failed check aborts the process); it takes any Zig build mode
+(`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`).
+
 ## Usage
 
 ```rust

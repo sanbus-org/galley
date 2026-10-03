@@ -1422,6 +1422,21 @@ class EditTests(unittest.TestCase):
         self.assertIsNotNone(removed)
         self.assertEqual(self.session.child_count(self.root), 0)
 
+    def test_out_of_range_index_raises_instead_of_crashing(self) -> None:
+        original = self.session.child_count(self.root)
+        head = self.session.clean_children(self.root)
+        assert head is not None
+        for index in (1, original + 1, -1):
+            with self.assertRaises(grammar.GalleyError):
+                self.session.insert_children_at(self.root, index, head)
+        self.session.insert_children_at(self.root, 0, head)
+        for index in (original, -1):
+            with self.assertRaises(grammar.GalleyError):
+                self.session.remove_children_at(self.root, index, 1)
+        with self.assertRaises(grammar.GalleyError):
+            self.session.remove_children_at(self.root, 0, original + 1)
+        self.assertEqual(self.session.child_count(self.root), original)
+
 
 class GenerationTests(unittest.TestCase):
     """A node is the owning session, the core's parse generation and an
@@ -2259,6 +2274,71 @@ class BuildGuardTests(unittest.TestCase):
                 build_module.assert_generated_or_absent(
                     foreign, build_module.STUB_LEGACY_HEAD
                 )
+
+
+class BuildOptimizeTests(unittest.TestCase):
+    """`python -m galley` forwards `-Doptimize` to the consumer build only
+    when a mode was chosen. The real entry point runs with a fake generator
+    and a fake zig that records its arguments and fails, so nothing builds."""
+
+    def consumer_build_arguments(self, extra_arguments: "list[str]") -> "list[str]":
+        from unittest import mock
+
+        from galley import build as build_module
+
+        with tempfile.TemporaryDirectory(prefix="galley-optimize-test-") as tmp:
+            root = Path(tmp)
+            checkout = root / "checkout"
+            checkout.mkdir()
+            (checkout / "build.zig").write_text("", encoding="utf-8")
+            language_dir = root / "language"
+            language_dir.mkdir()
+            (language_dir / "ll.grm").write_text("", encoding="utf-8")
+            generator = root / "generator"
+            generator.write_text(
+                '#!/bin/sh\n[ "$1" = --help ] && echo --emit-host-procedures\nexit 0\n',
+                encoding="utf-8",
+            )
+            recorded = root / "recorded.txt"
+            fake_zig = root / "zig"
+            fake_zig.write_text(
+                f'#!/bin/sh\nprintf "%s\\n" "$@" > "{recorded}"\nexit 1\n',
+                encoding="utf-8",
+            )
+            generator.chmod(0o755)
+            fake_zig.chmod(0o755)
+            environment = {
+                "GALLEY_CHECKOUT": str(checkout),
+                "GALLEY_CLI": str(generator),
+                "ZIG_EXECUTABLE": str(fake_zig),
+            }
+            arguments = ["galley", str(language_dir), *extra_arguments]
+            with mock.patch.dict(os.environ, environment), mock.patch.object(
+                sys, "argv", arguments
+            ), mock.patch("builtins.print"):
+                with self.assertRaises(SystemExit):
+                    build_module.main()
+            return recorded.read_text(encoding="utf-8").splitlines()
+
+    def test_no_option_passes_no_optimize_argument(self) -> None:
+        arguments = self.consumer_build_arguments([])
+        self.assertIn("--build-file", arguments)
+        self.assertEqual(
+            [argument for argument in arguments if argument.startswith("-Doptimize")],
+            [],
+        )
+
+    def test_empty_mode_counts_as_not_chosen(self) -> None:
+        arguments = self.consumer_build_arguments(["--optimize", ""])
+        self.assertEqual(
+            [argument for argument in arguments if argument.startswith("-Doptimize")],
+            [],
+        )
+
+    def test_chosen_mode_is_passed_through_verbatim(self) -> None:
+        self.assertIn(
+            "-Doptimize=Debug", self.consumer_build_arguments(["--optimize", "Debug"])
+        )
 
 
 if __name__ == "__main__":

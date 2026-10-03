@@ -122,6 +122,9 @@ void reduction_Number(void *args) {
  * generation as the hook door and the stashed session report it. */
 static GalleySession *stashed_session = NULL;
 static long long hook_text_status = galley_ok;
+/* Out-of-range tree edits through the hook door: insert children at, remove
+ * children at, remove siblings. */
+static long long hook_range_status[3] = {galley_ok, galley_ok, galley_ok};
 static long long stashed_kind_status = galley_ok;
 static GalleyHookDoor *first_pair_door = NULL;
 static GalleyNodeAddress first_pair_node = GALLEY_INVALID_NODE;
@@ -188,6 +191,7 @@ void fixture_stash_session(GalleySession *session) {
     first_pair_node = GALLEY_INVALID_NODE;
     later_hook_shares_door = 0;
     later_hook_child_count = -1;
+    hook_range_status[0] = hook_range_status[1] = hook_range_status[2] = galley_ok;
     hook_generation = 0;
     hook_generation_status = galley_ok;
     stashed_published_generation = 1;
@@ -200,6 +204,8 @@ void fixture_stash_session(GalleySession *session) {
 }
 
 long long fixture_hook_text_status(void) { return hook_text_status; }
+
+long long fixture_hook_range_status(int which) { return hook_range_status[which]; }
 
 long long fixture_stashed_kind_status(void) { return stashed_kind_status; }
 
@@ -263,6 +269,12 @@ void reduction_Document(void *args) {
         return;
     if (stashed_session != NULL) {
         hook_text_status = galley_hook_node_text(door, node, &recorded, &recorded_len);
+        {
+            GalleyNodeAddress ignored = GALLEY_INVALID_NODE;
+            hook_range_status[0] = galley_hook_tree_insert_children_at(door, node, (size_t)-1, node);
+            hook_range_status[1] = galley_hook_tree_remove_children_at(door, node, (size_t)-1, 1, &ignored);
+            hook_range_status[2] = galley_hook_tree_remove_siblings(door, node, (size_t)-1, &ignored);
+        }
         stashed_kind_status = galley_diagnostic_kind(stashed_session);
         hook_generation_status = galley_hook_generation(door, &hook_generation);
         stashed_published_status = galley_published_generation(stashed_session, &stashed_published_generation);

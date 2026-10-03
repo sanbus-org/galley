@@ -25,6 +25,7 @@
 //! the helper compiles `procedures.rs` with rustc into a static archive and
 //! links it into the shared library — no C anywhere on the consumer side.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -202,6 +203,7 @@ pub enum ParserType {
 /// fn main() {
 ///     galley::build_helper::Options::new("language-dir")
 ///         .parser_type(galley::build_helper::ParserType::Lr)
+///         .optimize("Debug")
 ///         .generate_and_link();
 /// }
 /// ```
@@ -209,6 +211,7 @@ pub enum ParserType {
 pub struct Options {
     language_dir: PathBuf,
     parser_type: ParserType,
+    optimize: Option<String>,
 }
 
 impl Options {
@@ -217,6 +220,7 @@ impl Options {
         Options {
             language_dir: language_dir.as_ref().to_path_buf(),
             parser_type: ParserType::All,
+            optimize: None,
         }
     }
 
@@ -226,15 +230,24 @@ impl Options {
         self
     }
 
+    /// Build the parser library in the Zig optimize mode `mode` (`Debug`,
+    /// `ReleaseSafe`, `ReleaseFast` or `ReleaseSmall`), passed to zig
+    /// verbatim. Without it the library builds ReleaseFast. Debug builds
+    /// enable the runtime's misuse checks; release builds do not check.
+    pub fn optimize(mut self, mode: impl Into<String>) -> Self {
+        self.optimize = Some(mode.into());
+        self
+    }
+
     /// Generates the parser for the language directory (which must
     /// contain the grammar and the language's `config.zig`) and emits
     /// cargo directives linking the current crate's binary against the
     /// resulting shared library.
     ///
     /// Needs no checkout: the `galley` crate carries the generator and
-    /// compile inputs. The library is always built in ReleaseFast,
-    /// directly next to the grammar (`OUT_DIR` keeps only the procedures
-    /// archive).
+    /// compile inputs. The library is built ReleaseFast unless
+    /// [`Options::optimize`] says otherwise, directly next to the grammar
+    /// (`OUT_DIR` keeps only the procedures archive).
     pub fn generate_and_link(self) -> GalleyLayout {
         let language_dir = &self.language_dir;
         // Single-parser generation needs only its own grammar. Anything
@@ -351,17 +364,13 @@ impl Options {
         };
         run_or_panic({
             let mut c = Command::new(zig_executable());
-            c.arg("build")
-                .arg("--build-file")
-                .arg(&build_file)
-                .arg(format!("-Dlanguage-dir={}", language_absolute.display()))
-                .arg("-Dlib-name=galley-rust")
-                .arg(format!("-Doutput={library_file}"))
-                .arg("-Doptimize=ReleaseFast")
-                .arg("--prefix")
-                .arg(&language_absolute)
-                .arg("install")
-                .current_dir(&language_absolute);
+            c.args(consumer_build_arguments(
+                &build_file,
+                &language_absolute,
+                library_file,
+                self.optimize.as_deref(),
+            ))
+            .current_dir(&language_absolute);
             if procedures_zig.exists() {
                 println!("cargo:rerun-if-changed={}", procedures_zig.display());
             }
@@ -410,6 +419,33 @@ pub fn generate_and_link(language_dir: impl AsRef<Path>) -> GalleyLayout {
     Options::new(language_dir).generate_and_link()
 }
 
+/// The consumer build arguments for the parser library. `-Doptimize`
+/// appears only when a mode was chosen; the consumer build owns the default.
+fn consumer_build_arguments(
+    build_file: &Path,
+    language_absolute: &Path,
+    library_file: &str,
+    optimize: Option<&str>,
+) -> Vec<OsString> {
+    let mut arguments: Vec<OsString> = vec![
+        "build".into(),
+        "--build-file".into(),
+        build_file.into(),
+        format!("-Dlanguage-dir={}", language_absolute.display()).into(),
+        "-Dlib-name=galley-rust".into(),
+        format!("-Doutput={library_file}").into(),
+    ];
+    if let Some(mode) = optimize.filter(|mode| !mode.is_empty()) {
+        arguments.push(format!("-Doptimize={mode}").into());
+    }
+    arguments.extend([
+        "--prefix".into(),
+        language_absolute.into(),
+        "install".into(),
+    ]);
+    arguments
+}
+
 fn zig_executable() -> String {
     env("ZIG_EXECUTABLE").unwrap_or_else(|| "zig".into())
 }
@@ -440,4 +476,107 @@ fn compile_procedures_archive(source: &Path, out_dir: &Path) -> PathBuf {
         c
     });
     archive
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Owns the temp directory and the environment variables a test sets: dropping it
+    /// restores every variable and removes the directory, even when the test panics.
+    struct TestEnvironment {
+        root: PathBuf,
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl TestEnvironment {
+        fn set(&mut self, name: &'static str, value: impl AsRef<std::ffi::OsStr>) {
+            self.saved.push((name, std::env::var_os(name)));
+            std::env::set_var(name, value);
+        }
+    }
+
+    impl Drop for TestEnvironment {
+        fn drop(&mut self) {
+            for (name, previous) in self.saved.drain(..).rev() {
+                match previous {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    /// Runs `generate_and_link` with a fake generator and a fake zig that records its
+    /// arguments and fails, so nothing builds. Returns the recorded zig arguments.
+    fn recorded_consumer_build(options: impl FnOnce(Options) -> Options) -> Vec<String> {
+        let root = std::env::temp_dir().join(format!(
+            "galley-optimize-test-{}-{:?}",
+            std::process::id(),
+            std::time::Instant::now()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut environment = TestEnvironment {
+            root: root.clone(),
+            saved: Vec::new(),
+        };
+        let checkout = root.join("checkout");
+        let language_dir = root.join("language");
+        std::fs::create_dir_all(&checkout).unwrap();
+        std::fs::create_dir_all(&language_dir).unwrap();
+        std::fs::write(checkout.join("build.zig"), "").unwrap();
+        std::fs::write(language_dir.join("ll.grm"), "").unwrap();
+        let recorded = root.join("recorded.txt");
+        let write_script = |name: &str, body: String| {
+            let path = root.join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+        let generator = write_script(
+            "generator",
+            "#!/bin/sh\n[ \"$1\" = --help ] && echo --emit-metadata\nexit 0\n".into(),
+        );
+        let fake_zig = write_script(
+            "zig",
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit 1\n",
+                recorded.display()
+            ),
+        );
+        environment.set("GALLEY_CHECKOUT", &checkout);
+        environment.set("GALLEY_CLI", &generator);
+        environment.set("ZIG_EXECUTABLE", &fake_zig);
+        environment.set("OUT_DIR", &root);
+
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            options(Options::new(&language_dir)).generate_and_link();
+        }));
+        assert!(outcome.is_err(), "fake zig should fail the build");
+        std::fs::read_to_string(&recorded)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    // One test, because the helper reads process-wide environment variables.
+    #[test]
+    fn optimize_reaches_the_consumer_build_only_when_chosen() {
+        let has_optimize = |arguments: &[String]| {
+            arguments
+                .iter()
+                .any(|argument| argument.starts_with("-Doptimize"))
+        };
+        let default_arguments = recorded_consumer_build(|options| options);
+        assert!(default_arguments.contains(&"--build-file".to_string()));
+        assert!(!has_optimize(&default_arguments));
+        assert!(!has_optimize(&recorded_consumer_build(
+            |options| options.optimize("")
+        )));
+        assert!(recorded_consumer_build(|options| options.optimize("Debug"))
+            .contains(&"-Doptimize=Debug".to_string()));
+    }
 }

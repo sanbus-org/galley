@@ -66,7 +66,7 @@ Reference integration: examples/c (CMake) and examples/cpp in the Galley repo.
 # 2. Compile the shared library next to the grammar.
 zig build --build-file "\$KIT/share/galley/compile-kit/build.zig" \\
   -Dlanguage-dir=<language-dir> -Dlib-name=<name> \\
-  -Doutput='lib<name>.so (lib<name>.dylib on macOS)' -Doptimize=ReleaseFast \\
+  -Doutput='lib<name>.so (lib<name>.dylib on macOS)' \\
   --prefix <language-dir> install
 # Link your program against it with -I"\$KIT/include" -L<language-dir> -l<name>.
 EOF

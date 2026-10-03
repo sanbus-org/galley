@@ -3,7 +3,7 @@
  * Single build entry for the Galley JavaScript bindings.
  *
  * Usage:
- *   galley build <language-dir> [--native-only|--wasm-only] [generator flags...]
+ *   galley build <language-dir> [--native-only|--wasm-only] [--optimize <mode>] [generator flags...]
  *
  * Builds both artifacts next to the grammar by default: the canonical
  * shared native library (serves the Node, Bun, and Deno adapters) plus
@@ -12,6 +12,11 @@
  * `@sanbus/galley-wasm`, the Deno `build.ts`) remain as thin wrappers over the
  * same shared gate for single-leg builds, and stay flag-free: this is the
  * one full CLI.
+ *
+ * `--optimize <mode>` takes a Zig build mode (`Debug`, `ReleaseSafe`,
+ * `ReleaseFast`, `ReleaseSmall`) for the parser libraries; without it they
+ * build ReleaseFast. Debug builds enable the runtime's misuse checks;
+ * release builds do not check.
  *
  * Generator flags forward verbatim to the generator ahead of
  * `--emit-host-procedures`: the wrappers forward every flag they don't own and
@@ -45,13 +50,14 @@ function fatal(message) {
   process.exit(1);
 }
 
-const USAGE = "usage: galley build <language-dir> [--native-only|--wasm-only] [generator flags...]";
+const USAGE = "usage: galley build <language-dir> [--native-only|--wasm-only] [--optimize <mode>] [generator flags...]";
 
 async function main() {
   const argumentList = process.argv.slice(2);
   if (argumentList.length < 2 || argumentList[0] !== "build") fatal(USAGE);
   const flagList = argumentList.slice(2);
   const generatorFlags = [];
+  let optimize = null;
   for (let index = 0; index < flagList.length; index++) {
     const flag = flagList[index];
     if (flag === "--native-only" || flag === "--wasm-only") continue;
@@ -60,7 +66,11 @@ async function main() {
       process.exit(0);
     }
     if (flag === "--watch") fatal("--watch needs its own entry (not yet implemented); this build runs the generator once");
-    if (flag === "--parser-type") {
+    if (flag === "--optimize") {
+      optimize = flagList[index + 1];
+      if (optimize === undefined) fatal(`--optimize needs Debug, ReleaseSafe, ReleaseFast or ReleaseSmall; ${USAGE}`);
+      index++;
+    } else if (flag === "--parser-type") {
       const value = flagList[index + 1];
       if (value === undefined) fatal(`--parser-type needs ll or lr; ${USAGE}`);
       generatorFlags.push(flag, value);
@@ -84,6 +94,7 @@ async function main() {
       bindingsDirectory,
       dependencyName: "@sanbus/galley-core",
       addon: true,
+      optimize,
       generatorFlags,
     });
   }
@@ -95,6 +106,7 @@ async function main() {
       posixOnly: false,
       bindingsDirectory,
       dependencyName: "@sanbus/galley-core",
+      optimize,
       generatorFlags,
     });
   }

@@ -396,14 +396,50 @@ def compile_extension(
     run(arguments)
 
 
+def consumer_build_arguments(
+    build_file: Path,
+    language_dir: Path,
+    archive_name: str,
+    procedures_zig_source: str,
+    optimize: str | None,
+) -> list[str | Path]:
+    """The consumer build command for the parser archive.
+
+    `-Doptimize` appears only when the user chose a mode; the consumer
+    build owns the default.
+    """
+    arguments: list[str | Path] = [
+        zig_executable(),
+        "build",
+        "--build-file",
+        build_file,
+        f"-Dlanguage-dir={language_dir}",
+        f"-Dlib-name={LIBRARY_NAME}",
+        "-Dlinkage=static",
+        f"-Doutput={archive_name}",
+    ]
+    if optimize:
+        arguments.append(f"-Doptimize={optimize}")
+    arguments += [
+        f"-Dprocedures-zig-source={procedures_zig_source}",
+        "--prefix",
+        language_dir,
+        "install",
+    ]
+    return arguments
+
+
 def main() -> None:
-    usage = "usage: python -m galley <language-dir> [generator flags...]"
+    usage = (
+        "usage: python -m galley <language-dir> [--optimize <mode>] [generator flags...]"
+    )
     if len(sys.argv) < 2:
         fatal(usage)
     if os.name == "nt":
         fatal("the python bindings target POSIX platforms")
     language_dir = Path(sys.argv[1]).resolve()
     generator_flags: list[str] = []
+    optimize: str | None = None
     index = 2
     while index < len(sys.argv):
         flag = sys.argv[index]
@@ -415,7 +451,14 @@ def main() -> None:
                 "--watch needs its own entry (not yet implemented); "
                 "this build runs the generator once"
             )
-        if flag == "--parser-type":
+        if flag == "--optimize":
+            index += 1
+            if index >= len(sys.argv):
+                fatal(
+                    f"--optimize needs Debug, ReleaseSafe, ReleaseFast or ReleaseSmall; {usage}"
+                )
+            optimize = sys.argv[index]
+        elif flag == "--parser-type":
             index += 1
             if index >= len(sys.argv):
                 fatal(f"--parser-type needs ll or lr; {usage}")
@@ -480,21 +523,9 @@ def main() -> None:
     # One archive embeds one parser as a static library; the extension
     # links it in whole, so the artifact is self-contained.
     archive_name = library_file_name()
-    consumer_arguments: list[str | Path] = [
-        zig_executable(),
-        "build",
-        "--build-file",
-        build_file,
-        f"-Dlanguage-dir={language_dir}",
-        f"-Dlib-name={LIBRARY_NAME}",
-        "-Dlinkage=static",
-        f"-Doutput={archive_name}",
-        "-Doptimize=ReleaseFast",
-        f"-Dprocedures-zig-source={procedures_zig_source}",
-        "--prefix",
-        language_dir,
-        "install",
-    ]
+    consumer_arguments = consumer_build_arguments(
+        build_file, language_dir, archive_name, procedures_zig_source, optimize
+    )
     # config.zig and {ll,lr}_error_messages.zig are inferred by the consumer
     # build from the parser location.
     run(consumer_arguments, cwd=language_dir)

@@ -4,7 +4,12 @@
 //
 // Usage:
 //
-//	galley gen <language-dir> [generator flags...]
+//	galley gen <language-dir> [--optimize <mode>] [generator flags...]
+//
+// --optimize takes a Zig build mode (Debug, ReleaseSafe, ReleaseFast,
+// ReleaseSmall) for the parser library; without it the library builds
+// ReleaseFast. Debug builds enable the runtime's misuse checks; release
+// builds do not check.
 //
 // Generator flags forward verbatim to the generator ahead of
 // --emit-metadata: this tool forwards every flag it does not own and the
@@ -486,13 +491,34 @@ func libraryFileName() string {
 	return "lib" + libName + ".so"
 }
 
+// consumerBuildArguments is the consumer build command line for the parser
+// library. -Doptimize appears only when the user chose a mode; the consumer
+// build owns the default. config.zig and {ll,lr}_error_messages.zig next to
+// the parser are inferred by the consumer build when omitted.
+func consumerBuildArguments(buildFile, languageAbsolute, procedureZigSource, optimize string) []string {
+	arguments := []string{"build",
+		"--build-file", buildFile,
+		"-Dlanguage-dir=" + languageAbsolute,
+		"-Dlib-name=" + libName,
+		"-Doutput=" + libraryFileName(),
+	}
+	if optimize != "" {
+		arguments = append(arguments, "-Doptimize="+optimize)
+	}
+	if procedureZigSource != "" {
+		arguments = append(arguments, "-Dprocedures-zig-source="+procedureZigSource)
+	}
+	return append(arguments, "--prefix", languageAbsolute, "install")
+}
+
 func main() {
-	const usage = "usage: galley gen <language-dir> [generator flags...]"
+	const usage = "usage: galley gen <language-dir> [--optimize <mode>] [generator flags...]"
 	if len(os.Args) < 3 || os.Args[1] != "gen" {
 		fatal("%s", usage)
 	}
 	languageDir := os.Args[2]
 	var generatorFlags []string
+	optimize := ""
 	for i := 3; i < len(os.Args); i++ {
 		flag := os.Args[i]
 		if flag == "-h" || flag == "--help" {
@@ -502,7 +528,13 @@ func main() {
 		if flag == "--watch" {
 			fatal("--watch needs its own entry (not yet implemented); this build runs the generator once")
 		}
-		if flag == "--parser-type" {
+		if flag == "--optimize" {
+			i++
+			if i >= len(os.Args) {
+				fatal("--optimize needs Debug, ReleaseSafe, ReleaseFast or ReleaseSmall; %s", usage)
+			}
+			optimize = os.Args[i]
+		} else if flag == "--parser-type" {
 			i++
 			if i >= len(os.Args) {
 				fatal("--parser-type needs ll or lr; %s", usage)
@@ -586,19 +618,9 @@ func main() {
 	}
 	procedureZigSource := mustAbsolute(shimPath)
 
-	consumerBuild := exec.Command(zigExecutable(), "build",
-		"--build-file", buildFile,
-		"-Dlanguage-dir="+languageAbsolute,
-		"-Dlib-name="+libName,
-		"-Doutput="+libraryFileName(),
-		"-Doptimize=ReleaseFast",
-		"--prefix", languageAbsolute,
-		"install")
+	consumerBuild := exec.Command(zigExecutable(),
+		consumerBuildArguments(buildFile, languageAbsolute, procedureZigSource, optimize)...)
 	consumerBuild.Dir = languageAbsolute
-	if procedureZigSource != "" {
-		consumerBuild.Args = append(consumerBuild.Args,
-			"-Dprocedures-zig-source="+procedureZigSource)
-	}
 	// config.zig and {ll,lr}_error_messages.zig next to the parser are
 	// inferred by the consumer build when omitted, so no explicit flags
 	// are needed for standard layouts.
